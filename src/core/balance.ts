@@ -44,6 +44,8 @@ export const TECH_COST_START = 4
 export const TECH_OFFLINE_HOURS = 2 // 營地帳篷:每級離線上限
 export const TECH_COST_CAMP = 5
 export const TECH_CAMP_MAX = 4
+export const TECH_COST_HEIRLOOM = 8 // 家族傳承:每級 +1 件傳家寶
+export const TECH_HEIRLOOM_MAX = 4
 
 // 新兵祝福:首輪限定金幣加成。設 0 = 停用。
 // 模擬結論:給了首輪會虛高、轉生後淨變弱(第二輪極限反而下降)→ 停用,首輪節奏改由新手斜坡負責。
@@ -103,6 +105,25 @@ export const SALVAGE_RETURN = {
   crimson: 25,
 } as const
 
+// 突發事件:寶箱怪 / 黃金哥布林
+export const EVENT_INTERVAL_AVG = 75 // 秒,平均間隔
+export const EVENT_TIME = 8 // 秒,逾時逃走
+export const EVENT_HP_MULT = 3 // HP = 該層小怪 ×3
+export const CHEST_GOLD_MULT = 30 // 金幣 = 該層小怪掉落 ×30
+export const GOBLIN_GOLD_MULT = 60
+
+// 部位素材:每 10 層 Boss 首殺必掉 1,重複擊殺機率掉落
+export const PART_DROP_REPEAT = 0.3
+// 菁英素材:品質下限保證紫以上
+export const ELITE_FROM_CHEST = 0.05 // 寶箱怪掉落機率
+export const ELITE_DAILY_BOSS = 1 // 每日首次擊破 Boss 保底
+export const ELITE_MEDAL_COST = 20 // 轉生商店兌換價
+
+// 精工鍛造:怪物素材 ×10 +(可選)部位素材 +(可選)菁英素材
+export const FINE_FORGE_COST = 10
+// 精工保底:累計 N 次未出傳奇 → 必出傳奇以上(跨轉生保留)
+export const PITY_LEGENDARY = 50
+
 // 鐵匠鋪等級:每 N 次鍛造升 1 級,每級給品質升階機率
 export const FORGE_PER_LEVEL = 25
 export const FORGE_MAX_LEVEL = 10
@@ -112,7 +133,7 @@ export const FORGE_UPGRADE_CAP = 0.5
 // 普通鍛造保底:連續 N 次未出紫以上 → 必出紫以上(跨轉生保留)
 export const PITY_FORGE = 30
 
-// 轉生可指定帶走的傳家寶件數
+// 轉生可指定帶走的傳家寶件數(基準;「家族傳承」科技每級 +1,最多全身 5 件)
 export const HEIRLOOM_SLOTS = 1
 
 // 離線收益

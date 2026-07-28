@@ -12,12 +12,15 @@ import {
   buyTech,
   createInitialState,
   equip,
+  fineForge,
   forge,
+  heirloomCandidates,
   pendingMedals,
+  prestige,
   salvage,
 } from '../../src/core/game'
-import { canBuyTech, emptyTechs, techDamageMult, techGoldMult } from '../../src/core/techs'
-import type { Techs } from '../../src/core/types'
+import { canBuyTech, heirloomSlots, techDamageMult, techGoldMult } from '../../src/core/techs'
+import type { GameState, Techs } from '../../src/core/types'
 import { equipPower, QUALITY_NAME, score, SLOTS } from '../../src/core/equipment'
 import { D, Decimal } from '../../src/core/decimal'
 
@@ -25,7 +28,7 @@ import { D, Decimal } from '../../src/core/decimal'
  * 固定種子亂數:鍛造有隨機性,不固定種子的話雜訊會蓋掉調整常數的效果,
  * 兩次跑的結果無法比較。要看不同運氣下的分佈就改 SEED。
  */
-const SEED = 20260729
+const SEED = Number((globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env?.SEED ?? 20260729)
 function makeRng(seed: number) {
   let a = seed >>> 0
   return () => {
@@ -47,12 +50,21 @@ const BUY_EVERY_MS = 1000
  * 開局資金與離線上限用零頭補。真人不會這麼平均,但足以檢驗曲線。
  */
 function spendMedals(s: ReturnType<typeof createInitialState>) {
-  const order: Array<'valor' | 'supply' | 'legacy' | 'camp'> = ['valor', 'supply', 'valor', 'supply', 'legacy', 'camp']
+  // 主力先買兩個乘區;傳家寶/開局金/離線只用「有餘裕」時的零頭買,
+  // 一開始就砸 8 枚買傳家寶會排擠乘區,實測會讓前幾輪不進反退。
+  const core: Array<'valor' | 'supply'> = ['valor', 'supply']
+  const extras: Array<'heirloom' | 'legacy' | 'camp'> = ['heirloom', 'legacy', 'camp']
   let bought = true
   while (bought) {
     bought = false
-    for (const id of order) {
+    for (const id of core) {
       if (canBuyTech(s.techs, s.medals, id)) {
+        buyTech(s, id)
+        bought = true
+      }
+    }
+    for (const id of extras) {
+      if (s.medals >= 15 && canBuyTech(s.techs, s.medals, id)) {
         buyTech(s, id)
         bought = true
       }
@@ -71,12 +83,14 @@ interface RunResult {
   gearMult: number
   techs: Techs
   medalsLeft: number
+  /** 這一輪結束時的狀態,交給 prestige 串到下一輪 */
+  state: GameState
 }
 
 /** active = 玩家持續點擊(戰意滿),否則純掛機 */
-function run(medals: number, techs: Techs, active = false, capMinutes = 180, rng = makeRng(SEED)): RunResult {
-  const s = createInitialState(medals, 0, techs)
-  spendMedals(s)
+function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(SEED)): RunResult {
+  const s = start
+  spendMedals(s) // 開局先把勳章花掉
   let ms = 0
   let buyAcc = 0
   let lastBlockMs = 0
@@ -90,9 +104,14 @@ function run(medals: number, techs: Techs, active = false, capMinutes = 180, rng
     if (buyAcc >= BUY_EVERY_MS) {
       buyAcc = 0
 
-      // 玩家行為:素材夠就開錘,比身上好就換,否則分解
+      // 玩家行為:有部位素材就精工鍛(鎖最爛的部位),否則普通開錘;比身上好就換,否則分解
       while (s.materials >= B.FORGE_COST) {
-        const e = forge(s, rng)
+        const worst = SLOTS.filter((sl) => s.partMaterials[sl] > 0).sort(
+          (a, b) => (s.equipped[a] ? score(s.equipped[a]!) : 0) - (s.equipped[b] ? score(s.equipped[b]!) : 0),
+        )[0]
+        const e = worst
+          ? fineForge(s, { slot: worst, useElite: s.eliteMaterials > 0 }, rng)
+          : forge(s, rng)
         if (!e) break
         const cur = s.equipped[e.slot]
         if (!cur || score(e) > score(cur)) equip(s, e.id)
@@ -109,7 +128,7 @@ function run(medals: number, techs: Techs, active = false, capMinutes = 180, rng
     }
     if (active) s.morale = B.MORALE_MAX
 
-    applyTick(s, STEP_MS)
+    applyTick(s, STEP_MS, rng)
     ms += STEP_MS
 
     if (s.floor > nextMark) {
@@ -121,10 +140,11 @@ function run(medals: number, techs: Techs, active = false, capMinutes = 180, rng
   }
 
   return {
+    state: s,
     floor: s.highestFloor,
     minutes: ms / 60_000,
     lv: s.lv,
-    medals: medals + pendingMedals(s),
+    medals: s.medals + pendingMedals(s),
     pace,
     lvMarks,
     techs: { ...s.techs },
@@ -136,22 +156,24 @@ function run(medals: number, techs: Techs, active = false, capMinutes = 180, rng
 
 function table(label: string, active: boolean) {
   console.log(`\n${label}`)
-  console.log('輪次 | 極限層數 | 增幅  | 耗時(分) | 等級 | 科技')
-  let m = 0
-  let techs = emptyTechs()
+  console.log('輪次 | 極限層數 | 增幅  | 耗時(分) | 等級 | 裝備 | 科技')
   let first: RunResult | null = null
   let prevFloor = 0
   const rng = makeRng(SEED) // 整條轉生鏈共用一個序列
+  let state = createInitialState()
   for (let i = 1; i <= 6; i++) {
-    const r = run(m, techs, active, 180, rng)
+    const r = run(state, active, 180, rng)
     if (!first) first = r
     const delta = prevFloor ? `+${r.floor - prevFloor}` : '-'
     console.log(
-      ` ${String(i).padEnd(3)}|   ${String(r.floor).padEnd(7)}| ${delta.padEnd(6)}|  ${r.minutes.toFixed(0).padEnd(7)}| ${String(r.lv).padEnd(4)}| 傷害×${techDamageMult(r.techs).toFixed(1)} 金幣×${techGoldMult(r.techs).toFixed(1)}`,
+      ` ${String(i).padEnd(3)}|   ${String(r.floor).padEnd(7)}| ${delta.padEnd(6)}|  ${r.minutes.toFixed(0).padEnd(7)}| ${String(r.lv).padEnd(4)}| ×${equipPower(r.state.equipped).toFixed(1)} | 傷害×${techDamageMult(r.state.techs).toFixed(1)} 金幣×${techGoldMult(r.state.techs).toFixed(1)} 傳家${heirloomSlots(r.state.techs)}`,
     )
     prevFloor = r.floor
-    m = r.medals
-    techs = r.techs
+    // 帶走最好的幾件當傳家寶,和真人一樣
+    const keep = heirloomCandidates(r.state)
+      .slice(0, heirloomSlots(r.state.techs))
+      .map((e) => e.id)
+    state = prestige(r.state, keep) ?? createInitialState()
   }
   console.log('首輪節奏:', first!.pace.map(([f, min]) => `${f}層 ${min}分`).join(' / '))
   console.log('首輪畢業裝:', first!.gear, `(裝備乘區 ×${first!.gearMult.toFixed(2)})`)

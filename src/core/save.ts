@@ -21,6 +21,11 @@ export interface SaveData {
   materials: number
   forgeCount: number
   pityCount: number
+  pityLegendary: number
+  partMaterials: GameState['partMaterials']
+  eliteMaterials: number
+  maxBossKilled: number
+  lastEliteDay: string
   inventory: GameState['inventory']
   equipped: GameState['equipped']
   medals: number
@@ -47,6 +52,11 @@ export function serialize(s: GameState): SaveData {
     materials: s.materials,
     forgeCount: s.forgeCount,
     pityCount: s.pityCount,
+    pityLegendary: s.pityLegendary,
+    partMaterials: s.partMaterials,
+    eliteMaterials: s.eliteMaterials,
+    maxBossKilled: s.maxBossKilled,
+    lastEliteDay: s.lastEliteDay,
     inventory: s.inventory,
     equipped: s.equipped,
     medals: s.medals,
@@ -73,6 +83,20 @@ function migrate(raw: SaveData): SaveData {
     d.techs = d.techs ?? emptyTechs()
     d.version = 3
   }
+  // v3 → v4:部位/菁英素材、精工保底
+  if (d.version < 4) {
+    d.pityLegendary = d.pityLegendary ?? 0
+    d.partMaterials = d.partMaterials ?? { weapon: 0, head: 0, body: 0, boots: 0, trinket: 0 }
+    d.eliteMaterials = d.eliteMaterials ?? 0
+    // 舊存檔沒有首殺記錄,用當前最高層推回去,免得已打過的 Boss 又送一次素材
+    d.maxBossKilled = d.maxBossKilled ?? Math.floor((d.highestFloor ?? 1) / 10) * 10
+    d.lastEliteDay = d.lastEliteDay ?? ''
+    d.version = 4
+  }
+  // v4 → v5:突發事件。事件是限時暫態,刻意不進存檔,讀檔後重新計時
+  if (d.version < 5) {
+    d.version = 5
+  }
   return d
 }
 
@@ -97,6 +121,11 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     materials: d.materials ?? 0,
     forgeCount: d.forgeCount ?? 0,
     pityCount: d.pityCount ?? 0,
+    pityLegendary: d.pityLegendary ?? 0,
+    partMaterials: { ...base.partMaterials, ...(d.partMaterials ?? {}) },
+    eliteMaterials: d.eliteMaterials ?? 0,
+    maxBossKilled: d.maxBossKilled ?? 0,
+    lastEliteDay: d.lastEliteDay ?? '',
     inventory: d.inventory ?? [],
     equipped: { ...base.equipped, ...(d.equipped ?? {}) },
     lastSaved: d.lastSaved ?? Date.now(),

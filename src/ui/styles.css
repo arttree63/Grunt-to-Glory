@@ -204,13 +204,15 @@ button {
   background: linear-gradient(90deg, var(--morale-a), var(--morale-b));
 }
 
-/* 撤退提示 */
+/* 撤退提示:放在上緣,不能擋主角 */
 .retry {
   position: absolute;
   z-index: 6;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 46px;
+  top: 96px;
+  max-width: 82%;
+  line-height: 1.6;
   background: #241d31dd;
   border: 1px solid var(--border-card);
   border-radius: 10px;

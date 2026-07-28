@@ -1,6 +1,7 @@
 import { fmt } from '../../core/format'
 import { affordableLevels, bulkUpCost, upCost } from '../../core/formulas'
-import { currentDPS, goldPerSec } from '../../core/game'
+import * as B from '../../core/balance'
+import { currentDPS, dpsBreakdown, goldPerSec } from '../../core/game'
 import { JOBS, TIER1_JOBS } from '../../core/jobs'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
@@ -32,15 +33,29 @@ export default function HeroPanel() {
         <span className="k">DPS</span>
         <span className="v">{fmt(currentDPS(s))}/s</span>
       </div>
+      <details style={{ margin: '2px 0 6px' }}>
+        <summary className="affix" style={{ cursor: 'pointer', padding: '4px 0' }}>
+          傷害來自哪裡?
+        </summary>
+        {dpsBreakdown(s).map((p) => (
+          <div className="row" key={p.label} style={{ paddingLeft: 8 }}>
+            <span className="k">{p.label}</span>
+            <span className="v" style={{ color: p.mult > 1 ? 'var(--gold)' : 'var(--dim)' }}>
+              ×{p.mult < 100 ? p.mult.toFixed(2) : fmt(p.mult)}
+            </span>
+          </div>
+        ))}
+        <div className="affix" style={{ padding: '6px 0 0 8px' }}>
+          全部相乘 × 基礎 {B.BASE_DPS} = 目前 DPS
+        </div>
+      </details>
       <div className="row">
         <span className="k">金幣收益</span>
         <span className="v">{fmt(goldPerSec(s))}/s</span>
       </div>
       <div className="row">
         <span className="k">戰功勳章</span>
-        <span className="v">
-          {s.medals} 枚(傷害 +{s.medals * 5}%)
-        </span>
+        <span className="v">{s.medals} 枚(到商店買科技)</span>
       </div>
 
       <div className="btn-row">

@@ -30,6 +30,13 @@ export const TECHS: Tech[] = [
     cost: B.TECH_COST_START,
   },
   {
+    id: 'heirloom',
+    name: '家族傳承',
+    desc: '轉生可多帶 1 件傳家寶',
+    cost: B.TECH_COST_HEIRLOOM,
+    maxLevel: B.TECH_HEIRLOOM_MAX,
+  },
+  {
     id: 'camp',
     name: '營地帳篷',
     desc: `離線收益上限 +${B.TECH_OFFLINE_HOURS} 小時`,
@@ -38,7 +45,12 @@ export const TECHS: Tech[] = [
   },
 ]
 
-export const emptyTechs = (): Techs => ({ valor: 0, supply: 0, legacy: 0, camp: 0 })
+export const emptyTechs = (): Techs => ({ valor: 0, supply: 0, legacy: 0, camp: 0, heirloom: 0 })
+
+/** 傳家寶欄位數:轉生時能帶走幾件裝備 */
+export function heirloomSlots(techs: Techs): number {
+  return B.HEIRLOOM_SLOTS + techs.heirloom
+}
 
 export function techById(id: TechId): Tech {
   return TECHS.find((t) => t.id === id)!

@@ -5,6 +5,7 @@ import { QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
 import { heirloomCandidates, pendingMedals } from '../../core/game'
 import {
   canBuyTech,
+  heirloomSlots,
   TECHS,
   techDamageMult,
   techGoldMult,
@@ -28,10 +29,12 @@ export default function ShopPanel() {
   const s = useGameState()
   const prestige = useGame((st) => st.prestige)
   const buyTech = useGame((st) => st.buyTech)
+  const buyElite = useGame((st) => st.buyElite)
   const [confirm, setConfirm] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
   const gain = pendingMedals(s)
   const candidates = heirloomCandidates(s)
+  const slots = heirloomSlots(s.techs)
 
   return (
     <div>
@@ -92,7 +95,7 @@ export default function ShopPanel() {
           <div className="affix" style={{ marginBottom: 8, lineHeight: 1.7 }}>
             退役後等級、金幣、素材歸零,換得 {gain} 枚戰功勳章永久加成。
             <br />
-            可指定 {B.HEIRLOOM_SLOTS} 件裝備當「傳家寶」帶給下一代。
+            可指定 {slots} 件裝備當「傳家寶」帶給下一代{s.techs.heirloom > 0 && '(家族傳承科技已擴充)'}。
           </div>
 
           <h3 style={{ fontSize: 13, marginTop: 10 }}>選擇傳家寶</h3>
@@ -104,7 +107,9 @@ export default function ShopPanel() {
                 key={e.id}
                 className="row"
                 style={{ width: '100%', textAlign: 'left', opacity: on ? 1 : 0.6 }}
-                onClick={() => setPicked(on ? [] : [e.id])}
+                onClick={() =>
+                  setPicked(on ? picked.filter((id) => id !== e.id) : [...picked, e.id].slice(-slots))
+                }
               >
                 <span style={{ color: `var(--q-${e.quality})` }}>
                   {on ? '● ' : '○ '}
@@ -134,7 +139,19 @@ export default function ShopPanel() {
         </div>
       )}
 
-      <div className="empty">傭兵徽章、菁英素材兌換為 Phase 2 內容</div>
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="head">
+          <b>
+            菁英素材 <small className="affix">目前 {s.eliteMaterials} 個</small>
+          </b>
+          <button className="btn primary" disabled={s.medals < B.ELITE_MEDAL_COST} onClick={buyElite}>
+            {B.ELITE_MEDAL_COST} 勳章
+          </button>
+        </div>
+        <div className="affix">精工鍛造投入後保證菁英以上品質</div>
+      </div>
+
+      <div className="empty">傭兵徽章兌換為 Phase 2 內容</div>
     </div>
   )
 }

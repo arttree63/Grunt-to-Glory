@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import * as B from '../balance'
 import { D } from '../decimal'
-import { forgeLevel, forgeUpgradeChance, QUALITIES, SLOTS } from '../equipment'
+import { bossPartSlot, forgeLevel, forgeUpgradeChance, QUALITIES, SLOTS } from '../equipment'
 import { fmt, fmtTime } from '../format'
 import { bossHP, goldDrop, heroDPS, isBossFloor, medalsFromFloor, mobHP, upCost } from '../formulas'
-import { techOfflineHours } from '../techs'
+import { heirloomSlots, techOfflineHours } from '../techs'
 import {
   applyTick,
   buyLevels,
+  buyElite,
   buyTech,
+  canFineForge,
+  claimDailyElite,
+  fineForge,
   goldMult,
   click,
   computeOffline,
@@ -220,6 +224,101 @@ describe('養成與經濟', () => {
   })
 })
 
+describe('部位/菁英素材與精工鍛造', () => {
+  it('Boss 部位輪替:X10 頭 / X20 武器 / X30 身 / X40 鞋 / X50 飾品,循環', () => {
+    expect(bossPartSlot(10)).toBe('head')
+    expect(bossPartSlot(20)).toBe('weapon')
+    expect(bossPartSlot(30)).toBe('body')
+    expect(bossPartSlot(40)).toBe('boots')
+    expect(bossPartSlot(50)).toBe('trinket')
+    expect(bossPartSlot(60)).toBe('head') // 循環
+  })
+
+  it('Boss 首殺必掉部位素材,重複擊殺才看機率', () => {
+    const s = createInitialState()
+    s.floor = 10
+    spawnEnemy(s)
+    s.enemyHp = D(1)
+    applyTick(s, 1000, () => 0.99) // rng 高到不會觸發重複掉落
+    expect(s.partMaterials.head).toBe(1)
+    expect(s.maxBossKilled).toBe(10)
+
+    // 回頭再打同一層 Boss:不再是首殺
+    s.floor = 10
+    s.bossFailed = false
+    spawnEnemy(s)
+    s.enemyHp = D(1)
+    applyTick(s, 1000, () => 0.99)
+    expect(s.partMaterials.head).toBe(1) // 沒掉
+  })
+
+  it('精工鍛造:部位素材鎖部位、菁英素材保證菁英以上', () => {
+    const s = createInitialState()
+    s.materials = 100
+    s.partMaterials.weapon = 1
+    s.eliteMaterials = 1
+
+    const e = fineForge(s, { slot: 'weapon', useElite: true }, () => 0.01)!
+    expect(e.slot).toBe('weapon')
+    expect(QUALITIES.indexOf(e.quality)).toBeGreaterThanOrEqual(QUALITIES.indexOf('purple'))
+    expect(s.partMaterials.weapon).toBe(0)
+    expect(s.eliteMaterials).toBe(0)
+    expect(s.materials).toBe(100 - B.FINE_FORGE_COST)
+  })
+
+  it('素材不足就不能精工,也不會扣素材', () => {
+    const s = createInitialState()
+    s.materials = 100
+    expect(canFineForge(s, { slot: 'weapon' })).toBe(false)
+    expect(fineForge(s, { slot: 'weapon' })).toBe(null)
+    expect(s.materials).toBe(100)
+  })
+
+  it('精工傳奇保底:50 次未出金 → 必出,普通鍛造不推進這個計數', () => {
+    const s = createInitialState()
+    s.materials = 10_000
+    s.pityLegendary = B.PITY_LEGENDARY
+    const e = fineForge(s, {}, () => 0.01)!
+    expect(QUALITIES.indexOf(e.quality)).toBeGreaterThanOrEqual(QUALITIES.indexOf('gold'))
+    expect(s.pityLegendary).toBe(0)
+
+    const before = s.pityLegendary
+    forge(s, () => 0.01)
+    expect(s.pityLegendary).toBe(before) // 普通鍛造不吃傳奇保底
+  })
+
+  it('每日首殺 Boss 給 1 菁英素材,同一天只給一次', () => {
+    const s = createInitialState()
+    expect(claimDailyElite(s, '2026-07-29')).toBe(true)
+    expect(s.eliteMaterials).toBe(1)
+    expect(claimDailyElite(s, '2026-07-29')).toBe(false)
+    expect(claimDailyElite(s, '2026-07-30')).toBe(true)
+    expect(s.eliteMaterials).toBe(2)
+  })
+
+  it('勳章可換菁英素材,不夠不給換', () => {
+    const s = createInitialState()
+    s.medals = B.ELITE_MEDAL_COST - 1
+    expect(buyElite(s)).toBe(false)
+    s.medals = B.ELITE_MEDAL_COST
+    expect(buyElite(s)).toBe(true)
+    expect(s.eliteMaterials).toBe(1)
+    expect(s.medals).toBe(0)
+  })
+
+  it('菁英素材與傳奇保底跨轉生保留,首殺記錄歸零', () => {
+    const s = createInitialState()
+    s.highestFloor = 50
+    s.eliteMaterials = 3
+    s.pityLegendary = 20
+    s.maxBossKilled = 50
+    const next = prestige(s)!
+    expect(next.eliteMaterials).toBe(3)
+    expect(next.pityLegendary).toBe(20)
+    expect(next.maxBossKilled).toBe(0)
+  })
+})
+
 describe('轉生與離線', () => {
   it('轉生給勳章並重置進度,勳章累積', () => {
     const s = createInitialState()
@@ -298,6 +397,24 @@ describe('轉生與離線', () => {
     expect(next.forgeCount).toBe(s.forgeCount) // 鐵匠鋪等級不歸零
   })
 
+  it('家族傳承科技可擴充傳家寶欄位', () => {
+    const s = createInitialState()
+    s.highestFloor = 50
+    s.materials = 100
+    expect(heirloomSlots(s.techs)).toBe(B.HEIRLOOM_SLOTS)
+
+    s.medals = 99
+    buyTech(s, 'heirloom')
+    buyTech(s, 'heirloom')
+    expect(heirloomSlots(s.techs)).toBe(B.HEIRLOOM_SLOTS + 2)
+
+    const a = forge(s)!
+    const b = forge(s)!
+    const c = forge(s)!
+    const next = prestige(s, [a.id, b.id, c.id])!
+    expect(next.inventory).toHaveLength(3) // 基準 1 + 科技 2
+  })
+
   it('不指定傳家寶就全部歸零', () => {
     const s = createInitialState()
     s.highestFloor = 50
@@ -370,7 +487,7 @@ describe('存檔', () => {
     const back = deserialize(v2)
     expect(back.lv).toBe(77)
     expect(back.medals).toBe(12) // 勳章不沒收,玩家自己決定買哪條科技
-    expect(back.techs).toEqual({ valor: 0, supply: 0, legacy: 0, camp: 0 })
+    expect(back.techs).toEqual({ valor: 0, supply: 0, legacy: 0, camp: 0, heirloom: 0 })
   })
 
   it('壞存檔回退成新局而不是崩潰', () => {

@@ -1,6 +1,7 @@
 import * as B from './balance'
 import { D, Decimal } from './decimal'
 import {
+  bossPartSlot,
   equipBonuses,
   equipPower,
   QUALITIES,
@@ -21,8 +22,17 @@ import {
   upCost,
 } from './formulas'
 import { JOBS } from './jobs'
-import { emptyTechs, canBuyTech, techById, techDamageMult, techGoldMult, techOfflineHours, techStartGold } from './techs'
-import type { Equipment, GameEvent, GameState, Slot, TechId, Techs } from './types'
+import {
+  canBuyTech,
+  emptyTechs,
+  heirloomSlots,
+  techById,
+  techDamageMult,
+  techGoldMult,
+  techOfflineHours,
+  techStartGold,
+} from './techs'
+import type { Equipment, EventKind, GameEvent, GameState, Slot, TechId, Techs } from './types'
 
 /**
  * 所有函式直接改動傳入的 state(呼叫端負責產生新參考給 React),
@@ -44,9 +54,16 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     bossTimeLeft: B.BOSS_TIME,
     bossFailed: false,
     morale: 0,
+    event: null,
+    eventCooldown: B.EVENT_INTERVAL_AVG,
     materials: 0,
     forgeCount: 0,
     pityCount: 0,
+    pityLegendary: 0,
+    partMaterials: { weapon: 0, head: 0, body: 0, boots: 0, trinket: 0 },
+    eliteMaterials: 0,
+    maxBossKilled: 0,
+    lastEliteDay: '',
     inventory: [],
     equipped: { weapon: null, head: null, body: null, boots: null, trinket: null },
     medals,
@@ -58,7 +75,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 3
+export const SAVE_VERSION = 5
 
 // ---------- 數值查詢 ----------
 
@@ -80,6 +97,31 @@ export function currentDPS(s: GameState): Decimal {
     equipBonus: bonus.dmg + (job.dmg ?? 0),
     morale: s.morale,
   }).mul(equipPower(s.equipped)) // 每件裝備獨立乘區
+}
+
+export interface DpsPart {
+  label: string
+  mult: number
+}
+
+/** DPS 各乘區來源,讓玩家看得到自己變強在哪 */
+export function dpsBreakdown(s: GameState): DpsPart[] {
+  const bonus = equipBonuses(s.equipped)
+  const job = JOBS[s.jobId]
+  return [
+    { label: `等級 Lv.${s.lv}`, mult: Math.pow(B.DMG_PER_LV, s.lv - 1) },
+    { label: `職業 ${job.name}`, mult: 1 + (job.bonus.dmg ?? 0) },
+    { label: '轉生科技', mult: techDamageMult(s.techs) },
+    { label: '裝備品質', mult: equipPower(s.equipped) },
+    { label: '裝備詞條', mult: 1 + bonus.dmg },
+    { label: '戰意', mult: 1 + s.morale * B.MORALE_DMG_PER_POINT },
+  ]
+}
+
+/** Boss 檢定還差多少倍 DPS(>1 代表打不過) */
+export function bossGap(s: GameState): number {
+  const need = bossHP(s.floor).div(B.BOSS_TIME)
+  return need.div(currentDPS(s)).toNumber()
 }
 
 /** 每秒 farm 金幣期望(離線收益與 UI 用) */
@@ -105,12 +147,30 @@ export function spawnEnemy(s: GameState) {
   s.enemyHp = s.enemyMaxHp
 }
 
-function reward(s: GameState, boss: boolean, events: GameEvent[]) {
+function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Math.random) {
   const mult = boss ? B.BOSS_GOLD_MULT : 1
   const g = goldDrop(s.floor).mul(mult).mul(goldMult(s))
   s.gold = s.gold.add(g)
   s.materials += boss ? B.BOSS_MATERIALS : B.MATERIAL_PER_MOB
   events.push({ type: boss ? 'bossKill' : 'kill', gold: g, floor: s.floor })
+
+  if (!boss) return
+  // 部位素材:首殺必掉,重複擊殺機率掉
+  const first = s.floor > s.maxBossKilled
+  if (first) s.maxBossKilled = s.floor
+  if (first || rng() < B.PART_DROP_REPEAT) {
+    const slot = bossPartSlot(s.floor)
+    s.partMaterials[slot]++
+    events.push({ type: 'partDrop', slot, floor: s.floor })
+  }
+}
+
+/** 每日首次擊破 Boss 保底 1 個菁英素材(留存鉤子)。日期由呼叫端提供,core 不碰時鐘 */
+export function claimDailyElite(s: GameState, today: string): boolean {
+  if (s.lastEliteDay === today) return false
+  s.lastEliteDay = today
+  s.eliteMaterials += B.ELITE_DAILY_BOSS
+  return true
 }
 
 function nextEnemy(s: GameState, events: GameEvent[]) {
@@ -142,8 +202,8 @@ function nextEnemy(s: GameState, events: GameEvent[]) {
  */
 const MAX_KILLS_PER_TICK = 500
 
-/** 固定 tick;dtMs 由外部 game loop 提供 */
-export function applyTick(s: GameState, dtMs: number): GameEvent[] {
+/** 固定 tick;dtMs 由外部 game loop 提供。rng 可注入以便模擬可重現 */
+export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): GameEvent[] {
   const raw: GameEvent[] = []
 
   // 戰意衰減(重裝步兵衰減減半)
@@ -152,6 +212,28 @@ export function applyTick(s: GameState, dtMs: number): GameEvent[] {
 
   const dt = dtMs / 1000
   let dmg = currentDPS(s).mul(dt) // 本 tick 的總傷害量
+
+  // 突發事件優先吃傷害:出現期間取代當前目標
+  if (s.event) {
+    s.event.hp = s.event.hp.sub(dmg)
+    s.event.timeLeft -= dt
+    if (s.event.hp.lte(0)) {
+      rewardEvent(s, s.event.kind, raw, rng)
+      s.event = null
+      s.eventCooldown = eventInterval(rng)
+    } else if (s.event.timeLeft <= 0) {
+      raw.push({ type: 'eventEscape', kind: s.event.kind })
+      s.event = null
+      s.eventCooldown = eventInterval(rng)
+    }
+    return mergeKills(raw) // 事件期間不推進一般戰鬥
+  }
+
+  // 一般層才會刷事件(Boss 戰不打斷)
+  if (!s.isBoss) {
+    s.eventCooldown -= dt
+    if (s.eventCooldown <= 0) spawnEvent(s, raw, rng)
+  }
 
   // 溢出傷害要帶到下一隻,否則推進速度會被 tick 頻率鎖死
   // (實測:Lv.80 時每 tick 只殺一隻會讓實際進度比數值模型慢 4.8 倍)
@@ -163,7 +245,7 @@ export function applyTick(s: GameState, dtMs: number): GameEvent[] {
     }
     dmg = dmg.sub(s.enemyHp)
     s.enemyHp = D(0)
-    reward(s, s.isBoss, raw)
+    reward(s, s.isBoss, raw, rng)
     nextEnemy(s, raw)
     if (dmg.lte(0)) break
   }
@@ -203,6 +285,28 @@ function mergeKills(events: GameEvent[]): GameEvent[] {
   }
   if (acc) out.push(acc)
   return out
+}
+
+/** 事件間隔:平均值上下 ±50% 隨機,避免玩家精算時間 */
+function eventInterval(rng: Rng): number {
+  return B.EVENT_INTERVAL_AVG * (0.5 + rng())
+}
+
+function spawnEvent(s: GameState, events: GameEvent[], rng: Rng) {
+  const kind: EventKind = rng() < 0.5 ? 'chest' : 'goblin'
+  const hp = mobHP(s.floor).mul(B.EVENT_HP_MULT)
+  s.event = { kind, hp, maxHp: hp, timeLeft: B.EVENT_TIME }
+  events.push({ type: 'eventSpawn', kind })
+}
+
+function rewardEvent(s: GameState, kind: EventKind, events: GameEvent[], rng: Rng) {
+  const mult = kind === 'chest' ? B.CHEST_GOLD_MULT : B.GOBLIN_GOLD_MULT
+  const g = goldDrop(s.floor).mul(mult).mul(goldMult(s))
+  s.gold = s.gold.add(g)
+  // 寶箱怪小機率掉菁英素材(菁英素材的主要來源之一)
+  const elite = kind === 'chest' && rng() < B.ELITE_FROM_CHEST
+  if (elite) s.eliteMaterials++
+  events.push({ type: 'eventKill', kind, gold: g, count: elite ? 1 : 0 })
 }
 
 /** 點擊:疊戰意(點擊強化自動攻擊,不另計傷害) */
@@ -256,16 +360,58 @@ export function forge(s: GameState, rng: Rng = Math.random): Equipment | null {
   })
 
   s.forgeCount++
-  // 保底計數:出紫以上就歸零
+  // 保底計數:出紫以上就歸零(傳奇保底只由精工累計,普通鍛造不推進)
   s.pityCount = QUALITIES.indexOf(e.quality) >= QUALITIES.indexOf('purple') ? 0 : s.pityCount + 1
 
   s.inventory.push(e)
   return e
 }
 
-/** 距離保底還差幾次(UI 顯示用) */
+/** 距離普通鍛造保底還差幾次(UI 顯示用) */
 export function pityLeft(s: GameState): number {
   return Math.max(0, B.PITY_FORGE - s.pityCount)
+}
+
+/** 距離精工鍛造傳奇保底還差幾次 */
+export function pityLegendaryLeft(s: GameState): number {
+  return Math.max(0, B.PITY_LEGENDARY - s.pityLegendary)
+}
+
+export interface FineForgeOptions {
+  /** 投入部位素材 → 鎖定部位 */
+  slot?: Slot
+  /** 投入菁英素材 → 品質下限紫 */
+  useElite?: boolean
+}
+
+export function canFineForge(s: GameState, opts: FineForgeOptions): boolean {
+  if (s.materials < B.FINE_FORGE_COST) return false
+  if (opts.slot && s.partMaterials[opts.slot] < 1) return false
+  if (opts.useElite && s.eliteMaterials < 1) return false
+  return true
+}
+
+/** 精工鍛造:素材決定鎖部位與品質下限,所見即所得 */
+export function fineForge(s: GameState, opts: FineForgeOptions, rng: Rng = Math.random): Equipment | null {
+  if (!canFineForge(s, opts)) return null
+  s.materials -= B.FINE_FORGE_COST
+  if (opts.slot) s.partMaterials[opts.slot]--
+  if (opts.useElite) s.eliteMaterials--
+
+  const e = rollEquipment(rng, {
+    forgeCount: s.forgeCount,
+    guaranteePurple: opts.useElite || s.pityCount >= B.PITY_FORGE,
+    guaranteeGold: s.pityLegendary >= B.PITY_LEGENDARY,
+    lockSlot: opts.slot,
+  })
+
+  s.forgeCount++
+  const qi = QUALITIES.indexOf(e.quality)
+  s.pityCount = qi >= QUALITIES.indexOf('purple') ? 0 : s.pityCount + 1
+  s.pityLegendary = qi >= QUALITIES.indexOf('gold') ? 0 : s.pityLegendary + 1
+
+  s.inventory.push(e)
+  return e
 }
 
 export function equip(s: GameState, id: string): boolean {
@@ -319,7 +465,7 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
 
   const pool = heirloomCandidates(s)
   const keep = heirloomIds
-    .slice(0, B.HEIRLOOM_SLOTS)
+    .slice(0, heirloomSlots(s.techs))
     .map((id) => pool.find((e) => e.id === id))
     .filter((e): e is Equipment => !!e)
 
@@ -327,6 +473,10 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
   next.inventory = keep
   next.forgeCount = s.forgeCount // 鐵匠鋪等級不隨轉生歸零
   next.pityCount = s.pityCount // 保底計數跨轉生保留
+  next.pityLegendary = s.pityLegendary
+  next.maxBossKilled = 0 // 層數歸零,首殺重新計算
+  next.lastEliteDay = s.lastEliteDay
+  next.eliteMaterials = s.eliteMaterials // 菁英素材是稀有資源,不因轉生沒收
   return next
 }
 
@@ -335,6 +485,14 @@ export function buyTech(s: GameState, id: TechId): boolean {
   if (!canBuyTech(s.techs, s.medals, id)) return false
   s.medals -= techById(id).cost
   s.techs[id]++
+  return true
+}
+
+/** 轉生商店:勳章換菁英素材 */
+export function buyElite(s: GameState): boolean {
+  if (s.medals < B.ELITE_MEDAL_COST) return false
+  s.medals -= B.ELITE_MEDAL_COST
+  s.eliteMaterials++
   return true
 }
 

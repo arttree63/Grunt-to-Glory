@@ -25,6 +25,8 @@ interface Store {
   buy: (n: number | 'max') => void
   promote: (job: Exclude<JobId, 'rookie'>) => void
   forge: () => Equipment | null
+  fineForge: (opts: G.FineForgeOptions) => Equipment | null
+  buyElite: () => void
   equip: (id: string) => void
   unequip: (slot: Slot) => void
   salvage: (id: string) => void
@@ -59,6 +61,12 @@ export const useGame = create<Store>((set, get) => ({
   tick(dtMs) {
     const s = get().s
     const events = G.applyTick(s, dtMs)
+    // 每日首殺 Boss 保底菁英素材(core 不碰時鐘,日期由這裡提供)
+    if (events.some((e) => e.type === 'bossKill')) {
+      if (G.claimDailyElite(s, new Date().toISOString().slice(0, 10))) {
+        gameEvents.emit({ type: 'eliteDrop' })
+      }
+    }
     events.forEach(gameEvents.emit)
     bump(set, get)
   },
@@ -87,6 +95,18 @@ export const useGame = create<Store>((set, get) => ({
     if (e) gameEvents.emit({ type: 'forge', equipment: e })
     bump(set, get)
     return e
+  },
+
+  fineForge(opts) {
+    const e = G.fineForge(get().s, opts)
+    if (e) gameEvents.emit({ type: 'forge', equipment: e })
+    bump(set, get)
+    return e
+  },
+
+  buyElite() {
+    G.buyElite(get().s)
+    bump(set, get)
   },
 
   equip(id) {

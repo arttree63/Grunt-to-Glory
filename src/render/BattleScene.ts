@@ -7,6 +7,8 @@ import { Application, Container, Graphics, Text } from 'pixi.js'
 export interface BattleSnapshot {
   floor: number
   isBoss: boolean
+  /** 突發事件種類,無事件為 null */
+  event: 'chest' | 'goblin' | null
   hpRatio: number
   morale: number
   cape: number
@@ -36,6 +38,7 @@ export class BattleScene {
 
   private mobs: MobView[] = []
   private boss: BossView | null = null
+  private eventView: EventView | null = null
   private shake = 0
   private zoom = 0
   private elapsed = 0
@@ -93,7 +96,10 @@ export class BattleScene {
     this.shake = Math.min(this.shake + 4, 9)
     this.zoom = 1
 
-    if (this.boss) {
+    if (this.eventView) {
+      this.eventView.flash()
+      this.damageNum(this.W / 2 + (Math.random() - 0.5) * 60, this.H * 0.42, dmgText, crit)
+    } else if (this.boss) {
       this.boss.flash()
       this.boss.view.y += 6
       this.damageNum(this.W / 2 + (Math.random() - 0.5) * this.W * 0.4, this.H * 0.34, dmgText, crit)
@@ -131,6 +137,18 @@ export class BattleScene {
     if (this.destroyed) return
     this.damageNum(this.W / 2, this.H * 0.3, '擊 破 !', true)
     this.shake = 12
+  }
+
+  onEventKill(goldText: string, elite: boolean) {
+    if (this.destroyed) return
+    this.damageNum(this.W / 2, this.H * 0.42, `+${goldText} 金`, true)
+    if (elite) this.damageNum(this.W / 2, this.H * 0.34, '菁英素材 +1', true)
+    this.shake = 12
+  }
+
+  onEventEscape() {
+    if (this.destroyed) return
+    this.damageNum(this.W / 2, this.H * 0.42, '逃 走 了', false)
   }
 
   onBossFail() {
@@ -174,6 +192,19 @@ export class BattleScene {
     this.H = this.app.screen.height
     if (resized) this.drawStatic()
 
+    // 突發事件出場 / 退場
+    if (snap.event && this.eventView?.kind !== snap.event) {
+      this.eventView?.view.destroy()
+      this.clearMobs()
+      this.eventView = new EventView(snap.event)
+      this.mobLayer.addChild(this.eventView.view)
+      this.shake = 8
+    } else if (!snap.event && this.eventView) {
+      this.eventView.view.destroy()
+      this.eventView = null
+    }
+    if (this.eventView) this.eventView.layout(ms, this.W, this.H)
+
     // Boss 出場 / 退場
     if (snap.isBoss && !this.boss) {
       this.clearMobs()
@@ -188,7 +219,7 @@ export class BattleScene {
     if (this.boss) {
       this.boss.idle += ms * 0.002
       this.boss.view.y = this.H * 0.26 + Math.sin(this.boss.idle) * 8
-    } else {
+    } else if (!this.eventView) {
       // 一般層:持續湧怪,同屏上限 4
       this.spawnTimer -= ms
       if (this.spawnTimer <= 0 && this.mobs.length < 4) {
@@ -384,6 +415,59 @@ class MobView {
     this.view.scale.set(sc)
     this.view.zIndex = y
     this.view.alpha = Math.min(1, this.t * 6)
+  }
+}
+
+/** 突發事件:寶箱怪 / 黃金哥布林,出現在近戰位、金色高亮 */
+class EventView {
+  view = new Graphics()
+  private t = 0
+  private flashLeft = 0
+
+  constructor(public kind: 'chest' | 'goblin') {
+    this.draw(false)
+  }
+
+  private draw(flash: boolean) {
+    const g = this.view
+    g.clear()
+    if (this.kind === 'chest') {
+      const body = flash ? 0xffffff : 0x8a6a3a
+      const trim = flash ? 0xffffff : 0xf2c14e
+      g.roundRect(-34, -20, 68, 40, 6).fill(body)
+      g.roundRect(-34, -34, 68, 20, 8).fill(trim) // 箱蓋
+      g.rect(-6, -24, 12, 30).fill(trim) // 鎖扣
+      g.circle(-14, -4, 4).fill(0x2a2a2a) // 眼
+      g.circle(14, -4, 4).fill(0x2a2a2a)
+    } else {
+      const body = flash ? 0xffffff : 0x7ac46d
+      const gold = flash ? 0xffffff : 0xf2c14e
+      g.circle(0, -14, 22).fill(body) // 頭
+      g.poly([-22, -20, -34, -34, -16, -30]).fill(body) // 耳
+      g.poly([22, -20, 34, -34, 16, -30]).fill(body)
+      g.circle(-8, -16, 4).fill(0x2a2a2a)
+      g.circle(8, -16, 4).fill(0x2a2a2a)
+      g.ellipse(0, 16, 20, 14).fill(gold) // 金袋
+    }
+  }
+
+  flash() {
+    if (this.flashLeft > 0) return
+    this.flashLeft = 70
+    this.draw(true)
+  }
+
+  layout(ms: number, W: number, H: number) {
+    if (this.flashLeft > 0) {
+      this.flashLeft -= ms
+      if (this.flashLeft <= 0) this.draw(false)
+    }
+    this.t += ms
+    const s = Math.min(W, H) / 300
+    // 放在小徑中段:不能低到跟主角背影重疊(主角永遠是焦點)
+    this.view.position.set(W / 2, H * 0.5 + Math.sin(this.t * 0.006) * 6)
+    this.view.scale.set(s * (1 + Math.sin(this.t * 0.012) * 0.04))
+    this.view.zIndex = 500
   }
 }
 

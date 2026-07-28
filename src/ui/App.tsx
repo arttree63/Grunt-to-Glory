@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import * as B from '../core/balance'
 import { fmt, fmtTime } from '../core/format'
 import { upCost } from '../core/formulas'
+import { bossGap, pendingMedals } from '../core/game'
 import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
+import Tutorial from './Tutorial'
 import EquipPanel from './panels/EquipPanel'
 import ForgePanel from './panels/ForgePanel'
 import HeroPanel from './panels/HeroPanel'
@@ -35,10 +37,39 @@ export default function App() {
   return <Game />
 }
 
+/** Boss 失敗不能只說「失敗」,要說還差多少、下一步做什麼 */
+function BossHint() {
+  const s = useGameState()
+  const retryBoss = useGame((st) => st.retryBoss)
+  const gap = bossGap(s)
+  const advice =
+    s.materials >= B.FORGE_COST
+      ? '素材夠了,去鐵匠鋪開錘換裝'
+      : s.gold.gte(upCost(s.lv))
+        ? '金幣夠了,先把等級買上去'
+        : pendingMedals(s) > 0
+          ? '這代到極限了,可以考慮退役傳承'
+          : '在這層多打幾輪累積金幣與素材'
+  return (
+    <button
+      className="retry"
+      onPointerDown={(e) => {
+        e.stopPropagation()
+        retryBoss()
+      }}
+    >
+      <b>30 秒內沒打完 Boss</b>
+      <br />
+      還差約 {gap.toFixed(1)} 倍 DPS ・ {advice}
+      <br />
+      <small className="affix">點此再挑戰一次(清完這層小怪也會自動重試)</small>
+    </button>
+  )
+}
+
 function Game() {
   const s = useGameState()
   const [tab, setTab] = useState<Tab | null>(null)
-  const retryBoss = useGame((st) => st.retryBoss)
   const offline = useGame((st) => st.offline)
   const dismissOffline = useGame((st) => st.dismissOffline)
 
@@ -59,7 +90,23 @@ function Game() {
           </div>
         </div>
 
-        {s.isBoss ? (
+        {s.event ? (
+          <div className="bossbar">
+            <div className="name" style={{ color: 'var(--gold)' }}>
+              {s.event.kind === 'chest' ? '寶 箱 怪' : '黃 金 哥 布 林'}
+            </div>
+            <div className="bar">
+              <div
+                className="fill"
+                style={{
+                  width: `${Math.max(0, s.event.hp.div(s.event.maxHp).toNumber()) * 100}%`,
+                  background: 'linear-gradient(90deg,#f2c14e,#fff0c0)',
+                }}
+              />
+            </div>
+            <div className="timer danger">{s.event.timeLeft.toFixed(1)}</div>
+          </div>
+        ) : s.isBoss ? (
           <div className="bossbar">
             <div className="name">第 {s.floor} 層 守關者</div>
             <div className="bar">
@@ -73,17 +120,7 @@ function Game() {
           </div>
         )}
 
-        {s.bossFailed && !s.isBoss && (
-          <button
-            className="retry"
-            onPointerDown={(e) => {
-              e.stopPropagation()
-              retryBoss()
-            }}
-          >
-            DPS 不足,已撤退 — 點此重新挑戰 Boss
-          </button>
-        )}
+        {s.bossFailed && !s.isBoss && !s.event && <BossHint />}
 
         <div className="morale">
           <div className="tag">戰 意</div>
@@ -128,6 +165,8 @@ function Game() {
           </div>
         </>
       )}
+
+      <Tutorial />
 
       {offline && (
         <div className="modal-mask" onPointerDown={dismissOffline}>

@@ -20,6 +20,7 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       return {
         floor: s.floor,
         isBoss: s.isBoss,
+        event: s.event?.kind ?? null,
         hpRatio: s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0,
         morale: s.morale,
         cape: look.cape,
@@ -42,6 +43,8 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       if (e.type === 'kill') scene.onKill(fmt(e.gold!))
       else if (e.type === 'bossKill') scene.onBossKill()
       else if (e.type === 'bossFail') scene.onBossFail()
+      else if (e.type === 'eventKill') scene.onEventKill(fmt(e.gold!), !!e.count)
+      else if (e.type === 'eventEscape') scene.onEventEscape()
     })
 
     return () => {

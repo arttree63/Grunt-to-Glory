@@ -46,6 +46,12 @@ function pickQuality(rng: Rng): Quality {
   return 'white'
 }
 
+/** Boss 部位素材輪替:X10 頭 / X20 武器 / X30 身 / X40 鞋 / X50 飾品(循環) */
+export function bossPartSlot(floor: number): Slot {
+  const map: Record<number, Slot> = { 10: 'head', 20: 'weapon', 30: 'body', 40: 'boots', 0: 'trinket' }
+  return map[floor % 50] ?? 'trinket'
+}
+
 /** 鐵匠鋪等級:累積鍛造次數換來的品質修正 */
 export function forgeLevel(forgeCount: number): number {
   return Math.min(B.FORGE_MAX_LEVEL, Math.floor(forgeCount / B.FORGE_PER_LEVEL) + 1)
@@ -58,8 +64,12 @@ export function forgeUpgradeChance(forgeCount: number): number {
 export interface RollOptions {
   /** 累積鍛造次數,決定鐵匠鋪等級 */
   forgeCount?: number
-  /** 保底觸發:品質下限拉到紫 */
+  /** 保底或菁英素材觸發:品質下限拉到紫 */
   guaranteePurple?: boolean
+  /** 精工保底觸發:品質下限拉到金 */
+  guaranteeGold?: boolean
+  /** 部位素材:鎖定部位 */
+  lockSlot?: Slot
 }
 
 let idSeq = 0
@@ -68,11 +78,12 @@ export function rollEquipment(rng: Rng = Math.random, opts: RollOptions = {}): E
 
   // 鐵匠鋪等級:機率升一階
   if (rng() < forgeUpgradeChance(opts.forgeCount ?? 0)) qi = Math.min(QUALITIES.length - 1, qi + 1)
-  // 保底:下限拉到紫
+  // 下限保證:菁英素材 → 紫,精工保底 → 金
   if (opts.guaranteePurple) qi = Math.max(qi, QUALITIES.indexOf('purple'))
+  if (opts.guaranteeGold) qi = Math.max(qi, QUALITIES.indexOf('gold'))
 
   const quality = QUALITIES[qi]
-  const slot = SLOTS[Math.floor(rng() * SLOTS.length)]
+  const slot = opts.lockSlot ?? SLOTS[Math.floor(rng() * SLOTS.length)]
   const [lo, hi] = B.AFFIX_RANGE[quality]
   const affixes: Affix[] = []
   for (let i = 0; i < B.AFFIX_COUNT[quality]; i++) {
