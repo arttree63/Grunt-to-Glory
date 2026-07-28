@@ -30,7 +30,7 @@ interface Store {
   salvage: (id: string) => void
   salvageBelow: (quality: number) => void
   retryBoss: () => void
-  prestige: () => void
+  prestige: (heirloomIds?: string[]) => void
   dismissOffline: () => void
   reset: () => Promise<void>
 }
@@ -116,8 +116,8 @@ export const useGame = create<Store>((set, get) => ({
     bump(set, get)
   },
 
-  prestige() {
-    const next = G.prestige(get().s)
+  prestige(heirloomIds = []) {
+    const next = G.prestige(get().s, heirloomIds)
     if (next) {
       set({ s: next, rev: get().rev + 1 })
       void saveGame(next)

@@ -18,6 +18,8 @@ export interface SaveData {
   bossFailed: boolean
   morale: number
   materials: number
+  forgeCount: number
+  pityCount: number
   inventory: GameState['inventory']
   equipped: GameState['equipped']
   medals: number
@@ -41,6 +43,8 @@ export function serialize(s: GameState): SaveData {
     bossFailed: s.bossFailed,
     morale: s.morale,
     materials: s.materials,
+    forgeCount: s.forgeCount,
+    pityCount: s.pityCount,
     inventory: s.inventory,
     equipped: s.equipped,
     medals: s.medals,
@@ -49,9 +53,19 @@ export function serialize(s: GameState): SaveData {
   }
 }
 
-/** 未來版本在此加遷移分支;無法辨識的存檔回退成新局,不讓玩家卡死 */
+/**
+ * 存檔遷移。原則:只擴不縮,舊欄位不刪、新欄位補預設值。
+ * 無法辨識的存檔回退成新局,不讓玩家卡死。
+ */
 function migrate(raw: SaveData): SaveData {
-  return raw
+  const d = { ...raw }
+  // v1 → v2:加入鐵匠鋪等級與保底計數
+  if (d.version < 2) {
+    d.forgeCount = d.forgeCount ?? 0
+    d.pityCount = d.pityCount ?? 0
+    d.version = 2
+  }
+  return d
 }
 
 export function deserialize(raw: SaveData | null | undefined): GameState {
@@ -73,6 +87,8 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     bossFailed: !!d.bossFailed,
     morale: d.morale ?? 0,
     materials: d.materials ?? 0,
+    forgeCount: d.forgeCount ?? 0,
+    pityCount: d.pityCount ?? 0,
     inventory: d.inventory ?? [],
     equipped: { ...base.equipped, ...(d.equipped ?? {}) },
     lastSaved: d.lastSaved ?? Date.now(),

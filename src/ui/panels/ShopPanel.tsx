@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import * as B from '../../core/balance'
-import { pendingMedals } from '../../core/game'
+import { QUALITY_POWER } from '../../core/balance'
+import { QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
+import { heirloomCandidates, pendingMedals } from '../../core/game'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 
@@ -8,7 +10,9 @@ export default function ShopPanel() {
   const s = useGameState()
   const prestige = useGame((st) => st.prestige)
   const [confirm, setConfirm] = useState(false)
+  const [picked, setPicked] = useState<string[]>([])
   const gain = pendingMedals(s)
+  const candidates = heirloomCandidates(s)
 
   return (
     <div>
@@ -47,15 +51,38 @@ export default function ShopPanel() {
       ) : (
         <div className="card" style={{ marginTop: 10 }}>
           <div className="affix" style={{ marginBottom: 8, lineHeight: 1.7 }}>
-            退役後等級、金幣、裝備、素材全部歸零,換得 {gain} 枚戰功勳章永久加成。
+            退役後等級、金幣、素材歸零,換得 {gain} 枚戰功勳章永久加成。
             <br />
-            (傳家寶保留為 Phase 2 內容)
+            可指定 {B.HEIRLOOM_SLOTS} 件裝備當「傳家寶」帶給下一代。
           </div>
+
+          <h3 style={{ fontSize: 13, marginTop: 10 }}>選擇傳家寶</h3>
+          {candidates.length === 0 && <div className="empty">沒有裝備可以傳承</div>}
+          {candidates.slice(0, 8).map((e) => {
+            const on = picked.includes(e.id)
+            return (
+              <button
+                key={e.id}
+                className="row"
+                style={{ width: '100%', textAlign: 'left', opacity: on ? 1 : 0.6 }}
+                onClick={() => setPicked(on ? [] : [e.id])}
+              >
+                <span style={{ color: `var(--q-${e.quality})` }}>
+                  {on ? '● ' : '○ '}
+                  {QUALITY_NAME[e.quality]}
+                  {SLOT_NAME[e.slot]}
+                </span>
+                <span className="affix">×{QUALITY_POWER[e.quality]}</span>
+              </button>
+            )
+          })}
+
           <div className="btn-row">
             <button
               className="btn primary"
               onClick={() => {
-                prestige()
+                prestige(picked)
+                setPicked([])
                 setConfirm(false)
               }}
             >

@@ -44,6 +44,68 @@ export const ROOKIE_BLESSING_GOLD = 0
 export const MATERIAL_PER_MOB = 1
 export const FORGE_COST = 10 // 普通鍛造消耗怪物素材
 
+/** 品質基礎倍率:每件裝備是獨立乘區,全金 5 件 = 1.5^5 ≈ +29 級等效 */
+export const QUALITY_POWER = {
+  white: 1.05,
+  green: 1.1,
+  blue: 1.18,
+  purple: 1.3,
+  gold: 1.5,
+  crimson: 1.75,
+} as const
+
+/** 普通鍛造品質權重 */
+export const QUALITY_WEIGHT = {
+  white: 0.45,
+  green: 0.3,
+  blue: 0.17,
+  purple: 0.06,
+  gold: 0.019,
+  crimson: 0.001,
+} as const
+
+/** 詞條數 */
+export const AFFIX_COUNT = {
+  white: 1,
+  green: 1,
+  blue: 2,
+  purple: 2,
+  gold: 3,
+  crimson: 4,
+} as const
+
+/** 詞條值域(%) */
+export const AFFIX_RANGE = {
+  white: [3, 5],
+  green: [4, 7],
+  blue: [6, 9],
+  purple: [8, 11],
+  gold: [10, 13],
+  crimson: [12, 15],
+} as const
+
+/** 分解返還怪物素材 */
+export const SALVAGE_RETURN = {
+  white: 2,
+  green: 3,
+  blue: 5,
+  purple: 8,
+  gold: 14,
+  crimson: 25,
+} as const
+
+// 鐵匠鋪等級:每 N 次鍛造升 1 級,每級給品質升階機率
+export const FORGE_PER_LEVEL = 25
+export const FORGE_MAX_LEVEL = 10
+export const FORGE_UPGRADE_PER_LEVEL = 0.04
+export const FORGE_UPGRADE_CAP = 0.5
+
+// 普通鍛造保底:連續 N 次未出紫以上 → 必出紫以上(跨轉生保留)
+export const PITY_FORGE = 30
+
+// 轉生可指定帶走的傳家寶件數
+export const HEIRLOOM_SLOTS = 1
+
 // 離線收益
 export const OFFLINE_RATE = 0.6 // 6 折
 export const OFFLINE_CAP_HOURS = 4

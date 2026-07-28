@@ -1,6 +1,15 @@
 import * as B from './balance'
 import { D, Decimal } from './decimal'
-import { equipBonuses, rollEquipment, SALVAGE_RETURN, type Rng } from './equipment'
+import {
+  equipBonuses,
+  equipPower,
+  QUALITIES,
+  rollEquipment,
+  SALVAGE_RETURN,
+  score,
+  SLOTS,
+  type Rng,
+} from './equipment'
 import {
   affordableLevels,
   bossHP,
@@ -35,6 +44,8 @@ export function createInitialState(medals = 0, runs = 0): GameState {
     bossFailed: false,
     morale: 0,
     materials: 0,
+    forgeCount: 0,
+    pityCount: 0,
     inventory: [],
     equipped: { weapon: null, head: null, body: null, boots: null, trinket: null },
     medals,
@@ -45,7 +56,7 @@ export function createInitialState(medals = 0, runs = 0): GameState {
   return s
 }
 
-export const SAVE_VERSION = 1
+export const SAVE_VERSION = 2
 
 // ---------- 數值查詢 ----------
 
@@ -65,7 +76,7 @@ export function currentDPS(s: GameState): Decimal {
     medals: s.medals,
     equipBonus: bonus.dmg + (job.dmg ?? 0),
     morale: s.morale,
-  })
+  }).mul(equipPower(s.equipped)) // 每件裝備獨立乘區
 }
 
 /** 每秒 farm 金幣期望(離線收益與 UI 用) */
@@ -122,34 +133,73 @@ function nextEnemy(s: GameState, events: GameEvent[]) {
   spawnEnemy(s)
 }
 
+/**
+ * 單一 tick 最多結算幾隻怪。HP 每層指數成長,正常情況幾隻內就會收斂,
+ * 這個上限只是防呆(避免極端狀態下單 tick 卡住)。
+ */
+const MAX_KILLS_PER_TICK = 500
+
 /** 固定 tick;dtMs 由外部 game loop 提供 */
 export function applyTick(s: GameState, dtMs: number): GameEvent[] {
-  const events: GameEvent[] = []
+  const raw: GameEvent[] = []
 
   // 戰意衰減(重裝步兵衰減減半)
   const decay = B.MORALE_DECAY * (1 - (JOBS[s.jobId].bonus.morale ?? 0))
   s.morale = Math.max(0, s.morale - decay * dtMs)
 
   const dt = dtMs / 1000
-  s.enemyHp = s.enemyHp.sub(currentDPS(s).mul(dt))
+  let dmg = currentDPS(s).mul(dt) // 本 tick 的總傷害量
 
-  if (s.enemyHp.lte(0)) {
-    reward(s, s.isBoss, events)
-    nextEnemy(s, events)
-    return events
+  // 溢出傷害要帶到下一隻,否則推進速度會被 tick 頻率鎖死
+  // (實測:Lv.80 時每 tick 只殺一隻會讓實際進度比數值模型慢 4.8 倍)
+  for (let i = 0; i < MAX_KILLS_PER_TICK; i++) {
+    if (s.enemyHp.gt(dmg)) {
+      s.enemyHp = s.enemyHp.sub(dmg)
+      dmg = D(0)
+      break
+    }
+    dmg = dmg.sub(s.enemyHp)
+    s.enemyHp = D(0)
+    reward(s, s.isBoss, raw)
+    nextEnemy(s, raw)
+    if (dmg.lte(0)) break
   }
 
-  if (s.isBoss) {
+  if (s.isBoss && s.enemyHp.gt(0)) {
     s.bossTimeLeft -= dt
     if (s.bossTimeLeft <= 0) {
       // DPS check 失敗 → 退回該層 farm
       s.bossFailed = true
       s.killsInFloor = 0
-      events.push({ type: 'bossFail', floor: s.floor })
+      raw.push({ type: 'bossFail', floor: s.floor })
       spawnEnemy(s)
     }
   }
-  return events
+  return mergeKills(raw)
+}
+
+/** 高 DPS 時單 tick 可能殺掉幾十隻,合併成一則事件,演出層不必被灌爆 */
+function mergeKills(events: GameEvent[]): GameEvent[] {
+  const out: GameEvent[] = []
+  let acc: GameEvent | null = null
+  for (const e of events) {
+    if (e.type === 'kill') {
+      if (acc) {
+        acc.gold = acc.gold!.add(e.gold!)
+        acc.count = (acc.count ?? 1) + 1
+      } else {
+        acc = { ...e, count: 1 }
+      }
+      continue
+    }
+    if (acc) {
+      out.push(acc)
+      acc = null
+    }
+    out.push(e)
+  }
+  if (acc) out.push(acc)
+  return out
 }
 
 /** 點擊:疊戰意(點擊強化自動攻擊,不另計傷害) */
@@ -196,9 +246,23 @@ export function promote(s: GameState, jobId: 'infantry' | 'scout'): boolean {
 export function forge(s: GameState, rng: Rng = Math.random): Equipment | null {
   if (s.materials < B.FORGE_COST) return null
   s.materials -= B.FORGE_COST
-  const e = rollEquipment(rng)
+
+  const e = rollEquipment(rng, {
+    forgeCount: s.forgeCount,
+    guaranteePurple: s.pityCount >= B.PITY_FORGE,
+  })
+
+  s.forgeCount++
+  // 保底計數:出紫以上就歸零
+  s.pityCount = QUALITIES.indexOf(e.quality) >= QUALITIES.indexOf('purple') ? 0 : s.pityCount + 1
+
   s.inventory.push(e)
   return e
+}
+
+/** 距離保底還差幾次(UI 顯示用) */
+export function pityLeft(s: GameState): number {
+  return Math.max(0, B.PITY_FORGE - s.pityCount)
 }
 
 export function equip(s: GameState, id: string): boolean {
@@ -236,10 +300,31 @@ export function pendingMedals(s: GameState): number {
   return medalsFromFloor(s.highestFloor)
 }
 
-export function prestige(s: GameState): GameState | null {
+/** 可帶走的傳家寶(已裝備 + 背包,依評分排序),UI 用來讓玩家挑 */
+export function heirloomCandidates(s: GameState): Equipment[] {
+  const equipped = SLOTS.map((slot) => s.equipped[slot]).filter((e): e is Equipment => !!e)
+  return [...equipped, ...s.inventory].sort((a, b) => score(b) - score(a))
+}
+
+/**
+ * 轉生。heirloomIds 指定帶到下一代的裝備(上限 B.HEIRLOOM_SLOTS 件),
+ * 其餘等級/金幣/素材/裝備全歸零。
+ */
+export function prestige(s: GameState, heirloomIds: string[] = []): GameState | null {
   const gain = pendingMedals(s)
   if (gain <= 0) return null
-  return createInitialState(s.medals + gain, s.runs + 1)
+
+  const pool = heirloomCandidates(s)
+  const keep = heirloomIds
+    .slice(0, B.HEIRLOOM_SLOTS)
+    .map((id) => pool.find((e) => e.id === id))
+    .filter((e): e is Equipment => !!e)
+
+  const next = createInitialState(s.medals + gain, s.runs + 1)
+  next.inventory = keep
+  next.forgeCount = s.forgeCount // 鐵匠鋪等級不隨轉生歸零
+  next.pityCount = s.pityCount // 保底計數跨轉生保留
+  return next
 }
 
 // ---------- 離線收益 ----------

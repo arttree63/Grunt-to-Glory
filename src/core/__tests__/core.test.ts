@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as B from '../balance'
 import { D } from '../decimal'
+import { forgeLevel, forgeUpgradeChance, QUALITIES, SLOTS } from '../equipment'
 import { fmt, fmtTime } from '../format'
 import { bossHP, goldDrop, heroDPS, isBossFloor, medalsFromFloor, mobHP, upCost } from '../formulas'
 import {
@@ -12,6 +13,7 @@ import {
   currentDPS,
   equip,
   forge,
+  pityLeft,
   prestige,
   promote,
   retryBoss,
@@ -70,11 +72,21 @@ describe('format', () => {
 describe('戰鬥循環', () => {
   it('擊殺給金幣與素材,3 隻推進一層', () => {
     const s = createInitialState()
-    s.lv = 50 // 保證秒殺
-    for (let i = 0; i < 4; i++) applyTick(s, 1000)
+    let guard = 0
+    while (s.floor === 1 && guard++ < 500) applyTick(s, 100)
     expect(s.floor).toBe(2)
-    expect(s.materials).toBeGreaterThanOrEqual(3)
+    expect(s.materials).toBe(3)
     expect(s.gold.gt(0)).toBe(true)
+  })
+
+  it('溢出傷害會帶到下一隻,不被 tick 頻率鎖住推進', () => {
+    const s = createInitialState()
+    s.lv = 60 // DPS 遠高於前幾層的怪
+    const events = applyTick(s, 1000)
+    // 單一 tick 內連續擊殺多隻
+    expect(s.floor).toBeGreaterThan(2)
+    const kill = events.find((e) => e.type === 'kill')
+    expect(kill?.count).toBeGreaterThan(1) // 事件已合併,演出層不會被灌爆
   })
 
   it('10 層進 Boss;限時到 → 退回 farm,farm 一輪後自動重挑戰', () => {
@@ -89,9 +101,11 @@ describe('戰鬥循環', () => {
     expect(s.isBoss).toBe(false)
     expect(s.floor).toBe(10) // 停在該層 farm
 
-    s.lv = 60
-    for (let i = 0; i < B.MOBS_PER_FLOOR; i++) applyTick(s, 1000)
-    expect(s.isBoss).toBe(true) // 自動重新挑戰
+    s.lv = 40
+    let guard = 0
+    while (!s.isBoss && guard++ < 500) applyTick(s, 100)
+    expect(s.isBoss).toBe(true) // farm 一輪後自動重新挑戰
+    expect(s.floor).toBe(10)
   })
 
   it('手動重挑戰 Boss', () => {
@@ -107,11 +121,12 @@ describe('戰鬥循環', () => {
   it('擊破 Boss 進下一層', () => {
     const s = createInitialState()
     s.floor = 10
-    s.lv = 200
     spawnEnemy(s)
+    s.enemyHp = D(1) // 剩一滴血,溢傷不足以殺掉 11 層的小怪
     applyTick(s, 1000)
     expect(s.floor).toBe(11)
     expect(s.highestFloor).toBe(11)
+    expect(s.isBoss).toBe(false)
   })
 
   it('點擊疊戰意並提升 DPS,不點會衰減', () => {
@@ -158,14 +173,47 @@ describe('養成與經濟', () => {
     expect(s.inventory).toHaveLength(0)
   })
 
+  it('每件裝備是獨立乘區,全金 5 件約 +29 級等效', () => {
+    const s = createInitialState()
+    const base = currentDPS(s)
+    for (const slot of SLOTS) {
+      s.equipped[slot] = { id: slot, slot, quality: 'gold', affixes: [] }
+    }
+    const mult = currentDPS(s).div(base).toNumber()
+    expect(mult).toBeCloseTo(1.5 ** 5, 3)
+    // 換算成等效等級,確認落在 skill 訂的 25~35 級
+    const equivLv = Math.log(mult) / Math.log(B.DMG_PER_LV)
+    expect(equivLv).toBeGreaterThan(25)
+    expect(equivLv).toBeLessThan(35)
+  })
+
+  it('鍛造保底:連續 30 次未出紫 → 下次必出紫以上', () => {
+    const s = createInitialState()
+    s.materials = 10_000
+    s.pityCount = B.PITY_FORGE
+    const e = forge(s, () => 0.01)! // rng 固定成最低品質
+    expect(QUALITIES.indexOf(e.quality)).toBeGreaterThanOrEqual(QUALITIES.indexOf('purple'))
+    expect(s.pityCount).toBe(0) // 出紫後歸零
+    expect(pityLeft(s)).toBe(B.PITY_FORGE)
+  })
+
+  it('鐵匠鋪等級隨鍛造次數提升品質升階機率,有上限', () => {
+    expect(forgeLevel(0)).toBe(1)
+    expect(forgeLevel(75)).toBe(4)
+    expect(forgeLevel(99_999)).toBe(B.FORGE_MAX_LEVEL)
+    expect(forgeUpgradeChance(99_999)).toBeLessThanOrEqual(B.FORGE_UPGRADE_CAP)
+  })
+
   it('裝備進 DPS 乘區,換下同部位回背包', () => {
     const s = createInitialState()
     s.materials = 10
-    const e = forge(s, () => 0.99)! // 固定 rng → 高品質
+    const e = forge(s, () => 0.99)! // 固定 rng → 傳奇
     e.affixes = [{ type: 'dmg', value: 0.5 }]
     const before = currentDPS(s)
     expect(equip(s, e.id)).toBe(true)
-    expect(currentDPS(s).div(before).toNumber()).toBeCloseTo(1.5)
+    // 品質乘區 1.5 × 詞條 +50%
+    expect(currentDPS(s).div(before).toNumber()).toBeCloseTo(1.5 * 1.5)
+    expect(s.equipped[e.slot]?.id).toBe(e.id)
   })
 })
 
@@ -180,6 +228,30 @@ describe('轉生與離線', () => {
     expect(next.floor).toBe(1)
     expect(next.runs).toBe(1)
     expect(next.gold.toNumber()).toBe(6 * B.MEDAL_START_GOLD)
+  })
+
+  it('傳家寶:轉生可帶走 1 件,其餘歸零,鐵匠鋪進度保留', () => {
+    const s = createInitialState()
+    s.highestFloor = 50
+    s.materials = 30
+    s.forgeCount = 40
+    const keep = forge(s)!
+    const drop = forge(s)!
+    equip(s, keep.id)
+
+    const next = prestige(s, [keep.id, drop.id])!
+    expect(next.inventory.map((e) => e.id)).toEqual([keep.id]) // 上限 1 件
+    expect(next.materials).toBe(0)
+    expect(next.forgeCount).toBe(s.forgeCount) // 鐵匠鋪等級不歸零
+  })
+
+  it('不指定傳家寶就全部歸零', () => {
+    const s = createInitialState()
+    s.highestFloor = 50
+    s.materials = 10
+    forge(s)
+    const next = prestige(s)!
+    expect(next.inventory).toHaveLength(0)
   })
 
   it('未達 10 層不能轉生', () => {
@@ -216,6 +288,22 @@ describe('存檔', () => {
     expect(back.lv).toBe(88)
     expect(back.floor).toBe(43)
     expect(back.equipped[e.slot]?.id).toBe(e.id)
+  })
+
+  it('v1 存檔可遷移到 v2(缺的欄位補預設,進度不掉)', () => {
+    const s = createInitialState()
+    s.lv = 42
+    s.floor = 33
+    const v1 = JSON.parse(JSON.stringify(serialize(s)))
+    v1.version = 1
+    delete v1.forgeCount
+    delete v1.pityCount
+
+    const back = deserialize(v1)
+    expect(back.lv).toBe(42)
+    expect(back.floor).toBe(33)
+    expect(back.forgeCount).toBe(0)
+    expect(back.pityCount).toBe(0)
   })
 
   it('壞存檔回退成新局而不是崩潰', () => {

@@ -1,6 +1,8 @@
+import * as B from './balance'
 import type { Affix, AffixType, Equipment, Quality, Slot } from './types'
 
 export const SLOTS: Slot[] = ['weapon', 'head', 'body', 'boots', 'trinket']
+/** 由低到高,索引即階級 */
 export const QUALITIES: Quality[] = ['white', 'green', 'blue', 'purple', 'gold', 'crimson']
 
 export const SLOT_NAME: Record<Slot, string> = {
@@ -20,45 +22,7 @@ export const QUALITY_NAME: Record<Quality, string> = {
   crimson: '神器',
 }
 
-/** 普通鍛造品質權重(LUK / 鐵匠鋪等級為 Phase 2 修正項) */
-const QUALITY_WEIGHT: Record<Quality, number> = {
-  white: 0.45,
-  green: 0.3,
-  blue: 0.17,
-  purple: 0.06,
-  gold: 0.019,
-  crimson: 0.001,
-}
-
-/** 詞條數:白1/綠1/藍2/紫2/金3/暗紅4 */
-const AFFIX_COUNT: Record<Quality, number> = {
-  white: 1,
-  green: 1,
-  blue: 2,
-  purple: 2,
-  gold: 3,
-  crimson: 4,
-}
-
-/** 詞條值域(%),隨品質階梯 3~15 */
-const AFFIX_RANGE: Record<Quality, [number, number]> = {
-  white: [3, 5],
-  green: [4, 7],
-  blue: [6, 9],
-  purple: [8, 11],
-  gold: [10, 13],
-  crimson: [12, 15],
-}
-
-/** 分解返還怪物素材 */
-export const SALVAGE_RETURN: Record<Quality, number> = {
-  white: 2,
-  green: 3,
-  blue: 5,
-  purple: 8,
-  gold: 14,
-  crimson: 25,
-}
+export const SALVAGE_RETURN = B.SALVAGE_RETURN
 
 const AFFIX_TYPES: AffixType[] = ['dmg', 'gold', 'crit', 'clickDmg']
 
@@ -71,31 +35,54 @@ export const AFFIX_NAME: Record<AffixType, string> = {
 
 export type Rng = () => number
 
-function pick<T extends string>(weights: Record<T, number>, rng: Rng): T {
-  const total = Object.values<number>(weights).reduce((a, b) => a + b, 0)
+function pickQuality(rng: Rng): Quality {
+  const w = B.QUALITY_WEIGHT
+  const total = QUALITIES.reduce((a, q) => a + w[q], 0)
   let r = rng() * total
-  for (const [k, w] of Object.entries<number>(weights)) {
-    r -= w
-    if (r <= 0) return k as T
+  for (const q of QUALITIES) {
+    r -= w[q]
+    if (r <= 0) return q
   }
-  return Object.keys(weights)[0] as T
+  return 'white'
+}
+
+/** 鐵匠鋪等級:累積鍛造次數換來的品質修正 */
+export function forgeLevel(forgeCount: number): number {
+  return Math.min(B.FORGE_MAX_LEVEL, Math.floor(forgeCount / B.FORGE_PER_LEVEL) + 1)
+}
+
+export function forgeUpgradeChance(forgeCount: number): number {
+  return Math.min(B.FORGE_UPGRADE_CAP, forgeLevel(forgeCount) * B.FORGE_UPGRADE_PER_LEVEL)
+}
+
+export interface RollOptions {
+  /** 累積鍛造次數,決定鐵匠鋪等級 */
+  forgeCount?: number
+  /** 保底觸發:品質下限拉到紫 */
+  guaranteePurple?: boolean
 }
 
 let idSeq = 0
-export function rollEquipment(rng: Rng = Math.random): Equipment {
-  const quality = pick(QUALITY_WEIGHT, rng)
+export function rollEquipment(rng: Rng = Math.random, opts: RollOptions = {}): Equipment {
+  let qi = QUALITIES.indexOf(pickQuality(rng))
+
+  // 鐵匠鋪等級:機率升一階
+  if (rng() < forgeUpgradeChance(opts.forgeCount ?? 0)) qi = Math.min(QUALITIES.length - 1, qi + 1)
+  // 保底:下限拉到紫
+  if (opts.guaranteePurple) qi = Math.max(qi, QUALITIES.indexOf('purple'))
+
+  const quality = QUALITIES[qi]
   const slot = SLOTS[Math.floor(rng() * SLOTS.length)]
-  const [lo, hi] = AFFIX_RANGE[quality]
+  const [lo, hi] = B.AFFIX_RANGE[quality]
   const affixes: Affix[] = []
-  for (let i = 0; i < AFFIX_COUNT[quality]; i++) {
+  for (let i = 0; i < B.AFFIX_COUNT[quality]; i++) {
     const type = AFFIX_TYPES[Math.floor(rng() * AFFIX_TYPES.length)]
-    const value = Math.round(lo + rng() * (hi - lo)) / 100
-    affixes.push({ type, value })
+    affixes.push({ type, value: Math.round(lo + rng() * (hi - lo)) / 100 })
   }
   return { id: `e${Date.now().toString(36)}${idSeq++}`, slot, quality, affixes }
 }
 
-/** 已裝備部位的加成總和(同類型相加) */
+/** 詞條加成(同類相加) */
 export function equipBonuses(equipped: Record<Slot, Equipment | null>): Record<AffixType, number> {
   const out: Record<AffixType, number> = { dmg: 0, gold: 0, crit: 0, clickDmg: 0 }
   for (const slot of SLOTS) {
@@ -106,7 +93,17 @@ export function equipBonuses(equipped: Record<Slot, Equipment | null>): Record<A
   return out
 }
 
-/** 裝備評分:用於「是否比身上的好」提示 */
+/** 品質基礎倍率:每件獨立乘區,5 件相乘 */
+export function equipPower(equipped: Record<Slot, Equipment | null>): number {
+  let mult = 1
+  for (const slot of SLOTS) {
+    const e = equipped[slot]
+    if (e) mult *= B.QUALITY_POWER[e.quality]
+  }
+  return mult
+}
+
+/** 裝備評分:用於「是否比身上的好」提示。品質權重遠大於詞條,與乘區設計一致 */
 export function score(e: Equipment): number {
-  return QUALITIES.indexOf(e.quality) * 100 + e.affixes.reduce((s, a) => s + a.value * 100, 0)
+  return B.QUALITY_POWER[e.quality] * 1000 + e.affixes.reduce((s, a) => s + a.value * 100, 0)
 }

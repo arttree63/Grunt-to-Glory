@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import * as B from '../../core/balance'
-import { AFFIX_NAME, QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
+import { AFFIX_NAME, forgeLevel, forgeUpgradeChance, QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
+import { pityLeft } from '../../core/game'
+import { score } from '../../core/equipment'
 import type { Equipment } from '../../core/types'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
@@ -22,7 +24,7 @@ export default function ForgePanel() {
       out.push(e)
     }
     // 十連結果最高品質置頂
-    setResults(out.sort((a, b) => b.quality.localeCompare(a.quality)))
+    setResults(out.sort((a, b) => score(b) - score(a)))
   }
 
   return (
@@ -31,6 +33,25 @@ export default function ForgePanel() {
       <div className="row">
         <span className="k">怪物素材</span>
         <span className="v">{s.materials}</span>
+      </div>
+      <div className="row">
+        <span className="k">鐵匠鋪等級</span>
+        <span className="v">
+          Lv.{forgeLevel(s.forgeCount)}
+          <small className="affix"> 品質升階 +{Math.round(forgeUpgradeChance(s.forgeCount) * 100)}%</small>
+        </span>
+      </div>
+      <div className="row">
+        <span className="k">菁英保底</span>
+        <span className="v">
+          {pityLeft(s) === 0 ? (
+            <b style={{ color: 'var(--q-purple)' }}>下次必出菁英以上</b>
+          ) : (
+            <>
+              還差 {pityLeft(s)} 次<small className="affix"> / {B.PITY_FORGE}</small>
+            </>
+          )}
+        </span>
       </div>
       <div className="row">
         <span className="k">普通鍛造</span>
@@ -73,7 +94,7 @@ export default function ForgePanel() {
         </>
       )}
 
-      <div className="empty">精工鍛造、部位/菁英素材、保底計數為 Phase 2 內容</div>
+      <div className="empty">精工鍛造、部位/菁英素材為 Phase 2 內容</div>
     </div>
   )
 }

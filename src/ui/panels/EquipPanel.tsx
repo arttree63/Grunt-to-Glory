@@ -1,5 +1,7 @@
+import { DMG_PER_LV } from '../../core/balance'
 import {
   AFFIX_NAME,
+  equipPower,
   QUALITY_NAME,
   QUALITIES,
   SALVAGE_RETURN,
@@ -33,9 +35,19 @@ export default function EquipPanel() {
   const salvage = useGame((st) => st.salvage)
   const salvageBelow = useGame((st) => st.salvageBelow)
 
+  const power = equipPower(s.equipped)
+  const equivLv = Math.log(power) / Math.log(DMG_PER_LV)
+
   return (
     <div>
       <h3>裝 備</h3>
+      <div className="row">
+        <span className="k">裝備戰力</span>
+        <span className="v">
+          ×{power.toFixed(2)}
+          <small className="affix"> 相當於 +{Math.round(equivLv)} 級</small>
+        </span>
+      </div>
       {SLOTS.map((slot) => {
         const e = s.equipped[slot]
         return (

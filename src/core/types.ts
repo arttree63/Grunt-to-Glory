@@ -43,6 +43,10 @@ export interface GameState {
 
   // 資源
   materials: number
+  /** 累積鍛造次數 → 鐵匠鋪等級 */
+  forgeCount: number
+  /** 連續未出紫以上的次數 → 保底 */
+  pityCount: number
   inventory: Equipment[]
   equipped: Record<Slot, Equipment | null>
 
@@ -59,4 +63,6 @@ export interface GameEvent {
   floor?: number
   gold?: Decimal
   equipment?: Equipment
+  /** kill 事件在單 tick 內合併的隻數 */
+  count?: number
 }
