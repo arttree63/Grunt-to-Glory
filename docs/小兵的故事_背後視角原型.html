@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>小兵的故事 — 背後視角構圖原型</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.0/pixi.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; background:#141018; overflow:hidden; font-family:"PingFang TC","Noto Sans TC",sans-serif; user-select:none; }
+  #wrap { position:relative; margin:0 auto; height:100%; max-width:480px; background:#1a1522; display:flex; flex-direction:column; }
+  #stage { flex:1; position:relative; overflow:hidden; }
+  #stage canvas { position:absolute; inset:0; width:100%; height:100%; }
+
+  /* 頂部資訊 */
+  #topbar { position:absolute; top:0; left:0; right:0; z-index:5; padding:10px 14px 22px;
+    display:flex; justify-content:space-between; align-items:flex-start; pointer-events:none;
+    background:linear-gradient(#141018cc, transparent); }
+  .stage-label { color:#e8dcc8; font-size:13px; letter-spacing:2px; }
+  .stage-label b { display:block; font-size:20px; letter-spacing:1px; }
+  .gold { color:#f2c14e; font-size:14px; font-weight:600; text-align:right; }
+  .gold small { display:block; color:#9a8fb0; font-weight:400; font-size:11px; letter-spacing:1px; }
+
+  /* Boss 血條 */
+  #bossbar { position:absolute; top:64px; left:24px; right:24px; z-index:5; display:none; }
+  #bossbar .name { color:#ffb0a0; font-size:13px; letter-spacing:3px; margin-bottom:4px; text-align:center; }
+  #bossbar .bar { height:10px; background:#2a1f2f; border-radius:5px; overflow:hidden; box-shadow:0 0 0 1px #000 inset; }
+  #bossbar .fill { height:100%; width:100%; background:linear-gradient(90deg,#c8384a,#ff7a5c); transition:width .15s; }
+  #bossbar .timer { color:#e8dcc8; text-align:center; font-size:18px; font-weight:700; margin-top:4px; font-variant-numeric:tabular-nums; }
+
+  /* 戰意 */
+  #morale { position:absolute; z-index:5; left:50%; transform:translateX(-50%); bottom:8px; width:150px; pointer-events:none; text-align:center; }
+  #morale .tag { color:#7fd0c0; font-size:11px; letter-spacing:4px; margin-bottom:3px; opacity:.9; }
+  #morale .bar { height:5px; background:#20303255; border-radius:3px; overflow:hidden; }
+  #morale .fill { height:100%; width:0%; background:linear-gradient(90deg,#3fae9f,#a0ffe8); transition:width .12s; }
+
+  /* 底部操作區 */
+  #bottom { background:#181320; border-top:1px solid #2c2438; padding:10px 12px 14px; }
+  #skills { display:flex; gap:10px; justify-content:center; margin-bottom:10px; }
+  .skill { width:52px; height:52px; border-radius:12px; background:#241d31; border:1px solid #3a2f4d;
+    display:flex; align-items:center; justify-content:center; font-size:22px; color:#cdbfe8; }
+  .skill.locked { opacity:.35; }
+  #tabs { display:flex; gap:6px; }
+  .tab { flex:1; padding:9px 0 7px; text-align:center; color:#8d80a6; font-size:12px; letter-spacing:1px;
+    border-radius:10px; }
+  .tab.active { background:#2a2138; color:#f0e8d8; }
+  .tab span { display:block; font-size:17px; margin-bottom:2px; }
+
+  /* 場景切換(原型用) */
+  #modes { position:absolute; z-index:6; right:10px; top:70px; display:flex; flex-direction:column; gap:6px; }
+  .mode { background:#241d31dd; color:#cdbfe8; border:1px solid #3a2f4d; border-radius:8px;
+    padding:7px 10px; font-size:12px; letter-spacing:1px; }
+  .mode.on { background:#4a3a68; color:#fff; }
+  #hint { position:absolute; z-index:5; left:0; right:0; bottom:70px; text-align:center;
+    color:#ffffff66; font-size:12px; letter-spacing:2px; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <div id="topbar">
+      <div class="stage-label">戰場・森林邊境<b id="floorTxt">第 7 層</b></div>
+      <div class="gold"><small>金幣</small><span id="goldTxt">12.4K</span></div>
+    </div>
+
+    <div id="bossbar">
+      <div class="name">腐朽樹妖・威瑟隆</div>
+      <div class="bar"><div class="fill" id="bossFill"></div></div>
+      <div class="timer" id="bossTimer">30.0</div>
+    </div>
+
+    <div id="modes">
+      <button class="mode on" id="mNormal">一般層</button>
+      <button class="mode" id="mBoss">Boss 層</button>
+    </div>
+
+    <div id="morale">
+      <div class="tag">戰 意</div>
+      <div class="bar"><div class="fill" id="moraleFill"></div></div>
+    </div>
+
+    <div id="hint">點擊畫面攻擊</div>
+  </div>
+
+  <div id="bottom">
+    <div id="skills">
+      <div class="skill">⚔️</div>
+      <div class="skill locked">🛡️</div>
+      <div class="skill locked">🔥</div>
+      <div class="skill locked">✨</div>
+    </div>
+    <div id="tabs">
+      <div class="tab active"><span>🗡️</span>英雄</div>
+      <div class="tab"><span>🎽</span>裝備</div>
+      <div class="tab"><span>🔨</span>鐵匠鋪</div>
+      <div class="tab"><span>🐕</span>傭兵</div>
+      <div class="tab"><span>🏅</span>商店</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   小兵的故事 — 背後視角構圖原型
+   驗證三件事:
+   1. 背影主角在下方中央的構圖與佔比
+   2. 怪物由深處湧向玩家的深度感(縮放+Y排序)
+   3. Boss 佔上半屏的壓迫構圖 + 打擊回饋(軌跡/跳字/震屏)
+   ============================================================ */
+const stageEl = document.getElementById('stage');
+const app = new PIXI.Application({ resizeTo: stageEl, backgroundAlpha: 0, antialias: true });
+stageEl.appendChild(app.view);
+
+const world = new PIXI.Container();   // 受震屏影響
+app.stage.addChild(world);
+
+let W = app.screen.width, H = app.screen.height;
+
+/* ---------- 背景:視差三層(往深處收攏的戰場小徑) ---------- */
+const bg = new PIXI.Graphics();
+world.addChild(bg);
+function drawBG(){
+  bg.clear();
+  // 天空漸層(手繪帶狀)
+  const skyCols = [0x241b33, 0x2d2140, 0x37294e];
+  skyCols.forEach((c,i)=>{ bg.beginFill(c).drawRect(0, H*0.13*i, W, H*0.14).endFill(); });
+  // 遠山剪影
+  bg.beginFill(0x1c1528);
+  bg.moveTo(0,H*0.42); bg.lineTo(W*0.2,H*0.30); bg.lineTo(W*0.4,H*0.40);
+  bg.lineTo(W*0.62,H*0.27); bg.lineTo(W*0.85,H*0.38); bg.lineTo(W,H*0.33);
+  bg.lineTo(W,H*0.5); bg.lineTo(0,H*0.5); bg.endFill();
+  // 地面
+  bg.beginFill(0x2b2135).drawRect(0,H*0.42,W,H*0.58).endFill();
+  // 小徑:從深處梯形展開到玩家腳下 → 視線引導核心
+  bg.beginFill(0x3a2c46);
+  bg.moveTo(W*0.44, H*0.42); bg.lineTo(W*0.56, H*0.42);
+  bg.lineTo(W*0.88, H); bg.lineTo(W*0.12, H); bg.endFill();
+  // 徑上碎石
+  bg.beginFill(0x473557);
+  for(let i=0;i<9;i++){
+    const t=i/9, y=H*(0.46+0.5*t*t), s=2+7*t;
+    bg.drawEllipse(W*(0.5+(i%3-1)*0.09*(0.4+t)), y, s*1.6, s*0.7);
+  }
+  bg.endFill();
+  // 兩側樹影(近大遠小)
+  bg.beginFill(0x171021);
+  [[0.06,0.40,0.9],[0.94,0.38,1.0],[0.13,0.55,1.6],[0.9,0.6,1.9]].forEach(([x,y,s])=>{
+    bg.drawPolygon([W*x-14*s,H*y+60*s, W*x,H*y-40*s, W*x+14*s,H*y+60*s]);
+  });
+  bg.endFill();
+}
+
+/* ---------- 怪物層(Y 排序做深度) ---------- */
+const mobLayer = new PIXI.Container();
+mobLayer.sortableChildren = true;
+world.addChild(mobLayer);
+
+/* ---------- 主角:背影(分層紙娃娃) ---------- */
+const hero = new PIXI.Container();
+world.addChild(hero);
+const heroAura = new PIXI.Graphics();      // 戰意光環
+const heroBody = new PIXI.Container();     // 身體組
+const cape = new PIXI.Graphics();          // 披風(背面最顯眼的換裝件)
+const torso = new PIXI.Graphics();
+const head  = new PIXI.Graphics();
+const armPivot = new PIXI.Container();     // 右臂+武器,揮砍只轉這層
+const weapon = new PIXI.Graphics();
+const slashFx = new PIXI.Graphics();       // 揮砍軌跡
+hero.addChild(heroAura, heroBody, slashFx);
+heroBody.addChild(cape, torso, head, armPivot);
+armPivot.addChild(weapon);
+
+function drawHero(){
+  const s = Math.min(W,H*0.62)/300;        // 佔屏比例基準
+  heroBody.scale.set(s*1.15);
+  // 披風
+  cape.clear().beginFill(0x8a3040)
+    .moveTo(-26,-46).lineTo(26,-46).lineTo(34,52).lineTo(12,44).lineTo(0,56).lineTo(-12,44).lineTo(-34,52)
+    .endFill()
+    .beginFill(0x6d2433).moveTo(-26,-46).lineTo(0,-40).lineTo(-34,52).lineTo(-26,-46).endFill();
+  // 軀幹(皮甲背面)
+  torso.clear().beginFill(0x5a4a3a).drawRoundedRect(-24,-52,48,66,10).endFill()
+    .beginFill(0x6e5a45).drawRoundedRect(-24,-52,48,14,7).endFill()   // 肩甲帶
+    .lineStyle(3,0x3d3228).moveTo(0,-50).lineTo(0,10);                 // 背帶
+  // 頭+盔(背面)
+  head.clear().beginFill(0xd8a878).drawCircle(0,-66,15).endFill()
+    .beginFill(0x7a7f8a).drawRoundedRect(-16,-84,32,20,9).endFill()   // 頭盔
+    .beginFill(0x9aa0ac).drawRect(-16,-70,32,4).endFill();
+  // 右臂+木劍(初始 Tier 0)
+  armPivot.position.set(20,-40);
+  weapon.clear()
+    .beginFill(0xd8a878).drawRoundedRect(-4,0,9,20,4).endFill()        // 手臂
+    .beginFill(0x8a6a48).drawRoundedRect(-2.5,14,6,10,2).endFill()     // 劍柄
+    .beginFill(0xb08a5a).drawRoundedRect(-3.5,-46,8,62,3).endFill();   // 木劍身(朝上舉)
+  armPivot.rotation = 0.5;
+  hero.position.set(W/2, H*0.86);
+}
+
+/* ---------- 傭兵:老獵犬(側後方待機) ---------- */
+const dog = new PIXI.Graphics();
+world.addChild(dog);
+function drawDog(){
+  const s = Math.min(W,H*0.62)/300;
+  dog.clear().scale.set(s);
+  dog.beginFill(0xb08a5a).drawEllipse(0,0,20,13).endFill()            // 身
+    .beginFill(0xb08a5a).drawCircle(14,-10,9).endFill()               // 頭(背面朝前)
+    .beginFill(0x8a6a48).drawPolygon([8,-18, 12,-8, 16,-16]).endFill()// 耳
+    .beginFill(0x8a6a48).drawPolygon([18,-18,22,-8,26,-16]).endFill();
+  dog.position.set(W/2 - Math.min(W,H)*0.24, H*0.895);
+  dog.zIndex = 999;
+}
+let dogWag = 0;
+
+/* ---------- 怪物工廠(扁平向量小怪) ---------- */
+const mobs = [];
+function makeMob(bossMode=false){
+  const c = new PIXI.Container();
+  const g = new PIXI.Graphics(); c.addChild(g);
+  const hue = [0x6da05e,0x5e8aa0,0xa08a5e][Math.floor(Math.random()*3)];
+  c._draw = (flash=false)=>{
+    const col = flash?0xffffff:hue, dark = flash?0xffffff:0x2a2a2a;
+    g.clear()
+     .beginFill(col).drawRoundedRect(-22,-34,44,44,12).endFill()       // 身
+     .beginFill(dark).drawCircle(-9,-16,4.5).drawCircle(9,-16,4.5).endFill() // 眼(面向玩家)
+     .beginFill(dark).drawRoundedRect(-8,-6,16,4,2).endFill()          // 嘴
+     .beginFill(col).drawPolygon([-22,-34,-14,-46,-8,-34]).endFill()   // 角
+     .beginFill(col).drawPolygon([8,-34,14,-46,22,-34]).endFill();
+  };
+  c._draw();
+  // 出生在小徑深處
+  c._t = 0;                                  // 0(遠)→1(近戰位)
+  c._speed = 0.0016+Math.random()*0.0008;
+  c._x = (Math.random()-0.5)*0.16;           // 徑上橫向偏移
+  c._hp = 3; c._boss = false;
+  mobLayer.addChild(c); mobs.push(c);
+  return c;
+}
+function layoutMob(c, dt){
+  if(c._t<1) c._t = Math.min(1, c._t + c._speed*dt);
+  const t = c._t, ease = t*t;                // 越近越快 → 深度感
+  const y = H*(0.44 + 0.30*ease);
+  const x = W*(0.5 + c._x*(0.3+0.7*ease));
+  const sc = (0.25 + 0.95*ease) * Math.min(W,H)/420;
+  c.position.set(x,y); c.scale.set(sc); c.zIndex = y;
+  c.alpha = Math.min(1, t*6);
+}
+
+/* ---------- Boss:上半屏壓迫構圖 ---------- */
+let boss = null, bossHP = 100, bossTime = 30, bossOn = false;
+const bossbar = document.getElementById('bossbar');
+function spawnBoss(){
+  clearMobs();
+  boss = new PIXI.Container();
+  const g = new PIXI.Graphics(); boss.addChild(g);
+  boss._g = g;
+  boss._draw = (flash=false)=>{
+    const body = flash?0xffffff:0x4a6a42, dark = flash?0xffffff:0x1a1a1a, glow = flash?0xffffff:0xc8384a;
+    g.clear();
+    // 龐大樹妖軀體:刻意超出畫面左右 → 壓迫感
+    g.beginFill(body).drawRoundedRect(-W*0.62,-H*0.30,W*1.24,H*0.46,60).endFill();
+    // 垂下的枝腕
+    g.beginFill(0x3a5434);
+    g.drawRoundedRect(-W*0.5,H*0.05,42,H*0.22,20);
+    g.drawRoundedRect(W*0.5-42,H*0.05,42,H*0.22,20).endFill();
+    // 面部:巨眼俯視玩家
+    g.beginFill(dark).drawEllipse(-W*0.15,0,30,38).drawEllipse(W*0.15,0,30,38).endFill();
+    g.beginFill(glow).drawCircle(-W*0.15,6,11).drawCircle(W*0.15,6,11).endFill();
+    g.beginFill(dark).drawRoundedRect(-W*0.1,H*0.09,W*0.2,14,7).endFill();
+  };
+  boss._draw();
+  boss.position.set(W/2, H*0.26);
+  boss._idle = 0;
+  mobLayer.addChild(boss);
+  bossHP = 100; bossTime = 30;
+  bossbar.style.display = 'block';
+}
+function clearMobs(){ mobs.forEach(m=>m.destroy()); mobs.length=0; if(boss){boss.destroy(); boss=null;} bossbar.style.display='none'; }
+
+/* ---------- 打擊回饋 ---------- */
+let shake = 0, zoom = 0, morale = 0;
+const dmgLayer = new PIXI.Container(); world.addChild(dmgLayer);
+function damageNum(x,y,txt,crit){
+  const t = new PIXI.Text(txt,{ fontFamily:'Arial Black,PingFang TC', fontSize: crit?34:24, fontWeight:'900',
+    fill: crit?0xffd23e:0xffffff, stroke:0x000000, strokeThickness:5 });
+  t.anchor.set(0.5); t.position.set(x+(Math.random()-0.5)*30, y);
+  t._vy = -2.4; t._life = 1;
+  dmgLayer.addChild(t);
+}
+function slash(){
+  // 揮臂
+  armPivot.rotation = -1.5;
+  // 軌跡弧光
+  slashFx.clear().lineStyle(9, morale>=100?0x8affe0:0xfff0c0, 0.9)
+    .arc(0,-40, 92, -2.4, -0.5);
+  slashFx.alpha = 1;
+  shake = Math.min(shake+4, 9); zoom = 1;
+  // 命中最近的目標
+  const crit = Math.random()<0.18;
+  const dmg = (crit? '暴擊 ' : '') + (12+Math.floor(Math.random()*8))*(crit?3:1);
+  if(boss){
+    bossHP = Math.max(0, bossHP - (crit?6:2.4));
+    document.getElementById('bossFill').style.width = bossHP+'%';
+    boss._draw(true); setTimeout(()=>boss&&boss._draw(false),70);
+    boss.y += 6;
+    damageNum(W/2+(Math.random()-0.5)*W*0.4, H*0.34, dmg, crit);
+    if(bossHP<=0){ damageNum(W/2,H*0.3,'擊 破 !',true); setTimeout(()=>{setNormal();},900); }
+  } else {
+    const target = mobs.filter(m=>m._t>0.55).sort((a,b)=>b._t-a._t)[0];
+    if(target){
+      target._hp -= crit?3:1;
+      target._draw(true); setTimeout(()=>!target.destroyed&&target._draw(false),70);
+      target.y -= 10;
+      damageNum(target.x, target.y-60*target.scale.y, dmg, crit);
+      if(target._hp<=0){
+        damageNum(target.x, target.y, '+'+(30+Math.floor(Math.random()*40))+' 金', false);
+        target.destroy(); mobs.splice(mobs.indexOf(target),1);
+      }
+    }
+  }
+  // 戰意
+  morale = Math.min(100, morale+7);
+  document.getElementById('moraleFill').style.width = morale+'%';
+}
+stageEl.addEventListener('pointerdown', slash);
+
+/* ---------- 模式切換 ---------- */
+const mN = document.getElementById('mNormal'), mB = document.getElementById('mBoss');
+function setNormal(){ bossOn=false; clearMobs(); mN.classList.add('on'); mB.classList.remove('on');
+  document.getElementById('floorTxt').textContent='第 7 層'; }
+function setBoss(){ bossOn=true; mB.classList.add('on'); mN.classList.remove('on');
+  document.getElementById('floorTxt').textContent='第 10 層'; spawnBoss(); shake=12; }
+mN.onclick = setNormal; mB.onclick = setBoss;
+
+/* ---------- 主迴圈 ---------- */
+let spawnTimer = 0, elapsed = 0;
+app.ticker.add((dt)=>{
+  const ms = app.ticker.deltaMS; elapsed += ms;
+  W = app.screen.width; H = app.screen.height;
+
+  // 一般層:持續湧怪(最多 4 隻)
+  if(!bossOn){
+    spawnTimer -= ms;
+    if(spawnTimer<=0 && mobs.length<4){ makeMob(); spawnTimer = 900+Math.random()*700; }
+    mobs.forEach(m=>layoutMob(m, ms));
+  } else if(boss){
+    boss._idle += ms*0.002;
+    boss.y = H*0.26 + Math.sin(boss._idle)*8;        // 緩慢呼吸壓迫
+    bossTime = Math.max(0, bossTime - ms/1000);
+    document.getElementById('bossTimer').textContent = bossTime.toFixed(1);
+    if(bossTime<=0){ setNormal(); }
+  }
+
+  // 主角待機呼吸 + 揮臂回彈
+  heroBody.y = Math.sin(elapsed*0.003)*3;
+  armPivot.rotation += (0.5-armPivot.rotation)*0.15;
+  slashFx.alpha *= 0.82;
+
+  // 戰意光環 + 衰減
+  morale = Math.max(0, morale - ms*0.008);
+  document.getElementById('moraleFill').style.width = morale+'%';
+  heroAura.clear();
+  if(morale>30){
+    const a = (morale/100)*0.5, r = 70+Math.sin(elapsed*0.01)*6;
+    heroAura.beginFill(0x3fae9f, a*0.25).drawEllipse(0,6,r*1.3,r*0.5).endFill();
+    heroAura.lineStyle(3,0x8affe0,a).drawEllipse(0,6,r*1.15,r*0.42);
+  }
+
+  // 傭兵搖尾
+  dogWag += ms*0.01; dog.rotation = Math.sin(dogWag)*0.05;
+
+  // 傷害跳字
+  for(let i=dmgLayer.children.length-1;i>=0;i--){
+    const t = dmgLayer.children[i];
+    t.y += t._vy; t._vy += 0.06; t._life -= ms/900; t.alpha = t._life;
+    if(t._life<=0) t.destroy();
+  }
+
+  // 震屏 + zoom punch
+  world.position.set((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
+  shake *= 0.86;
+  const z = 1 + zoom*0.02; zoom *= 0.85;
+  world.scale.set(z); world.pivot.set(W*(z-1)/2/z, H*(z-1)/2/z);
+
+  drawBG(); drawHero(); drawDog();
+});
+
+drawBG(); drawHero(); drawDog();
+</script>
+</body>
+</html>
