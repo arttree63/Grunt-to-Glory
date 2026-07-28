@@ -3,7 +3,16 @@ import type { Decimal } from './decimal'
 export type Slot = 'weapon' | 'head' | 'body' | 'boots' | 'trinket'
 export type Quality = 'white' | 'green' | 'blue' | 'purple' | 'gold' | 'crimson'
 export type AffixType = 'dmg' | 'gold' | 'crit' | 'clickDmg'
-export type JobId = 'rookie' | 'infantry' | 'scout'
+export type JobId = 'rookie' | 'infantry' | 'scout' | 'marshal' | 'paladin' | 'shadow' | 'archmage'
+export type SkillId = 'shieldRush' | 'gale' | 'judgement' | 'bulwark' | 'shadowClone' | 'meteor'
+export type StatId = 'str' | 'agi' | 'int' | 'luk'
+export type Talents = Record<StatId, number>
+
+/** 技能造成的限時 buff */
+export interface ActiveBuff {
+  skillId: SkillId
+  timeLeft: number
+}
 export type TechId = 'valor' | 'supply' | 'legacy' | 'camp' | 'heirloom'
 export type EventKind = 'chest' | 'goblin'
 
@@ -50,6 +59,12 @@ export interface GameState {
   bossFailed: boolean
 
   morale: number
+  /** 天賦配點 */
+  talents: Talents
+  /** 各技能剩餘冷卻(秒) */
+  skillCd: Partial<Record<SkillId, number>>
+  /** 生效中的技能 buff */
+  buff: ActiveBuff | null
   /** 突發事件(寶箱怪 / 黃金哥布林),出現時取代當前目標 */
   event: RareEvent | null
   /** 下次事件倒數(秒) */
@@ -96,6 +111,7 @@ export interface GameEvent {
     | 'eventSpawn'
     | 'eventKill'
     | 'eventEscape'
+    | 'skill'
   floor?: number
   gold?: Decimal
   equipment?: Equipment
@@ -103,4 +119,5 @@ export interface GameEvent {
   count?: number
   slot?: Slot
   kind?: EventKind
+  skillId?: SkillId
 }

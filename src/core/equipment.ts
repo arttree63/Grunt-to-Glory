@@ -64,6 +64,8 @@ export function forgeUpgradeChance(forgeCount: number): number {
 export interface RollOptions {
   /** 累積鍛造次數,決定鐵匠鋪等級 */
   forgeCount?: number
+  /** 幸運天賦的品質升階加成 */
+  luckBonus?: number
   /** 保底或菁英素材觸發:品質下限拉到紫 */
   guaranteePurple?: boolean
   /** 精工保底觸發:品質下限拉到金 */
@@ -77,7 +79,8 @@ export function rollEquipment(rng: Rng = Math.random, opts: RollOptions = {}): E
   let qi = QUALITIES.indexOf(pickQuality(rng))
 
   // 鐵匠鋪等級:機率升一階
-  if (rng() < forgeUpgradeChance(opts.forgeCount ?? 0)) qi = Math.min(QUALITIES.length - 1, qi + 1)
+  if (rng() < forgeUpgradeChance(opts.forgeCount ?? 0) + (opts.luckBonus ?? 0))
+    qi = Math.min(QUALITIES.length - 1, qi + 1)
   // 下限保證:菁英素材 → 紫,精工保底 → 金
   if (opts.guaranteePurple) qi = Math.max(qi, QUALITIES.indexOf('purple'))
   if (opts.guaranteeGold) qi = Math.max(qi, QUALITIES.indexOf('gold'))

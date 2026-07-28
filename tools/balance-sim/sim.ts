@@ -14,11 +14,17 @@ import {
   equip,
   fineForge,
   forge,
+  castSkill,
   heirloomCandidates,
   pendingMedals,
+  promote,
+  skillReady,
+  spendTalent,
+  talentPoints,
   prestige,
   salvage,
 } from '../../src/core/game'
+import { availableJobs, JOBS } from '../../src/core/jobs'
 import { canBuyTech, heirloomSlots, techDamageMult, techGoldMult } from '../../src/core/techs'
 import type { GameState, Techs } from '../../src/core/types'
 import { equipPower, QUALITY_NAME, score, SLOTS } from '../../src/core/equipment'
@@ -116,6 +122,19 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
         const cur = s.equipped[e.slot]
         if (!cur || score(e) > score(cur)) equip(s, e.id)
         else salvage(s, e.id)
+      }
+
+      // 天賦:全點力量。這剛好等於改版前已驗證的 1.072/級曲線,
+      // 當作「最大輸出」上界來比較,分散配點是玩家自己拿傷害換效益。
+      spendTalent(s, 'str', talentPoints(s))
+
+      // 轉職:Lv.20 走重裝步兵(掛機取向),Lv.100 升聖騎士
+      for (const j of availableJobs(s.jobId, s.lv)) {
+        if (j.id === 'infantry' || j.id === 'paladin') promote(s, j.id)
+      }
+      // 技能一好就放
+      for (const id of JOBS[s.jobId].skills) {
+        if (skillReady(s, id)) castSkill(s, id)
       }
 
       const before = s.lv

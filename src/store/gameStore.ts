@@ -3,7 +3,7 @@ import * as B from '../core/balance'
 import { D, type Decimal } from '../core/decimal'
 import { QUALITIES } from '../core/equipment'
 import * as G from '../core/game'
-import type { Equipment, GameState, JobId, Slot, TechId } from '../core/types'
+import type { Equipment, GameState, JobId, SkillId, Slot, StatId, TechId } from '../core/types'
 import { gameEvents } from './events'
 import { loadGame, saveGame, wipeSave } from './persist'
 
@@ -23,7 +23,10 @@ interface Store {
   tick: (dtMs: number) => void
   click: () => void
   buy: (n: number | 'max') => void
-  promote: (job: Exclude<JobId, 'rookie'>) => void
+  promote: (job: JobId) => void
+  spendTalent: (stat: StatId, n?: number) => void
+  resetTalents: () => void
+  castSkill: (id: SkillId) => void
   forge: () => Equipment | null
   fineForge: (opts: G.FineForgeOptions) => Equipment | null
   buyElite: () => void
@@ -87,6 +90,21 @@ export const useGame = create<Store>((set, get) => ({
 
   promote(job) {
     G.promote(get().s, job)
+    bump(set, get)
+  },
+
+  spendTalent(stat, n = 1) {
+    G.spendTalent(get().s, stat, n)
+    bump(set, get)
+  },
+
+  resetTalents() {
+    G.resetTalents(get().s)
+    bump(set, get)
+  },
+
+  castSkill(id) {
+    G.castSkill(get().s, id).forEach(gameEvents.emit)
     bump(set, get)
   },
 

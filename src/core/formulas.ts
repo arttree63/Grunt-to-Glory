@@ -32,20 +32,43 @@ export function moraleMult(morale: number): number {
 
 export interface DpsInput {
   lv: number
+  /** 力量天賦的傷害乘區 */
+  strMult?: number
   /** 轉生科技的傷害乘區(techDamageMult) */
   techMult?: number
   /** 裝備詞條加成,如 0.35 = +35% */
   equipBonus?: number
   morale?: number
+  /** 暴擊期望倍率 */
+  critMult?: number
+  /** 技能 buff 的傷害乘區 */
+  buffMult?: number
 }
 
-/** 主角 DPS:等級 × 轉生科技 × 裝備 × 戰意 */
-export function heroDPS({ lv, techMult = 1, equipBonus = 0, morale = 0 }: DpsInput): Decimal {
+/** 主角 DPS:等級 × 力量 × 科技 × 裝備 × 戰意 × 暴擊期望 × 技能 */
+export function heroDPS({
+  lv,
+  strMult = 1,
+  techMult = 1,
+  equipBonus = 0,
+  morale = 0,
+  critMult = 1,
+  buffMult = 1,
+}: DpsInput): Decimal {
   return D(B.BASE_DPS)
-    .mul(Decimal.pow(B.DMG_PER_LV, lv - 1))
+    .mul(Decimal.pow(B.BASE_DMG_PER_LV, lv - 1))
+    .mul(strMult)
     .mul(techMult)
     .mul(1 + equipBonus)
     .mul(moraleMult(morale))
+    .mul(critMult)
+    .mul(buffMult)
+}
+
+/** 暴擊期望倍率:暴擊不再只是跳字特效,真的進傷害 */
+export function critMultiplier(critRate: number, critDamageBonus = 0): number {
+  const capped = Math.min(1, critRate)
+  return 1 + capped * (B.CRIT_MULT * (1 + critDamageBonus) - 1)
 }
 
 /** 轉生可得勳章(取代舊有,非累加) */

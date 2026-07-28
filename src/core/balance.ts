@@ -9,13 +9,21 @@ export const GROWTH_HP_EARLY = 1.13 // 新手斜坡:前 RAMP_FLOOR 層
 export const RAMP_FLOOR = 30
 export const GROWTH_GOLD = 1.15 // 金幣每層倍率(低於 HP → 自然撞牆)
 export const COST_GROWTH = 1.09 // 升級成本每級倍率
-export const DMG_PER_LV = 1.072 // 每級傷害倍率(含配點期望值)
+/**
+ * 每級傷害拆成「等級基礎 × 力量點數」兩段。
+ * 1.045 × 1.026 = 1.0722 ≈ 改版前的 1.072,
+ * 也就是「全點力量」剛好等於舊曲線,分散配點是拿傷害換效益而非額外變強。
+ */
+export const BASE_DMG_PER_LV = 1.045
+export const STR_DMG_PER_POINT = 1.024
+/** 舊常數保留給文件對照:全點力量時的等效每級倍率 */
+export const DMG_PER_LV = BASE_DMG_PER_LV * STR_DMG_PER_POINT
 
 // 基準值
 export const BASE_MOB_HP = 10
 export const BASE_GOLD = 5
 export const BASE_UP_COST = 20
-export const BASE_DPS = 5
+export const BASE_DPS = 3.68 // 乘上基礎暴擊期望 ×1.36 後 ≈ 5,與舊模擬同起點
 
 // 關卡
 export const MOBS_PER_FLOOR = 3
@@ -144,3 +152,13 @@ export const OFFLINE_CAP_HOURS = 4
 export const TICK_HZ = 10 // 邏輯固定 tick
 export const CRIT_RATE = 0.18
 export const CRIT_MULT = 3
+
+// 天賦每點效果
+export const STR_CRIT_DMG = 0.005 // 暴傷也是乘區,值太大會讓全點力量超出舊曲線
+export const AGI_CRIT_RATE = 0.005
+export const AGI_CLICK = 0.03
+export const INT_SKILL_DMG = 0.03
+export const INT_CDR = 0.005
+export const INT_CDR_CAP = 0.5
+export const LUK_GOLD = 0.015
+export const LUK_FORGE = 0.002

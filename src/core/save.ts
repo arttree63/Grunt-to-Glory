@@ -1,5 +1,6 @@
 import { D } from './decimal'
 import { createInitialState, SAVE_VERSION } from './game'
+import { emptyTalents } from './talents'
 import { emptyTechs } from './techs'
 import type { GameState } from './types'
 
@@ -18,6 +19,7 @@ export interface SaveData {
   bossTimeLeft: number
   bossFailed: boolean
   morale: number
+  talents: GameState['talents']
   materials: number
   forgeCount: number
   pityCount: number
@@ -49,6 +51,7 @@ export function serialize(s: GameState): SaveData {
     bossTimeLeft: s.bossTimeLeft,
     bossFailed: s.bossFailed,
     morale: s.morale,
+    talents: s.talents,
     materials: s.materials,
     forgeCount: s.forgeCount,
     pityCount: s.pityCount,
@@ -97,6 +100,12 @@ function migrate(raw: SaveData): SaveData {
   if (d.version < 5) {
     d.version = 5
   }
+  // v5 → v6:天賦配點。舊存檔的等級已經吃過「含配點期望值」的舊曲線,
+  // 這裡把既有等級的點數全部補進力量,玩家戰力不會因為改版下降(之後可自行洗點)
+  if (d.version < 6) {
+    if (!d.talents) d.talents = { str: Math.max(0, (d.lv ?? 1) - 1), agi: 0, int: 0, luk: 0 }
+    d.version = 6
+  }
   return d
 }
 
@@ -118,6 +127,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     bossTimeLeft: d.bossTimeLeft ?? 30,
     bossFailed: !!d.bossFailed,
     morale: d.morale ?? 0,
+    talents: d.talents ?? emptyTalents(),
     materials: d.materials ?? 0,
     forgeCount: d.forgeCount ?? 0,
     pityCount: d.pityCount ?? 0,

@@ -3,8 +3,10 @@ import * as B from '../core/balance'
 import { fmt, fmtTime } from '../core/format'
 import { upCost } from '../core/formulas'
 import { bossGap, pendingMedals } from '../core/game'
+import { SKILLS } from '../core/skills'
 import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
+import SkillBar from './SkillBar'
 import Tutorial from './Tutorial'
 import EquipPanel from './panels/EquipPanel'
 import ForgePanel from './panels/ForgePanel'
@@ -122,6 +124,15 @@ function Game() {
 
         {s.bossFailed && !s.isBoss && !s.event && <BossHint />}
 
+        {s.buff && (
+          <div
+            className="retry"
+            style={{ top: 'auto', bottom: 46, pointerEvents: 'none', color: 'var(--morale-b)' }}
+          >
+            {SKILLS[s.buff.skillId].name} 生效中 {s.buff.timeLeft.toFixed(1)}s
+          </div>
+        )}
+
         <div className="morale">
           <div className="tag">戰 意</div>
           <div className="bar">
@@ -131,12 +142,7 @@ function Game() {
       </BattleCanvas>
 
       <div className="bottom">
-        <div className="skills">
-          <div className="skill">⚔️</div>
-          <div className="skill locked">🛡️</div>
-          <div className="skill locked">🔥</div>
-          <div className="skill locked">✨</div>
-        </div>
+        <SkillBar />
         <div className="tabs">
           {TABS.map((t) => (
             <button

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import * as B from '../balance'
-import { D } from '../decimal'
+import { D, Decimal } from '../decimal'
 import { bossPartSlot, forgeLevel, forgeUpgradeChance, QUALITIES, SLOTS } from '../equipment'
 import { fmt, fmtTime } from '../format'
-import { bossHP, goldDrop, heroDPS, isBossFloor, medalsFromFloor, mobHP, upCost } from '../formulas'
+import { bossHP, critMultiplier, goldDrop, heroDPS, isBossFloor, medalsFromFloor, mobHP, upCost } from '../formulas'
+import { availableJobs, JOBS } from '../jobs'
+import { SKILLS } from '../skills'
 import { heirloomSlots, techOfflineHours } from '../techs'
 import {
   applyTick,
@@ -14,7 +16,14 @@ import {
   claimDailyElite,
   fineForge,
   goldMult,
+  castSkill,
   click,
+  critRate,
+  resetTalents,
+  skillCooldown,
+  skillReady,
+  spendTalent,
+  talentPoints,
   computeOffline,
   createInitialState,
   currentDPS,
@@ -50,13 +59,33 @@ describe('formulas', () => {
   it('升級成本與傷害隨等級指數成長', () => {
     expect(upCost(1).toNumber()).toBeCloseTo(20)
     expect(upCost(11).toNumber()).toBeCloseTo(20 * 1.09 ** 10, 6)
-    expect(heroDPS({ lv: 1 }).toNumber()).toBeCloseTo(5)
+    expect(heroDPS({ lv: 1 }).toNumber()).toBeCloseTo(B.BASE_DPS)
   })
 
   it('科技與戰意乘區', () => {
-    expect(heroDPS({ lv: 1, techMult: 1.5 }).toNumber()).toBeCloseTo(5 * 1.5)
-    expect(heroDPS({ lv: 1, morale: 100 }).toNumber()).toBeCloseTo(5 * 1.4)
+    expect(heroDPS({ lv: 1, techMult: 1.5 }).toNumber()).toBeCloseTo(B.BASE_DPS * 1.5)
+    expect(heroDPS({ lv: 1, morale: 100 }).toNumber()).toBeCloseTo(B.BASE_DPS * 1.4)
     expect(medalsFromFloor(87)).toBe(8)
+  })
+
+  it('全點力量 = 改版前已驗證的 1.072/級曲線(天賦不是額外變強)', () => {
+    // 天賦改版的核心約束。力量同時給傷害倍率與暴擊傷害,兩個都是乘區,
+    // 任何一邊調大都會讓整條曲線偏離已驗證的基準 → 這裡跨等級釘死。
+    for (const lv of [1, 25, 50, 100, 200]) {
+      const s = createInitialState()
+      s.lv = lv
+      spendTalent(s, 'str', talentPoints(s))
+      const legacy = D(5).mul(Decimal.pow(1.072, lv - 1))
+      const ratio = currentDPS(s).div(legacy).toNumber()
+      expect(ratio).toBeGreaterThan(0.95)
+      expect(ratio).toBeLessThan(1.05)
+    }
+  })
+
+  it('暴擊真的進傷害公式,不再只是跳字', () => {
+    expect(critMultiplier(0.18)).toBeCloseTo(1 + 0.18 * 2)
+    expect(critMultiplier(0.5, 0.2)).toBeCloseTo(1 + 0.5 * (3 * 1.2 - 1))
+    expect(critMultiplier(2)).toBeCloseTo(critMultiplier(1)) // 暴擊率上限 100%
   })
 })
 
@@ -221,6 +250,120 @@ describe('養成與經濟', () => {
     // 品質乘區 1.5 × 詞條 +50%
     expect(currentDPS(s).div(before).toNumber()).toBeCloseTo(1.5 * 1.5)
     expect(s.equipped[e.slot]?.id).toBe(e.id)
+  })
+})
+
+describe('天賦配點', () => {
+  it('每升一級 1 點,不能超支', () => {
+    const s = createInitialState()
+    s.lv = 11
+    expect(talentPoints(s)).toBe(10)
+    expect(spendTalent(s, 'str', 4)).toBe(4)
+    expect(talentPoints(s)).toBe(6)
+    expect(spendTalent(s, 'agi', 99)).toBe(6) // 只給得出剩下的
+    expect(talentPoints(s)).toBe(0)
+    expect(spendTalent(s, 'luk', 1)).toBe(0)
+  })
+
+  it('力量提升傷害,敏捷提升暴擊率', () => {
+    const s = createInitialState()
+    s.lv = 21
+    const base = currentDPS(s)
+    spendTalent(s, 'str', 10)
+    const withStr = currentDPS(s)
+    expect(withStr.div(base).toNumber()).toBeGreaterThan(1.2)
+
+    const s2 = createInitialState()
+    s2.lv = 21
+    const crit0 = critRate(s2)
+    spendTalent(s2, 'agi', 10)
+    expect(critRate(s2)).toBeCloseTo(crit0 + 10 * B.AGI_CRIT_RATE)
+    expect(currentDPS(s2).gt(currentDPS(createInitialState()))).toBe(true)
+  })
+
+  it('幸運提升金幣、智力縮短冷卻', () => {
+    const s = createInitialState()
+    s.lv = 41
+    const g0 = goldMult(s)
+    spendTalent(s, 'luk', 10)
+    expect(goldMult(s) / g0).toBeCloseTo(1 + 10 * B.LUK_GOLD)
+
+    const s2 = createInitialState()
+    s2.lv = 41
+    s2.jobId = 'infantry'
+    const cd0 = skillCooldown(s2, 'shieldRush')
+    spendTalent(s2, 'int', 20)
+    expect(skillCooldown(s2, 'shieldRush')).toBeCloseTo(cd0 * (1 - 20 * B.INT_CDR))
+  })
+
+  it('洗點把點數全部退回', () => {
+    const s = createInitialState()
+    s.lv = 31
+    spendTalent(s, 'str', 20)
+    resetTalents(s)
+    expect(talentPoints(s)).toBe(30)
+    expect(s.talents.str).toBe(0)
+  })
+})
+
+describe('轉職與主動技能', () => {
+  it('轉職樹:小兵 → 一轉三選一 → 二轉只能走對應分支', () => {
+    const s = createInitialState()
+    expect(availableJobs(s.jobId, 1)).toHaveLength(0)
+    expect(availableJobs(s.jobId, 20)).toHaveLength(3) // 重裝步兵 / 突擊斥候 / 隨軍法警
+
+    s.lv = 20
+    expect(promote(s, 'paladin')).toBe(false) // 不能跳級轉二轉
+    expect(promote(s, 'scout')).toBe(true)
+
+    s.lv = 100
+    expect(promote(s, 'paladin')).toBe(false) // 影舞者才是斥候的下一階
+    expect(promote(s, 'shadow')).toBe(true)
+    expect(JOBS.shadow.skills).toContain('shadowClone')
+  })
+
+  it('buff 型技能:提升傷害、會過期、冷卻期間不能再放', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    const base = currentDPS(s)
+
+    expect(skillReady(s, 'shieldRush')).toBe(true)
+    castSkill(s, 'shieldRush')
+    expect(currentDPS(s).div(base).toNumber()).toBeCloseTo(SKILLS.shieldRush.dmgMult!)
+    expect(skillReady(s, 'shieldRush')).toBe(false)
+
+    applyTick(s, SKILLS.shieldRush.duration! * 1000 + 100)
+    expect(s.buff).toBe(null)
+    expect(currentDPS(s).div(base).toNumber()).toBeCloseTo(1)
+  })
+
+  it('立即傷害型技能:直接扣目標血量,是破 Boss 檢定的工具', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'marshal')
+    s.floor = 10
+    spawnEnemy(s)
+    const before = s.enemyHp
+
+    castSkill(s, 'judgement')
+    const dealt = before.sub(s.enemyHp)
+    expect(dealt.div(currentDPS(s)).toNumber()).toBeCloseTo(SKILLS.judgement.burstSeconds!, 0)
+  })
+
+  it('沒有該技能的職業不能施放', () => {
+    const s = createInitialState()
+    expect(skillReady(s, 'shieldRush')).toBe(false)
+    expect(castSkill(s, 'shieldRush')).toHaveLength(0)
+  })
+
+  it('冷卻會隨 tick 回復', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    castSkill(s, 'shieldRush')
+    applyTick(s, skillCooldown(s, 'shieldRush') * 1000 + 100)
+    expect(skillReady(s, 'shieldRush')).toBe(true)
   })
 })
 
@@ -488,6 +631,20 @@ describe('存檔', () => {
     expect(back.lv).toBe(77)
     expect(back.medals).toBe(12) // 勳章不沒收,玩家自己決定買哪條科技
     expect(back.techs).toEqual({ valor: 0, supply: 0, legacy: 0, camp: 0, heirloom: 0 })
+  })
+
+  it('v5 存檔遷移到 v6:既有等級的天賦點自動補進力量,戰力不下降', () => {
+    const s = createInitialState()
+    s.lv = 51
+    const v5 = JSON.parse(JSON.stringify(serialize(s)))
+    v5.version = 5
+    delete v5.talents
+
+    const back = deserialize(v5)
+    expect(back.talents.str).toBe(50) // 等級 51 → 50 點全給力量
+    expect(talentPoints(back)).toBe(0)
+    // 舊玩家的 DPS 不因為改版變弱
+    expect(back.lv).toBe(51)
   })
 
   it('壞存檔回退成新局而不是崩潰', () => {

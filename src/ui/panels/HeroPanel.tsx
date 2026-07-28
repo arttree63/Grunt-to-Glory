@@ -1,8 +1,10 @@
+import * as B from '../../core/balance'
 import { fmt } from '../../core/format'
 import { affordableLevels, bulkUpCost, upCost } from '../../core/formulas'
-import * as B from '../../core/balance'
-import { currentDPS, dpsBreakdown, goldPerSec } from '../../core/game'
-import { JOBS, TIER1_JOBS } from '../../core/jobs'
+import { critRate, currentDPS, dpsBreakdown, goldPerSec, talentPoints } from '../../core/game'
+import { availableJobs, JOBS, nextTierJobs } from '../../core/jobs'
+import { SKILLS } from '../../core/skills'
+import { STATS } from '../../core/talents'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 import { useHold } from '../useHold'
@@ -11,12 +13,17 @@ export default function HeroPanel() {
   const s = useGameState()
   const buy = useGame((st) => st.buy)
   const promote = useGame((st) => st.promote)
+  const spendTalent = useGame((st) => st.spendTalent)
+  const resetTalents = useGame((st) => st.resetTalents)
   const job = JOBS[s.jobId]
 
   const cost1 = upCost(s.lv)
   const cost10 = bulkUpCost(s.lv, 10)
   const maxN = affordableLevels(s.lv, s.gold)
   const hold1 = useHold(() => buy(1))
+  const free = talentPoints(s)
+  const nextJobs = nextTierJobs(s.jobId)
+  const canPromote = availableJobs(s.jobId, s.lv)
 
   return (
     <div>
@@ -50,6 +57,10 @@ export default function HeroPanel() {
         </div>
       </details>
       <div className="row">
+        <span className="k">暴擊率</span>
+        <span className="v">{Math.round(critRate(s) * 100)}%</span>
+      </div>
+      <div className="row">
         <span className="k">金幣收益</span>
         <span className="v">{fmt(goldPerSec(s))}/s</span>
       </div>
@@ -76,18 +87,72 @@ export default function HeroPanel() {
         </button>
       </div>
 
-      {s.jobId === 'rookie' && (
+      <h3 style={{ marginTop: 16 }}>
+        天 賦 配 點
+        {free > 0 && <span style={{ color: 'var(--gold)' }}> ・{free} 點可用</span>}
+      </h3>
+      <div className="affix" style={{ marginBottom: 6 }}>
+        每升一級得 1 點。傷害成長已拆進力量,全點力量等於原本的升級曲線。
+      </div>
+      {STATS.map((st) => (
+        <div className="card" key={st.id}>
+          <div className="head">
+            <b>
+              {st.name} <small className="affix">{st.short}</small>
+              <span style={{ color: 'var(--gold)', marginLeft: 6 }}>{s.talents[st.id]}</span>
+            </b>
+            <span>
+              <button
+                className="btn primary"
+                style={{ padding: '5px 10px' }}
+                disabled={free === 0}
+                onClick={() => spendTalent(st.id, 1)}
+              >
+                +1
+              </button>
+              <button
+                className="btn"
+                style={{ padding: '5px 10px', marginLeft: 6 }}
+                disabled={free === 0}
+                onClick={() => spendTalent(st.id, free)}
+              >
+                +{free || ''}全
+              </button>
+            </span>
+          </div>
+          <div className="affix">{st.desc}</div>
+        </div>
+      ))}
+      <div className="btn-row">
+        <button className="btn" onClick={resetTalents}>
+          洗點(免費,點數全部退回)
+        </button>
+      </div>
+
+      {nextJobs.length > 0 && (
         <>
-          <h3 style={{ marginTop: 16 }}>轉 職{s.lv < 20 && `(Lv.20 解鎖,還差 ${20 - s.lv} 級)`}</h3>
-          {TIER1_JOBS.map((id) => (
-            <div className="card" key={id}>
+          <h3 style={{ marginTop: 16 }}>
+            轉 職
+            {canPromote.length === 0 && `(Lv.${nextJobs[0].reqLv} 解鎖,還差 ${nextJobs[0].reqLv - s.lv} 級)`}
+          </h3>
+          {nextJobs.map((j) => (
+            <div className="card" key={j.id}>
               <div className="head">
-                <b>{JOBS[id].name}</b>
-                <button className="btn primary" disabled={s.lv < JOBS[id].reqLv} onClick={() => promote(id)}>
+                <b>{j.name}</b>
+                <button
+                  className="btn primary"
+                  disabled={s.lv < j.reqLv}
+                  onClick={() => promote(j.id)}
+                >
                   轉職
                 </button>
               </div>
-              <div className="affix">{JOBS[id].desc}</div>
+              <div className="affix">{j.desc}</div>
+              {j.skills.map((sk) => (
+                <div className="affix" key={sk} style={{ color: 'var(--text)' }}>
+                  {SKILLS[sk].icon} {SKILLS[sk].name}:{SKILLS[sk].desc}(冷卻 {SKILLS[sk].cd}s)
+                </div>
+              ))}
             </div>
           ))}
         </>

@@ -14,6 +14,7 @@ import {
 import {
   affordableLevels,
   bossHP,
+  critMultiplier,
   goldDrop,
   heroDPS,
   isBossFloor,
@@ -22,6 +23,19 @@ import {
   upCost,
 } from './formulas'
 import { JOBS } from './jobs'
+import { SKILLS } from './skills'
+import {
+  agiClickBonus,
+  agiCritRate,
+  emptyTalents,
+  freePoints,
+  intCdr,
+  intSkillDamage,
+  lukForge,
+  lukGold,
+  strCritDamage,
+  strDamageMult,
+} from './talents'
 import {
   canBuyTech,
   emptyTechs,
@@ -32,7 +46,18 @@ import {
   techOfflineHours,
   techStartGold,
 } from './techs'
-import type { Equipment, EventKind, GameEvent, GameState, Slot, TechId, Techs } from './types'
+import type {
+  Equipment,
+  EventKind,
+  GameEvent,
+  GameState,
+  JobId,
+  SkillId,
+  Slot,
+  StatId,
+  TechId,
+  Techs,
+} from './types'
 
 /**
  * 所有函式直接改動傳入的 state(呼叫端負責產生新參考給 React),
@@ -54,6 +79,9 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     bossTimeLeft: B.BOSS_TIME,
     bossFailed: false,
     morale: 0,
+    talents: emptyTalents(),
+    skillCd: {},
+    buff: null,
     event: null,
     eventCooldown: B.EVENT_INTERVAL_AVG,
     materials: 0,
@@ -75,17 +103,32 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 5
+export const SAVE_VERSION = 6
 
 // ---------- 數值查詢 ----------
 
 /** 金幣總乘區:裝備詞條(加法)× 後勤補給科技(乘法) */
 export function goldMult(s: GameState): number {
-  return (1 + equipBonuses(s.equipped).gold) * techGoldMult(s.techs)
+  return (
+    (1 + equipBonuses(s.equipped).gold + (JOBS[s.jobId].bonus.gold ?? 0) + lukGold(s.talents)) *
+    techGoldMult(s.techs)
+  )
 }
 
 export function critRate(s: GameState): number {
-  return B.CRIT_RATE + equipBonuses(s.equipped).crit + (JOBS[s.jobId].bonus.crit ?? 0)
+  const buffCrit = s.buff ? (SKILLS[s.buff.skillId].critAdd ?? 0) : 0
+  return (
+    B.CRIT_RATE +
+    equipBonuses(s.equipped).crit +
+    (JOBS[s.jobId].bonus.crit ?? 0) +
+    agiCritRate(s.talents) +
+    buffCrit
+  )
+}
+
+/** 技能 buff 的傷害乘區 */
+export function buffMult(s: GameState): number {
+  return s.buff ? (SKILLS[s.buff.skillId].dmgMult ?? 1) : 1
 }
 
 export function currentDPS(s: GameState): Decimal {
@@ -93,9 +136,12 @@ export function currentDPS(s: GameState): Decimal {
   const job = JOBS[s.jobId].bonus
   return heroDPS({
     lv: s.lv,
+    strMult: strDamageMult(s.talents),
     techMult: techDamageMult(s.techs),
     equipBonus: bonus.dmg + (job.dmg ?? 0),
     morale: s.morale,
+    critMult: critMultiplier(critRate(s), strCritDamage(s.talents)),
+    buffMult: buffMult(s),
   }).mul(equipPower(s.equipped)) // 每件裝備獨立乘區
 }
 
@@ -211,6 +257,7 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   s.morale = Math.max(0, s.morale - decay * dtMs)
 
   const dt = dtMs / 1000
+  tickSkills(s, dt)
   let dmg = currentDPS(s).mul(dt) // 本 tick 的總傷害量
 
   // 突發事件優先吃傷害:出現期間取代當前目標
@@ -311,7 +358,7 @@ function rewardEvent(s: GameState, kind: EventKind, events: GameEvent[], rng: Rn
 
 /** 點擊:疊戰意(點擊強化自動攻擊,不另計傷害) */
 export function click(s: GameState): void {
-  const clickBonus = equipBonuses(s.equipped).clickDmg
+  const clickBonus = equipBonuses(s.equipped).clickDmg + agiClickBonus(s.talents)
   s.morale = Math.min(B.MORALE_MAX, s.morale + B.MORALE_PER_CLICK * (1 + clickBonus))
 }
 
@@ -322,6 +369,71 @@ export function retryBoss(s: GameState): boolean {
   s.killsInFloor = 0
   spawnEnemy(s)
   return true
+}
+
+// ---------- 天賦 ----------
+
+/** 未分配點數 */
+export function talentPoints(s: GameState): number {
+  return freePoints(s.lv, s.talents)
+}
+
+export function spendTalent(s: GameState, stat: StatId, n = 1): number {
+  const can = Math.min(n, talentPoints(s))
+  if (can <= 0) return 0
+  s.talents[stat] += can
+  return can
+}
+
+/** 洗點:MVP 期免費,先讓玩家敢試 build */
+export function resetTalents(s: GameState): void {
+  s.talents = emptyTalents()
+}
+
+// ---------- 主動技能 ----------
+
+/** 實際冷卻(受智力縮減) */
+export function skillCooldown(s: GameState, id: SkillId): number {
+  return SKILLS[id].cd * (1 - intCdr(s.talents))
+}
+
+export function skillReady(s: GameState, id: SkillId): boolean {
+  return (s.skillCd[id] ?? 0) <= 0 && JOBS[s.jobId].skills.includes(id)
+}
+
+/**
+ * 施放技能。buff 型覆蓋當前 buff;立即傷害型直接扣目標血量
+ * (吃智力的技能傷害加成,是突破 Boss 檢定的主要工具)
+ */
+export function castSkill(s: GameState, id: SkillId): GameEvent[] {
+  if (!skillReady(s, id)) return []
+  const sk = SKILLS[id]
+  s.skillCd[id] = skillCooldown(s, id)
+  const events: GameEvent[] = [{ type: 'skill', skillId: id }]
+
+  if (sk.burstSeconds) {
+    const dmg = currentDPS(s).mul(sk.burstSeconds * (1 + intSkillDamage(s.talents)))
+    if (s.event) {
+      s.event.hp = s.event.hp.sub(dmg)
+    } else {
+      s.enemyHp = s.enemyHp.sub(dmg)
+    }
+  } else if (sk.duration) {
+    s.buff = { skillId: id, timeLeft: sk.duration * (1 + intSkillDamage(s.talents)) }
+  }
+  return events
+}
+
+function tickSkills(s: GameState, dt: number) {
+  for (const id of Object.keys(s.skillCd) as SkillId[]) {
+    const left = (s.skillCd[id] ?? 0) - dt
+    if (left <= 0) delete s.skillCd[id]
+    else s.skillCd[id] = left
+  }
+  if (s.buff) {
+    s.buff.timeLeft -= dt
+    if (s.buff.timeLeft <= 0) s.buff = null
+  }
 }
 
 // ---------- 養成 ----------
@@ -342,8 +454,9 @@ export function buyMaxLevels(s: GameState): number {
   return buyLevels(s, affordableLevels(s.lv, s.gold))
 }
 
-export function promote(s: GameState, jobId: 'infantry' | 'scout'): boolean {
-  if (s.jobId !== 'rookie' || s.lv < JOBS[jobId].reqLv) return false
+export function promote(s: GameState, jobId: JobId): boolean {
+  const job = JOBS[jobId]
+  if (job.from !== s.jobId || s.lv < job.reqLv) return false
   s.jobId = jobId
   return true
 }
@@ -356,6 +469,7 @@ export function forge(s: GameState, rng: Rng = Math.random): Equipment | null {
 
   const e = rollEquipment(rng, {
     forgeCount: s.forgeCount,
+    luckBonus: lukForge(s.talents),
     guaranteePurple: s.pityCount >= B.PITY_FORGE,
   })
 
@@ -400,6 +514,7 @@ export function fineForge(s: GameState, opts: FineForgeOptions, rng: Rng = Math.
 
   const e = rollEquipment(rng, {
     forgeCount: s.forgeCount,
+    luckBonus: lukForge(s.talents),
     guaranteePurple: opts.useElite || s.pityCount >= B.PITY_FORGE,
     guaranteeGold: s.pityLegendary >= B.PITY_LEGENDARY,
     lockSlot: opts.slot,
