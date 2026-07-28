@@ -31,10 +31,19 @@ export const MORALE_DECAY = 0.008 // 每 ms
 export const MORALE_MAX = 100
 export const MORALE_DMG_PER_POINT = 0.004 // 滿層 +40% DPS
 
-// 轉生
+// 轉生:勳章是純貨幣,加成一律來自科技(每級乘算)
 export const MEDAL_PER_FLOORS = 10 // 每 10 層 1 枚勳章
-export const MEDAL_DMG = 0.05 // 每枚 +5% 全局傷害
-export const MEDAL_START_GOLD = 1000 // 每枚開局資金
+
+export const TECH_DMG_MULT = 1.1 // 軍功勳令:每級全局傷害
+export const TECH_COST_DMG = 3
+export const TECH_GOLD_MULT = 1.12 // 後勤補給:每級金幣獲取(第二乘區)
+export const TECH_COST_GOLD = 3
+export const TECH_START_GOLD_BASE = 500 // 老兵餘蔭:第 1 級的開局資金
+export const TECH_START_GOLD_MULT = 5
+export const TECH_COST_START = 4
+export const TECH_OFFLINE_HOURS = 2 // 營地帳篷:每級離線上限
+export const TECH_COST_CAMP = 5
+export const TECH_CAMP_MAX = 4
 
 // 新兵祝福:首輪限定金幣加成。設 0 = 停用。
 // 模擬結論:給了首輪會虛高、轉生後淨變弱(第二輪極限反而下降)→ 停用,首輪節奏改由新手斜坡負責。

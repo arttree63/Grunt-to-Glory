@@ -1,5 +1,6 @@
 import { D } from './decimal'
 import { createInitialState, SAVE_VERSION } from './game'
+import { emptyTechs } from './techs'
 import type { GameState } from './types'
 
 /** 存檔格式:Decimal 一律轉字串 */
@@ -24,6 +25,7 @@ export interface SaveData {
   equipped: GameState['equipped']
   medals: number
   runs: number
+  techs: GameState['techs']
   lastSaved: number
 }
 
@@ -49,6 +51,7 @@ export function serialize(s: GameState): SaveData {
     equipped: s.equipped,
     medals: s.medals,
     runs: s.runs,
+    techs: s.techs,
     lastSaved: Date.now(),
   }
 }
@@ -65,13 +68,18 @@ function migrate(raw: SaveData): SaveData {
     d.pityCount = d.pityCount ?? 0
     d.version = 2
   }
+  // v2 → v3:勳章由被動加成改為可花費貨幣,舊存檔的勳章原封不動留著讓玩家自己買科技
+  if (d.version < 3) {
+    d.techs = d.techs ?? emptyTechs()
+    d.version = 3
+  }
   return d
 }
 
 export function deserialize(raw: SaveData | null | undefined): GameState {
   if (!raw || typeof raw.version !== 'number') return createInitialState()
   const d = migrate(raw)
-  const base = createInitialState(d.medals ?? 0, d.runs ?? 0)
+  const base = createInitialState(d.medals ?? 0, d.runs ?? 0, { ...emptyTechs(), ...(d.techs ?? {}) })
   return {
     ...base,
     lv: d.lv ?? 1,

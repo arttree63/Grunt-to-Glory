@@ -4,6 +4,8 @@ export type Slot = 'weapon' | 'head' | 'body' | 'boots' | 'trinket'
 export type Quality = 'white' | 'green' | 'blue' | 'purple' | 'gold' | 'crimson'
 export type AffixType = 'dmg' | 'gold' | 'crit' | 'clickDmg'
 export type JobId = 'rookie' | 'infantry' | 'scout'
+export type TechId = 'valor' | 'supply' | 'legacy' | 'camp'
+export type Techs = Record<TechId, number>
 
 export interface Affix {
   type: AffixType
@@ -53,6 +55,7 @@ export interface GameState {
   // 轉生
   medals: number
   runs: number
+  techs: Techs
 
   lastSaved: number
 }

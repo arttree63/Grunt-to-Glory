@@ -3,12 +3,31 @@ import * as B from '../../core/balance'
 import { QUALITY_POWER } from '../../core/balance'
 import { QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
 import { heirloomCandidates, pendingMedals } from '../../core/game'
+import {
+  canBuyTech,
+  TECHS,
+  techDamageMult,
+  techGoldMult,
+  techOfflineHours,
+  techStartGold,
+} from '../../core/techs'
+import type { TechId, Techs } from '../../core/types'
+import { fmt } from '../../core/format'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
+
+/** 科技目前的實際效果文字 */
+function techSummary(techs: Techs, id: TechId): string {
+  if (id === 'valor') return `傷害 ×${techDamageMult(techs).toFixed(2)}`
+  if (id === 'supply') return `金幣 ×${techGoldMult(techs).toFixed(2)}`
+  if (id === 'legacy') return `開局 ${fmt(techStartGold(techs))} 金`
+  return `離線上限 ${techOfflineHours(techs)} 小時`
+}
 
 export default function ShopPanel() {
   const s = useGameState()
   const prestige = useGame((st) => st.prestige)
+  const buyTech = useGame((st) => st.buyTech)
   const [confirm, setConfirm] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
   const gain = pendingMedals(s)
@@ -32,15 +51,35 @@ export default function ShopPanel() {
         <span className="v">{s.medals} 枚</span>
       </div>
       <div className="row">
-        <span className="k">勳章效果</span>
-        <span className="v affix">
-          每枚 傷害 +{B.MEDAL_DMG * 100}% / 開局 +{B.MEDAL_START_GOLD} 金
-        </span>
-      </div>
-      <div className="row">
         <span className="k">第幾代</span>
         <span className="v">第 {s.runs + 1} 代</span>
       </div>
+
+      <h3 style={{ marginTop: 16 }}>勳 章 科 技</h3>
+      <div className="affix" style={{ marginBottom: 8 }}>
+        科技等級永久保留,每級乘算。
+      </div>
+      {TECHS.map((t) => {
+        const lv = s.techs[t.id]
+        const maxed = t.maxLevel !== undefined && lv >= t.maxLevel
+        const affordable = canBuyTech(s.techs, s.medals, t.id)
+        return (
+          <div className="card" key={t.id}>
+            <div className="head">
+              <b>
+                {t.name} <small className="affix">Lv.{lv}</small>
+              </b>
+              <button className="btn primary" disabled={!affordable} onClick={() => buyTech(t.id)}>
+                {maxed ? '已滿級' : `${t.cost} 勳章`}
+              </button>
+            </div>
+            <div className="affix">
+              {t.desc}
+              {lv > 0 && <b style={{ color: 'var(--gold)' }}> → 目前 {techSummary(s.techs, t.id)}</b>}
+            </div>
+          </div>
+        )
+      })}
 
       {!confirm ? (
         <div className="btn-row">
@@ -95,7 +134,7 @@ export default function ShopPanel() {
         </div>
       )}
 
-      <div className="empty">勳章商店(兌換傭兵徽章、菁英素材、離線上限)為 Phase 2 內容</div>
+      <div className="empty">傭兵徽章、菁英素材兌換為 Phase 2 內容</div>
     </div>
   )
 }

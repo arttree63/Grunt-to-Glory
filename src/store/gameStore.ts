@@ -3,7 +3,7 @@ import * as B from '../core/balance'
 import { D, type Decimal } from '../core/decimal'
 import { QUALITIES } from '../core/equipment'
 import * as G from '../core/game'
-import type { Equipment, GameState, JobId, Slot } from '../core/types'
+import type { Equipment, GameState, JobId, Slot, TechId } from '../core/types'
 import { gameEvents } from './events'
 import { loadGame, saveGame, wipeSave } from './persist'
 
@@ -30,6 +30,7 @@ interface Store {
   salvage: (id: string) => void
   salvageBelow: (quality: number) => void
   retryBoss: () => void
+  buyTech: (id: TechId) => void
   prestige: (heirloomIds?: string[]) => void
   dismissOffline: () => void
   reset: () => Promise<void>
@@ -113,6 +114,11 @@ export const useGame = create<Store>((set, get) => ({
 
   retryBoss() {
     G.retryBoss(get().s)
+    bump(set, get)
+  },
+
+  buyTech(id) {
+    G.buyTech(get().s, id)
     bump(set, get)
   },
 

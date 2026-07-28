@@ -21,18 +21,19 @@ import {
   upCost,
 } from './formulas'
 import { JOBS } from './jobs'
-import type { Equipment, GameEvent, GameState, Slot } from './types'
+import { emptyTechs, canBuyTech, techById, techDamageMult, techGoldMult, techOfflineHours, techStartGold } from './techs'
+import type { Equipment, GameEvent, GameState, Slot, TechId, Techs } from './types'
 
 /**
  * 所有函式直接改動傳入的 state(呼叫端負責產生新參考給 React),
  * 並回傳本次發生的事件供演出層使用。core 不 import React/Pixi。
  */
 
-export function createInitialState(medals = 0, runs = 0): GameState {
+export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTechs()): GameState {
   const s: GameState = {
     version: SAVE_VERSION,
     lv: 1,
-    gold: D(B.MEDAL_START_GOLD).mul(medals),
+    gold: D(techStartGold(techs)),
     jobId: 'rookie',
     floor: 1,
     highestFloor: 1,
@@ -50,18 +51,20 @@ export function createInitialState(medals = 0, runs = 0): GameState {
     equipped: { weapon: null, head: null, body: null, boots: null, trinket: null },
     medals,
     runs,
+    techs,
     lastSaved: Date.now(),
   }
   spawnEnemy(s)
   return s
 }
 
-export const SAVE_VERSION = 2
+export const SAVE_VERSION = 3
 
 // ---------- 數值查詢 ----------
 
-export function goldBonus(s: GameState): number {
-  return equipBonuses(s.equipped).gold
+/** 金幣總乘區:裝備詞條(加法)× 後勤補給科技(乘法) */
+export function goldMult(s: GameState): number {
+  return (1 + equipBonuses(s.equipped).gold) * techGoldMult(s.techs)
 }
 
 export function critRate(s: GameState): number {
@@ -73,7 +76,7 @@ export function currentDPS(s: GameState): Decimal {
   const job = JOBS[s.jobId].bonus
   return heroDPS({
     lv: s.lv,
-    medals: s.medals,
+    techMult: techDamageMult(s.techs),
     equipBonus: bonus.dmg + (job.dmg ?? 0),
     morale: s.morale,
   }).mul(equipPower(s.equipped)) // 每件裝備獨立乘區
@@ -84,7 +87,7 @@ export function goldPerSec(s: GameState): Decimal {
   const dps = currentDPS(s)
   const floor = Math.max(1, s.floor)
   const clearTime = mobHP(floor).mul(B.MOBS_PER_FLOOR).div(dps).toNumber() + 2
-  return goldDrop(floor).mul(B.MOBS_PER_FLOOR).mul(1 + goldBonus(s)).div(Math.max(0.1, clearTime))
+  return goldDrop(floor).mul(B.MOBS_PER_FLOOR).mul(goldMult(s)).div(Math.max(0.1, clearTime))
 }
 
 // ---------- 戰鬥 ----------
@@ -104,7 +107,7 @@ export function spawnEnemy(s: GameState) {
 
 function reward(s: GameState, boss: boolean, events: GameEvent[]) {
   const mult = boss ? B.BOSS_GOLD_MULT : 1
-  const g = goldDrop(s.floor).mul(mult).mul(1 + goldBonus(s))
+  const g = goldDrop(s.floor).mul(mult).mul(goldMult(s))
   s.gold = s.gold.add(g)
   s.materials += boss ? B.BOSS_MATERIALS : B.MATERIAL_PER_MOB
   events.push({ type: boss ? 'bossKill' : 'kill', gold: g, floor: s.floor })
@@ -320,11 +323,19 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
     .map((id) => pool.find((e) => e.id === id))
     .filter((e): e is Equipment => !!e)
 
-  const next = createInitialState(s.medals + gain, s.runs + 1)
+  const next = createInitialState(s.medals + gain, s.runs + 1, { ...s.techs })
   next.inventory = keep
   next.forgeCount = s.forgeCount // 鐵匠鋪等級不隨轉生歸零
   next.pityCount = s.pityCount // 保底計數跨轉生保留
   return next
+}
+
+/** 購買轉生科技。勳章是純貨幣,買完就扣 */
+export function buyTech(s: GameState, id: TechId): boolean {
+  if (!canBuyTech(s.techs, s.medals, id)) return false
+  s.medals -= techById(id).cost
+  s.techs[id]++
+  return true
 }
 
 // ---------- 離線收益 ----------
@@ -336,7 +347,7 @@ export interface OfflineResult {
 }
 
 export function computeOffline(s: GameState, elapsedMs: number): OfflineResult {
-  const capSec = B.OFFLINE_CAP_HOURS * 3600
+  const capSec = techOfflineHours(s.techs) * 3600
   const raw = Math.max(0, elapsedMs / 1000)
   const sec = Math.min(raw, capSec)
   return {

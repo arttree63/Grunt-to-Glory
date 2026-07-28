@@ -4,9 +4,12 @@ import { D } from '../decimal'
 import { forgeLevel, forgeUpgradeChance, QUALITIES, SLOTS } from '../equipment'
 import { fmt, fmtTime } from '../format'
 import { bossHP, goldDrop, heroDPS, isBossFloor, medalsFromFloor, mobHP, upCost } from '../formulas'
+import { techOfflineHours } from '../techs'
 import {
   applyTick,
   buyLevels,
+  buyTech,
+  goldMult,
   click,
   computeOffline,
   createInitialState,
@@ -43,12 +46,12 @@ describe('formulas', () => {
   it('升級成本與傷害隨等級指數成長', () => {
     expect(upCost(1).toNumber()).toBeCloseTo(20)
     expect(upCost(11).toNumber()).toBeCloseTo(20 * 1.09 ** 10, 6)
-    expect(heroDPS({ lv: 1, medals: 0 }).toNumber()).toBeCloseTo(5)
+    expect(heroDPS({ lv: 1 }).toNumber()).toBeCloseTo(5)
   })
 
-  it('勳章與戰意乘區', () => {
-    expect(heroDPS({ lv: 1, medals: 10 }).toNumber()).toBeCloseTo(5 * 1.5)
-    expect(heroDPS({ lv: 1, medals: 0, morale: 100 }).toNumber()).toBeCloseTo(5 * 1.4)
+  it('科技與戰意乘區', () => {
+    expect(heroDPS({ lv: 1, techMult: 1.5 }).toNumber()).toBeCloseTo(5 * 1.5)
+    expect(heroDPS({ lv: 1, morale: 100 }).toNumber()).toBeCloseTo(5 * 1.4)
     expect(medalsFromFloor(87)).toBe(8)
   })
 })
@@ -227,7 +230,57 @@ describe('轉生與離線', () => {
     expect(next.lv).toBe(1)
     expect(next.floor).toBe(1)
     expect(next.runs).toBe(1)
-    expect(next.gold.toNumber()).toBe(6 * B.MEDAL_START_GOLD)
+    expect(next.gold.toNumber()).toBe(0) // 沒買「老兵餘蔭」就沒有開局資金
+  })
+
+  it('勳章科技:扣勳章、每級乘算、跨轉生保留', () => {
+    const s = createInitialState()
+    s.medals = 10
+    const base = currentDPS(s)
+
+    expect(buyTech(s, 'valor')).toBe(true)
+    expect(s.medals).toBe(10 - B.TECH_COST_DMG)
+    expect(currentDPS(s).div(base).toNumber()).toBeCloseTo(B.TECH_DMG_MULT)
+
+    buyTech(s, 'valor')
+    expect(currentDPS(s).div(base).toNumber()).toBeCloseTo(B.TECH_DMG_MULT ** 2) // 乘算不是加算
+
+    s.highestFloor = 50
+    const next = prestige(s)!
+    expect(next.techs.valor).toBe(2)
+  })
+
+  it('勳章不夠買不了,有上限的科技滿級後不能再買', () => {
+    const s = createInitialState()
+    s.medals = 0
+    expect(buyTech(s, 'valor')).toBe(false)
+
+    s.medals = 999
+    for (let i = 0; i < B.TECH_CAMP_MAX; i++) expect(buyTech(s, 'camp')).toBe(true)
+    expect(buyTech(s, 'camp')).toBe(false)
+    expect(techOfflineHours(s.techs)).toBe(B.OFFLINE_CAP_HOURS + B.TECH_CAMP_MAX * B.TECH_OFFLINE_HOURS)
+  })
+
+  it('後勤補給是獨立於傷害的第二乘區(金幣)', () => {
+    const s = createInitialState()
+    s.medals = 99
+    const before = goldMult(s)
+    buyTech(s, 'supply')
+    expect(goldMult(s) / before).toBeCloseTo(B.TECH_GOLD_MULT)
+    // 買金幣科技不會動到傷害
+    const dps = currentDPS(s)
+    buyTech(s, 'supply')
+    expect(currentDPS(s).toNumber()).toBeCloseTo(dps.toNumber())
+  })
+
+  it('老兵餘蔭決定下一代的開局資金', () => {
+    const s = createInitialState()
+    s.medals = 99
+    s.highestFloor = 50
+    buyTech(s, 'legacy')
+    buyTech(s, 'legacy')
+    const next = prestige(s)!
+    expect(next.gold.toNumber()).toBe(B.TECH_START_GOLD_BASE * B.TECH_START_GOLD_MULT)
   })
 
   it('傳家寶:轉生可帶走 1 件,其餘歸零,鐵匠鋪進度保留', () => {
@@ -304,6 +357,20 @@ describe('存檔', () => {
     expect(back.floor).toBe(33)
     expect(back.forgeCount).toBe(0)
     expect(back.pityCount).toBe(0)
+  })
+
+  it('v2 存檔可遷移到 v3(勳章留著,科技從零開始)', () => {
+    const s = createInitialState()
+    s.lv = 77
+    s.medals = 12
+    const v2 = JSON.parse(JSON.stringify(serialize(s)))
+    v2.version = 2
+    delete v2.techs
+
+    const back = deserialize(v2)
+    expect(back.lv).toBe(77)
+    expect(back.medals).toBe(12) // 勳章不沒收,玩家自己決定買哪條科技
+    expect(back.techs).toEqual({ valor: 0, supply: 0, legacy: 0, camp: 0 })
   })
 
   it('壞存檔回退成新局而不是崩潰', () => {

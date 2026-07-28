@@ -30,23 +30,20 @@ export function moraleMult(morale: number): number {
   return 1 + morale * B.MORALE_DMG_PER_POINT
 }
 
-export function medalMult(medals: number): number {
-  return 1 + medals * B.MEDAL_DMG
-}
-
 export interface DpsInput {
   lv: number
-  medals: number
-  /** 裝備總加成,如 0.35 = +35% */
+  /** 轉生科技的傷害乘區(techDamageMult) */
+  techMult?: number
+  /** 裝備詞條加成,如 0.35 = +35% */
   equipBonus?: number
   morale?: number
 }
 
-/** 主角 DPS:等級 × 勳章 × 裝備 × 戰意 */
-export function heroDPS({ lv, medals, equipBonus = 0, morale = 0 }: DpsInput): Decimal {
+/** 主角 DPS:等級 × 轉生科技 × 裝備 × 戰意 */
+export function heroDPS({ lv, techMult = 1, equipBonus = 0, morale = 0 }: DpsInput): Decimal {
   return D(B.BASE_DPS)
     .mul(Decimal.pow(B.DMG_PER_LV, lv - 1))
-    .mul(medalMult(medals))
+    .mul(techMult)
     .mul(1 + equipBonus)
     .mul(moraleMult(morale))
 }
