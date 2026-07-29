@@ -16,6 +16,7 @@ import {
   forge,
   availableSkills,
   castSkill,
+  click,
   heirloomCandidates,
   sigilCap,
   pendingMedals,
@@ -56,6 +57,8 @@ const STALL_MIN = 12
 const STEP_MS = 1000 / B.TICK_HZ
 /** 玩家多久檢查一次升級(每秒,貼近真實操作) */
 const BUY_EVERY_MS = 1000
+/** 積極玩家的點擊頻率(每秒),用來量點擊到底值多少 */
+const CLICKS_PER_SEC = 3
 
 /**
  * 勳章花用策略:傷害與金幣輪流買(兩個乘區都要成長),
@@ -113,6 +116,7 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
   spendMedals(s) // 開局先把勳章花掉
   let ms = 0
   let buyAcc = 0
+  let clickAcc = 0
   let lastBlockMs = 0
   let nextMark = 10
   const pace: Array<[number, number]> = []
@@ -179,7 +183,14 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
         }
       }
     }
-    if (active) s.morale = B.MORALE_MAX
+    // 積極玩家:實際按頻率點擊,才量得到戰意爆發與事件點擊換素材
+    if (active) {
+      clickAcc += CLICKS_PER_SEC * (STEP_MS / 1000)
+      while (clickAcc >= 1) {
+        clickAcc -= 1
+        click(s)
+      }
+    }
 
     applyTick(s, STEP_MS, rng)
     ms += STEP_MS
@@ -234,7 +245,7 @@ function table(label: string, active: boolean) {
 }
 
 table('【純掛機】不點擊,戰意 0', false)
-table('【積極點擊】戰意維持滿檔 (+40% DPS)', true)
+table(`【積極點擊】每秒 ${CLICKS_PER_SEC} 下`, true)
 
 console.log('\nBoss HP 抽樣:')
 for (const f of [10, 30, 50, 70, 100]) {

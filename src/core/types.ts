@@ -142,6 +142,8 @@ export interface GameState {
   sigils: number
   /** 距上次攻擊累積的秒數(暫態,不進存檔) */
   attackAcc: number
+  /** 本次事件已用點擊換到幾個素材(暫態) */
+  eventClickMats: number
   /** 突發事件(寶箱怪 / 黃金哥布林),出現時取代當前目標 */
   event: RareEvent | null
   /** 下次事件倒數(秒) */
@@ -217,6 +219,8 @@ export interface GameEvent {
     | 'destinyPoint'
     | 'attack'
     | 'runReset'
+    | 'moraleBurst'
+    | 'clickMaterial'
     | 'weaponEvolve'
     | 'encounter'
     | 'skill'

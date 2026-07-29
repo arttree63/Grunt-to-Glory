@@ -37,6 +37,20 @@ export const MORALE_DECAY = 0.008 // 每 ms
 export const MORALE_MAX = 100
 export const MORALE_DMG_PER_POINT = 0.004 // 滿層 +40% DPS
 
+/**
+ * 點擊的價值不放在常數乘區(那必然被 1.16^層 貶值),而是放在三個地方:
+ *   D 二元判定:Boss 檢定與限時事件內,戰意效果加倍且不衰減
+ *   C 節奏爆點:戰意滿檔自動爆發,填補 10~30 秒的期待層
+ *   素材:事件中點擊直接換素材,素材不隨層數貶值 → 點擊價值永不衰減
+ *
+ * ⚠️ 調校原則:點擊要把「差一點過不了」變成「過」,而不是「不點就過不了」。
+ * 掛機玩家戰意為 0,加倍對他們毫無影響,所以這條天然不懲罰掛機。
+ */
+export const MORALE_CHECK_BOOST = 2
+export const MORALE_BURST_SEC = 4
+/** 每個事件最多能用點擊換到幾個素材 */
+export const EVENT_CLICK_MAT_CAP = 12
+
 // 轉生:勳章是純貨幣,加成一律來自科技(每級乘算)
 export const MEDAL_PER_FLOORS = 10 // 每 10 層 1 枚勳章
 

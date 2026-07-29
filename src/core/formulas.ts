@@ -26,8 +26,9 @@ export function isBossFloor(floor: number): boolean {
   return floor % B.BOSS_EVERY === 0
 }
 
-export function moraleMult(morale: number): number {
-  return 1 + morale * B.MORALE_DMG_PER_POINT
+/** boosted = Boss 檢定或限時事件中,戰意效果加倍(點擊只在關鍵時刻決定成敗) */
+export function moraleMult(morale: number, boosted = false): number {
+  return 1 + morale * B.MORALE_DMG_PER_POINT * (boosted ? B.MORALE_CHECK_BOOST : 1)
 }
 
 export interface DpsInput {
@@ -37,6 +38,8 @@ export interface DpsInput {
   /** 裝備詞條加成,如 0.35 = +35% */
   equipBonus?: number
   morale?: number
+  /** 是否在 Boss/事件檢定窗口內(戰意效果加倍) */
+  moraleBoosted?: boolean
   /** 暴擊期望倍率 */
   critMult?: number
   /** 技能 buff 的傷害乘區 */
@@ -49,6 +52,7 @@ export function heroDPS({
   techMult = 1,
   equipBonus = 0,
   morale = 0,
+  moraleBoosted = false,
   critMult = 1,
   buffMult = 1,
 }: DpsInput): Decimal {
@@ -56,7 +60,7 @@ export function heroDPS({
     .mul(Decimal.pow(B.BASE_DMG_PER_LV, lv - 1))
     .mul(techMult)
     .mul(1 + equipBonus)
-    .mul(moraleMult(morale))
+    .mul(moraleMult(morale, moraleBoosted))
     .mul(critMult)
     .mul(buffMult)
 }

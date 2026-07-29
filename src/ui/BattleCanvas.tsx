@@ -47,6 +47,10 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         const base = e.damage!.div(critMultiplier(rate))
         const shown = crit ? base.mul(B.CRIT_MULT) : base
         scene.swing((crit ? '暴擊 ' : '') + fmt(shown), crit)
+      } else if (e.type === 'moraleBurst') {
+        scene.swing('戰意爆發 ' + fmt(e.damage!), true)
+      } else if (e.type === 'clickMaterial') {
+        scene.onKill('素材 +1')
       } else if (e.type === 'runReset') scene.clearNumbers()
       else if (e.type === 'kill') scene.onKill(fmt(e.gold!))
       else if (e.type === 'bossKill') scene.onBossKill()

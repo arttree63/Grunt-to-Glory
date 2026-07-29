@@ -86,6 +86,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     buff: null,
     sigils: 0,
     attackAcc: 0,
+    eventClickMats: 0,
     event: null,
     eventCooldown: B.EVENT_INTERVAL_AVG,
     encounters: [],
@@ -148,6 +149,7 @@ export function currentDPS(s: GameState): Decimal {
     techMult: techDamageMult(s.techs),
     equipBonus: bonus.dmg + (job.dmg ?? 0),
     morale: s.morale,
+    moraleBoosted: inCheckWindow(s),
     critMult: critMultiplier(critRate(s)),
     buffMult: buffMult(s) * comboMult(s) * chargeMult(s) * valiantMult(s),
   }).mul(equipPower(s.equipped)) // 每件裝備獨立乘區
@@ -290,9 +292,12 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   const raw: GameEvent[] = []
   const dt = dtMs / 1000
 
-  // 戰意衰減(重裝步兵衰減減半)
-  const decay = B.MORALE_DECAY * (1 - (JOBS[s.jobId].bonus.morale ?? 0))
-  s.morale = Math.max(0, s.morale - decay * dtMs)
+  // 戰意衰減(重裝步兵衰減減半)。檢定窗口內不衰減:
+  // Boss 是二元判定,玩家在那 30 秒裡的努力不該一邊被扣掉
+  if (!inCheckWindow(s)) {
+    const decay = B.MORALE_DECAY * (1 - (JOBS[s.jobId].bonus.morale ?? 0))
+    s.morale = Math.max(0, s.morale - decay * dtMs)
+  }
 
   tickSkills(s, dt)
   tickTactician(s, dt)
@@ -424,6 +429,7 @@ function spawnEvent(s: GameState, events: GameEvent[], rng: Rng) {
   const hp = mobHP(s.floor).mul(B.EVENT_HP_MULT)
   const time = B.EVENT_TIME * (hasNode(s, 'hunter_1b') ? B.PATIENT_TIME_MULT : 1)
   s.event = { kind, hp, maxHp: hp, timeLeft: time }
+  s.eventClickMats = 0
   events.push({ type: 'eventSpawn', kind })
 }
 
@@ -477,12 +483,32 @@ function markEventKind(s: GameState, kind: string) {
 }
 
 /** 點擊:疊戰意(點擊強化自動攻擊,不另計傷害) */
-export function click(s: GameState): void {
+export function click(s: GameState): GameEvent[] {
+  const events: GameEvent[] = []
+
+  // 事件中點擊直接換素材。素材不隨 1.16^層 貶值,
+  // 所以這是唯一「點擊價值永不衰減」的獎勵形式(GDD 的寶箱怪快速點擊)
+  if (s.event && s.eventClickMats < B.EVENT_CLICK_MAT_CAP) {
+    s.eventClickMats++
+    s.materials += B.MATERIAL_PER_MOB
+    s.forgeHeatMaterials += B.MATERIAL_PER_MOB
+    events.push({ type: 'clickMaterial' })
+  }
+
   const clickBonus = equipBonuses(s.equipped).clickDmg
   s.morale = Math.min(B.MORALE_MAX, s.morale + B.MORALE_PER_CLICK * (1 + clickBonus))
+
+  // 戰意滿檔爆發:填補 10~30 秒的期待層(「快滿了」)
+  if (s.morale >= B.MORALE_MAX) {
+    s.morale = 0
+    const dmg = currentDPS(s).mul(B.MORALE_BURST_SEC)
+    if (s.event) s.event.hp = s.event.hp.sub(dmg)
+    else s.enemyHp = s.enemyHp.sub(dmg)
+    events.push({ type: 'moraleBurst', damage: dmg })
+  }
+  return events
 }
 
-/** 手動重新挑戰 Boss */
 /** 手動挑戰 Boss:從 farm 的前一層直接回到 Boss 層,不必等清完小怪 */
 export function retryBoss(s: GameState): boolean {
   if (!s.bossFailed || s.bossRetryFloor === null) return false
@@ -548,6 +574,11 @@ export function revealStage(s: GameState): RevealStage {
 /** 本輪會走到的二轉(命運已定時只有一個) */
 export function destinyOutcome(s: GameState) {
   return destinyJobs(s.jobId, s.destinyPath)
+}
+
+/** 是否在「檢定窗口」內:Boss 限時或事件限時。點擊的價值集中在這裡 */
+export function inCheckWindow(s: GameState): boolean {
+  return s.isBoss || s.event !== null
 }
 
 /** 實際攻擊間隔。戰意越高打得越快(傷害中性,只是切得更細) */

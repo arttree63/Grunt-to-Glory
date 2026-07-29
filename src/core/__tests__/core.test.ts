@@ -40,6 +40,7 @@ import {
   computeOffline,
   createInitialState,
   currentDPS,
+  inCheckWindow,
   equip,
   forge,
   pityLeft,
@@ -274,6 +275,72 @@ describe('養成與經濟', () => {
     // 品質乘區 1.5 × 詞條 +50%
     expect(currentDPS(s).div(before).toNumber()).toBeCloseTo(1.5 * 1.5)
     expect(s.equipped[e.slot]?.id).toBe(e.id)
+  })
+})
+
+describe('點擊的價值(不放在常數乘區)', () => {
+  it('D:Boss 檢定與限時事件內戰意效果加倍', () => {
+    const s = createInitialState()
+    s.morale = 100
+    const normal = currentDPS(s)
+
+    s.floor = 10
+    spawnEnemy(s)
+    expect(inCheckWindow(s)).toBe(true)
+    const inBoss = currentDPS(s)
+    // 戰意的加成部分變兩倍(1+0.4 → 1+0.8)
+    expect(inBoss.div(normal).toNumber()).toBeCloseTo(1.8 / 1.4, 3)
+  })
+
+  it('D:檢定窗口內戰意不衰減,窗口外照常衰減', () => {
+    const s = createInitialState()
+    s.floor = 10
+    spawnEnemy(s)
+    s.morale = 100
+    applyTick(s, 2000)
+    expect(s.morale).toBe(100) // Boss 戰中不掉
+
+    const s2 = createInitialState()
+    s2.morale = 100
+    applyTick(s2, 2000)
+    expect(s2.morale).toBeLessThan(100)
+  })
+
+  it('D 不懲罰掛機:戰意 0 時加倍毫無影響', () => {
+    const s = createInitialState()
+    const before = currentDPS(s)
+    s.floor = 10
+    spawnEnemy(s)
+    expect(currentDPS(s).toString()).toBe(before.toString())
+  })
+
+  it('C:戰意滿檔觸發爆發並歸零', () => {
+    const s = createInitialState()
+    s.lv = 30
+    s.morale = B.MORALE_MAX - B.MORALE_PER_CLICK
+    const hpBefore = s.enemyHp
+
+    const events = click(s)
+    expect(events.some((e) => e.type === 'moraleBurst')).toBe(true)
+    expect(s.morale).toBe(0)
+    expect(s.enemyHp.lt(hpBefore)).toBe(true)
+  })
+
+  it('素材:事件中點擊換素材,有上限,且不隨層數貶值', () => {
+    const s = createInitialState()
+    s.lv = 1
+    s.eventCooldown = 0
+    applyTick(s, 100)
+    expect(s.event).not.toBe(null)
+
+    for (let i = 0; i < B.EVENT_CLICK_MAT_CAP + 5; i++) click(s)
+    expect(s.materials).toBe(B.EVENT_CLICK_MAT_CAP) // 到上限就停
+  })
+
+  it('素材:沒有事件時點擊不給素材', () => {
+    const s = createInitialState()
+    for (let i = 0; i < 10; i++) click(s)
+    expect(s.materials).toBe(0)
   })
 })
 

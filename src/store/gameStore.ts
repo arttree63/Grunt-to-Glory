@@ -93,7 +93,7 @@ export const useGame = create<Store>((set, get) => ({
   },
 
   click() {
-    G.click(get().s)
+    G.click(get().s).forEach(gameEvents.emit)
     bump(set, get)
   },
 
