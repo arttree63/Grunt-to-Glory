@@ -434,7 +434,7 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   s.attackAcc += dt
   if (s.attackAcc < interval) {
     if (s.event && s.event.timeLeft <= 0) escapeEvent(s, raw, rng)
-    else checkBossTimeout(s, raw)
+    else checkBossTimeout(s, raw, rng)
     return mergeKills(raw)
   }
   const swung = s.attackAcc
@@ -464,7 +464,7 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   dealDamage(s, dmg, raw, rng)
 
   // 逾時判定放在傷害之後,讓這一擊有機會先擊破
-  checkBossTimeout(s, raw)
+  checkBossTimeout(s, raw, rng)
   return mergeKills(raw)
 }
 
@@ -539,8 +539,25 @@ function escapeEvent(s: GameState, raw: GameEvent[], rng: Rng) {
 }
 
 /** Boss 逾時判定。倒數本身在 tick 開頭就扣過了,這裡只負責結算 */
-function checkBossTimeout(s: GameState, raw: GameEvent[]) {
+/** 強制結算凍結池(倒數歸零、事件逾時等「要判定勝負」的時刻呼叫) */
+function settleFrozen(s: GameState, raw: GameEvent[], rng: Rng) {
+  if (s.freezeLeft <= 0 && s.frozenPool.lte(0)) return
+  s.freezeLeft = 0
+  const pool = s.frozenPool
+  s.frozenPool = D(0)
+  if (pool.gt(0)) {
+    raw.push({ type: 'freezeBurst', damage: pool })
+    dealDamage(s, pool, raw, rng)
+  }
+}
+
+function checkBossTimeout(s: GameState, raw: GameEvent[], rng: Rng) {
   if (!s.isBoss || s.enemyHp.lte(0) || s.bossTimeLeft > 0) return
+  // ⚠️ 判失敗之前先結算凍結池:池裡的傷害可能早就足以擊殺。
+  // 不結算就判定,冰法師在 Boss 尾端凍結會把玩家已經打出的傷害吞掉、反而害你輸
+  //(v1.5 § 七:延遲類效果在 Boss 戰內必須結算完才有資格談勝負)
+  settleFrozen(s, raw, rng)
+  if (s.enemyHp.lte(0) || !s.isBoss) return // 池結算後擊破了(nextEnemy 已在 dealDamage 裡走完)
   // DPS check 失敗 → 退回前一層 farm(玩家心智模型:打不過就退一層)
   s.bossFailed = true
   if (hasNode(s, 'tactician_2a')) s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
@@ -938,14 +955,19 @@ function distinctNeeded(s: GameState, want: number): number {
 function trackCastOrder(s: GameState, id: SkillId, events: GameEvent[]) {
   if (!s.castOrder.includes(id)) s.castOrder.push(id)
 
-  // 戰術指揮官 3 件:把手上的技能各放過一輪就完成一道指令,下一個技能轉化
-  if (setCount(s, 'commander') >= 3 && s.castOrder.length >= distinctNeeded(s, B.COMMANDER_DISTINCT)) {
-    s.commandReady = true
-    s.castOrder = []
-    return
-  }
-  if (!hasLegend(s, 'hourglass')) return
-  if (s.castOrder.length < distinctNeeded(s, B.HOURGLASS_DISTINCT) || s.hourglassLock > 0) return
+  // 戰術指揮官 3 件與倒轉沙漏搶同一份施放順序。
+  // ⚠️ 不可先到先贏:指揮官的判定在前面且會清空 castOrder,同時穿的話沙漏永遠餓死,
+  // 玩家戴著一件死裝備卻不會知道。改為同一次湊滿讓**兩者都觸發**(各自獨立中性,疊加無虞)
+  const commanderDone =
+    setCount(s, 'commander') >= 3 && s.castOrder.length >= distinctNeeded(s, B.COMMANDER_DISTINCT)
+  const hourglassDone =
+    hasLegend(s, 'hourglass') &&
+    s.castOrder.length >= distinctNeeded(s, B.HOURGLASS_DISTINCT) &&
+    s.hourglassLock <= 0
+  if (!commanderDone && !hourglassDone) return
+  if (commanderDone) s.commandReady = true
+  s.castOrder = []
+  if (!hourglassDone) return
 
   const longest = availableSkills(s)
     .filter((sid) => (s.skillCd[sid] ?? 0) > 0)
@@ -1007,8 +1029,9 @@ function tickMerc(s: GameState, dt: number, events: GameEvent[], rng: Rng) {
       break
     }
     case 'icemage': {
-      // 凍結:Boss 每場上限、非 Boss 不限;正在凍結中則跳過
-      if (s.freezeLeft > 0) break
+      // 凍結:Boss 每場上限、正在凍結中跳過。
+      // ⚠️ 限時事件中也跳過:事件逾時逃走時,池裡打事件的傷害會誤導到一般敵人,獎勵直接蒸發
+      if (s.freezeLeft > 0 || s.event) break
       if (s.isBoss && s.freezeUsedThisBoss >= B.FREEZE_BOSS_CAP) break
       if (s.isBoss) s.freezeUsedThisBoss++
       s.freezeLeft = B.FREEZE_DURATION
@@ -1317,6 +1340,8 @@ export function devourWeapon(s: GameState, foodId: string): boolean {
   if (!weapon) return false
   const idx = s.inventory.findIndex((e) => e.id === foodId && e.slot === 'weapon')
   if (idx < 0) return false
+  // 傳家之器不可被吞:那是全遊戲唯一「必定回來」的承諾,銘刻要先換給別件才准吃
+  if (s.inventory[idx].heirloom) return false
   const grown = Math.round(((weapon.growth ?? 1) - 1) / B.DEVOUR_GROWTH)
   if (grown >= B.DEVOUR_MAX) return false
 

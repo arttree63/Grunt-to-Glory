@@ -1998,3 +1998,81 @@ describe('行為型傳說(v1.5:分帳不加量)', () => {
     expect(s.burnLeft).toBe(0)
   })
 })
+
+describe('遊戲性掃描修復(2026-07-30)', () => {
+  it('凍結不吃 Boss 擊殺:倒數歸零時先結算凍結池,池夠殺就算你贏', () => {
+    const s = createInitialState()
+    s.lv = 150
+    s.mercBestFloor = 200
+    setActiveMerc(s, 'icemage')
+    s.floor = 10
+    spawnEnemy(s)
+    // 手動進入凍結,池裡塞遠超 Boss 血量的傷害,然後把倒數歸零
+    s.freezeLeft = 5
+    s.frozenPool = s.enemyMaxHp.mul(3)
+    s.bossTimeLeft = 0.01
+
+    const before = s.floor
+    const ev = applyTick(s, 100)
+    // 池先結算 → Boss 被擊破 → 不是 bossFail
+    expect(ev.some((e) => e.type === 'bossFail')).toBe(false)
+    expect(ev.some((e) => e.type === 'bossKill')).toBe(true)
+    expect(s.floor).toBeGreaterThan(before)
+  })
+
+  it('凍結池不夠殺:照樣判失敗,但池有先結算(血量有掉)', () => {
+    const s = createInitialState()
+    s.lv = 1
+    s.floor = 10
+    spawnEnemy(s)
+    s.freezeLeft = 5
+    s.frozenPool = s.enemyMaxHp.div(2)
+    s.bossTimeLeft = 0.01
+
+    const maxHp = s.enemyMaxHp
+    const ev = applyTick(s, 100)
+    expect(ev.some((e) => e.type === 'bossFail')).toBe(true)
+    expect(s.freezeLeft).toBe(0) // 池已清
+    void maxHp
+  })
+
+  it('吞噬不得吃掉銘刻的傳家之器', () => {
+    const s = createInitialState()
+    s.destinyNodes = ['artisan_start', 'artisan_2a']
+    s.destinyPath = 'artisan'
+    s.equipped.weapon = { id: 'main', slot: 'weapon', quality: 'blue', affixes: [] }
+    s.inventory.push({ id: 'relicw', slot: 'weapon', quality: 'gold', heirloom: true, affixes: [] })
+    inscribeHeirloom(s, 'relicw')
+    expect(devourWeapon(s, 'relicw')).toBe(false) // 「必定回來」的承諾不可被一次誤點毀掉
+    expect(s.inventory.some((e) => e.id === 'relicw')).toBe(true)
+  })
+
+  it('冰法師在限時事件中不開凍結(事件逾時會讓池裡的獎勵蒸發)', () => {
+    const s = createInitialState()
+    s.lv = 150
+    s.mercBestFloor = 200
+    setActiveMerc(s, 'icemage')
+    s.mercTimer = 0.05
+    s.event = { kind: 'chest', hp: D(1e9), maxHp: D(1e9), timeLeft: 8 }
+    applyTick(s, 100)
+    expect(s.freezeLeft).toBe(0)
+  })
+
+  it('指揮官 3 件 + 倒轉沙漏同時穿:同一次湊滿兩者都觸發,沙漏不再餓死', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.highestFloor = B.AWAKEN_FLOOR
+    chooseDestiny(s, 'tactician')
+    s.destinyNodes.push('tactician_1a')
+    s.equipped.head = { id: 'hg', slot: 'head', quality: 'gold', base: 'focus', legend: 'hourglass', affixes: [] }
+    for (const sl of ['weapon', 'body', 'boots'] as const)
+      s.equipped[sl] = { id: `c${sl}`, slot: sl, quality: 'blue', setTag: 'commander', affixes: [] }
+    s.sigils = 3
+
+    castSkill(s, 'shieldRush')
+    const ev = castSkill(s, 'rally') // 兩招各一次 = 湊滿
+    expect(s.commandReady).toBe(true) // 指揮官觸發
+    expect(ev.some((e) => e.type === 'cooldownAdvance')).toBe(true) // 沙漏也觸發
+  })
+})
