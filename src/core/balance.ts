@@ -214,8 +214,12 @@ export const ATTACK_INTERVAL = 0.8
  * 但它讓「點擊強化自動攻擊」在畫面上真的看得見。
  */
 export const MORALE_ATTACK_SPEED = 0.01
-/** 點擊觸發的攻擊至少要累積這麼久,避免連點變成無傷害的空揮 */
-export const CLICK_MIN_ACC = 0.15
+/**
+ * 點擊觸發的攻擊至少要累積這麼久(攻擊間隔的一半)。
+ * 太小會造成兩個問題:單擊傷害低於 1(顯示成 0),以及同一隻怪身上的
+ * 兩擊差到 5 倍,看起來像數字亂跳。
+ */
+export const CLICK_MIN_ACC = 0.4
 export const TICK_HZ = 10 // 邏輯固定 tick
 export const CRIT_RATE = 0.18
 export const CRIT_MULT = 3
