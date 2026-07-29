@@ -6,6 +6,7 @@ import { bossGap, pendingMedals } from '../core/game'
 import { SKILLS } from '../core/skills'
 import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
+import { FloorDots, FloorToast } from './FloorProgress'
 import SkillBar from './SkillBar'
 import Tutorial from './Tutorial'
 import EquipPanel from './panels/EquipPanel'
@@ -44,27 +45,28 @@ function BossHint() {
   const s = useGameState()
   const retryBoss = useGame((st) => st.retryBoss)
   const gap = bossGap(s)
-  const advice =
-    s.materials >= B.FORGE_COST
-      ? '素材夠了,去鐵匠鋪開錘換裝'
+  // gap < 1 代表現在的 DPS 已經足夠,別再叫玩家去刷
+  const ready = gap < 1
+  const advice = ready
+    ? '現在打得過了'
+    : s.materials >= B.FORGE_COST
+      ? '素材夠了,去鐵匠鋪換裝'
       : s.gold.gte(upCost(s.lv))
-        ? '金幣夠了,先把等級買上去'
+        ? '金幣夠了,先買等級'
         : pendingMedals(s) > 0
-          ? '這代到極限了,可以考慮退役傳承'
-          : '在這層多打幾輪累積金幣與素材'
+          ? '這代到極限了,可考慮退役'
+          : '多打幾輪累積金幣與素材'
+
   return (
     <button
-      className="retry"
+      className={`retry${ready ? ' ready' : ''}`}
       onPointerDown={(e) => {
         e.stopPropagation()
         retryBoss()
       }}
     >
-      <b>30 秒內沒打完 Boss</b>
-      <br />
-      還差約 {gap.toFixed(1)} 倍 DPS ・ {advice}
-      <br />
-      <small className="affix">點此再挑戰一次(清完這層小怪也會自動重試)</small>
+      <b>{ready ? '可以再挑戰 Boss' : `Boss 差 ${gap.toFixed(1)} 倍 DPS`}</b>
+      ・{advice}
     </button>
   )
 }
@@ -85,6 +87,7 @@ function Game() {
           <div className="stage-label">
             <small>戰場・{mapName(s.floor)}</small>
             <b>第 {s.floor} 層</b>
+            <FloorDots />
           </div>
           <div className="gold-box">
             <small>金幣</small>
@@ -121,6 +124,8 @@ function Game() {
             <div className="fill" style={{ width: `${Math.max(0, hpRatio) * 100}%` }} />
           </div>
         )}
+
+        <FloorToast />
 
         {s.bossFailed && !s.isBoss && !s.event && <BossHint />}
 

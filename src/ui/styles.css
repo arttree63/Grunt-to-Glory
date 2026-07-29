@@ -204,15 +204,18 @@ button {
   background: linear-gradient(90deg, var(--morale-a), var(--morale-b));
 }
 
-/* 撤退提示:放在上緣,不能擋主角 */
+/* 撤退提示:放在上緣,不能擋主角。要小,新美術下大塊文字會蓋掉半個畫面 */
 .retry {
   position: absolute;
   z-index: 6;
   left: 50%;
   transform: translateX(-50%);
-  top: 96px;
-  max-width: 82%;
-  line-height: 1.6;
+  top: 92px;
+  max-width: 90%;
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 6px 12px;
+  line-height: 1.5;
   background: #241d31dd;
   border: 1px solid var(--border-card);
   border-radius: 10px;
@@ -464,4 +467,79 @@ button {
   color: var(--dim2);
   line-height: 1.7;
   margin-bottom: 12px;
+}
+
+/* 本層進度與進層提示(補推進感:原本只看得到單隻怪的血條) */
+.floor-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+.floor-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 4px;
+  background: #ffffff26;
+  box-shadow: 0 0 0 1px #0006 inset;
+}
+.floor-dots i.on {
+  background: var(--gold);
+}
+.floor-dots span {
+  color: var(--dim2);
+  font-size: 10px;
+  letter-spacing: 1px;
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.floor-toast {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  right: 0;
+  top: 28%;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--text-strong);
+  text-shadow: 0 2px 12px #000a;
+  pointer-events: none;
+  animation: floorPop 0.9s ease-out forwards;
+}
+.floor-toast.boss {
+  color: var(--boss-b);
+}
+.floor-toast small {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 3px;
+  margin-top: 4px;
+  color: var(--dim2);
+}
+@keyframes floorPop {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.92);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+.retry b {
+  color: var(--boss-b);
+}
+.retry.ready b {
+  color: var(--morale-b);
 }
