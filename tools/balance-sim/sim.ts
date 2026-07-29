@@ -188,7 +188,7 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
       clickAcc += CLICKS_PER_SEC * (STEP_MS / 1000)
       while (clickAcc >= 1) {
         clickAcc -= 1
-        click(s)
+        click(s, rng)
       }
     }
 
