@@ -86,7 +86,6 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     buff: null,
     sigils: 0,
     attackAcc: 0,
-    attackNow: false,
     event: null,
     eventCooldown: B.EVENT_INTERVAL_AVG,
     encounters: [],
@@ -315,18 +314,18 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   // ── 攻擊驅動:傷害按攻擊間隔成塊套用 ──
   // 血條跟著揮砍一格一格掉,而不是連續流失。總量不變(累積多久就打多少),
   // 所以數值曲線不受影響;渲染層的揮砍也由這裡發出的 attack 事件驅動,兩者不會漂移。
-  // 點擊會提前出手,但至少要累積 CLICK_MIN_ACC,否則連點會變成沒傷害的空揮
+  // 攻擊節奏只由攻擊間隔決定。點擊不另外觸發攻擊——
+  // 否則累積不足時會變成「點了什麼都沒發生」的空點,反而更不同步。
+  // 點擊的影響走戰意:戰意越高攻擊間隔越短,揮砍與扣血因此永遠一對一。
   const interval = attackInterval(s)
-  const need = s.attackNow ? Math.min(interval, B.CLICK_MIN_ACC) : interval
   s.attackAcc += dt
-  if (s.attackAcc < need) {
+  if (s.attackAcc < interval) {
     if (s.event && s.event.timeLeft <= 0) escapeEvent(s, raw, rng)
     else checkBossTimeout(s, raw)
     return mergeKills(raw)
   }
   const swung = s.attackAcc
   s.attackAcc = 0
-  s.attackNow = false
   let dmg = currentDPS(s).mul(swung)
   raw.push({ type: 'attack', damage: dmg })
 
@@ -481,8 +480,6 @@ function markEventKind(s: GameState, kind: string) {
 export function click(s: GameState): void {
   const clickBonus = equipBonuses(s.equipped).clickDmg
   s.morale = Math.min(B.MORALE_MAX, s.morale + B.MORALE_PER_CLICK * (1 + clickBonus))
-  // 點擊要立刻看得到反應,不是等下一次排程的攻擊
-  s.attackNow = true
 }
 
 /** 手動重新挑戰 Boss */
