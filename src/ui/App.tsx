@@ -3,6 +3,7 @@ import * as B from '../core/balance'
 import { fmt, fmtTime } from '../core/format'
 import { upCost } from '../core/formulas'
 import { bossGap, pendingMedals } from '../core/game'
+import { hasNode } from '../core/destiny'
 import { SKILLS } from '../core/skills'
 import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
@@ -13,16 +14,18 @@ import EquipPanel from './panels/EquipPanel'
 import ForgePanel from './panels/ForgePanel'
 import HeroPanel from './panels/HeroPanel'
 import DestinyPanel from './panels/DestinyPanel'
+import JournalPanel from './panels/JournalPanel'
 import ShopPanel from './panels/ShopPanel'
 import { useGameState } from './useGameState'
 
-type Tab = 'hero' | 'equip' | 'forge' | 'destiny' | 'shop'
+type Tab = 'hero' | 'equip' | 'forge' | 'destiny' | 'journal' | 'shop'
 
 const TABS: Array<{ id: Tab; icon: string; label: string }> = [
   { id: 'hero', icon: '🗡️', label: '英雄' },
   { id: 'equip', icon: '🎽', label: '裝備' },
   { id: 'forge', icon: '🔨', label: '鐵匠鋪' },
   { id: 'destiny', icon: '🌿', label: '命運' },
+  { id: 'journal', icon: '📖', label: '旅途' },
   { id: 'shop', icon: '🏅', label: '商店' },
 ]
 
@@ -130,6 +133,12 @@ function Game() {
 
         <FloorToast />
 
+        {hasNode(s, 'hunter_start') && !s.event && s.eventCooldown < B.OMEN_LEAD_SEC && (
+          <div className="retry" style={{ top: 92, pointerEvents: 'none', color: 'var(--gold)' }}>
+            不祥的預感…有什麼正在接近
+          </div>
+        )}
+
         {s.bossFailed && !s.isBoss && !s.event && <BossHint />}
 
         {s.buff && (
@@ -163,6 +172,7 @@ function Game() {
               {t.id === 'hero' && canUpgrade && <i className="dot" />}
               {t.id === 'forge' && s.materials >= B.FORGE_COST && <i className="dot" />}
               {t.id === 'destiny' && (s.destinyPoints > 0 || !s.destinyPath) && <i className="dot" />}
+              {t.id === 'journal' && s.encounters.length > 0 && <i className="dot" />}
             </button>
           ))}
         </div>
@@ -176,6 +186,7 @@ function Game() {
             {tab === 'equip' && <EquipPanel />}
             {tab === 'forge' && <ForgePanel />}
             {tab === 'destiny' && <DestinyPanel />}
+            {tab === 'journal' && <JournalPanel />}
             {tab === 'shop' && <ShopPanel />}
           </div>
         </>

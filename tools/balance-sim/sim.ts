@@ -19,14 +19,16 @@ import {
   pendingMedals,
   promote,
   chooseDestiny,
+  devourWeapon,
   pickDestinyNode,
+  resolveEncounter,
   skillReady,
   prestige,
   salvage,
 } from '../../src/core/game'
 import { availableJobs, JOBS } from '../../src/core/jobs'
 import { canBuyTech, heirloomSlots, techDamageMult, techGoldMult } from '../../src/core/techs'
-import { pendingChoice } from '../../src/core/destiny'
+import { hasNode, pendingChoice } from '../../src/core/destiny'
 import type { DestinyPathId, GameState, Techs } from '../../src/core/types'
 import { equipPower, QUALITY_NAME, score, SLOTS } from '../../src/core/equipment'
 import { D, Decimal } from '../../src/core/decimal'
@@ -99,6 +101,10 @@ interface RunResult {
 const destinyAgent: DestinyPathId = (globalThis as { process?: { env: Record<string, string | undefined> } })
   .process?.env?.DESTINY as DestinyPathId ?? 'tactician'
 
+/** 神匠是否採「忍住等爐火」策略。兩種策略互有勝場,平衡要看較強的那一邊 */
+const PATIENT =
+  ((globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env?.PATIENT ?? '1') !== '0'
+
 function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(SEED)): RunResult {
   const s = start
   spendMedals(s) // 開局先把勳章花掉
@@ -115,8 +121,12 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
     if (buyAcc >= BUY_EVERY_MS) {
       buyAcc = 0
 
+      // 神匠玩家會忍住等爐火疊滿再開錘;其他流派素材一夠就打
+      const patient = hasNode(s, 'artisan_start') && PATIENT
+      const forgeFloor = patient ? B.FORGE_COST * (B.HEAT_MAX_LAYERS + 1) : B.FORGE_COST
+
       // 玩家行為:有部位素材就精工鍛(鎖最爛的部位),否則普通開錘;比身上好就換,否則分解
-      while (s.materials >= B.FORGE_COST) {
+      while (s.materials >= forgeFloor) {
         const worst = SLOTS.filter((sl) => s.partMaterials[sl] > 0).sort(
           (a, b) => (s.equipped[a] ? score(s.equipped[a]!) : 0) - (s.equipped[b] ? score(s.equipped[b]!) : 0),
         )[0]
@@ -126,10 +136,18 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
         if (!e) break
         const cur = s.equipped[e.slot]
         if (!cur || score(e) > score(cur)) equip(s, e.id)
+        else if (hasNode(s, 'artisan_2a') && e.slot === 'weapon') devourWeapon(s, e.id) || salvage(s, e.id)
         else salvage(s, e.id)
       }
 
-      // 命運樹:代理玩家選定路徑後,有點就照固定偏好選(節點效果第二批才實作)
+      // 留存事件:代理玩家一遇到就處理(不處理的話尋寶獵人的數值會被嚴重低估)
+      for (const enc of [...s.encounters]) {
+        if (enc.id === 'blacksmith') resolveEncounter(s, enc.id, 'help') || resolveEncounter(s, enc.id, 'refuse')
+        else if (enc.id === 'merchant') resolveEncounter(s, enc.id, 'buy') || resolveEncounter(s, enc.id, 'sell')
+        else resolveEncounter(s, enc.id, 'left')
+      }
+
+      // 命運樹:代理玩家選定路徑後,有點就照固定偏好選
       if (!s.destinyPath) chooseDestiny(s, destinyAgent)
       const choice = pendingChoice(s)
       if (choice) pickDestinyNode(s, choice[0].id)

@@ -25,6 +25,7 @@ import {
 import { JOBS } from './jobs'
 import { SKILLS } from './skills'
 import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, hasNode, pendingChoice } from './destiny'
+import { ENCOUNTER_ORDER } from './encounters'
 import {
   canBuyTech,
   emptyTechs,
@@ -38,6 +39,7 @@ import {
 import type {
   DestinyNodeId,
   DestinyPathId,
+  EncounterId,
   Equipment,
   EventKind,
   GameEvent,
@@ -81,6 +83,12 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     buff: null,
     event: null,
     eventCooldown: B.EVENT_INTERVAL_AVG,
+    encounters: [],
+    nextEncounterFloor: B.ENCOUNTER_EVERY_FLOORS,
+    eventKindsDone: [],
+    goldenPending: false,
+    routeBuff: null,
+    barterUsed: 0,
     materials: 0,
     forgeCount: 0,
     pityCount: 0,
@@ -100,7 +108,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 9
+export const SAVE_VERSION = 10
 
 // ---------- 數值查詢 ----------
 
@@ -184,9 +192,11 @@ export function spawnEnemy(s: GameState) {
 
 function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Math.random) {
   const mult = boss ? B.BOSS_GOLD_MULT : 1
-  const g = goldDrop(s.floor).mul(mult).mul(goldMult(s))
+  const routeGold = s.routeBuff?.kind === 'gold' ? B.ROUTE_BUFF_MULT : 1
+  const g = goldDrop(s.floor).mul(mult).mul(goldMult(s)).mul(routeGold)
   s.gold = s.gold.add(g)
-  const gained = boss ? B.BOSS_MATERIALS : B.MATERIAL_PER_MOB
+  const routeMat = s.routeBuff?.kind === 'material' ? B.ROUTE_BUFF_MULT : 1
+  const gained = (boss ? B.BOSS_MATERIALS : B.MATERIAL_PER_MOB) * routeMat
   s.materials += gained
   s.forgeHeatMaterials += gained
   events.push({ type: boss ? 'bossKill' : 'kill', gold: g, floor: s.floor })
@@ -237,6 +247,10 @@ function nextEnemy(s: GameState, events: GameEvent[]) {
     }
   }
   s.highestFloor = Math.max(s.highestFloor, s.floor)
+  if (s.routeBuff) {
+    s.routeBuff.floorsLeft--
+    if (s.routeBuff.floorsLeft <= 0) s.routeBuff = null
+  }
   spawnEnemy(s)
 }
 
@@ -266,14 +280,23 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
     if (s.event.hp.lte(0)) {
       rewardEvent(s, s.event.kind, raw, rng)
       s.event = null
-      s.eventCooldown = eventInterval(rng)
+      s.eventCooldown = eventInterval(rng, s)
     } else if (s.event.timeLeft <= 0) {
-      raw.push({ type: 'eventEscape', kind: s.event.kind })
+      // 誘餌箱:逃走仍留下較低階獎勵
+      if (hasNode(s, 'hunter_2a')) {
+        const g = eventGold(s, s.event.kind).mul(B.BAIT_CONSOLATION)
+        s.gold = s.gold.add(g)
+        raw.push({ type: 'eventEscape', kind: s.event.kind, gold: g })
+      } else {
+        raw.push({ type: 'eventEscape', kind: s.event.kind })
+      }
       s.event = null
-      s.eventCooldown = eventInterval(rng)
+      s.eventCooldown = eventInterval(rng, s)
     }
     return mergeKills(raw) // 事件期間不推進一般戰鬥
   }
+
+  if (!s.isBoss) spawnEncounter(s, raw, rng)
 
   // 一般層才會刷事件(Boss 戰不打斷)
   if (!s.isBoss) {
@@ -336,25 +359,63 @@ function mergeKills(events: GameEvent[]): GameEvent[] {
 }
 
 /** 事件間隔:平均值上下 ±50% 隨機,避免玩家精算時間 */
-function eventInterval(rng: Rng): number {
-  return B.EVENT_INTERVAL_AVG * (0.5 + rng())
+function eventInterval(rng: Rng, s?: GameState): number {
+  const rate = s && hasNode(s, 'hunter_3b') ? B.FORBIDDEN_RATE_MULT : 1
+  return B.EVENT_INTERVAL_AVG * rate * (0.5 + rng())
 }
 
 function spawnEvent(s: GameState, events: GameEvent[], rng: Rng) {
   const kind: EventKind = rng() < 0.5 ? 'chest' : 'goblin'
   const hp = mobHP(s.floor).mul(B.EVENT_HP_MULT)
-  s.event = { kind, hp, maxHp: hp, timeLeft: B.EVENT_TIME }
+  const time = B.EVENT_TIME * (hasNode(s, 'hunter_1b') ? B.PATIENT_TIME_MULT : 1)
+  s.event = { kind, hp, maxHp: hp, timeLeft: time }
   events.push({ type: 'eventSpawn', kind })
 }
 
-function rewardEvent(s: GameState, kind: EventKind, events: GameEvent[], rng: Rng) {
+/** 事件基礎金幣 */
+function eventGold(s: GameState, kind: EventKind): Decimal {
   const mult = kind === 'chest' ? B.CHEST_GOLD_MULT : B.GOBLIN_GOLD_MULT
-  const g = goldDrop(s.floor).mul(mult).mul(goldMult(s))
+  return goldDrop(s.floor).mul(mult).mul(goldMult(s))
+}
+
+function rewardEvent(s: GameState, kind: EventKind, events: GameEvent[], rng: Rng) {
+  let g = eventGold(s, kind)
+
+  // 追跡者:打得越快(剩餘時間比例越高)獎勵越高
+  if (hasNode(s, 'hunter_1a') && s.event) {
+    const maxTime = B.EVENT_TIME * (hasNode(s, 'hunter_1b') ? B.PATIENT_TIME_MULT : 1)
+    g = g.mul(1 + (s.event.timeLeft / maxTime) * B.TRACKER_BONUS)
+  }
+  // 耐心獵人:獎勵品質提高
+  if (hasNode(s, 'hunter_1b')) g = g.mul(B.PATIENT_REWARD_MULT)
+  // 黃金路線:湊滿種類後的下一次事件保證高價值
+  if (s.goldenPending) {
+    g = g.mul(B.GOLDEN_REWARD_MULT)
+    s.goldenPending = false
+  }
+
   s.gold = s.gold.add(g)
+
   // 寶箱怪小機率掉菁英素材(菁英素材的主要來源之一)
-  const elite = kind === 'chest' && rng() < B.ELITE_FROM_CHEST
+  let elite = kind === 'chest' && rng() < B.ELITE_FROM_CHEST
+  // 禁忌地圖:事件必掉一個部位素材
+  if (hasNode(s, 'hunter_3b')) {
+    s.partMaterials[bossPartSlot(Math.max(10, s.floor))]++
+    if (kind === 'chest' && rng() < B.ELITE_FROM_CHEST) elite = true
+  }
   if (elite) s.eliteMaterials++
+
+  markEventKind(s, kind)
   events.push({ type: 'eventKill', kind, gold: g, count: elite ? 1 : 0 })
+}
+
+/** 黃金路線:完成三種不同事件就預約一次高價值事件 */
+function markEventKind(s: GameState, kind: string) {
+  if (!s.eventKindsDone.includes(kind)) s.eventKindsDone.push(kind)
+  if (hasNode(s, 'hunter_3a') && s.eventKindsDone.length >= B.GOLDEN_KINDS_NEEDED) {
+    s.eventKindsDone = []
+    s.goldenPending = true
+  }
 }
 
 /** 點擊:疊戰意(點擊強化自動攻擊,不另計傷害) */
@@ -477,6 +538,67 @@ export function promote(s: GameState, jobId: JobId): boolean {
   const job = JOBS[jobId]
   if (job.from !== s.jobId || s.lv < job.reqLv) return false
   s.jobId = jobId
+  return true
+}
+
+// ---------- 留存事件(旅途紀錄) ----------
+
+/**
+ * 留存事件不限時、不打斷戰鬥,累積在旅途紀錄裡等玩家回來處理。
+ * 命運相關的分支只能放這裡——放進限時事件會讓掛機玩家永遠拿不到。
+ */
+function spawnEncounter(s: GameState, events: GameEvent[], rng: Rng) {
+  if (s.floor < s.nextEncounterFloor) return
+  s.nextEncounterFloor = s.floor + B.ENCOUNTER_EVERY_FLOORS
+  if (s.encounters.length >= B.ENCOUNTER_CAP) return
+  const id = ENCOUNTER_ORDER[Math.floor(rng() * ENCOUNTER_ORDER.length)]
+  s.encounters.push({ id, floor: s.floor })
+  events.push({ type: 'encounter', encounterId: id, floor: s.floor })
+}
+
+/** 處理旅途紀錄裡的一個事件 */
+export function resolveEncounter(s: GameState, id: EncounterId, choiceId: string): boolean {
+  const idx = s.encounters.findIndex((e) => e.id === id)
+  if (idx < 0) return false
+  const enc = s.encounters[idx]
+  const price = goldDrop(enc.floor).mul(40)
+
+  if (id === 'blacksmith') {
+    if (choiceId === 'help') {
+      if (s.gold.lt(price)) return false
+      s.gold = s.gold.sub(price)
+      s.eliteMaterials++
+    } else {
+      s.gold = s.gold.add(price.div(3))
+    }
+  } else if (id === 'merchant') {
+    if (choiceId === 'buy') {
+      if (s.gold.lt(price)) return false
+      s.gold = s.gold.sub(price)
+      s.materials += B.FORGE_COST * 3
+    } else {
+      if (s.materials < B.FORGE_COST) return false
+      s.materials -= B.FORGE_COST
+      s.gold = s.gold.add(price)
+    }
+  } else {
+    s.routeBuff = { kind: choiceId === 'left' ? 'material' : 'gold', floorsLeft: B.ROUTE_BUFF_FLOORS }
+  }
+
+  s.encounters.splice(idx, 1)
+  markEventKind(s, id)
+  return true
+}
+
+/** 命運交易:放棄事件獎勵換一枚命運點,每輪有上限 */
+export function barterForDestiny(s: GameState): boolean {
+  if (!hasNode(s, 'hunter_2b')) return false
+  if (s.barterUsed >= B.BARTER_MAX_PER_RUN) return false
+  if (s.destinyPoints >= B.DESTINY_POINT_CAP) return false
+  if (s.eventKindsDone.length === 0) return false // 至少完成過一次事件
+  s.barterUsed++
+  s.eventKindsDone = []
+  s.destinyPoints++
   return true
 }
 

@@ -1,0 +1,83 @@
+import * as B from '../../core/balance'
+import { hasNode } from '../../core/destiny'
+import { ENCOUNTERS } from '../../core/encounters'
+import { useGame } from '../../store/gameStore'
+import { useGameState } from '../useGameState'
+
+/**
+ * 旅途紀錄。留存事件不限時,掛機也不會錯過,回來再處理。
+ * 命運相關的分支只放這裡。
+ */
+export default function JournalPanel() {
+  const s = useGameState()
+  const resolve = useGame((st) => st.resolveEncounter)
+  const barter = useGame((st) => st.barterForDestiny)
+
+  const canBarter =
+    hasNode(s, 'hunter_2b') &&
+    s.barterUsed < B.BARTER_MAX_PER_RUN &&
+    s.eventKindsDone.length > 0 &&
+    s.destinyPoints < B.DESTINY_POINT_CAP
+
+  return (
+    <div>
+      <h3>旅 途 紀 錄</h3>
+
+      {s.routeBuff && (
+        <div className="row">
+          <span className="k">岔路增益</span>
+          <span className="v" style={{ color: 'var(--gold)' }}>
+            {s.routeBuff.kind === 'material' ? '素材' : '金幣'} ×{B.ROUTE_BUFF_MULT}
+            <small className="affix"> 還剩 {s.routeBuff.floorsLeft} 層</small>
+          </span>
+        </div>
+      )}
+
+      {s.encounters.length === 0 && (
+        <div className="empty">路上還沒遇到什麼。每隔約 {B.ENCOUNTER_EVERY_FLOORS} 層會有一次際遇,不限時、不會錯過。</div>
+      )}
+
+      {s.encounters.map((e) => {
+        const enc = ENCOUNTERS[e.id]
+        return (
+          <div className="card" key={`${e.id}-${e.floor}`}>
+            <div className="head">
+              <b>{enc.name}</b>
+              <small className="affix">第 {e.floor} 層</small>
+            </div>
+            <div className="affix" style={{ lineHeight: 1.7, marginBottom: 8 }}>
+              {enc.text}
+            </div>
+            <div className="btn-row">
+              {enc.choices.map((c) => (
+                <button key={c.id} className="btn primary" onClick={() => resolve(e.id, c.id)}>
+                  {c.label}
+                  <br />
+                  <small className="affix">{c.desc}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      {hasNode(s, 'hunter_2b') && (
+        <>
+          <h3 style={{ marginTop: 16 }}>命 運 交 易</h3>
+          <div className="card">
+            <div className="head">
+              <b>放棄事件收穫,換一枚命運點</b>
+              <button className="btn primary" disabled={!canBarter} onClick={barter}>
+                交易
+              </button>
+            </div>
+            <div className="affix">
+              本輪已用 {s.barterUsed} / {B.BARTER_MAX_PER_RUN} 次
+              {s.eventKindsDone.length === 0 && '・需要先完成一次事件'}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

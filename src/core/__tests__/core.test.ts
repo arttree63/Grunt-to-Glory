@@ -14,8 +14,10 @@ import {
   buyElite,
   buyTech,
   canFineForge,
+  barterForDestiny,
   chooseDestiny,
   devourWeapon,
+  resolveEncounter,
   forgeHeat,
   forgeHeatBonus,
   pickDestinyNode,
@@ -455,6 +457,119 @@ describe('神匠流派節點效果', () => {
     s.highestFloor = 50
     s.equipped.weapon = { id: 'best', slot: 'weapon', quality: 'gold', affixes: [] }
     expect(prestige(s)!.codex).toHaveLength(0)
+  })
+})
+
+describe('尋寶獵人流派與留存事件', () => {
+  const hunter = (nodes: string[]) => {
+    const s = createInitialState()
+    chooseDestiny(s, 'hunter')
+    s.destinyNodes.push(...nodes)
+    return s
+  }
+
+  it('留存事件會累積在旅途紀錄,有上限,且不限時', () => {
+    const s = createInitialState()
+    s.lv = 300
+    let guard = 0
+    while (s.encounters.length < B.ENCOUNTER_CAP && guard++ < 20000) applyTick(s, 100)
+    expect(s.encounters.length).toBe(B.ENCOUNTER_CAP)
+
+    // 滿了不會再累積,但推進不受影響
+    const floorBefore = s.floor
+    for (let i = 0; i < 2000; i++) applyTick(s, 100)
+    expect(s.encounters.length).toBe(B.ENCOUNTER_CAP)
+    expect(s.floor).toBeGreaterThan(floorBefore)
+  })
+
+  it('神秘鐵匠:幫他花金幣換菁英素材,拒絕拿零錢', () => {
+    const s = createInitialState()
+    s.encounters = [{ id: 'blacksmith', floor: 10 }]
+    s.gold = D('1e9')
+    expect(resolveEncounter(s, 'blacksmith', 'help')).toBe(true)
+    expect(s.eliteMaterials).toBe(1)
+    expect(s.encounters).toHaveLength(0)
+
+    const s2 = createInitialState()
+    s2.encounters = [{ id: 'blacksmith', floor: 10 }]
+    const before = s2.gold
+    resolveEncounter(s2, 'blacksmith', 'refuse')
+    expect(s2.gold.gt(before)).toBe(true)
+  })
+
+  it('金幣不夠就不能幫鐵匠,事件也不會消失', () => {
+    const s = createInitialState()
+    s.encounters = [{ id: 'blacksmith', floor: 40 }]
+    s.gold = D(0)
+    expect(resolveEncounter(s, 'blacksmith', 'help')).toBe(false)
+    expect(s.encounters).toHaveLength(1)
+  })
+
+  it('岔路給限時增益,會隨層數遞減', () => {
+    const s = createInitialState()
+    s.encounters = [{ id: 'crossroad', floor: 10 }]
+    resolveEncounter(s, 'crossroad', 'left')
+    expect(s.routeBuff).toEqual({ kind: 'material', floorsLeft: B.ROUTE_BUFF_FLOORS })
+
+    s.lv = 200
+    let guard = 0
+    while (s.routeBuff && guard++ < 20000) applyTick(s, 100)
+    expect(s.routeBuff).toBe(null)
+  })
+
+  it('誘餌箱:事件逃走仍留下較低階獎勵', () => {
+    // 把血量調高強制逾時,否則事件會被打死變成正常獎勵
+    const escapeEvent = (s: ReturnType<typeof createInitialState>) => {
+      s.eventCooldown = 0
+      applyTick(s, 100)
+      expect(s.event).not.toBe(null)
+      s.event!.hp = D('1e18')
+      const before = s.gold
+      applyTick(s, (s.event!.timeLeft + 1) * 1000)
+      expect(s.event).toBe(null)
+      return before
+    }
+
+    const s = hunter(['hunter_2a'])
+    s.lv = 1
+    const before = escapeEvent(s)
+    expect(s.gold.gt(before)).toBe(true)
+
+    const noNode = createInitialState()
+    noNode.lv = 1
+    const g0 = escapeEvent(noNode)
+    expect(noNode.gold.toString()).toBe(g0.toString()) // 沒節點就什麼都沒有
+  })
+
+  it('耐心獵人:事件時間變長', () => {
+    const s = hunter(['hunter_1b'])
+    s.lv = 1
+    s.eventCooldown = 0
+    applyTick(s, 100)
+    expect(s.event!.timeLeft).toBeGreaterThan(B.EVENT_TIME)
+  })
+
+  it('命運交易:放棄事件收穫換命運點,每輪有上限', () => {
+    const s = hunter(['hunter_2b'])
+    expect(barterForDestiny(s)).toBe(false) // 還沒完成過事件
+
+    s.eventKindsDone = ['chest']
+    expect(barterForDestiny(s)).toBe(true)
+    expect(s.destinyPoints).toBe(1)
+    expect(s.eventKindsDone).toHaveLength(0)
+
+    s.eventKindsDone = ['goblin']
+    s.destinyPoints = 0
+    expect(barterForDestiny(s)).toBe(true)
+    s.eventKindsDone = ['chest']
+    s.destinyPoints = 0
+    expect(barterForDestiny(s)).toBe(false) // 已達每輪上限
+  })
+
+  it('沒有命運交易節點就不能換', () => {
+    const s = hunter([])
+    s.eventKindsDone = ['chest']
+    expect(barterForDestiny(s)).toBe(false)
   })
 })
 

@@ -118,6 +118,30 @@ export const EVENT_HP_MULT = 3 // HP = 該層小怪 ×3
 export const CHEST_GOLD_MULT = 30 // 金幣 = 該層小怪掉落 ×30
 export const GOBLIN_GOLD_MULT = 60
 
+// ── 尋寶獵人流派 ──
+/** 留存事件:每隔幾層出現一個,上限幾個待處理 */
+export const ENCOUNTER_EVERY_FLOORS = 12
+export const ENCOUNTER_CAP = 2
+/** 岔路增益持續層數 */
+export const ROUTE_BUFF_FLOORS = 15
+export const ROUTE_BUFF_MULT = 2
+/** 不祥預感:事件出現前幾秒開始預告 */
+export const OMEN_LEAD_SEC = 12
+/** 追跡者:依剩餘時間比例最多加成 */
+export const TRACKER_BONUS = 0.5
+/** 耐心獵人:事件時間倍率與獎勵倍率 */
+export const PATIENT_TIME_MULT = 1.6
+export const PATIENT_REWARD_MULT = 1.25
+/** 誘餌箱:事件逃走仍給的獎勵比例 */
+export const BAIT_CONSOLATION = 0.3
+/** 命運交易:放棄事件獎勵換命運點,每輪上限 */
+export const BARTER_MAX_PER_RUN = 2
+/** 黃金路線:完成幾種不同事件觸發一次保證高價值,獎勵倍率 */
+export const GOLDEN_KINDS_NEEDED = 3
+export const GOLDEN_REWARD_MULT = 2
+/** 禁忌地圖:事件出現頻率倍率 */
+export const FORBIDDEN_RATE_MULT = 0.6
+
 // 部位素材:每 10 層 Boss 首殺必掉 1,重複擊殺機率掉落
 export const PART_DROP_REPEAT = 0.3
 // 菁英素材:品質下限保證紫以上
@@ -153,23 +177,23 @@ export const CRIT_MULT = 3
 
 // ── 神匠流派節點數值 ──
 /** 鐵匠學徒:爐火 = 距上次打造累積的素材 / FORGE_COST,每層提高品質升階機率 */
-export const HEAT_PER_LAYER = 0.02
+export const HEAT_PER_LAYER = 0.015
 export const HEAT_MAX_LAYERS = 8
 /** 升階總機率上限(鐵匠鋪等級 + 爐火) */
 export const FORGE_UPGRADE_HARD_CAP = 0.75
 /** 餘火回收:打造出比身上差的裝備,返還素材比例 */
-export const EMBER_REFUND = 0.5
+export const EMBER_REFUND = 0.3
 /** 孤注一擲:雙倍素材換品質下限 +1 階 */
 export const ALLIN_COST_MULT = 2
 /** 武器吞噬:每次吞噬給武器的成長,與上限 */
-export const DEVOUR_GROWTH = 0.05
+export const DEVOUR_GROWTH = 0.03
 export const DEVOUR_MAX = 10
 /** 精工銘刻:額外詞條機率;精工出低於菁英視為失敗,返還比例 */
 export const INSCRIBE_AFFIX_CHANCE = 0.3
 export const INSCRIBE_REFUND = 0.5
 /** 活體神兵:每 N 次擊破 Boss 讓武器成長一階,與上限 */
 export const LIVING_BOSS_PER_STEP = 3
-export const LIVING_GROWTH = 0.1
+export const LIVING_GROWTH = 0.07
 export const LIVING_MAX_STEPS = 5
 /** 傳家之器:下一輪開局取得殘缺版的機率(品質降一階) */
 export const HEIRLOOM_CODEX_CHANCE = 0.5

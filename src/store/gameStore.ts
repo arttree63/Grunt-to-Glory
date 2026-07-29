@@ -6,6 +6,7 @@ import * as G from '../core/game'
 import type {
   DestinyNodeId,
   DestinyPathId,
+  EncounterId,
   Equipment,
   GameState,
   JobId,
@@ -40,6 +41,8 @@ interface Store {
   devourWeapon: (foodId: string) => void
   fineForge: (opts: G.FineForgeOptions) => Equipment | null
   buyElite: () => void
+  resolveEncounter: (id: EncounterId, choiceId: string) => void
+  barterForDestiny: () => void
   equip: (id: string) => void
   unequip: (slot: Slot) => void
   salvage: (id: string) => void
@@ -135,6 +138,16 @@ export const useGame = create<Store>((set, get) => ({
     if (e) gameEvents.emit({ type: 'forge', equipment: e })
     bump(set, get)
     return e
+  },
+
+  resolveEncounter(id, choiceId) {
+    G.resolveEncounter(get().s, id, choiceId)
+    bump(set, get)
+  },
+
+  barterForDestiny() {
+    G.barterForDestiny(get().s)
+    bump(set, get)
   },
 
   buyElite() {

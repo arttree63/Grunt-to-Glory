@@ -15,6 +15,19 @@ export interface ActiveBuff {
 }
 export type TechId = 'valor' | 'supply' | 'legacy' | 'camp' | 'heirloom'
 export type EventKind = 'chest' | 'goblin'
+/** 留存事件:不限時,保留在「旅途紀錄」等玩家回來處理,不會因掛機錯過 */
+export type EncounterId = 'blacksmith' | 'merchant' | 'crossroad'
+
+export interface PendingEncounter {
+  id: EncounterId
+  floor: number
+}
+
+/** 岔路等事件給的限時增益,以剩餘層數計算 */
+export interface RouteBuff {
+  kind: 'material' | 'gold'
+  floorsLeft: number
+}
 
 export interface RareEvent {
   kind: EventKind
@@ -87,6 +100,18 @@ export interface GameState {
   event: RareEvent | null
   /** 下次事件倒數(秒) */
   eventCooldown: number
+  /** 待處理的留存事件(上限 ENCOUNTER_CAP) */
+  encounters: PendingEncounter[]
+  /** 下一個留存事件的層數 */
+  nextEncounterFloor: number
+  /** 本輪完成過的事件種類(黃金路線用) */
+  eventKindsDone: string[]
+  /** 黃金路線:下一次事件保證高價值 */
+  goldenPending: boolean
+  /** 岔路增益 */
+  routeBuff: RouteBuff | null
+  /** 本輪已用過幾次命運交易 */
+  barterUsed: number
 
   // 資源
   materials: number
@@ -131,6 +156,7 @@ export interface GameEvent {
     | 'eventEscape'
     | 'destinyPoint'
     | 'weaponEvolve'
+    | 'encounter'
     | 'skill'
   floor?: number
   gold?: Decimal
@@ -140,4 +166,5 @@ export interface GameEvent {
   slot?: Slot
   kind?: EventKind
   skillId?: SkillId
+  encounterId?: EncounterId
 }

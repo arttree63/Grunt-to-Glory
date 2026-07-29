@@ -22,6 +22,12 @@ export interface SaveData {
   forgeHeatMaterials: number
   codex: GameState['codex']
   bossKills: number
+  encounters: GameState['encounters']
+  nextEncounterFloor: number
+  eventKindsDone: string[]
+  goldenPending: boolean
+  routeBuff: GameState['routeBuff']
+  barterUsed: number
   destinyPath: GameState['destinyPath']
   destinyNodes: GameState['destinyNodes']
   destinyPoints: number
@@ -61,6 +67,12 @@ export function serialize(s: GameState): SaveData {
     forgeHeatMaterials: s.forgeHeatMaterials,
     codex: s.codex,
     bossKills: s.bossKills,
+    encounters: s.encounters,
+    nextEncounterFloor: s.nextEncounterFloor,
+    eventKindsDone: s.eventKindsDone,
+    goldenPending: s.goldenPending,
+    routeBuff: s.routeBuff,
+    barterUsed: s.barterUsed,
     destinyPath: s.destinyPath,
     destinyNodes: s.destinyNodes,
     destinyPoints: s.destinyPoints,
@@ -143,6 +155,16 @@ function migrate(raw: SaveData): SaveData {
     d.bossKills = d.bossKills ?? 0
     d.version = 9
   }
+  // v9 → v10:留存事件(旅途紀錄)。留存事件會進存檔——限時事件才是暫態
+  if (d.version < 10) {
+    d.encounters = d.encounters ?? []
+    d.nextEncounterFloor = d.nextEncounterFloor ?? (d.floor ?? 1) + 12
+    d.eventKindsDone = d.eventKindsDone ?? []
+    d.goldenPending = d.goldenPending ?? false
+    d.routeBuff = d.routeBuff ?? null
+    d.barterUsed = d.barterUsed ?? 0
+    d.version = 10
+  }
   return d
 }
 
@@ -168,6 +190,12 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     forgeHeatMaterials: d.forgeHeatMaterials ?? 0,
     codex: d.codex ?? [],
     bossKills: d.bossKills ?? 0,
+    encounters: d.encounters ?? [],
+    nextEncounterFloor: d.nextEncounterFloor ?? 12,
+    eventKindsDone: d.eventKindsDone ?? [],
+    goldenPending: !!d.goldenPending,
+    routeBuff: d.routeBuff ?? null,
+    barterUsed: d.barterUsed ?? 0,
     destinyPath: d.destinyPath ?? null,
     destinyNodes: d.destinyNodes ?? [],
     destinyPoints: d.destinyPoints ?? 0,
