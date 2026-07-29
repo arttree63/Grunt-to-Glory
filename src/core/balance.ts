@@ -208,6 +208,14 @@ export const OFFLINE_CAP_HOURS = 4
  * 而不是像敵人在流血。渲染層的揮砍由 core 發出的 attack 事件驅動,兩者不會漂移。
  */
 export const ATTACK_INTERVAL = 0.8
+/**
+ * 戰意縮短攻擊間隔:滿戰意時攻擊頻率翻倍。
+ * 這是傷害中性的——每擊傷害 = DPS × 累積時間,打得快只是切得細。
+ * 但它讓「點擊強化自動攻擊」在畫面上真的看得見。
+ */
+export const MORALE_ATTACK_SPEED = 0.01
+/** 點擊觸發的攻擊至少要累積這麼久,避免連點變成無傷害的空揮 */
+export const CLICK_MIN_ACC = 0.15
 export const TICK_HZ = 10 // 邏輯固定 tick
 export const CRIT_RATE = 0.18
 export const CRIT_MULT = 3

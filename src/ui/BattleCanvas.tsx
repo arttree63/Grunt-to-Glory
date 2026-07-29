@@ -1,12 +1,9 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { fmt } from '../core/format'
-import * as B from '../core/balance'
-import { critRate, currentDPS } from '../core/game'
+import { attackInterval, critRate, currentDPS } from '../core/game'
 import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
 import { useGame } from '../store/gameStore'
-
-const AUTO_SWING_SEC = 0.8
 
 export default function BattleCanvas({ children }: { children?: ReactNode }) {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -23,7 +20,7 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         hpRatio: s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0,
         morale: s.morale,
         jobId: s.jobId,
-        autoDmgText: fmt(currentDPS(s).mul(AUTO_SWING_SEC)),
+        autoDmgText: fmt(currentDPS(s).mul(attackInterval(s))),
       }
     }
 
@@ -39,10 +36,9 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       const scene = sceneRef.current
       if (!scene) return
       if (e.type === 'attack') {
-        // 揮砍與傷害由同一個事件驅動,血條每一格下降都對得上一次攻擊
-        const s = useGame.getState().s
-        const crit = Math.random() < critRate(s)
-        scene.swing((crit ? '暴擊 ' : '') + fmt(currentDPS(s).mul(B.ATTACK_INTERVAL).mul(crit ? 3 : 1)), crit)
+        // 揮砍、跳字、血條都來自同一個事件,數字就是這一擊的實際傷害
+        const crit = Math.random() < critRate(useGame.getState().s)
+        scene.swing((crit ? '暴擊 ' : '') + fmt(e.damage!), crit)
       } else if (e.type === 'kill') scene.onKill(fmt(e.gold!))
       else if (e.type === 'bossKill') scene.onBossKill()
       else if (e.type === 'bossFail') scene.onBossFail()
@@ -58,15 +54,10 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
     }
   }, [])
 
-  // 點擊整個戰鬥畫面 = 攻擊(非按鈕)
-  const onPointerDown = () => {
-    const st = useGame.getState()
-    st.click()
-    const s = st.s
-    const crit = Math.random() < 0.18
-    const dmg = currentDPS(s).mul(AUTO_SWING_SEC).mul(crit ? 3 : 1)
-    sceneRef.current?.swing((crit ? '暴擊 ' : '') + fmt(dmg), crit)
-  }
+  // 點擊整個戰鬥畫面 = 攻擊(非按鈕)。
+  // 揮砍動畫統一由 core 的 attack 事件驅動,這裡只負責告訴 core「玩家點了」,
+  // 否則會出現動畫揮了但血條沒動的落差。
+  const onPointerDown = () => useGame.getState().click()
 
   return (
     <div className="stage" onPointerDown={onPointerDown}>

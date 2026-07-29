@@ -142,6 +142,8 @@ export interface GameState {
   sigils: number
   /** 距上次攻擊累積的秒數(暫態,不進存檔) */
   attackAcc: number
+  /** 玩家剛點擊,下一個 tick 提前出手(暫態) */
+  attackNow: boolean
   /** 突發事件(寶箱怪 / 黃金哥布林),出現時取代當前目標 */
   event: RareEvent | null
   /** 下次事件倒數(秒) */
@@ -221,6 +223,8 @@ export interface GameEvent {
     | 'skill'
   floor?: number
   gold?: Decimal
+  /** attack 事件:這一擊實際造成的傷害 */
+  damage?: Decimal
   equipment?: Equipment
   /** kill 事件在單 tick 內合併的隻數 */
   count?: number

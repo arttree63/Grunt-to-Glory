@@ -86,6 +86,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     buff: null,
     sigils: 0,
     attackAcc: 0,
+    attackNow: false,
     event: null,
     eventCooldown: B.EVENT_INTERVAL_AVG,
     encounters: [],
@@ -314,16 +315,20 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   // ── 攻擊驅動:傷害按攻擊間隔成塊套用 ──
   // 血條跟著揮砍一格一格掉,而不是連續流失。總量不變(累積多久就打多少),
   // 所以數值曲線不受影響;渲染層的揮砍也由這裡發出的 attack 事件驅動,兩者不會漂移。
+  // 點擊會提前出手,但至少要累積 CLICK_MIN_ACC,否則連點會變成沒傷害的空揮
+  const interval = attackInterval(s)
+  const need = s.attackNow ? Math.min(interval, B.CLICK_MIN_ACC) : interval
   s.attackAcc += dt
-  if (s.attackAcc < B.ATTACK_INTERVAL) {
+  if (s.attackAcc < need) {
     if (s.event && s.event.timeLeft <= 0) escapeEvent(s, raw, rng)
     else checkBossTimeout(s, raw)
     return mergeKills(raw)
   }
   const swung = s.attackAcc
   s.attackAcc = 0
-  raw.push({ type: 'attack' })
+  s.attackNow = false
   let dmg = currentDPS(s).mul(swung)
+  raw.push({ type: 'attack', damage: dmg })
 
   // 突發事件優先吃傷害:出現期間取代當前目標
   if (s.event) {
@@ -476,6 +481,8 @@ function markEventKind(s: GameState, kind: string) {
 export function click(s: GameState): void {
   const clickBonus = equipBonuses(s.equipped).clickDmg
   s.morale = Math.min(B.MORALE_MAX, s.morale + B.MORALE_PER_CLICK * (1 + clickBonus))
+  // 點擊要立刻看得到反應,不是等下一次排程的攻擊
+  s.attackNow = true
 }
 
 /** 手動重新挑戰 Boss */
@@ -544,6 +551,11 @@ export function revealStage(s: GameState): RevealStage {
 /** 本輪會走到的二轉(命運已定時只有一個) */
 export function destinyOutcome(s: GameState) {
   return destinyJobs(s.jobId, s.destinyPath)
+}
+
+/** 實際攻擊間隔。戰意越高打得越快(傷害中性,只是切得更細) */
+export function attackInterval(s: GameState): number {
+  return B.ATTACK_INTERVAL / (1 + s.morale * B.MORALE_ATTACK_SPEED)
 }
 
 // ---------- 職業覺醒與印記 ----------
