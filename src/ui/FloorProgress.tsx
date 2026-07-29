@@ -21,7 +21,7 @@ export function FloorDots() {
       {Array.from({ length: total }, (_, i) => (
         <i key={i} className={i < done ? 'on' : ''} />
       ))}
-      <span>{nextIsBoss ? '清完進 Boss 層' : `${done}/${total}`}</span>
+      <span>{nextIsBoss ? `${done}/${total}・下層 Boss` : `${done}/${total}`}</span>
     </div>
   )
 }

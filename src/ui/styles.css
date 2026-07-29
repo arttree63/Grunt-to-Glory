@@ -543,3 +543,38 @@ button {
 .retry.ready b {
   color: var(--morale-b);
 }
+
+/* Boss 挑戰按鈕:失敗退回前一層後常駐,讓玩家自己決定何時再上 */
+.boss-challenge {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 92px;
+  max-width: 92%;
+  padding: 8px 18px;
+  border-radius: 12px;
+  background: #241d31ee;
+  border: 1px solid var(--boss-a);
+  text-align: center;
+  line-height: 1.5;
+}
+.boss-challenge.ready {
+  border-color: var(--morale-a);
+  box-shadow: 0 0 14px #3fae9f55;
+}
+.boss-challenge b {
+  display: block;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--boss-b);
+}
+.boss-challenge.ready b {
+  color: var(--morale-b);
+}
+.boss-challenge small {
+  display: block;
+  font-size: 11px;
+  color: var(--dim2);
+  margin-top: 2px;
+}

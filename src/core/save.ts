@@ -18,6 +18,7 @@ export interface SaveData {
   enemyMaxHp: string
   bossTimeLeft: number
   bossFailed: boolean
+  bossRetryFloor: number | null
   morale: number
   talents: GameState['talents']
   materials: number
@@ -50,6 +51,7 @@ export function serialize(s: GameState): SaveData {
     enemyMaxHp: s.enemyMaxHp.toString(),
     bossTimeLeft: s.bossTimeLeft,
     bossFailed: s.bossFailed,
+    bossRetryFloor: s.bossRetryFloor,
     morale: s.morale,
     talents: s.talents,
     materials: s.materials,
@@ -106,6 +108,12 @@ function migrate(raw: SaveData): SaveData {
     if (!d.talents) d.talents = { str: Math.max(0, (d.lv ?? 1) - 1), agi: 0, int: 0, luk: 0 }
     d.version = 6
   }
+  // v6 → v7:Boss 失敗改為退回前一層,需要記住要重挑戰哪一層
+  if (d.version < 7) {
+    // 舊存檔停在 Boss 層 farm;把重試層設成當前層,讀檔後行為一致
+    d.bossRetryFloor = d.bossFailed ? (d.floor ?? null) : null
+    d.version = 7
+  }
   return d
 }
 
@@ -126,6 +134,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     enemyMaxHp: D(d.enemyMaxHp ?? base.enemyMaxHp),
     bossTimeLeft: d.bossTimeLeft ?? 30,
     bossFailed: !!d.bossFailed,
+    bossRetryFloor: d.bossRetryFloor ?? null,
     morale: d.morale ?? 0,
     talents: d.talents ?? emptyTalents(),
     materials: d.materials ?? 0,

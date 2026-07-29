@@ -55,8 +55,10 @@ export interface GameState {
   enemyHp: Decimal
   enemyMaxHp: Decimal
   bossTimeLeft: number
-  /** 本層 Boss 已挑戰失敗過 → farm 模式 */
+  /** 本層 Boss 已挑戰失敗過 → 退回前一層 farm */
   bossFailed: boolean
+  /** 失敗的是哪一層的 Boss。玩家退回前一層 farm,按鈕或自動重試會回到這層 */
+  bossRetryFloor: number | null
 
   morale: number
   /** 天賦配點 */

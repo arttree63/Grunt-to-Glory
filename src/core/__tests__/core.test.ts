@@ -125,33 +125,56 @@ describe('戰鬥循環', () => {
     expect(kill?.count).toBeGreaterThan(1) // 事件已合併,演出層不會被灌爆
   })
 
-  it('10 層進 Boss;限時到 → 退回 farm,farm 一輪後自動重挑戰', () => {
+  it('Boss 限時到 → 退回前一層 farm,farm 一輪後自動再挑戰', () => {
     const s = createInitialState()
     s.floor = 10
     s.bossFailed = false
     s.lv = 1 // 打不動
     spawnEnemy(s)
     expect(s.isBoss).toBe(true)
+
     applyTick(s, B.BOSS_TIME * 1000)
     expect(s.bossFailed).toBe(true)
     expect(s.isBoss).toBe(false)
-    expect(s.floor).toBe(10) // 停在該層 farm
+    expect(s.floor).toBe(9) // 退回前一層
+    expect(s.bossRetryFloor).toBe(10)
 
     s.lv = 40
     let guard = 0
     while (!s.isBoss && guard++ < 500) applyTick(s, 100)
-    expect(s.isBoss).toBe(true) // farm 一輪後自動重新挑戰
+    expect(s.isBoss).toBe(true) // 清完一輪自動回去挑戰
     expect(s.floor).toBe(10)
+    expect(s.bossRetryFloor).toBe(null)
   })
 
-  it('手動重挑戰 Boss', () => {
+  it('挑戰 Boss 按鈕:不必等清完小怪就能直接回 Boss 層', () => {
     const s = createInitialState()
-    s.floor = 20
+    s.floor = 19
     s.bossFailed = true
+    s.bossRetryFloor = 20
     s.isBoss = false
+
     expect(retryBoss(s)).toBe(true)
+    expect(s.floor).toBe(20)
     expect(s.isBoss).toBe(true)
     expect(s.bossTimeLeft).toBe(B.BOSS_TIME)
+    expect(s.bossRetryFloor).toBe(null)
+  })
+
+  it('沒有待挑戰的 Boss 就不能用挑戰按鈕', () => {
+    const s = createInitialState()
+    expect(retryBoss(s)).toBe(false)
+  })
+
+  it('擊破 Boss 後清掉重試層,不會再被拉回去', () => {
+    const s = createInitialState()
+    s.floor = 10
+    s.bossRetryFloor = 10
+    spawnEnemy(s)
+    s.enemyHp = D(1)
+    applyTick(s, 1000)
+    expect(s.floor).toBe(11)
+    expect(s.bossRetryFloor).toBe(null)
   })
 
   it('擊破 Boss 進下一層', () => {

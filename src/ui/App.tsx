@@ -40,12 +40,15 @@ export default function App() {
   return <Game />
 }
 
-/** Boss 失敗不能只說「失敗」,要說還差多少、下一步做什麼 */
+/** Boss 失敗後常駐的挑戰按鈕:說清楚差多少、該做什麼、要挑戰第幾層 */
 function BossHint() {
   const s = useGameState()
   const retryBoss = useGame((st) => st.retryBoss)
-  const gap = bossGap(s)
-  // gap < 1 代表現在的 DPS 已經足夠,別再叫玩家去刷
+  const target = s.bossRetryFloor
+  if (target === null) return null
+
+  // 用要挑戰的那層算差距,不是玩家現在 farm 的層
+  const gap = bossGap(s, target)
   const ready = gap < 1
   const advice = ready
     ? '現在打得過了'
@@ -55,18 +58,18 @@ function BossHint() {
         ? '金幣夠了,先買等級'
         : pendingMedals(s) > 0
           ? '這代到極限了,可考慮退役'
-          : '多打幾輪累積金幣與素材'
+          : '在這層多打幾輪'
 
   return (
     <button
-      className={`retry${ready ? ' ready' : ''}`}
+      className={`boss-challenge${ready ? ' ready' : ''}`}
       onPointerDown={(e) => {
         e.stopPropagation()
         retryBoss()
       }}
     >
-      <b>{ready ? '可以再挑戰 Boss' : `Boss 差 ${gap.toFixed(1)} 倍 DPS`}</b>
-      ・{advice}
+      <b>挑戰第 {target} 層 Boss</b>
+      <small>{ready ? advice : `還差 ${gap.toFixed(1)} 倍 DPS・${advice}`}</small>
     </button>
   )
 }

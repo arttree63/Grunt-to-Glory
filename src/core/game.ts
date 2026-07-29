@@ -78,6 +78,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     enemyMaxHp: D(0),
     bossTimeLeft: B.BOSS_TIME,
     bossFailed: false,
+    bossRetryFloor: null,
     morale: 0,
     talents: emptyTalents(),
     skillCd: {},
@@ -103,7 +104,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 6
+export const SAVE_VERSION = 7
 
 // ---------- 數值查詢 ----------
 
@@ -164,9 +165,9 @@ export function dpsBreakdown(s: GameState): DpsPart[] {
   ]
 }
 
-/** Boss 檢定還差多少倍 DPS(>1 代表打不過) */
-export function bossGap(s: GameState): number {
-  const need = bossHP(s.floor).div(B.BOSS_TIME)
+/** Boss 檢定還差多少倍 DPS(>1 代表打不過)。floor 省略時用當前層 */
+export function bossGap(s: GameState, floor = s.floor): number {
+  const need = bossHP(floor).div(B.BOSS_TIME)
   return need.div(currentDPS(s)).toNumber()
 }
 
@@ -225,13 +226,18 @@ function nextEnemy(s: GameState, events: GameEvent[]) {
     s.floor++
     s.killsInFloor = 0
     s.bossFailed = false
+    s.bossRetryFloor = null
     events.push({ type: 'floorUp', floor: s.floor })
   } else {
     s.killsInFloor++
     if (s.killsInFloor >= B.MOBS_PER_FLOOR) {
       s.killsInFloor = 0
-      if (isBossFloor(s.floor)) {
-        s.bossFailed = false // farm 一輪後自動重新挑戰 Boss
+      if (s.bossRetryFloor !== null) {
+        // 在前一層 farm 完一輪 → 自動再挑戰(掛機玩家不會卡死)
+        s.floor = s.bossRetryFloor
+        s.bossFailed = false
+        s.bossRetryFloor = null
+        events.push({ type: 'floorUp', floor: s.floor })
       } else {
         s.floor++
         events.push({ type: 'floorUp', floor: s.floor })
@@ -300,10 +306,12 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   if (s.isBoss && s.enemyHp.gt(0)) {
     s.bossTimeLeft -= dt
     if (s.bossTimeLeft <= 0) {
-      // DPS check 失敗 → 退回該層 farm
+      // DPS check 失敗 → 退回前一層 farm(玩家心智模型:打不過就退一層)
       s.bossFailed = true
+      s.bossRetryFloor = s.floor
+      s.floor = Math.max(1, s.floor - 1)
       s.killsInFloor = 0
-      raw.push({ type: 'bossFail', floor: s.floor })
+      raw.push({ type: 'bossFail', floor: s.bossRetryFloor })
       spawnEnemy(s)
     }
   }
@@ -363,9 +371,12 @@ export function click(s: GameState): void {
 }
 
 /** 手動重新挑戰 Boss */
+/** 手動挑戰 Boss:從 farm 的前一層直接回到 Boss 層,不必等清完小怪 */
 export function retryBoss(s: GameState): boolean {
-  if (!s.bossFailed || !isBossFloor(s.floor)) return false
+  if (!s.bossFailed || s.bossRetryFloor === null) return false
+  s.floor = s.bossRetryFloor
   s.bossFailed = false
+  s.bossRetryFloor = null
   s.killsInFloor = 0
   spawnEnemy(s)
   return true
