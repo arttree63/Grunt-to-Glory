@@ -1,5 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { fmt } from '../core/format'
+import * as B from '../core/balance'
+import { critMultiplier } from '../core/formulas'
 import { attackInterval, critRate, currentDPS } from '../core/game'
 import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
@@ -30,16 +32,23 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         return
       }
       sceneRef.current = scene
+      if (import.meta.env.DEV) (window as unknown as { __scene: BattleScene }).__scene = scene
     })
 
     const off = gameEvents.on((e) => {
       const scene = sceneRef.current
       if (!scene) return
       if (e.type === 'attack') {
-        // 揮砍、跳字、血條都來自同一個事件,數字就是這一擊的實際傷害
-        const crit = Math.random() < critRate(useGame.getState().s)
-        scene.swing((crit ? '暴擊 ' : '') + fmt(e.damage!), crit)
-      } else if (e.type === 'kill') scene.onKill(fmt(e.gold!))
+        // 暴擊是以期望值內建在 DPS 裡的,個別攻擊不會真的暴擊。
+        // 這裡把它拆回來只為了顯示:暴擊顯示大數字、普通顯示小數字,平均值不變。
+        const s = useGame.getState().s
+        const rate = Math.min(1, critRate(s))
+        const crit = Math.random() < rate
+        const base = e.damage!.div(critMultiplier(rate))
+        const shown = crit ? base.mul(B.CRIT_MULT) : base
+        scene.swing((crit ? '暴擊 ' : '') + fmt(shown), crit)
+      } else if (e.type === 'runReset') scene.clearNumbers()
+      else if (e.type === 'kill') scene.onKill(fmt(e.gold!))
       else if (e.type === 'bossKill') scene.onBossKill()
       else if (e.type === 'bossFail') scene.onBossFail()
       else if (e.type === 'eventKill') scene.onEventKill(fmt(e.gold!), !!e.count)

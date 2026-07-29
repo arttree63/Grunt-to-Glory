@@ -180,6 +180,8 @@ export class BattleScene {
   private elapsed = 0
   private spawnTimer = 0
   private goldNumCooldown = 0
+  private hitNumCooldown = 0
+  private hitNumSlot = 0
   private W = 0
   private H = 0
   private destroyed = false
@@ -254,7 +256,7 @@ export class BattleScene {
     if (this.eventView) {
       this.eventView.flash()
       this.spawnImpact(this.W / 2, this.H * 0.48, 0.56)
-      this.damageNum(this.W / 2 + (Math.random() - 0.5) * 60, this.H * 0.42, dmgText, crit)
+      this.hitNum(this.W / 2, this.H * 0.42, dmgText, crit)
     } else if (this.boss) {
       this.boss.flash()
       this.boss.view.y += 6
@@ -263,7 +265,7 @@ export class BattleScene {
         this.H * 0.3,
         0.72,
       )
-      this.damageNum(this.W / 2 + (Math.random() - 0.5) * this.W * 0.4, this.H * 0.34, dmgText, crit)
+      this.hitNum(this.W / 2, this.H * 0.34, dmgText, crit)
     } else {
       const target = this.frontMob()
       if (target) {
@@ -271,7 +273,7 @@ export class BattleScene {
         target.view.y -= 10
         const hit = target.hitPoint()
         this.spawnImpact(hit.x, hit.y, target.view.scale.x)
-        this.damageNum(target.view.x, target.view.y - target.view.height * 0.82, dmgText, crit)
+        this.hitNum(target.view.x, target.view.y - target.view.height * 0.82, dmgText, crit)
       }
     }
   }
@@ -294,6 +296,19 @@ export class BattleScene {
     }
     target.view.destroy()
     this.mobs = this.mobs.filter((m) => m !== target)
+  }
+
+  /** 目前畫面上還有幾個跳字(驗證用) */
+  get floatingCount(): number {
+    return this.dmgLayer.children.length
+  }
+
+  /** 換代/重置:清掉還在飄的跳字,否則上一輪的數字會混進新的一代 */
+  clearNumbers() {
+    if (this.destroyed) return
+    for (let i = this.dmgLayer.children.length - 1; i >= 0; i--) this.dmgLayer.children[i].destroy()
+    this.hitNumCooldown = 0
+    this.goldNumCooldown = 0
   }
 
   onBossKill() {
@@ -325,6 +340,19 @@ export class BattleScene {
     return this.mobs.filter((m) => m.t > 0.55).sort((a, b) => b.t - a.t)[0]
   }
 
+  /**
+   * 攻擊跳字。連續攻擊(尤其連點)會讓數字全部疊在同一點變成一團,
+   * 所以節流 + 依序錯開位置;暴擊不節流,它本來就該被看見。
+   */
+  private hitNum(x: number, y: number, txt: string, crit: boolean) {
+    if (!crit) {
+      if (this.hitNumCooldown > 0) return
+      this.hitNumCooldown = 160
+    }
+    const slot = this.hitNumSlot++ % 3
+    this.damageNum(x + (slot - 1) * 46, y - slot * 22, txt, crit)
+  }
+
   private damageNum(x: number, y: number, txt: string, crit: boolean) {
     // 同屏跳字上限,超過先移除最舊的
     while (this.dmgLayer.children.length >= 12) this.dmgLayer.children[0].destroy()
@@ -350,6 +378,7 @@ export class BattleScene {
     const snap = this.getSnap()
     this.elapsed += ms
     this.goldNumCooldown -= ms
+    this.hitNumCooldown -= ms
     const resized = this.W !== this.app.screen.width || this.H !== this.app.screen.height
     this.W = this.app.screen.width
     this.H = this.app.screen.height

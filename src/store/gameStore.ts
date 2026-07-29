@@ -202,6 +202,7 @@ export const useGame = create<Store>((set, get) => ({
     const next = G.prestige(get().s, heirloomIds)
     if (next) {
       // 轉生要被呈現為結算與傳承,不是清空
+      gameEvents.emit({ type: 'runReset' })
       set({ s: next, lastRun: next.chronicle[0] ?? null, rev: get().rev + 1 })
       void saveGame(next)
     }
@@ -217,6 +218,7 @@ export const useGame = create<Store>((set, get) => ({
 
   async reset() {
     await wipeSave()
+    gameEvents.emit({ type: 'runReset' })
     set({ s: G.createInitialState(), rev: get().rev + 1, offline: null })
   },
 }))
@@ -268,6 +270,12 @@ function startLoop() {
 // 開發用:瀏覽器 console 可直接操作 state 驗證(不進 production bundle)
 if (import.meta.env.DEV) {
   ;(window as unknown as { __game: typeof useGame }).__game = useGame
+  // 驗證顯示字串用:畫面上的數字要能直接對得回來
+  void import('../core/format').then((m) => {
+    ;(window as unknown as { __fmt: typeof m.fmt }).__fmt = m.fmt
+  })
+  // 驗證用:攔事件流,確認畫面顯示的數字與實際入袋一致
+  ;(window as unknown as { __events: typeof gameEvents }).__events = gameEvents
 }
 
 // UI 便利選擇器

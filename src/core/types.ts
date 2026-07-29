@@ -218,6 +218,7 @@ export interface GameEvent {
     | 'eventEscape'
     | 'destinyPoint'
     | 'attack'
+    | 'runReset'
     | 'weaponEvolve'
     | 'encounter'
     | 'skill'
