@@ -213,6 +213,9 @@ export const LIVING_MAX_STEPS = 5
 /** 傳家之器:下一輪開局取得殘缺版的機率(品質降一階) */
 export const HEIRLOOM_CODEX_CHANCE = 0.5
 
+/** 列傳保留幾代 */
+export const CHRONICLE_MAX = 30
+
 // 命運樹
 /** 本輪達到這些層數各給一枚命運點(用當輪層數,不是歷史最高) */
 export const DESTINY_MILESTONES = [20, 50, 90]

@@ -1,6 +1,87 @@
+import { useState } from 'react'
 import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, nextMilestone, pendingChoice } from '../../core/destiny'
+import { QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
+import { heirloomCandidates, pendingMedals } from '../../core/game'
+import { heirloomSlots } from '../../core/techs'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
+
+/** 轉生 = 開始新的命運,所以入口放在命運頁 */
+function PrestigeSection() {
+  const s = useGameState()
+  const prestige = useGame((st) => st.prestige)
+  const [confirm, setConfirm] = useState(false)
+  const [picked, setPicked] = useState<string[]>([])
+  const gain = pendingMedals(s)
+  const candidates = heirloomCandidates(s)
+  const slots = heirloomSlots(s.techs)
+
+  return (
+    <>
+      <h3 style={{ marginTop: 16 }}>退 役 / 傳 承</h3>
+      <div className="row">
+        <span className="k">本代最高層數</span>
+        <span className="v">{s.highestFloor} 層</span>
+      </div>
+      <div className="row">
+        <span className="k">退役可得勳章</span>
+        <span className="v" style={{ color: 'var(--gold)' }}>
+          {gain} 枚
+        </span>
+      </div>
+
+      {!confirm ? (
+        <div className="btn-row">
+          <button className="btn primary" disabled={gain <= 0} onClick={() => setConfirm(true)}>
+            {gain > 0 ? `退役,讓下一代接棒(+${gain} 枚)` : '至少推進到 10 層才能退役'}
+          </button>
+        </div>
+      ) : (
+        <div className="card" style={{ marginTop: 10 }}>
+          <div className="affix" style={{ marginBottom: 8, lineHeight: 1.7 }}>
+            這一代的等級、金幣、素材與命運都會歸零,換得 {gain} 枚勳章與一段列傳。
+            <br />
+            可指定 {slots} 件裝備當傳家寶帶給下一代。
+          </div>
+          {candidates.slice(0, 8).map((e) => {
+            const on = picked.includes(e.id)
+            return (
+              <button
+                key={e.id}
+                className="row"
+                style={{ width: '100%', textAlign: 'left', opacity: on ? 1 : 0.6 }}
+                onClick={() =>
+                  setPicked(on ? picked.filter((id) => id !== e.id) : [...picked, e.id].slice(-slots))
+                }
+              >
+                <span style={{ color: `var(--q-${e.quality})` }}>
+                  {on ? '● ' : '○ '}
+                  {QUALITY_NAME[e.quality]}
+                  {SLOT_NAME[e.slot]}
+                </span>
+              </button>
+            )
+          })}
+          <div className="btn-row">
+            <button
+              className="btn primary"
+              onClick={() => {
+                prestige(picked)
+                setPicked([])
+                setConfirm(false)
+              }}
+            >
+              確認退役
+            </button>
+            <button className="btn" onClick={() => setConfirm(false)}>
+              再想想
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
 
 export default function DestinyPanel() {
   const s = useGameState()
@@ -81,7 +162,7 @@ export default function DestinyPanel() {
         )
       })}
 
-      <div className="empty">節點效果實作中(第一批僅完成命運樹框架與決策流程)</div>
+      <PrestigeSection />
     </div>
   )
 }

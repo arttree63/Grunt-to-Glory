@@ -24,6 +24,23 @@ export interface PendingEncounter {
 }
 
 /** 岔路等事件給的限時增益,以剩餘層數計算 */
+/** 歷代小兵列傳。每代結束自動生成一張卡 */
+export interface ChronicleEntry {
+  gen: number
+  name: string
+  /** 職業路徑,例如「重裝步兵 → 聖騎士」 */
+  jobPath: string
+  destiny: string | null
+  floor: number
+  /** 留下的傳家之器名稱 */
+  heirloom: string | null
+  /** 結局文字。⚠️ 不可寫「被打死」——遊戲沒有玩家 HP */
+  epitaph: string
+  medalsGained: number
+  forgeGained: number
+  codexGained: number
+}
+
 export interface RouteBuff {
   kind: 'material' | 'gold'
   floorsLeft: number
@@ -82,6 +99,10 @@ export interface GameState {
   forgeHeatMaterials: number
   /** 傳承圖鑑:歷代登錄過的裝備(跨轉生保留) */
   codex: Equipment[]
+  /** 歷代小兵列傳(跨轉生保留) */
+  chronicle: ChronicleEntry[]
+  /** 本輪開始時的永久資產快照,用來算轉生結算的「本代帶來的變化」 */
+  runStart: { medals: number; forgeCount: number; codexCount: number }
   /** 本輪擊破 Boss 次數(活體神兵用) */
   bossKills: number
   /** 本輪選擇的命運路徑 */

@@ -6,15 +6,25 @@ import type { SkillId } from '../core/types'
 import { useGame } from '../store/gameStore'
 import { useGameState } from './useGameState'
 
-const SLOT_COUNT = 4
+/**
+ * 下一格要解鎖什麼。空格不是留白,是預告載體——
+ * 「還有東西要來」和「內容沒做完」在畫面上是同一件事,差別只在有沒有寫出來。
+ */
+function nextUnlock(s: ReturnType<typeof useGameState>): string | null {
+  const job = JOBS[s.jobId]
+  if (job.tier === 0) return `Lv.${JOBS.infantry.reqLv} 轉職後解鎖`
+  if (job.tier === 1) return `Lv.${JOBS.paladin.reqLv} 二轉後解鎖`
+  return null
+}
 
-/** 技能列。未解鎖的格子維持佔位,冷卻用覆蓋層表示 */
+/** 技能列。冷卻用覆蓋層表示,最後一格是下一個解鎖的預告 */
 export default function SkillBar() {
   const s = useGameState()
   const cast = useGame((st) => st.castSkill)
   const toggleCharge = useGame((st) => st.toggleCharge)
   const owned = JOBS[s.jobId].skills
-  const slots: Array<SkillId | null> = Array.from({ length: SLOT_COUNT }, (_, i) => owned[i] ?? null)
+  const preview = nextUnlock(s)
+  const slots: Array<SkillId | null> = [...owned]
 
   return (
     <div className="skills">
@@ -88,6 +98,15 @@ export default function SkillBar() {
           </button>
         )
       })}
+
+      {preview && (
+        <div
+          className="skill locked"
+          style={{ fontSize: 9, lineHeight: 1.3, textAlign: 'center', padding: 4, opacity: 0.6 }}
+        >
+          {preview}
+        </div>
+      )}
     </div>
   )
 }

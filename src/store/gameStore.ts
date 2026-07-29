@@ -28,6 +28,8 @@ interface Store {
   rev: number
   loaded: boolean
   offline: OfflineReport | null
+  /** 剛完成的轉生結算,供結算頁顯示 */
+  lastRun: import('../core/types').ChronicleEntry | null
 
   init: () => Promise<void>
   tick: (dtMs: number) => void
@@ -52,6 +54,7 @@ interface Store {
   buyTech: (id: TechId) => void
   prestige: (heirloomIds?: string[]) => void
   dismissOffline: () => void
+  dismissRunSummary: () => void
   reset: () => Promise<void>
 }
 
@@ -62,6 +65,7 @@ export const useGame = create<Store>((set, get) => ({
   rev: 0,
   loaded: false,
   offline: null,
+  lastRun: null,
 
   async init() {
     const { state, awayMs } = await loadGame()
@@ -197,13 +201,18 @@ export const useGame = create<Store>((set, get) => ({
   prestige(heirloomIds = []) {
     const next = G.prestige(get().s, heirloomIds)
     if (next) {
-      set({ s: next, rev: get().rev + 1 })
+      // 轉生要被呈現為結算與傳承,不是清空
+      set({ s: next, lastRun: next.chronicle[0] ?? null, rev: get().rev + 1 })
       void saveGame(next)
     }
   },
 
   dismissOffline() {
     set({ offline: null })
+  },
+
+  dismissRunSummary() {
+    set({ lastRun: null })
   },
 
   async reset() {

@@ -25,6 +25,7 @@ import {
 import { JOBS } from './jobs'
 import { SKILLS } from './skills'
 import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, hasNode, pendingChoice } from './destiny'
+import { makeChronicleEntry } from './chronicle'
 import { ENCOUNTER_ORDER } from './encounters'
 import {
   canBuyTech,
@@ -74,6 +75,8 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     morale: 0,
     forgeHeatMaterials: 0,
     codex: [],
+    chronicle: [],
+    runStart: { medals, forgeCount: 0, codexCount: 0 },
     bossKills: 0,
     destinyPath: null,
     destinyNodes: [],
@@ -114,7 +117,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 11
+export const SAVE_VERSION = 12
 
 // ---------- 數值查詢 ----------
 
@@ -887,12 +890,19 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
       livingSteps: 0,
     })
   }
-  next.inventory = keep
+  // ⚠️ 用 push 不是覆蓋:上面圖鑑可能已經放了一件殘缺版,
+  // 原本寫成 next.inventory = keep 會把它蓋掉,等於傳家之器的跨輪獎勵永遠發不出去
+  next.inventory = [...keep, ...next.inventory]
   // 命運樹每輪重新選,不帶過去(跨輪的收藏留給之後的傳承圖鑑)
   next.forgeCount = s.forgeCount // 鐵匠鋪等級不隨轉生歸零
   next.pityCount = s.pityCount // 保底計數跨轉生保留
   next.pityLegendary = s.pityLegendary
   next.maxBossKilled = 0 // 層數歸零,首殺重新計算
+
+  // 歷代小兵列傳:每代留下一段歷史,這就是「小兵的故事」
+  const entry = makeChronicleEntry(s, gain, keep[0] ?? null)
+  next.chronicle = [entry, ...s.chronicle].slice(0, B.CHRONICLE_MAX)
+  next.runStart = { medals: next.medals, forgeCount: next.forgeCount, codexCount: next.codex.length }
   next.lastEliteDay = s.lastEliteDay
   next.eliteMaterials = s.eliteMaterials // 菁英素材是稀有資源,不因轉生沒收
   return next

@@ -21,6 +21,8 @@ export interface SaveData {
   morale: number
   forgeHeatMaterials: number
   codex: GameState['codex']
+  chronicle: GameState['chronicle']
+  runStart: GameState['runStart']
   bossKills: number
   encounters: GameState['encounters']
   nextEncounterFloor: number
@@ -68,6 +70,8 @@ export function serialize(s: GameState): SaveData {
     morale: s.morale,
     forgeHeatMaterials: s.forgeHeatMaterials,
     codex: s.codex,
+    chronicle: s.chronicle,
+    runStart: s.runStart,
     bossKills: s.bossKills,
     encounters: s.encounters,
     nextEncounterFloor: s.nextEncounterFloor,
@@ -175,6 +179,16 @@ function migrate(raw: SaveData): SaveData {
     d.valiantStacks = d.valiantStacks ?? 0
     d.version = 11
   }
+  // v11 → v12:歷代列傳與本輪增量快照
+  if (d.version < 12) {
+    d.chronicle = d.chronicle ?? []
+    d.runStart = d.runStart ?? {
+      medals: d.medals ?? 0,
+      forgeCount: d.forgeCount ?? 0,
+      codexCount: (d.codex ?? []).length,
+    }
+    d.version = 12
+  }
   return d
 }
 
@@ -199,6 +213,8 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     morale: d.morale ?? 0,
     forgeHeatMaterials: d.forgeHeatMaterials ?? 0,
     codex: d.codex ?? [],
+    chronicle: d.chronicle ?? [],
+    runStart: d.runStart ?? { medals: d.medals ?? 0, forgeCount: d.forgeCount ?? 0, codexCount: (d.codex ?? []).length },
     bossKills: d.bossKills ?? 0,
     encounters: d.encounters ?? [],
     nextEncounterFloor: d.nextEncounterFloor ?? 12,

@@ -837,6 +837,75 @@ describe('部位/菁英素材與精工鍛造', () => {
   })
 })
 
+describe('歷代列傳與傳承', () => {
+  it('每次轉生留下一張列傳,含職業路徑、命運、層數、結局', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    chooseDestiny(s, 'artisan')
+    s.highestFloor = 86
+
+    const next = prestige(s)!
+    expect(next.chronicle).toHaveLength(1)
+    const c = next.chronicle[0]
+    expect(c.gen).toBe(1)
+    expect(c.name).toBeTruthy()
+    expect(c.jobPath).toContain('重裝步兵')
+    expect(c.destiny).toBe('神匠')
+    expect(c.floor).toBe(86)
+    expect(c.medalsGained).toBe(8)
+  })
+
+  it('結局文字不能寫成「被打死」——遊戲沒有玩家 HP', () => {
+    const s = createInitialState()
+    s.highestFloor = 50
+    s.bossRetryFloor = 50
+    const c = prestige(s)!.chronicle[0]
+    expect(c.epitaph).toContain('未能在時限內')
+    expect(c.epitaph).not.toMatch(/死|殺|陣亡/)
+  })
+
+  it('列傳最新的在最前面,且有保留上限', () => {
+    let s = createInitialState()
+    for (let i = 0; i < 3; i++) {
+      s.highestFloor = 10 * (i + 2)
+      s = prestige(s)!
+    }
+    expect(s.chronicle).toHaveLength(3)
+    expect(s.chronicle[0].gen).toBe(3) // 最新在最前
+    expect(s.chronicle.length).toBeLessThanOrEqual(B.CHRONICLE_MAX)
+  })
+
+  it('傳家寶不會蓋掉圖鑑給的殘缺版(回歸測試)', () => {
+    const s = createInitialState()
+    s.highestFloor = 50
+    s.destinyNodes = ['artisan_start', 'artisan_3a']
+    s.destinyPath = 'artisan'
+    s.equipped.weapon = { id: 'best', slot: 'weapon', quality: 'gold', affixes: [] }
+
+    // codex 一定會給(機率 100%)時,傳家寶與殘缺版要並存
+    const orig = Math.random
+    Math.random = () => 0
+    try {
+      const next = prestige(s, ['best'])!
+      expect(next.inventory.some((e) => e.id === 'best')).toBe(true) // 傳家寶還在
+      expect(next.inventory.length).toBeGreaterThan(1) // 殘缺版沒被蓋掉
+    } finally {
+      Math.random = orig
+    }
+  })
+
+  it('本輪增量:列傳記錄這代帶來的永久變化', () => {
+    const s = createInitialState()
+    s.highestFloor = 50
+    s.materials = 100
+    forge(s)
+    forge(s)
+    const c = prestige(s)!.chronicle[0]
+    expect(c.forgeGained).toBe(2)
+  })
+})
+
 describe('轉生與離線', () => {
   it('轉生給勳章並重置進度,勳章累積', () => {
     const s = createInitialState()

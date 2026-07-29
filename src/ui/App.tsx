@@ -15,10 +15,10 @@ import ForgePanel from './panels/ForgePanel'
 import HeroPanel from './panels/HeroPanel'
 import DestinyPanel from './panels/DestinyPanel'
 import JournalPanel from './panels/JournalPanel'
-import ShopPanel from './panels/ShopPanel'
+import LegacyPanel from './panels/LegacyPanel'
 import { useGameState } from './useGameState'
 
-type Tab = 'hero' | 'equip' | 'forge' | 'destiny' | 'journal' | 'shop'
+type Tab = 'hero' | 'equip' | 'forge' | 'destiny' | 'journal' | 'legacy'
 
 const TABS: Array<{ id: Tab; icon: string; label: string }> = [
   { id: 'hero', icon: '🗡️', label: '英雄' },
@@ -26,7 +26,7 @@ const TABS: Array<{ id: Tab; icon: string; label: string }> = [
   { id: 'forge', icon: '🔨', label: '鐵匠鋪' },
   { id: 'destiny', icon: '🌿', label: '命運' },
   { id: 'journal', icon: '📖', label: '旅途' },
-  { id: 'shop', icon: '🏅', label: '商店' },
+  { id: 'legacy', icon: '🏅', label: '傳承' },
 ]
 
 const MAPS = ['森林邊境', '地底城', '古堡', '神殿']
@@ -75,6 +75,76 @@ function BossHint() {
       <small>{ready ? advice : `還差 ${gap.toFixed(1)} 倍 DPS・${advice}`}</small>
     </button>
   )
+}
+
+/** 轉生結算:證明這一代沒有白玩,並預告下一輪快碰到什麼 */
+function RunSummary() {
+  const entry = useGame((st) => st.lastRun)
+  const dismiss = useGame((st) => st.dismissRunSummary)
+  const s = useGameState()
+  if (!entry) return null
+
+  return (
+    <div className="modal-mask" onPointerDown={dismiss}>
+      <div className="modal" onPointerDown={(e) => e.stopPropagation()} style={{ textAlign: 'left' }}>
+        <h3 style={{ textAlign: 'center' }}>
+          第 {entry.gen} 代・{entry.name}
+        </h3>
+        <p style={{ textAlign: 'center', lineHeight: 1.8 }}>
+          {entry.jobPath}
+          {entry.destiny && ` ・ ${entry.destiny}命運`}
+          <br />
+          抵達第 {entry.floor} 層
+          {entry.heirloom && (
+            <>
+              <br />以「{entry.heirloom}」留下傳家之器
+            </>
+          )}
+          <br />
+          <span style={{ color: 'var(--dim)' }}>{entry.epitaph}</span>
+        </p>
+
+        <h3 style={{ fontSize: 13, marginTop: 6 }}>本代帶來的永久變化</h3>
+        <div className="row">
+          <span className="k">戰功勳章</span>
+          <span className="v" style={{ color: 'var(--gold)' }}>
+            +{entry.medalsGained}
+          </span>
+        </div>
+        <div className="row">
+          <span className="k">鐵匠鋪經驗</span>
+          <span className="v">+{entry.forgeGained} 次鍛造</span>
+        </div>
+        {entry.codexGained > 0 && (
+          <div className="row">
+            <span className="k">新增圖鑑</span>
+            <span className="v">+{entry.codexGained} 件</span>
+          </div>
+        )}
+        <div className="row">
+          <span className="k">列傳</span>
+          <span className="v">+1 名</span>
+        </div>
+
+        <div className="affix" style={{ marginTop: 10, lineHeight: 1.7 }}>
+          下一個目標:{nextGoal(s)}
+        </div>
+
+        <button className="btn primary" style={{ width: '100%', marginTop: 12 }} onClick={dismiss}>
+          下一代出發
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** 每輪結束至少給一個「已經快到了」的目標 */
+function nextGoal(s: ReturnType<typeof useGameState>): string {
+  if (s.medals >= B.ELITE_MEDAL_COST) return '勳章夠換一塊菁英素材了,精工鍛造保證出菁英以上'
+  if (s.medals >= 8) return '勳章夠買「家族傳承」,下一代可以多帶一件傳家寶'
+  if (s.medals >= 3) return '勳章夠買第一級科技,傷害或金幣擇一'
+  if (s.codex.length === 0) return '走神匠命運選「傳家之器」,本代最好的裝備會留進圖鑑'
+  return '換一條命運試試,職業會走向不同的結果'
 }
 
 function Game() {
@@ -208,10 +278,12 @@ function Game() {
             {tab === 'forge' && <ForgePanel />}
             {tab === 'destiny' && <DestinyPanel />}
             {tab === 'journal' && <JournalPanel />}
-            {tab === 'shop' && <ShopPanel />}
+            {tab === 'legacy' && <LegacyPanel />}
           </div>
         </>
       )}
+
+      <RunSummary />
 
       <Tutorial />
 
