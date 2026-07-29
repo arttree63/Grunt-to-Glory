@@ -10,8 +10,10 @@ export interface Job {
   desc: string
   /** 被動:乘入對應乘區 */
   bonus: { dmg?: number; crit?: number; gold?: number; morale?: number }
-  /** 主動技能(轉職即解鎖) */
+  /** 轉職即解鎖的主動技能 */
   skills: SkillId[]
+  /** 職業覺醒後解鎖的第二技能(消耗印記型) */
+  awakenSkill?: SkillId
   /** 換裝視覺:披風色 / 武器樣式(render 讀) */
   look: { cape: number; weapon: 'wood' | 'sword' | 'dagger' }
 }
@@ -37,6 +39,7 @@ export const JOBS: Record<JobId, Job> = {
     desc: '傷害 +20%,戰意衰減減半。適合掛機推進。',
     bonus: { dmg: 0.2, morale: 0.5 },
     skills: ['shieldRush'],
+    awakenSkill: 'rally',
     look: { cape: 0x2f4a7a, weapon: 'sword' },
   },
   scout: {
@@ -48,6 +51,7 @@ export const JOBS: Record<JobId, Job> = {
     desc: '暴擊率 +15%。適合主動點擊。',
     bonus: { crit: 0.15 },
     skills: ['gale'],
+    awakenSkill: 'windMark',
     look: { cape: 0x2f6b4a, weapon: 'dagger' },
   },
   marshal: {
@@ -59,6 +63,7 @@ export const JOBS: Record<JobId, Job> = {
     desc: '金幣 +25%。技能可瞬間爆發,適合硬闖 Boss。',
     bonus: { gold: 0.25 },
     skills: ['judgement'],
+    awakenSkill: 'edict',
     look: { cape: 0x6b4a8a, weapon: 'sword' },
   },
   paladin: {
@@ -70,6 +75,7 @@ export const JOBS: Record<JobId, Job> = {
     desc: '傷害 +60%,戰意衰減減半。',
     bonus: { dmg: 0.6, morale: 0.5 },
     skills: ['shieldRush', 'bulwark'],
+    awakenSkill: 'rally',
     look: { cape: 0xc8b06a, weapon: 'sword' },
   },
   shadow: {
@@ -81,6 +87,7 @@ export const JOBS: Record<JobId, Job> = {
     desc: '暴擊率 +30%。',
     bonus: { crit: 0.3 },
     skills: ['gale', 'shadowClone'],
+    awakenSkill: 'windMark',
     look: { cape: 0x2a2a3a, weapon: 'dagger' },
   },
   archmage: {
@@ -92,6 +99,7 @@ export const JOBS: Record<JobId, Job> = {
     desc: '金幣 +60%,爆發技能更強。',
     bonus: { gold: 0.6 },
     skills: ['judgement', 'meteor'],
+    awakenSkill: 'edict',
     look: { cape: 0x3a6b8a, weapon: 'sword' },
   },
 }

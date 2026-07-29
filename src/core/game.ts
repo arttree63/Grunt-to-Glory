@@ -84,6 +84,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     destinyEarned: 0,
     skillCd: {},
     buff: null,
+    sigils: 0,
     event: null,
     eventCooldown: B.EVENT_INTERVAL_AVG,
     encounters: [],
@@ -117,7 +118,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 12
+export const SAVE_VERSION = 13
 
 // ---------- 數值查詢 ----------
 
@@ -201,6 +202,8 @@ export function spawnEnemy(s: GameState) {
 
 function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Math.random) {
   const mult = boss ? B.BOSS_GOLD_MULT : 1
+  // buff 視窗期間的擊殺會累積印記(軍勢 / 追風印記)
+  if (s.buff && SKILLS[s.buff.skillId].duration) gainSigil(s)
   // 連斬:每次擊殺 +1 層並重置衰減視窗
   if (hasNode(s, 'tactician_start')) {
     s.combo = Math.min(B.COMBO_MAX, s.combo + 1)
@@ -489,6 +492,39 @@ function grantDestinyPoints(s: GameState, events: GameEvent[]) {
 export const destinyPaths = () => ALL_PATHS
 export const destinyNode = (id: DestinyNodeId) => DESTINY_NODES[id]
 
+// ---------- 職業覺醒與印記 ----------
+
+/**
+ * 職業覺醒:解鎖一轉第二技能。
+ * 雙條件(層數 + 至少一個命運節點)——只用層數會變成固定流程,
+ * 只用命運節點會受節點出現順序影響;而且不綁特定命運,
+ * 不會有人因為選錯命運就拿不到核心技能。
+ */
+export function isAwakened(s: GameState): boolean {
+  const hasDestinyNode = s.destinyNodes.some((id) => (DESTINY_NODES[id]?.tier ?? 0) > 0)
+  return s.highestFloor >= B.AWAKEN_FLOOR && hasDestinyNode
+}
+
+/** 目前實際可用的主動技能 */
+export function availableSkills(s: GameState): SkillId[] {
+  const job = JOBS[s.jobId]
+  const list = [...job.skills]
+  if (job.awakenSkill && isAwakened(s)) list.push(job.awakenSkill)
+  return list
+}
+
+/** 印記在當前職業叫什麼 */
+export function sigilName(s: GameState): string {
+  const id = JOBS[s.jobId].awakenSkill
+  return (id && SKILLS[id].sigilName) || '印記'
+}
+
+/** 累積印記。既有技能建立累積,第二技能挑時機消耗 */
+function gainSigil(s: GameState, n = 1) {
+  if (!JOBS[s.jobId].awakenSkill) return
+  s.sigils = Math.min(B.SIGIL_MAX, s.sigils + n)
+}
+
 // ---------- 主動技能 ----------
 
 /** 實際冷卻(受智力縮減) */
@@ -497,7 +533,9 @@ export function skillCooldown(_s: GameState, id: SkillId): number {
 }
 
 export function skillReady(s: GameState, id: SkillId): boolean {
-  return (s.skillCd[id] ?? 0) <= 0 && JOBS[s.jobId].skills.includes(id)
+  if (!availableSkills(s).includes(id)) return false
+  if (SKILLS[id].consumesSigils && s.sigils <= 0) return false // 沒有印記就沒東西可消耗
+  return (s.skillCd[id] ?? 0) <= 0
 }
 
 /**
@@ -510,13 +548,19 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
   s.skillCd[id] = skillCooldown(s, id)
   const events: GameEvent[] = [{ type: 'skill', skillId: id }]
 
-  if (sk.burstSeconds) {
+  if (sk.consumesSigils) {
+    const dmg = currentDPS(s).mul(s.sigils * B.SIGIL_BURST_SEC)
+    if (s.event) s.event.hp = s.event.hp.sub(dmg)
+    else s.enemyHp = s.enemyHp.sub(dmg)
+    s.sigils = 0
+  } else if (sk.burstSeconds) {
     const dmg = currentDPS(s).mul(sk.burstSeconds)
     if (s.event) {
       s.event.hp = s.event.hp.sub(dmg)
     } else {
       s.enemyHp = s.enemyHp.sub(dmg)
     }
+    gainSigil(s) // 立即傷害型(聖光審判)每次施放留下一枚法令
   } else if (sk.duration) {
     s.buff = { skillId: id, timeLeft: sk.duration }
   }

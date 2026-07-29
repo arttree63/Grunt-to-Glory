@@ -1,4 +1,6 @@
-import { skillCooldown } from '../core/game'
+import * as B from '../core/balance'
+import { availableSkills, isAwakened, skillCooldown } from '../core/game'
+import { DESTINY_NODES } from '../core/destiny'
 import { hasNode } from '../core/destiny'
 import { JOBS } from '../core/jobs'
 import { SKILLS } from '../core/skills'
@@ -13,6 +15,14 @@ import { useGameState } from './useGameState'
 function nextUnlock(s: ReturnType<typeof useGameState>): string | null {
   const job = JOBS[s.jobId]
   if (job.tier === 0) return `Lv.${JOBS.infantry.reqLv} 轉職後解鎖`
+  if (job.awakenSkill && !isAwakened(s)) {
+    // 職業覺醒的雙條件,把還差什麼講清楚
+    const needFloor = s.highestFloor < B.AWAKEN_FLOOR
+    const needNode = !s.destinyNodes.some((id) => (DESTINY_NODES[id]?.tier ?? 0) > 0)
+    if (needFloor && needNode) return `第 ${B.AWAKEN_FLOOR} 層 + 一個命運節點`
+    if (needFloor) return `再推進到第 ${B.AWAKEN_FLOOR} 層`
+    if (needNode) return '取得第一個命運節點'
+  }
   if (job.tier === 1) return `Lv.${JOBS.paladin.reqLv} 二轉後解鎖`
   return null
 }
@@ -22,7 +32,7 @@ export default function SkillBar() {
   const s = useGameState()
   const cast = useGame((st) => st.castSkill)
   const toggleCharge = useGame((st) => st.toggleCharge)
-  const owned = JOBS[s.jobId].skills
+  const owned = availableSkills(s)
   const preview = nextUnlock(s)
   const slots: Array<SkillId | null> = [...owned]
 
@@ -54,6 +64,20 @@ export default function SkillBar() {
             style={{ position: 'relative', overflow: 'hidden', opacity: ready ? 1 : 0.55 }}
           >
             {sk.icon}
+            {sk.consumesSigils && s.sigils > 0 && (
+              <span
+                style={{
+                  position: 'absolute',
+                  top: 2,
+                  right: 4,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: 'var(--gold)',
+                }}
+              >
+                {s.sigils}
+              </span>
+            )}
             {!ready && (
               <>
                 <span

@@ -142,6 +142,14 @@ export const GOLDEN_REWARD_MULT = 2
 /** 禁忌地圖:事件出現頻率倍率 */
 export const FORBIDDEN_RATE_MULT = 0.6
 
+// ── 一轉第二技能(印記體系)──
+/** 印記上限。三個職業共用同一套計數,只有名稱與累積來源不同 */
+export const SIGIL_MAX = 10
+/** 每枚印記在消耗時折算成幾秒份的 DPS */
+export const SIGIL_BURST_SEC = 3
+/** 職業覺醒(解鎖第二技能)的雙條件:層數 + 至少一個命運節點 */
+export const AWAKEN_FLOOR = 25
+
 // ── 戰術家流派 ──
 /** 乘勝追擊:每層連斬的傷害加成、上限、以及沒擊殺多久開始衰減 */
 export const COMBO_DMG = 0.03

@@ -15,8 +15,17 @@ export interface Skill {
   critAdd?: number
   /** 立即傷害型:造成相當於 N 秒 DPS 的傷害 */
   burstSeconds?: number
+  /** 消耗印記型:依印記層數造成傷害,並清空印記 */
+  consumesSigils?: boolean
+  /** 印記在這個職業叫什麼 */
+  sigilName?: string
 }
 
+/**
+ * 一轉第二技能:三個職業共用同一個骨架
+ *   既有技能建立累積 → 印記疊加 → 第二技能挑時機消耗
+ * 現行模型做得出來(只要一個計數器 + 一次爆發),不需要位置、多目標或 HP。
+ */
 export const SKILLS: Record<SkillId, Skill> = {
   shieldRush: {
     id: 'shieldRush',
@@ -61,6 +70,33 @@ export const SKILLS: Record<SkillId, Skill> = {
     cd: 70,
     duration: 15,
     critAdd: 1,
+  },
+  rally: {
+    id: 'rally',
+    name: '軍陣號令',
+    icon: '🚩',
+    desc: '消耗全部軍勢,依層數造成爆發傷害',
+    cd: 20,
+    consumesSigils: true,
+    sigilName: '軍勢',
+  },
+  windMark: {
+    id: 'windMark',
+    name: '追風印記',
+    icon: '🌀',
+    desc: '消耗全部追風印記,依層數發動追擊',
+    cd: 20,
+    consumesSigils: true,
+    sigilName: '追風印記',
+  },
+  edict: {
+    id: 'edict',
+    name: '律令標記',
+    icon: '📜',
+    desc: '引爆全部法令,依層數造成裁決傷害',
+    cd: 20,
+    consumesSigils: true,
+    sigilName: '法令',
   },
   meteor: {
     id: 'meteor',

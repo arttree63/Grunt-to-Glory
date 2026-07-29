@@ -4,7 +4,17 @@ export type Slot = 'weapon' | 'head' | 'body' | 'boots' | 'trinket'
 export type Quality = 'white' | 'green' | 'blue' | 'purple' | 'gold' | 'crimson'
 export type AffixType = 'dmg' | 'gold' | 'crit' | 'clickDmg'
 export type JobId = 'rookie' | 'infantry' | 'scout' | 'marshal' | 'paladin' | 'shadow' | 'archmage'
-export type SkillId = 'shieldRush' | 'gale' | 'judgement' | 'bulwark' | 'shadowClone' | 'meteor'
+export type SkillId =
+  | 'shieldRush'
+  | 'gale'
+  | 'judgement'
+  | 'bulwark'
+  | 'shadowClone'
+  | 'meteor'
+  // 一轉第二技能(職業覺醒後解鎖)
+  | 'rally'
+  | 'windMark'
+  | 'edict'
 export type DestinyPathId = 'artisan' | 'hunter' | 'tactician'
 export type DestinyNodeId = string
 
@@ -117,6 +127,8 @@ export interface GameState {
   skillCd: Partial<Record<SkillId, number>>
   /** 生效中的技能 buff */
   buff: ActiveBuff | null
+  /** 印記層數(軍勢 / 追風印記 / 法令,三職業共用同一個計數) */
+  sigils: number
   /** 突發事件(寶箱怪 / 黃金哥布林),出現時取代當前目標 */
   event: RareEvent | null
   /** 下次事件倒數(秒) */

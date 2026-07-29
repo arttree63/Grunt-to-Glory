@@ -15,8 +15,11 @@ import {
   buyTech,
   canFineForge,
   barterForDestiny,
+  availableSkills,
   chargeMult,
   chooseDestiny,
+  isAwakened,
+  sigilName,
   comboMult,
   toggleCharge,
   valiantMult,
@@ -574,6 +577,104 @@ describe('尋寶獵人流派與留存事件', () => {
     const s = hunter([])
     s.eventKindsDone = ['chest']
     expect(barterForDestiny(s)).toBe(false)
+  })
+})
+
+describe('職業覺醒與第二技能(印記體系)', () => {
+  const awakened = (job: 'infantry' | 'scout' | 'marshal') => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, job)
+    chooseDestiny(s, 'artisan')
+    s.destinyNodes.push('artisan_1a') // 一個命運節點
+    s.highestFloor = B.AWAKEN_FLOOR
+    return s
+  }
+
+  it('覺醒要層數 + 命運節點雙條件,缺一不可', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'scout')
+    expect(isAwakened(s)).toBe(false)
+
+    s.highestFloor = B.AWAKEN_FLOOR
+    expect(isAwakened(s)).toBe(false) // 只有層數不夠
+
+    chooseDestiny(s, 'hunter')
+    expect(isAwakened(s)).toBe(false) // 起始節點不算,要 tier>0 的節點
+
+    s.destinyNodes.push('hunter_1a')
+    expect(isAwakened(s)).toBe(true)
+  })
+
+  it('覺醒前拿不到第二技能,覺醒後才出現', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    expect(availableSkills(s)).toEqual(['shieldRush'])
+
+    s.highestFloor = B.AWAKEN_FLOOR
+    chooseDestiny(s, 'artisan')
+    s.destinyNodes.push('artisan_1a')
+    expect(availableSkills(s)).toContain('rally')
+  })
+
+  it('三個職業共用同一套印記,只有名稱不同', () => {
+    expect(sigilName(awakened('infantry'))).toBe('軍勢')
+    expect(sigilName(awakened('scout'))).toBe('追風印記')
+    expect(sigilName(awakened('marshal'))).toBe('法令')
+  })
+
+  it('buff 視窗期間的擊殺會累積印記', () => {
+    const s = awakened('scout')
+    s.lv = 60
+    expect(s.sigils).toBe(0)
+
+    castSkill(s, 'gale') // 開視窗
+    applyTick(s, 1000)
+    expect(s.sigils).toBeGreaterThan(0)
+
+    // 視窗外的擊殺不累積
+    s.buff = null
+    const before = s.sigils
+    applyTick(s, 1000)
+    expect(s.sigils).toBe(before)
+  })
+
+  it('聖光審判每次施放留下一枚法令', () => {
+    const s = awakened('marshal')
+    castSkill(s, 'judgement')
+    expect(s.sigils).toBe(1)
+  })
+
+  it('第二技能消耗全部印記造成傷害;沒有印記就不能放', () => {
+    const s = awakened('infantry')
+    s.floor = 5
+    spawnEnemy(s)
+    expect(skillReady(s, 'rally')).toBe(false) // 沒印記
+
+    s.sigils = 5
+    expect(skillReady(s, 'rally')).toBe(true)
+    const before = s.enemyHp
+    castSkill(s, 'rally')
+    const dealt = before.sub(s.enemyHp)
+    expect(dealt.div(currentDPS(s)).toNumber()).toBeCloseTo(5 * B.SIGIL_BURST_SEC, 0)
+    expect(s.sigils).toBe(0)
+  })
+
+  it('印記有上限', () => {
+    const s = awakened('scout')
+    s.lv = 400
+    castSkill(s, 'gale')
+    for (let i = 0; i < 100; i++) applyTick(s, 100)
+    expect(s.sigils).toBeLessThanOrEqual(B.SIGIL_MAX)
+  })
+
+  it('沒有第二技能的職業(無名小兵)不會累積印記', () => {
+    const s = createInitialState()
+    s.lv = 60
+    applyTick(s, 1000)
+    expect(s.sigils).toBe(0)
   })
 })
 

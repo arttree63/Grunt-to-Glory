@@ -30,6 +30,7 @@ export interface SaveData {
   goldenPending: boolean
   routeBuff: GameState['routeBuff']
   barterUsed: number
+  sigils: number
   combo: number
   valiantStacks: number
   destinyPath: GameState['destinyPath']
@@ -79,6 +80,7 @@ export function serialize(s: GameState): SaveData {
     goldenPending: s.goldenPending,
     routeBuff: s.routeBuff,
     barterUsed: s.barterUsed,
+    sigils: s.sigils,
     combo: s.combo,
     valiantStacks: s.valiantStacks,
     destinyPath: s.destinyPath,
@@ -189,6 +191,11 @@ function migrate(raw: SaveData): SaveData {
     }
     d.version = 12
   }
+  // v12 → v13:一轉第二技能與印記
+  if (d.version < 13) {
+    d.sigils = d.sigils ?? 0
+    d.version = 13
+  }
   return d
 }
 
@@ -222,6 +229,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     goldenPending: !!d.goldenPending,
     routeBuff: d.routeBuff ?? null,
     barterUsed: d.barterUsed ?? 0,
+    sigils: d.sigils ?? 0,
     combo: d.combo ?? 0,
     valiantStacks: d.valiantStacks ?? 0,
     destinyPath: d.destinyPath ?? null,
