@@ -14,8 +14,10 @@ import {
   equip,
   fineForge,
   forge,
+  availableSkills,
   castSkill,
   heirloomCandidates,
+  sigilCap,
   pendingMedals,
   promote,
   chooseDestiny,
@@ -26,7 +28,8 @@ import {
   prestige,
   salvage,
 } from '../../src/core/game'
-import { availableJobs, JOBS } from '../../src/core/jobs'
+import { availableJobs } from '../../src/core/jobs'
+import { SKILLS } from '../../src/core/skills'
 import { canBuyTech, heirloomSlots, techDamageMult, techGoldMult } from '../../src/core/techs'
 import { hasNode, pendingChoice } from '../../src/core/destiny'
 import type { DestinyPathId, GameState, Techs } from '../../src/core/types'
@@ -156,9 +159,16 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
       for (const j of availableJobs(s.jobId, s.lv)) {
         if (j.id === 'infantry' || j.id === 'paladin') promote(s, j.id)
       }
-      // 技能一好就放
-      for (const id of JOBS[s.jobId].skills) {
+      // 技能一好就放(含職業覺醒後的第二技能;印記滿了才引爆,模擬「挑時機」)
+      for (const id of availableSkills(s)) {
+        const sk = SKILLS[id]
+        if (sk.consumesSigils && s.sigils < sigilCap(s)) continue
         if (skillReady(s, id)) castSkill(s, id)
+      }
+
+      // 命運限定二轉:命運相符時優先走限定分支
+      for (const j of availableJobs(s.jobId, s.lv, s.destinyPath)) {
+        if (j.requiresDestiny) promote(s, j.id)
       }
 
       const before = s.lv

@@ -1,4 +1,4 @@
-import type { JobId, SkillId } from './types'
+import type { DestinyPathId, JobId, SkillId } from './types'
 
 export interface Job {
   id: JobId
@@ -14,6 +14,8 @@ export interface Job {
   skills: SkillId[]
   /** 職業覺醒後解鎖的第二技能(消耗印記型) */
   awakenSkill?: SkillId
+  /** 命運限定二轉:本輪命運必須是這條才會出現 */
+  requiresDestiny?: DestinyPathId
   /** 換裝視覺:披風色 / 武器樣式(render 讀) */
   look: { cape: number; weapon: 'wood' | 'sword' | 'dagger' }
 }
@@ -102,16 +104,71 @@ export const JOBS: Record<JobId, Job> = {
     awakenSkill: 'edict',
     look: { cape: 0x3a6b8a, weapon: 'sword' },
   },
+  // ── 命運限定二轉:一轉職業 + 本輪命運共同決定 ──
+  // 首版只做三組高辨識度組合,剛好各覆蓋一個一轉職業與一條命運;
+  // 其餘六格走通用二轉 + 命運後綴,玩家的路線仍被承認
+  forgewarden: {
+    id: 'forgewarden',
+    name: '鐵壁工匠',
+    tier: 2,
+    reqLv: 100,
+    from: 'infantry',
+    requiresDestiny: 'artisan',
+    desc: '傷害 +50%,戰意衰減減半。軍勢上限再提高,鍛造品質更好。',
+    bonus: { dmg: 0.5, morale: 0.5 },
+    skills: ['shieldRush', 'bulwark'],
+    awakenSkill: 'rally',
+    look: { cape: 0x8a6a3a, weapon: 'sword' },
+  },
+  shadowvanguard: {
+    id: 'shadowvanguard',
+    name: '影陣先鋒',
+    tier: 2,
+    reqLv: 100,
+    from: 'scout',
+    requiresDestiny: 'tactician',
+    desc: '暴擊率 +25%。連斬層數上限提高,追風印記引爆更兇。',
+    bonus: { crit: 0.25 },
+    skills: ['gale', 'shadowClone'],
+    awakenSkill: 'windMark',
+    look: { cape: 0x1f2a3a, weapon: 'dagger' },
+  },
+  relicarbiter: {
+    id: 'relicarbiter',
+    name: '遺物裁定者',
+    tier: 2,
+    reqLv: 100,
+    from: 'marshal',
+    requiresDestiny: 'hunter',
+    desc: '金幣 +50%。事件擊破會直接轉化為法令。',
+    bonus: { gold: 0.5 },
+    skills: ['judgement', 'meteor'],
+    awakenSkill: 'edict',
+    look: { cape: 0x6b5a2a, weapon: 'sword' },
+  },
 }
 
 export const ALL_JOBS = Object.values(JOBS)
 
-/** 目前能轉的職業(下一階、等級達標) */
-export function availableJobs(jobId: JobId, lv: number): Job[] {
-  return ALL_JOBS.filter((j) => j.from === jobId && lv >= j.reqLv)
-}
-
-/** 下一階職業(不論等級是否達標),用來顯示「還差幾級」 */
+/** 下一階的所有候選(不論等級與命運),用來做逐步揭露 */
 export function nextTierJobs(jobId: JobId): Job[] {
   return ALL_JOBS.filter((j) => j.from === jobId)
+}
+
+/** 本輪實際可能走到的下一階:通用二轉 + 命運相符的限定二轉 */
+export function destinyJobs(jobId: JobId, destiny: DestinyPathId | null): Job[] {
+  return nextTierJobs(jobId).filter((j) => !j.requiresDestiny || j.requiresDestiny === destiny)
+}
+
+/** 目前能轉的職業(等級達標且命運相符) */
+export function availableJobs(jobId: JobId, lv: number, destiny: DestinyPathId | null = null): Job[] {
+  return destinyJobs(jobId, destiny).filter((j) => lv >= j.reqLv)
+}
+
+/** 命運後綴:即使走通用二轉,玩家的路線也要被承認 */
+export function destinySuffix(destiny: DestinyPathId | null): string {
+  if (destiny === 'artisan') return '・神匠系'
+  if (destiny === 'hunter') return '・尋寶系'
+  if (destiny === 'tactician') return '・戰術系'
+  return ''
 }

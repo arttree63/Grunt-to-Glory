@@ -4,7 +4,7 @@ import { D } from '../decimal'
 import { bossPartSlot, forgeLevel, forgeUpgradeChance, QUALITIES, score, SLOTS } from '../equipment'
 import { fmt, fmtTime } from '../format'
 import { bossHP, critMultiplier, goldDrop, heroDPS, isBossFloor, medalsFromFloor, mobHP, upCost } from '../formulas'
-import { availableJobs, JOBS } from '../jobs'
+import { availableJobs, destinyJobs, JOBS } from '../jobs'
 import { SKILLS } from '../skills'
 import { pendingChoice } from '../destiny'
 import { heirloomSlots, techOfflineHours } from '../techs'
@@ -19,6 +19,8 @@ import {
   chargeMult,
   chooseDestiny,
   isAwakened,
+  revealStage,
+  sigilCap,
   sigilName,
   comboMult,
   toggleCharge,
@@ -667,7 +669,7 @@ describe('職業覺醒與第二技能(印記體系)', () => {
     s.lv = 400
     castSkill(s, 'gale')
     for (let i = 0; i < 100; i++) applyTick(s, 100)
-    expect(s.sigils).toBeLessThanOrEqual(B.SIGIL_MAX)
+    expect(s.sigils).toBeLessThanOrEqual(sigilCap(s)) // 神匠命運會提高上限
   })
 
   it('沒有第二技能的職業(無名小兵)不會累積印記', () => {
@@ -675,6 +677,100 @@ describe('職業覺醒與第二技能(印記體系)', () => {
     s.lv = 60
     applyTick(s, 1000)
     expect(s.sigils).toBe(0)
+  })
+})
+
+describe('命運限定二轉與逐步揭露', () => {
+  const atTier1 = (job: 'infantry' | 'scout' | 'marshal', destiny?: 'artisan' | 'hunter' | 'tactician') => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, job)
+    if (destiny) chooseDestiny(s, destiny)
+    return s
+  }
+
+  it('命運相符才會出現限定二轉,不符只有通用二轉', () => {
+    const withArtisan = atTier1('infantry', 'artisan')
+    expect(destinyJobs('infantry', 'artisan').map((j) => j.id)).toContain('forgewarden')
+    expect(destinyJobs('infantry', 'tactician').map((j) => j.id)).not.toContain('forgewarden')
+    expect(destinyJobs('infantry', 'tactician').map((j) => j.id)).toEqual(['paladin'])
+    expect(withArtisan.destinyPath).toBe('artisan')
+  })
+
+  it('命運不符就不能轉限定二轉', () => {
+    const s = atTier1('infantry', 'tactician')
+    s.lv = 100
+    expect(promote(s, 'forgewarden')).toBe(false)
+    expect(promote(s, 'paladin')).toBe(true)
+  })
+
+  it('命運相符時可以轉限定二轉', () => {
+    const s = atTier1('scout', 'tactician')
+    s.lv = 100
+    expect(promote(s, 'shadowvanguard')).toBe(true)
+    expect(JOBS.shadowvanguard.awakenSkill).toBe('windMark') // 二轉仍保有印記體系
+  })
+
+  it('揭露階段隨命運節點推進', () => {
+    const s = atTier1('marshal', 'hunter')
+    expect(revealStage(s)).toBe('outline')
+
+    s.destinyNodes.push('hunter_1a')
+    expect(revealStage(s)).toBe('leaning')
+
+    s.destinyNodes.push('hunter_2a')
+    expect(revealStage(s)).toBe('named')
+
+    s.destinyNodes.push('hunter_3a')
+    expect(revealStage(s)).toBe('full')
+  })
+
+  it('接近二轉等級也會直接進入完整預覽', () => {
+    const s = atTier1('marshal', 'hunter')
+    s.lv = 90
+    expect(revealStage(s)).toBe('full')
+  })
+
+  it('未一轉或已二轉都沒有揭露階段', () => {
+    expect(revealStage(createInitialState())).toBe('none')
+    const s = atTier1('scout', 'tactician')
+    s.lv = 100
+    promote(s, 'shadowvanguard')
+    expect(revealStage(s)).toBe('none')
+  })
+})
+
+describe('命運對印記的改造', () => {
+  it('神匠提高印記上限', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    chooseDestiny(s, 'artisan')
+    expect(sigilCap(s)).toBe(B.SIGIL_MAX + B.ARTISAN_SIGIL_CAP)
+  })
+
+  it('尋寶獵人:擊破事件會轉成印記,事件不再只是經濟收益', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'marshal')
+    chooseDestiny(s, 'hunter')
+    s.lv = 400
+    s.eventCooldown = 0
+    applyTick(s, 100)
+    expect(s.event).not.toBe(null)
+    applyTick(s, 1000) // 打掉事件
+    expect(s.sigils).toBeGreaterThanOrEqual(B.HUNTER_SIGIL_ON_EVENT)
+  })
+
+  it('戰術家:連斬跨過門檻會給印記', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'scout')
+    chooseDestiny(s, 'tactician')
+    s.lv = 200
+    for (let i = 0; i < 30; i++) applyTick(s, 100)
+    expect(s.combo).toBeGreaterThanOrEqual(B.TACTICIAN_COMBO_PER_SIGIL)
+    expect(s.sigils).toBeGreaterThan(0)
   })
 })
 

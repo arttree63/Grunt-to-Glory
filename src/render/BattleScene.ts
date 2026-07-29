@@ -113,6 +113,10 @@ const textureGroups = {
     paladin: [paladin1Url, paladin2Url, paladin3Url, paladin4Url],
     shadow: [shadow1Url, shadow2Url, shadow3Url, shadow4Url],
     archmage: [archmage1Url, archmage2Url, archmage3Url, archmage4Url],
+    // 命運限定二轉:沿用同系通用二轉的素材(通用骨架 + 命運變體模組)
+    forgewarden: [paladin1Url, paladin2Url, paladin3Url, paladin4Url],
+    shadowvanguard: [shadow1Url, shadow2Url, shadow3Url, shadow4Url],
+    relicarbiter: [archmage1Url, archmage2Url, archmage3Url, archmage4Url],
   } satisfies Record<JobId, string[]>,
   goblin: [goblin1Url, goblin2Url, goblin3Url, goblin4Url],
   imp: [imp1Url, imp2Url, imp3Url, imp4Url],

@@ -150,6 +150,14 @@ export const SIGIL_BURST_SEC = 3
 /** 職業覺醒(解鎖第二技能)的雙條件:層數 + 至少一個命運節點 */
 export const AWAKEN_FLOOR = 25
 
+// 命運對印記體系的改造:三條命運各自改變「怎麼累積 / 怎麼用」,不是加數字
+/** 神匠:囤積思維,印記上限提高 */
+export const ARTISAN_SIGIL_CAP = 5
+/** 尋寶獵人:事件擊殺也累積印記(把事件拉進戰鬥循環,而不只是經濟) */
+export const HUNTER_SIGIL_ON_EVENT = 3
+/** 戰術家:連斬每 N 層額外給一枚印記 */
+export const TACTICIAN_COMBO_PER_SIGIL = 5
+
 // ── 戰術家流派 ──
 /** 乘勝追擊:每層連斬的傷害加成、上限、以及沒擊殺多久開始衰減 */
 export const COMBO_DMG = 0.03

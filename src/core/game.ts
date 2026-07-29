@@ -22,7 +22,7 @@ import {
   mobHP,
   upCost,
 } from './formulas'
-import { JOBS } from './jobs'
+import { destinyJobs, JOBS } from './jobs'
 import { SKILLS } from './skills'
 import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, hasNode, pendingChoice } from './destiny'
 import { makeChronicleEntry } from './chronicle'
@@ -206,8 +206,13 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
   if (s.buff && SKILLS[s.buff.skillId].duration) gainSigil(s)
   // 連斬:每次擊殺 +1 層並重置衰減視窗
   if (hasNode(s, 'tactician_start')) {
+    const before = s.combo
     s.combo = Math.min(B.COMBO_MAX, s.combo + 1)
     s.comboIdle = 0
+    // 戰術家:連斬每跨過 N 層就給一枚印記,把連斬與印記串起來
+    if (Math.floor(s.combo / B.TACTICIAN_COMBO_PER_SIGIL) > Math.floor(before / B.TACTICIAN_COMBO_PER_SIGIL)) {
+      gainSigil(s)
+    }
   }
   const routeGold = s.routeBuff?.kind === 'gold' ? B.ROUTE_BUFF_MULT : 1
   const g = goldDrop(s.floor).mul(mult).mul(goldMult(s)).mul(routeGold)
@@ -427,6 +432,9 @@ function rewardEvent(s: GameState, kind: EventKind, events: GameEvent[], rng: Rn
   }
   if (elite) s.eliteMaterials++
 
+  // 尋寶獵人:把事件拉進戰鬥循環,而不只是經濟收益
+  if (s.destinyPath === 'hunter') gainSigil(s, B.HUNTER_SIGIL_ON_EVENT)
+
   markEventKind(s, kind)
   events.push({ type: 'eventKill', kind, gold: g, count: elite ? 1 : 0 })
 }
@@ -492,6 +500,28 @@ function grantDestinyPoints(s: GameState, events: GameEvent[]) {
 export const destinyPaths = () => ALL_PATHS
 export const destinyNode = (id: DestinyNodeId) => DESTINY_NODES[id]
 
+// ---------- 二轉逐步揭露 ----------
+
+export type RevealStage = 'none' | 'outline' | 'leaning' | 'named' | 'full'
+
+/**
+ * 揭露階段。填滿 Lv.20~100 之間原本空轉的區間:
+ * 一轉後給模糊方向 → 命運節點讓方向亮起 → 揭露候選名稱 → 接近二轉給完整預覽
+ */
+export function revealStage(s: GameState): RevealStage {
+  if (JOBS[s.jobId].tier !== 1) return 'none'
+  const nodes = s.destinyNodes.filter((id) => (DESTINY_NODES[id]?.tier ?? 0) > 0).length
+  if (s.lv >= 90 || nodes >= 3) return 'full'
+  if (nodes >= 2) return 'named'
+  if (nodes >= 1) return 'leaning'
+  return 'outline'
+}
+
+/** 本輪會走到的二轉(命運已定時只有一個) */
+export function destinyOutcome(s: GameState) {
+  return destinyJobs(s.jobId, s.destinyPath)
+}
+
 // ---------- 職業覺醒與印記 ----------
 
 /**
@@ -519,10 +549,25 @@ export function sigilName(s: GameState): string {
   return (id && SKILLS[id].sigilName) || '印記'
 }
 
+/** 印記上限。神匠的囤積思維會提高上限 */
+export function sigilCap(s: GameState): number {
+  return B.SIGIL_MAX + (s.destinyPath === 'artisan' ? B.ARTISAN_SIGIL_CAP : 0)
+}
+
 /** 累積印記。既有技能建立累積,第二技能挑時機消耗 */
 function gainSigil(s: GameState, n = 1) {
   if (!JOBS[s.jobId].awakenSkill) return
-  s.sigils = Math.min(B.SIGIL_MAX, s.sigils + n)
+  s.sigils = Math.min(sigilCap(s), s.sigils + n)
+}
+
+/** 命運對印記的改造說明,UI 直接顯示 */
+export function sigilModifier(s: GameState): string | null {
+  if (!JOBS[s.jobId].awakenSkill) return null
+  if (s.destinyPath === 'artisan') return `神匠:${sigilName(s)}上限 +${B.ARTISAN_SIGIL_CAP}`
+  if (s.destinyPath === 'hunter') return `尋寶獵人:擊破事件額外 +${B.HUNTER_SIGIL_ON_EVENT}`
+  if (s.destinyPath === 'tactician')
+    return `戰術家:連斬每 ${B.TACTICIAN_COMBO_PER_SIGIL} 層額外 +1`
+  return null
 }
 
 // ---------- 主動技能 ----------
@@ -600,6 +645,8 @@ export function buyMaxLevels(s: GameState): number {
 export function promote(s: GameState, jobId: JobId): boolean {
   const job = JOBS[jobId]
   if (job.from !== s.jobId || s.lv < job.reqLv) return false
+  // 命運限定二轉:本輪命運不符就不能轉
+  if (job.requiresDestiny && job.requiresDestiny !== s.destinyPath) return false
   s.jobId = jobId
   return true
 }
