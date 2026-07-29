@@ -15,7 +15,11 @@ import {
   buyTech,
   canFineForge,
   barterForDestiny,
+  chargeMult,
   chooseDestiny,
+  comboMult,
+  toggleCharge,
+  valiantMult,
   devourWeapon,
   resolveEncounter,
   forgeHeat,
@@ -570,6 +574,110 @@ describe('尋寶獵人流派與留存事件', () => {
     const s = hunter([])
     s.eventKindsDone = ['chest']
     expect(barterForDestiny(s)).toBe(false)
+  })
+})
+
+describe('戰術家流派', () => {
+  const tac = (nodes: string[]) => {
+    const s = createInitialState()
+    chooseDestiny(s, 'tactician')
+    s.destinyNodes.push(...nodes)
+    return s
+  }
+
+  it('乘勝追擊:擊殺累積連斬,停手後逐層衰減', () => {
+    const s = tac([])
+    s.lv = 60
+    applyTick(s, 1000)
+    expect(s.combo).toBeGreaterThan(0)
+    const peak = s.combo
+    expect(comboMult(s)).toBeCloseTo(1 + peak * B.COMBO_DMG)
+
+    // 沒有節點就不累積
+    const noNode = createInitialState()
+    noNode.lv = 60
+    applyTick(noNode, 1000)
+    expect(noNode.combo).toBe(0)
+  })
+
+  it('連斬有上限', () => {
+    const s = tac([])
+    s.lv = 400
+    for (let i = 0; i < 50; i++) applyTick(s, 200)
+    expect(s.combo).toBeLessThanOrEqual(B.COMBO_MAX)
+  })
+
+  it('破陣:Boss 戰期間連斬不衰減,擊破後清空', () => {
+    const s = tac(['tactician_1a'])
+    s.combo = 10
+    s.floor = 10
+    spawnEnemy(s)
+    expect(s.isBoss).toBe(true)
+
+    applyTick(s, 100) // Boss 戰中不衰減
+    s.comboIdle = 999
+    applyTick(s, 100)
+    expect(s.combo).toBe(10)
+
+    // 用剛好殺掉 Boss 的傷害,避免溢出傷害又殺一串小怪把連斬重新疊回來
+    s.lv = 1
+    s.enemyHp = D(1)
+    applyTick(s, 1000)
+    expect(s.combo).toBe(0) // 擊破後清空
+  })
+
+  it('蓄勢:暫停輸出換爆發,沒節點不能用', () => {
+    const noNode = createInitialState()
+    expect(toggleCharge(noNode)).toBe(false)
+
+    const s = tac(['tactician_1b'])
+    s.lv = 60
+    expect(toggleCharge(s)).toBe(true)
+    expect(s.charging).toBe(true)
+
+    const hpBefore = s.enemyHp
+    applyTick(s, B.CHARGE_SEC * 4 * 1000)
+    expect(s.enemyHp.toString()).toBe(hpBefore.toString()) // 蓄勢期間不輸出
+    expect(s.chargeStacks).toBeGreaterThan(0)
+
+    toggleCharge(s)
+    expect(s.charging).toBe(false)
+    expect(s.chargeBurstLeft).toBe(B.CHARGE_BURST_SEC)
+    expect(chargeMult(s)).toBeGreaterThan(1)
+
+    applyTick(s, (B.CHARGE_BURST_SEC + 1) * 1000)
+    expect(chargeMult(s)).toBe(1) // 爆發結束
+  })
+
+  it('越戰越勇:Boss 失敗累積加成,只在 Boss 戰生效,擊破後歸零', () => {
+    const s = tac(['tactician_2a'])
+    s.floor = 10
+    s.lv = 1
+    spawnEnemy(s)
+    applyTick(s, B.BOSS_TIME * 1000 + 100)
+    expect(s.valiantStacks).toBe(1)
+    expect(s.bossFailed).toBe(true)
+
+    // farm 中(非 Boss)不生效
+    expect(valiantMult(s)).toBe(1)
+
+    retryBoss(s)
+    expect(valiantMult(s)).toBeCloseTo(1 + B.VALIANT_DMG)
+
+    s.lv = 400
+    s.enemyHp = D(1)
+    applyTick(s, 100)
+    expect(s.valiantStacks).toBe(0) // 擊破後歸零
+  })
+
+  it('越戰越勇有上限', () => {
+    const s = tac(['tactician_2a'])
+    s.valiantStacks = B.VALIANT_MAX
+    s.floor = 20
+    s.lv = 1
+    spawnEnemy(s)
+    applyTick(s, B.BOSS_TIME * 1000 + 100)
+    expect(s.valiantStacks).toBe(B.VALIANT_MAX)
   })
 })
 

@@ -28,6 +28,8 @@ export interface SaveData {
   goldenPending: boolean
   routeBuff: GameState['routeBuff']
   barterUsed: number
+  combo: number
+  valiantStacks: number
   destinyPath: GameState['destinyPath']
   destinyNodes: GameState['destinyNodes']
   destinyPoints: number
@@ -73,6 +75,8 @@ export function serialize(s: GameState): SaveData {
     goldenPending: s.goldenPending,
     routeBuff: s.routeBuff,
     barterUsed: s.barterUsed,
+    combo: s.combo,
+    valiantStacks: s.valiantStacks,
     destinyPath: s.destinyPath,
     destinyNodes: s.destinyNodes,
     destinyPoints: s.destinyPoints,
@@ -165,6 +169,12 @@ function migrate(raw: SaveData): SaveData {
     d.barterUsed = d.barterUsed ?? 0
     d.version = 10
   }
+  // v10 → v11:戰術家。連斬與越戰越勇進存檔;蓄勢是暫態,讀檔後歸零
+  if (d.version < 11) {
+    d.combo = d.combo ?? 0
+    d.valiantStacks = d.valiantStacks ?? 0
+    d.version = 11
+  }
   return d
 }
 
@@ -196,6 +206,8 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     goldenPending: !!d.goldenPending,
     routeBuff: d.routeBuff ?? null,
     barterUsed: d.barterUsed ?? 0,
+    combo: d.combo ?? 0,
+    valiantStacks: d.valiantStacks ?? 0,
     destinyPath: d.destinyPath ?? null,
     destinyNodes: d.destinyNodes ?? [],
     destinyPoints: d.destinyPoints ?? 0,

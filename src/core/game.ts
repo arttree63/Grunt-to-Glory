@@ -89,6 +89,12 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     goldenPending: false,
     routeBuff: null,
     barterUsed: 0,
+    combo: 0,
+    comboIdle: 0,
+    charging: false,
+    chargeStacks: 0,
+    chargeBurstLeft: 0,
+    valiantStacks: 0,
     materials: 0,
     forgeCount: 0,
     pityCount: 0,
@@ -108,7 +114,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 10
+export const SAVE_VERSION = 11
 
 // ---------- 數值查詢 ----------
 
@@ -138,7 +144,7 @@ export function currentDPS(s: GameState): Decimal {
     equipBonus: bonus.dmg + (job.dmg ?? 0),
     morale: s.morale,
     critMult: critMultiplier(critRate(s)),
-    buffMult: buffMult(s),
+    buffMult: buffMult(s) * comboMult(s) * chargeMult(s) * valiantMult(s),
   }).mul(equipPower(s.equipped)) // 每件裝備獨立乘區
 }
 
@@ -192,6 +198,11 @@ export function spawnEnemy(s: GameState) {
 
 function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Math.random) {
   const mult = boss ? B.BOSS_GOLD_MULT : 1
+  // 連斬:每次擊殺 +1 層並重置衰減視窗
+  if (hasNode(s, 'tactician_start')) {
+    s.combo = Math.min(B.COMBO_MAX, s.combo + 1)
+    s.comboIdle = 0
+  }
   const routeGold = s.routeBuff?.kind === 'gold' ? B.ROUTE_BUFF_MULT : 1
   const g = goldDrop(s.floor).mul(mult).mul(goldMult(s)).mul(routeGold)
   s.gold = s.gold.add(g)
@@ -229,6 +240,8 @@ function nextEnemy(s: GameState, events: GameEvent[]) {
     s.killsInFloor = 0
     s.bossFailed = false
     s.bossRetryFloor = null
+    s.valiantStacks = 0
+    if (hasNode(s, 'tactician_1a')) s.combo = 0 // 破陣:Boss 戰結束後清空
     events.push({ type: 'floorUp', floor: s.floor })
   } else {
     s.killsInFloor++
@@ -270,7 +283,9 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
 
   const dt = dtMs / 1000
   tickSkills(s, dt)
+  tickTactician(s, dt)
   grantDestinyPoints(s, raw)
+  if (s.charging) return mergeKills(raw) // 蓄勢期間停止輸出
   let dmg = currentDPS(s).mul(dt) // 本 tick 的總傷害量
 
   // 突發事件優先吃傷害:出現期間取代當前目標
@@ -324,6 +339,7 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
     if (s.bossTimeLeft <= 0) {
       // DPS check 失敗 → 退回前一層 farm(玩家心智模型:打不過就退一層)
       s.bossFailed = true
+      if (hasNode(s, 'tactician_2a')) s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
       s.bossRetryFloor = s.floor
       s.floor = Math.max(1, s.floor - 1)
       s.killsInFloor = 0
@@ -539,6 +555,63 @@ export function promote(s: GameState, jobId: JobId): boolean {
   if (job.from !== s.jobId || s.lv < job.reqLv) return false
   s.jobId = jobId
   return true
+}
+
+// ---------- 戰術家流派 ----------
+
+/** 連斬:每層固定加成,有上限 */
+export function comboMult(s: GameState): number {
+  return 1 + s.combo * B.COMBO_DMG
+}
+
+/** 蓄勢爆發中的傷害倍率 */
+export function chargeMult(s: GameState): number {
+  return s.chargeBurstLeft > 0 ? 1 + s.chargeStacks * B.CHARGE_DMG : 1
+}
+
+/** 越戰越勇:只在 Boss 戰生效 */
+export function valiantMult(s: GameState): number {
+  return s.isBoss ? 1 + s.valiantStacks * B.VALIANT_DMG : 1
+}
+
+/** 開始/結束蓄勢。蓄勢期間不輸出,換取結束後的短時爆發 */
+export function toggleCharge(s: GameState): boolean {
+  if (!hasNode(s, 'tactician_1b')) return false
+  if (s.charging) {
+    s.charging = false
+    if (s.chargeStacks > 0) s.chargeBurstLeft = B.CHARGE_BURST_SEC
+  } else {
+    s.charging = true
+    s.chargeStacks = 0
+    s.chargeBurstLeft = 0
+  }
+  return true
+}
+
+function tickTactician(s: GameState, dt: number) {
+  if (!hasNode(s, 'tactician_start')) return
+
+  // 連斬:一段時間沒擊殺就開始逐層衰減。破陣讓 Boss 戰期間不衰減
+  const holdInBoss = s.isBoss && hasNode(s, 'tactician_1a')
+  if (!holdInBoss) {
+    s.comboIdle += dt
+    if (s.comboIdle > B.COMBO_WINDOW_SEC && s.combo > 0) {
+      const decaySteps = Math.floor((s.comboIdle - B.COMBO_WINDOW_SEC) / B.COMBO_DECAY_SEC)
+      if (decaySteps > 0) {
+        s.combo = Math.max(0, s.combo - decaySteps)
+        s.comboIdle = B.COMBO_WINDOW_SEC
+      }
+    }
+  }
+
+  // 蓄勢
+  if (s.charging && s.chargeStacks < B.CHARGE_MAX) {
+    s.chargeStacks = Math.min(B.CHARGE_MAX, s.chargeStacks + dt / B.CHARGE_SEC)
+  }
+  if (s.chargeBurstLeft > 0) {
+    s.chargeBurstLeft -= dt
+    if (s.chargeBurstLeft <= 0) s.chargeStacks = 0
+  }
 }
 
 // ---------- 留存事件(旅途紀錄) ----------

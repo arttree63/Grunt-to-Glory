@@ -113,6 +113,20 @@ export interface GameState {
   /** 本輪已用過幾次命運交易 */
   barterUsed: number
 
+  // ── 戰術家 ──
+  /** 連斬層數 */
+  combo: number
+  /** 距上次擊殺的秒數(連斬視窗) */
+  comboIdle: number
+  /** 蓄勢中(暫停輸出換爆發) */
+  charging: boolean
+  /** 蓄勢層數 */
+  chargeStacks: number
+  /** 蓄勢爆發剩餘秒數 */
+  chargeBurstLeft: number
+  /** Boss 失敗累積的戰術加成層數 */
+  valiantStacks: number
+
   // 資源
   materials: number
   /** 累積鍛造次數 → 鐵匠鋪等級 */

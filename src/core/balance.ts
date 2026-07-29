@@ -142,6 +142,21 @@ export const GOLDEN_REWARD_MULT = 2
 /** 禁忌地圖:事件出現頻率倍率 */
 export const FORBIDDEN_RATE_MULT = 0.6
 
+// ── 戰術家流派 ──
+/** 乘勝追擊:每層連斬的傷害加成、上限、以及沒擊殺多久開始衰減 */
+export const COMBO_DMG = 0.03
+export const COMBO_MAX = 20
+export const COMBO_WINDOW_SEC = 4
+export const COMBO_DECAY_SEC = 1.5
+/** 蓄勢:每幾秒累積一層、上限、每層爆發傷害、爆發持續秒數 */
+export const CHARGE_SEC = 2
+export const CHARGE_MAX = 10
+export const CHARGE_DMG = 0.25
+export const CHARGE_BURST_SEC = 10
+/** 越戰越勇:每次 Boss 失敗累積的加成與上限 */
+export const VALIANT_DMG = 0.15
+export const VALIANT_MAX = 6
+
 // 部位素材:每 10 層 Boss 首殺必掉 1,重複擊殺機率掉落
 export const PART_DROP_REPEAT = 0.3
 // 菁英素材:品質下限保證紫以上

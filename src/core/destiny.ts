@@ -28,8 +28,8 @@ export interface DestinyPath {
   /** 這一輪玩起來的樣子,選擇畫面用 */
   fantasy: string
   start: DestinyNodeId
-  /** 每個決策點的二選一 */
-  choices: Array<[DestinyNodeId, DestinyNodeId]>
+  /** 每個決策點的選項。多數是二選一,終局也可能只有一個 */
+  choices: DestinyNodeId[][]
 }
 
 const N = (
@@ -99,7 +99,7 @@ export const DESTINY_PATHS: Record<DestinyPathId, DestinyPath> = {
     tagline: '連斬流(輕量對照)',
     fantasy: '不停手,越打越順',
     start: 'tactician_start',
-    choices: [['tactician_1a', 'tactician_1b'], ['tactician_2a', 'tactician_2a']],
+    choices: [['tactician_1a', 'tactician_1b'], ['tactician_2a']],
   },
 }
 
@@ -110,14 +110,14 @@ export function hasNode(s: GameState, id: DestinyNodeId): boolean {
   return s.destinyNodes.includes(id)
 }
 
-/** 下一個決策點的二選一;沒得選時回 null */
-export function pendingChoice(s: GameState): [DestinyNode, DestinyNode] | null {
+/** 下一個決策點的選項;沒得選時回 null */
+export function pendingChoice(s: GameState): DestinyNode[] | null {
   if (!s.destinyPath || s.destinyPoints <= 0) return null
   const path = DESTINY_PATHS[s.destinyPath]
   const tier = s.destinyNodes.filter((id) => DESTINY_NODES[id]?.tier > 0).length
-  const pair = path.choices[tier]
-  if (!pair) return null
-  return [DESTINY_NODES[pair[0]], DESTINY_NODES[pair[1]]]
+  const ids = path.choices[tier]
+  if (!ids) return null
+  return ids.map((id) => DESTINY_NODES[id])
 }
 
 /** 本輪還會再給幾枚命運點 */

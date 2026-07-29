@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import * as B from '../core/balance'
 import { fmt, fmtTime } from '../core/format'
 import { upCost } from '../core/formulas'
-import { bossGap, pendingMedals } from '../core/game'
+import { bossGap, chargeMult, comboMult, pendingMedals } from '../core/game'
 import { hasNode } from '../core/destiny'
 import { SKILLS } from '../core/skills'
 import { useGame } from '../store/gameStore'
@@ -140,6 +140,27 @@ function Game() {
         )}
 
         {s.bossFailed && !s.isBoss && !s.event && <BossHint />}
+
+        {s.combo > 0 && (
+          <div
+            className="retry"
+            style={{ top: 'auto', bottom: 74, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
+          >
+            連斬 ×{s.combo}
+            <small className="affix"> 傷害 +{Math.round((comboMult(s) - 1) * 100)}%</small>
+          </div>
+        )}
+
+        {(s.charging || s.chargeBurstLeft > 0) && (
+          <div
+            className="retry"
+            style={{ top: 'auto', bottom: 46, pointerEvents: 'none', color: 'var(--morale-b)', fontSize: 13 }}
+          >
+            {s.charging
+              ? `蓄勢中 ${Math.floor(s.chargeStacks)} 層(暫停輸出)`
+              : `爆發 ${s.chargeBurstLeft.toFixed(1)}s・傷害 +${Math.round((chargeMult(s) - 1) * 100)}%`}
+          </div>
+        )}
 
         {s.buff && (
           <div

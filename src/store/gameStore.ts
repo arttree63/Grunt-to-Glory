@@ -43,6 +43,7 @@ interface Store {
   buyElite: () => void
   resolveEncounter: (id: EncounterId, choiceId: string) => void
   barterForDestiny: () => void
+  toggleCharge: () => void
   equip: (id: string) => void
   unequip: (slot: Slot) => void
   salvage: (id: string) => void
@@ -142,6 +143,11 @@ export const useGame = create<Store>((set, get) => ({
 
   resolveEncounter(id, choiceId) {
     G.resolveEncounter(get().s, id, choiceId)
+    bump(set, get)
+  },
+
+  toggleCharge() {
+    G.toggleCharge(get().s)
     bump(set, get)
   },
 
