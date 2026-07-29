@@ -40,6 +40,7 @@ export interface SaveData {
   activeMerc: GameState['activeMerc']
   mercBestFloor: number
   legendsSeen: GameState['legendsSeen']
+  zealStacks: number
   combo: number
   valiantStacks: number
   destinyPath: GameState['destinyPath']
@@ -99,6 +100,7 @@ export function serialize(s: GameState): SaveData {
     activeMerc: s.activeMerc,
     mercBestFloor: s.mercBestFloor,
     legendsSeen: s.legendsSeen,
+    zealStacks: s.zealStacks,
     combo: s.combo,
     valiantStacks: s.valiantStacks,
     destinyPath: s.destinyPath,
@@ -251,6 +253,11 @@ function migrate(raw: SaveData): SaveData {
         .filter((x): x is NonNullable<typeof x> => !!x)
     d.version = 18
   }
+  // v18 → v19:總攻改版(buff 多槽是暫態不進檔;戰意昂揚的輪內疊乘要進檔)
+  if (d.version < 19) {
+    d.zealStacks = d.zealStacks ?? 0
+    d.version = 19
+  }
   return d
 }
 
@@ -294,6 +301,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     activeMerc: d.activeMerc ?? 'hound',
     mercBestFloor: d.mercBestFloor ?? 1,
     legendsSeen: d.legendsSeen ?? [],
+    zealStacks: d.zealStacks ?? 0,
     combo: d.combo ?? 0,
     valiantStacks: d.valiantStacks ?? 0,
     destinyPath: d.destinyPath ?? null,

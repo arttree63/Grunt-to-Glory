@@ -243,8 +243,9 @@ function Game() {
           </div>
         )}
 
-        {/* ⚠️ 狀態文字用固定槽位由下往上堆:46 / 74 / 102,兩個元件不可寫死同一個座標 */}
-        {s.buff && (
+        {/* ⚠️ 狀態文字用固定槽位由下往上堆:46 / 74 / 102,兩個元件不可寫死同一個座標。
+            多槽 buff 併成一行,總攻疊窗時不會佔掉三個槽位 */}
+        {s.buffs.length > 0 && (
           <div
             className="retry"
             style={{
@@ -254,7 +255,9 @@ function Game() {
               color: 'var(--morale-b)',
             }}
           >
-            {SKILLS[s.buff.skillId].name} {s.buff.permanent ? '常駐中' : `生效中 ${s.buff.timeLeft.toFixed(1)}s`}
+            {s.buffs
+              .map((b) => `${SKILLS[b.skillId].name} ${b.permanent ? '常駐' : `${b.timeLeft.toFixed(1)}s`}`)
+              .join('・')}
           </div>
         )}
 
@@ -266,6 +269,15 @@ function Game() {
           >
             {sigilName(s)} {s.sigils}/{sigilCap(s)}
             <small className="affix"> 用第二技能引爆</small>
+          </div>
+        )}
+
+        {s.conquestLeft > 0 && !s.isBoss && (
+          <div
+            className="retry"
+            style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
+          >
+            乘勝推進 ×{B.CONQUEST_MULT}・{s.conquestLeft.toFixed(0)}s
           </div>
         )}
 

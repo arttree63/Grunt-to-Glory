@@ -54,8 +54,11 @@ export default function SkillBar() {
     }
   }, [])
 
+  // 總攻就緒:兩招以上全部轉好 → 整排金光,提示玩家「留著一起放」(v1.6)
+  const allReady = owned.length >= 2 && owned.every((id) => (s.skillCd[id] ?? 0) <= 0)
+
   return (
-    <div className={`skills${s.commandReady ? ' command-ready' : ''}`}>
+    <div className={`skills${s.commandReady ? ' command-ready' : ''}${allReady ? ' all-ready' : ''}`}>
       {hasNode(s, 'tactician_1b') && (
         <button
           className="skill"
@@ -129,7 +132,7 @@ export default function SkillBar() {
               </>
             )}
             {/* ⚠️ 不能加 ready:一般技能的持續時間短於冷卻,加了等於 buff 期間永遠不亮 */}
-            {s.buff?.skillId === id && (
+            {s.buffs.some((b) => b.skillId === id) && (
               <span
                 style={{
                   position: 'absolute',

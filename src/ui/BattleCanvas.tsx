@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { fmt } from '../core/format'
 import * as B from '../core/balance'
 import { critMultiplier } from '../core/formulas'
-import { activeLegends, critRate, heirloomRepairLeft, ironwallActive, sigilCap } from '../core/game'
+import { activeLegends, critRate, critWindowActive, heirloomRepairLeft, ironwallActive, sigilCap } from '../core/game'
 import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
 import { SKILLS } from '../core/skills'
@@ -22,9 +22,10 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         morale: s.morale,
         jobId: s.jobId,
         formation: ironwallActive(s),
-        buffSkill: s.buff?.skillId ?? null,
-        buffPermanent: !!s.buff?.permanent,
-        buffLeft: s.buff?.timeLeft ?? 0,
+        // 多槽 buff:buffSkill 維持「最新的那個」給 Codex 的分招演出用,不改契約
+        buffSkill: s.buffs.at(-1)?.skillId ?? null,
+        buffPermanent: !!s.buffs.at(-1)?.permanent,
+        buffLeft: s.buffs.at(-1)?.timeLeft ?? 0,
         sigils: s.sigils,
         sigilMax: sigilCap(s),
         combo: s.combo,
@@ -39,7 +40,7 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         hourglassSteps: new Set(s.castOrder).size,
         encounterWaiting: s.encounters.length > 0,
         activeMerc: s.activeMerc,
-        cloneActive: !!s.buff && !!SKILLS[s.buff.skillId].critAdd && activeLegends(s).includes('twinblade'),
+        cloneActive: critWindowActive(s) && activeLegends(s).includes('twinblade'),
         bannerLeft: s.bannerLeft,
         zoneLeft: s.zoneLeft,
         burnLeft: s.burnLeft,
@@ -77,6 +78,8 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.skillHit(e.damage ? `${name} ${fmt(e.damage)}` : name, e.skillId!, e.count ?? 0)
       } else if (e.type === 'cooldownAdvance') {
         scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0)
+      } else if (e.type === 'zealGain') {
+        scene.notice(`戰意昂揚 ×${e.count}(本輪傷害 +${e.count! * 2}%)`)
       } else if (e.type === 'mercAct') {
         scene.onMercAct(e.mercId!)
       } else if (e.type === 'freezeStart') {

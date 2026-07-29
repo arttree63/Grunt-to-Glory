@@ -353,6 +353,27 @@ export const BANNER_ZONE_SHARE = 0.15
 export const EMBER_IMMEDIATE = 0.7
 export const EMBER_BURN_DURATION = 4
 
+// ── 總攻 loop(v1.6:爽感預算花在技能與輪內成長,不動裝備的 power-neutral)──
+/**
+ * 引爆回轉(Reload 式):引爆印記時,依消耗層數推進**其他**技能的冷卻。
+ * 這是把既有循環閉合成 loop 的那一塊:視窗擊殺 → 印記 → 引爆 → 冷卻回轉 → 更快開下一輪總攻。
+ * 受 CD_FLOOR 護欄約束(實際冷卻不得低於基礎 30%)。
+ */
+export const RELOAD_PER_SIGIL = 0.4
+/**
+ * 戰意昂揚(Dark Ritual 式輪內疊乘):**滿層**引爆印記時,本輪傷害永久 +2%(乘算疊加)。
+ * 轉生歸零——所以它製造「這輪再 loop 一下」的癮,而不會像舊勳章那樣跨輪失控。
+ * 滿層才算:保留「現在引爆還是再疊」的決策,不會變成無腦速引。
+ */
+export const ZEAL_PER_FULL = 0.02
+export const ZEAL_MAX_STACKS = 30
+/**
+ * 乘勝推進(破牆 spike):擊破 Boss 後短暫的清怪加速,把擊破做成節奏高點。
+ * 只對非 Boss 目標生效——不影響下一場檢定,也不進 power-neutral 的裝備預算。
+ */
+export const CONQUEST_SEC = 12
+export const CONQUEST_MULT = 1.5
+
 // ── 二轉的既有技能進化(Lv.100 的第三層內容)──
 /** 堅陣:視窗期間擊殺的印記倍數 */
 export const EVOLVE_SIGIL_MULT = 2

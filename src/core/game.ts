@@ -91,7 +91,9 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     destinyPoints: 0,
     destinyEarned: 0,
     skillCd: {},
-    buff: null,
+    buffs: [],
+    zealStacks: 0,
+    conquestLeft: 0,
     sigils: 0,
     castOrder: [],
     hourglassLock: 0,
@@ -150,7 +152,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 18
+export const SAVE_VERSION = 19
 
 // ---------- 數值查詢 ----------
 
@@ -162,11 +164,14 @@ export function goldMult(s: GameState): number {
 }
 
 export function critRate(s: GameState): number {
-  // 常駐化的 buff(不退之壁)一律取原本視窗的平均值,暴擊型 buff 也不例外——
-  // 漏掉這裡的話,疾風連刺的 +60% 暴擊會變成永久,單件傳說直接破 power-neutral
-  const sk = s.buff ? SKILLS[s.buff.skillId] : null
-  const uptime = s.buff?.permanent && sk ? ((sk.duration ?? 0) / sk.cd) * B.WALL_PERMANENT_BONUS : 1
-  const buffCrit = sk ? (sk.critAdd ?? 0) * uptime : 0
+  // 多槽 buff 的暴擊加成相加。常駐化(不退之壁)取原視窗 uptime 平均——
+  // 漏掉的話疾風連刺的 +60% 會變永久,單件傳說直接破 power-neutral
+  let buffCrit = 0
+  for (const b of s.buffs) {
+    const sk = SKILLS[b.skillId]
+    const uptime = b.permanent ? ((sk.duration ?? 0) / sk.cd) * B.WALL_PERMANENT_BONUS : 1
+    buffCrit += (sk.critAdd ?? 0) * uptime
+  }
   return B.CRIT_RATE + equipBonuses(s.equipped).crit + (JOBS[s.jobId].bonus.crit ?? 0) + buffCrit
 }
 
@@ -204,7 +209,12 @@ export function setProgress(s: GameState): Array<{ tag: SetTagId; count: number 
 
 /** 帝國鐵壁 2 件:持續型技能展開的軍陣是否生效中 */
 export function ironwallActive(s: GameState): boolean {
-  return setCount(s, 'ironwall') >= 2 && !!s.buff && !!SKILLS[s.buff.skillId].duration
+  return setCount(s, 'ironwall') >= 2 && s.buffs.some((b) => SKILLS[b.skillId].duration)
+}
+
+/** 有任何暴擊視窗(疾風連刺系)生效中 */
+export function critWindowActive(s: GameState): boolean {
+  return s.buffs.some((b) => !!SKILLS[b.skillId].critAdd)
 }
 
 /** 暴擊傷害加成:詞綴 + 重擊基底 */
@@ -219,12 +229,19 @@ export function critDamageBonus(s: GameState): number {
  * 變的是玩家不再需要抓視窗。
  */
 export function buffMult(s: GameState): number {
-  if (!s.buff) return 1
-  const sk = SKILLS[s.buff.skillId]
-  if (!sk.dmgMult) return 1
-  if (!s.buff.permanent) return sk.dmgMult
-  const dur = sk.duration ?? 0
-  return ((dur * sk.dmgMult + (sk.cd - dur)) / sk.cd) * B.WALL_PERMANENT_BONUS
+  // 多槽相乘:重疊視窗 > 輪流開——這正是「總攻」的數值來源(技能是成長預算,不受 ±10% 約束)
+  let mult = 1
+  for (const b of s.buffs) {
+    const sk = SKILLS[b.skillId]
+    if (!sk.dmgMult) continue
+    if (!b.permanent) {
+      mult *= sk.dmgMult
+    } else {
+      const dur = sk.duration ?? 0
+      mult *= ((dur * sk.dmgMult + (sk.cd - dur)) / sk.cd) * B.WALL_PERMANENT_BONUS
+    }
+  }
+  return mult
 }
 
 export function currentDPS(s: GameState): Decimal {
@@ -242,6 +259,8 @@ export function currentDPS(s: GameState): Decimal {
     .mul(equipPower(s.equipped)) // 每件裝備獨立乘區
     .mul(s.isBoss ? 1 + bonus.bossDmg : 1)
     .mul(s.relicLeft > 0 ? B.RELIC_MULT : 1) // 貪婪之眼的遺物弱點
+    .mul(Math.pow(1 + B.ZEAL_PER_FULL, s.zealStacks)) // 戰意昂揚(輪內疊乘)
+    .mul(!s.isBoss && s.conquestLeft > 0 ? B.CONQUEST_MULT : 1) // 乘勝推進(不影響下一場檢定)
 }
 
 export interface DpsPart {
@@ -261,6 +280,9 @@ export function dpsBreakdown(s: GameState): DpsPart[] {
     { label: '裝備詞條', mult: 1 + bonus.dmg },
     { label: '暴擊期望', mult: critMultiplier(critRate(s), critDamageBonus(s)) },
     { label: '戰意', mult: 1 + s.morale * B.MORALE_DMG_PER_POINT },
+    ...(s.zealStacks > 0
+      ? [{ label: `戰意昂揚 ×${s.zealStacks}`, mult: Math.pow(1 + B.ZEAL_PER_FULL, s.zealStacks) }]
+      : []),
     ...(s.isBoss && bonus.bossDmg > 0 ? [{ label: '對 Boss', mult: 1 + bonus.bossDmg }] : []),
   ]
 }
@@ -305,11 +327,14 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
   // buff 視窗期間的擊殺會累積印記(軍勢 / 追風印記)。
   // 不退之壁把視窗變成常駐,若照原樣累積會變成每殺必給 → 印記速率暴增。
   // 改為依原本的視窗佔比擲骰,累積速率因此與沒穿時相同。
-  if (s.buff && SKILLS[s.buff.skillId].duration) {
-    const sk = SKILLS[s.buff.skillId]
-    // 堅陣(二轉進化):視窗期間的擊殺累積雙倍
-    const n = evolved(s, s.buff.skillId) ? B.EVOLVE_SIGIL_MULT : 1
-    if (!s.buff.permanent || rng() < (sk.duration ?? 0) / sk.cd) gainSigil(s, n)
+  // 多槽下取「最有利的一個視窗」判定,不逐槽疊加——否則雙 buff 職業印記速率直接翻倍
+  const windows = s.buffs.filter((b) => SKILLS[b.skillId].duration)
+  if (windows.length > 0) {
+    const live = windows.find((b) => !b.permanent)
+    const pick = live ?? windows[0]
+    const sk = SKILLS[pick.skillId]
+    const n = windows.some((b) => evolved(s, b.skillId)) ? B.EVOLVE_SIGIL_MULT : 1
+    if (live || rng() < (sk.duration ?? 0) / sk.cd) gainSigil(s, n)
   }
   // 連斬:每次擊殺 +1 層並重置衰減視窗
   if (hasNode(s, 'tactician_start')) {
@@ -334,6 +359,7 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
 
   if (!boss) return
   s.bossKills++
+  s.conquestLeft = B.CONQUEST_SEC // 乘勝推進:把擊破做成節奏高點
   tickLivingWeapon(s, events)
   tickHeirloomRepair(s, events)
   // 部位素材:首殺必掉,重複擊殺機率掉
@@ -442,7 +468,7 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   const dmg = currentDPS(s).mul(swung)
   // 行為型傳說的分帳:總量不變(power-neutral by construction),
   // 只是把同一份傷害拆給不同的「行動者」——演出因此能畫出分身/軍旗各自出手
-  const galeWindow = s.buff && !!SKILLS[s.buff.skillId].critAdd
+  const galeWindow = critWindowActive(s)
   if (galeWindow && hasLegend(s, 'twinblade')) {
     raw.push({ type: 'attack', damage: dmg.mul(1 - B.TWIN_CLONE_SHARE), source: 'hero' })
     raw.push({ type: 'attack', damage: dmg.mul(B.TWIN_CLONE_SHARE), source: 'clone' })
@@ -783,7 +809,7 @@ export function attackInterval(s: GameState): number {
   const mod = Math.max(0.3, 1 + baseMods(s.equipped).interval)
   const formation = ironwallActive(s) ? B.IRONWALL_INTERVAL : 1
   // 殘影(二轉進化):自己那招的視窗期間切得更細
-  const echo = s.buff && evolved(s, s.buff.skillId) && SKILLS[s.buff.skillId].critAdd ? B.EVOLVE_INTERVAL : 1
+  const echo = s.buffs.some((b) => evolved(s, b.skillId) && SKILLS[b.skillId].critAdd) ? B.EVOLVE_INTERVAL : 1
   return (B.ATTACK_INTERVAL * mod * formation * echo) / (1 + s.morale * B.MORALE_ATTACK_SPEED)
 }
 
@@ -891,11 +917,30 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
     // 法典殘頁:保留三分之一不清空,每枚威力降低 → 從「攢滿再引爆」變成「連續小引爆」
     const codex = hasLegend(s, 'codexpage')
     const perSigil = B.SIGIL_BURST_SEC * (1 + bonus.sigilPower) * (codex ? B.CODEX_POWER : 1)
-    const dmg = currentDPS(s).mul(s.sigils * perSigil * skillDmg)
+    const spentNow = s.sigils
+    const wasFull = spentNow >= sigilCap(s)
+    const dmg = currentDPS(s).mul(spentNow * perSigil * skillDmg)
     skillDamage = skillDamage.add(dmg)
     if (s.event) s.event.hp = s.event.hp.sub(dmg)
     else s.enemyHp = s.enemyHp.sub(dmg)
     s.sigils = codex ? Math.floor(s.sigils * B.CODEX_KEEP) : 0
+
+    // 引爆回轉(Reload 式):依消耗層數推進其他技能的冷卻,把循環閉合成 loop
+    for (const other of availableSkills(s)) {
+      if (other === id) continue
+      const left = s.skillCd[other] ?? 0
+      if (left <= 0) continue
+      const advance = spentNow * B.RELOAD_PER_SIGIL
+      const next = left - advance
+      if (next <= 0) delete s.skillCd[other]
+      else s.skillCd[other] = next
+      events.push({ type: 'cooldownAdvance', skillId: other, seconds: advance })
+    }
+    // 戰意昂揚(輪內疊乘):滿層引爆才算——保留「現在引爆還是再疊」的決策
+    if (wasFull && s.zealStacks < B.ZEAL_MAX_STACKS) {
+      s.zealStacks++
+      events.push({ type: 'zealGain', count: s.zealStacks })
+    }
   } else if (sk.burstSeconds) {
     let dmg = currentDPS(s).mul(sk.burstSeconds * skillDmg)
     skillDamage = skillDamage.add(dmg)
@@ -916,7 +961,9 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
     if (sk.dmgMult && hasLegend(s, 'bannerflag')) s.bannerLeft = sk.duration
     // 不退之壁:軍陣留在場上直到下次施放(倍率改用平均值,見 buffMult)
     const permanent = hasLegend(s, 'wall')
-    s.buff = {
+    // 多槽:同技能重放刷新自己,不同技能併存(總攻 = 玩家決定把視窗疊起來)
+    s.buffs = s.buffs.filter((b) => b.skillId !== id)
+    s.buffs.push({
       skillId: id,
       timeLeft: permanent
         ? Infinity
@@ -924,7 +971,7 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
           (1 + bonus.buffDur + baseMods(s.equipped).buffDur) *
           (command ? B.COMMANDER_POWER : 1),
       permanent,
-    }
+    })
   }
 
   trackCastOrder(s, id, events)
@@ -1090,6 +1137,7 @@ function tickCombatStatus(s: GameState, dt: number, events: GameEvent[], rng: Rn
     }
   }
   if (s.bannerLeft > 0) s.bannerLeft = Math.max(0, s.bannerLeft - dt)
+  if (s.conquestLeft > 0) s.conquestLeft = Math.max(0, s.conquestLeft - dt)
   if (s.zoneLeft > 0) {
     const step = Math.min(dt, s.zoneLeft)
     const dmg = s.zoneDps.mul(step)
@@ -1124,13 +1172,16 @@ function tickSkills(s: GameState, dt: number, events: GameEvent[]) {
     if (left <= 0) delete s.skillCd[id]
     else s.skillCd[id] = left
   }
-  if (s.buff && !s.buff.permanent) {
-    s.buff.timeLeft -= dt
-    if (s.buff.timeLeft <= 0) {
-      // ⚠️ 先引爆再清 buff:軍陣是「結束時的最後一擊」,
-      // 順序反過來會讓自動引爆吃不到增益倍率,實測直接掉 18% 輸出
-      autoDetonate(s, events)
-      s.buff = null
+  if (s.buffs.length > 0) {
+    const hadWindow = s.buffs.some((b) => SKILLS[b.skillId].duration)
+    for (const b of s.buffs) if (!b.permanent) b.timeLeft -= dt
+    const expiring = s.buffs.filter((b) => !b.permanent && b.timeLeft <= 0)
+    if (expiring.length > 0) {
+      // ⚠️ 先引爆再清:軍陣是「結束時的最後一擊」,反過來吃不到增益倍率(實測掉 18%)
+      // 多槽下只在「這是最後一個持續視窗」時引爆,總攻疊窗不會連環爆
+      const remaining = s.buffs.filter((b) => !(b.timeLeft <= 0 && !b.permanent))
+      if (hadWindow && !remaining.some((b) => SKILLS[b.skillId].duration)) autoDetonate(s, events)
+      s.buffs = remaining
     }
   }
   if (s.hourglassLock > 0) s.hourglassLock = Math.max(0, s.hourglassLock - dt)

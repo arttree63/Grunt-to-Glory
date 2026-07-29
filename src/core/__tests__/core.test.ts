@@ -753,7 +753,7 @@ describe('職業覺醒與第二技能(印記體系)', () => {
     expect(s.sigils).toBeGreaterThan(0)
 
     // 視窗外的擊殺不累積
-    s.buff = null
+    s.buffs = []
     const before = s.sigils
     applyTick(s, 1000)
     expect(s.sigils).toBe(before)
@@ -1022,7 +1022,7 @@ describe('轉職與主動技能', () => {
     expect(skillReady(s, 'shieldRush')).toBe(false)
 
     applyTick(s, SKILLS.shieldRush.duration! * 1000 + 100)
-    expect(s.buff).toBe(null)
+    expect(s.buffs).toHaveLength(0)
     expect(currentDPS(s).div(base).toNumber()).toBeCloseTo(1)
   })
 
@@ -1498,7 +1498,7 @@ describe('裝備四層架構(基底 / 詞綴分類 / 傳說)', () => {
     expect(hasLegend(s, 'wall')).toBe(true)
 
     castSkill(s, 'shieldRush')
-    expect(s.buff?.permanent).toBe(true)
+    expect(s.buffs[0]?.permanent).toBe(true)
     const sk = SKILLS.shieldRush
     // 常駐倍率 = 原視窗平均值 × 常駐溢價(補回 Boss 視窗內拿不到的爆發)
     const avg =
@@ -1507,7 +1507,7 @@ describe('裝備四層架構(基底 / 詞綴分類 / 傳說)', () => {
     expect(buffMult(s)).toBeCloseTo(avg, 5)
 
     applyTick(s, 60_000) // 遠超過原本 10 秒視窗
-    expect(s.buff).not.toBe(null)
+    expect(s.buffs.length).toBeGreaterThan(0)
     expect(buffMult(s)).toBeCloseTo(avg, 5)
   })
 
@@ -1542,9 +1542,13 @@ describe('裝備四層架構(基底 / 詞綴分類 / 傳說)', () => {
 
     castSkill(s, 'shieldRush')
     const afterCast = s.skillCd.shieldRush!
-    castSkill(s, 'rally') // 湊滿一輪 → 推進最長冷卻的技能
+    const spent = s.sigils
+    castSkill(s, 'rally') // 湊滿一輪 → 沙漏推進 + 引爆回轉(v1.6)各推一段
     const progressed = s.skillCd.shieldRush!
-    expect(progressed).toBeCloseTo(afterCast - skillCooldown(s, 'shieldRush') * B.HOURGLASS_PROGRESS, 5)
+    expect(progressed).toBeCloseTo(
+      afterCast - skillCooldown(s, 'shieldRush') * B.HOURGLASS_PROGRESS - spent * B.RELOAD_PER_SIGIL,
+      5,
+    )
 
     // 上鎖期間再湊滿也不再推進(冷卻完成類不得連鎖自我觸發)
     s.sigils = 3
@@ -1552,7 +1556,8 @@ describe('裝備四層架構(基底 / 詞綴分類 / 傳說)', () => {
     castSkill(s, 'rally')
     castSkill(s, 'rally')
     expect(s.skillCd.shieldRush).toBeLessThan(progressed + 0.01)
-    expect(s.skillCd.shieldRush).toBeGreaterThan(progressed - 1.1) // 只有 tick 的自然遞減
+    // 沙漏上鎖不再推進,但引爆回轉(v1.6)照常:允許 3 層 × RELOAD_PER_SIGIL 的量
+    expect(s.skillCd.shieldRush).toBeGreaterThan(progressed - 3 * B.RELOAD_PER_SIGIL - 0.01)
   })
 
   it('精工保底那一次必定附上傳說(部位與基底對得上時)', () => {
@@ -1684,7 +1689,10 @@ describe('套裝標籤(裝備第四層)', () => {
     s.skillCd.shieldRush = 0
     castSkill(s, 'shieldRush')
     expect(s.commandReady).toBe(false)
-    expect(s.buff!.timeLeft).toBeCloseTo(SKILLS.shieldRush.duration! * B.COMMANDER_POWER, 5)
+    expect(s.buffs.find((b) => b.skillId === 'shieldRush')!.timeLeft).toBeCloseTo(
+      SKILLS.shieldRush.duration! * B.COMMANDER_POWER,
+      5,
+    )
     expect(s.skillCd.shieldRush!).toBeCloseTo(skillCooldown(s, 'shieldRush') * B.COMMANDER_CD, 5)
   })
 
@@ -2074,5 +2082,86 @@ describe('遊戲性掃描修復(2026-07-30)', () => {
     const ev = castSkill(s, 'rally') // 兩招各一次 = 湊滿
     expect(s.commandReady).toBe(true) // 指揮官觸發
     expect(ev.some((e) => e.type === 'cooldownAdvance')).toBe(true) // 沙漏也觸發
+  })
+})
+
+describe('總攻 loop(v1.6:buff 併存 / 引爆回轉 / 戰意昂揚 / 乘勝推進)', () => {
+  const twoSkillHero = () => {
+    const s = createInitialState()
+    s.lv = 100
+    promote(s, 'infantry')
+    promote(s, 'paladin')
+    return s
+  }
+
+  it('buff 多槽併存:兩個視窗疊加,乘區相乘(總攻的數值來源)', () => {
+    const s = twoSkillHero()
+    castSkill(s, 'shieldRush')
+    castSkill(s, 'bulwark')
+    expect(s.buffs).toHaveLength(2)
+    expect(buffMult(s)).toBeCloseTo(2.5 * 3, 5) // 重疊視窗 > 輪流開
+
+    // 同技能重放刷新自己,不會疊出第三槽
+    s.skillCd.shieldRush = 0
+    castSkill(s, 'shieldRush')
+    expect(s.buffs).toHaveLength(2)
+  })
+
+  it('引爆回轉:引爆印記推進其他技能的冷卻,把循環閉成 loop', () => {
+    const s = twoSkillHero()
+    s.highestFloor = B.AWAKEN_FLOOR
+    chooseDestiny(s, 'tactician')
+    s.destinyNodes.push('tactician_1a')
+    castSkill(s, 'shieldRush')
+    const before = s.skillCd.shieldRush!
+    s.sigils = 10
+    const ev = castSkill(s, 'rally')
+    expect(s.skillCd.shieldRush!).toBeCloseTo(before - 10 * B.RELOAD_PER_SIGIL, 5)
+    expect(ev.filter((e) => e.type === 'cooldownAdvance').length).toBeGreaterThan(0)
+  })
+
+  it('戰意昂揚:滿層引爆 +1 層輪內乘算;沒滿層不給(保留引爆時機的決策)', () => {
+    const s = twoSkillHero()
+    s.highestFloor = B.AWAKEN_FLOOR
+    chooseDestiny(s, 'tactician')
+    s.destinyNodes.push('tactician_1a')
+
+    s.sigils = 3 // 未滿
+    castSkill(s, 'rally')
+    expect(s.zealStacks).toBe(0)
+
+    s.skillCd.rally = 0
+    s.sigils = sigilCap(s) // 滿層
+    const dpsBefore = currentDPS(s)
+    const ev = castSkill(s, 'rally')
+    expect(s.zealStacks).toBe(1)
+    expect(ev.some((e) => e.type === 'zealGain')).toBe(true)
+    expect(currentDPS(s).gt(dpsBefore)).toBe(true) // 輪內永久變強
+
+    const next = prestige({ ...s, highestFloor: 50 } as typeof s)
+    if (next) expect(next.zealStacks).toBe(0) // 轉生歸零,不跨輪失控
+  })
+
+  it('乘勝推進:擊破 Boss 後清怪加速,但不影響下一場 Boss 檢定', () => {
+    const s = createInitialState()
+    s.lv = 200
+    s.floor = 10
+    spawnEnemy(s)
+    applyTick(s, 1000) // 一擊擊破
+    expect(s.conquestLeft).toBeGreaterThan(0)
+
+    const base = currentDPS(s)
+    s.isBoss = false
+    const rushing = currentDPS(s)
+    s.conquestLeft = 0
+    expect(rushing.div(currentDPS(s)).toNumber()).toBeCloseTo(B.CONQUEST_MULT, 5)
+    void base
+
+    // Boss 目標不吃加成
+    s.conquestLeft = 10
+    s.isBoss = true
+    const boss1 = currentDPS(s)
+    s.conquestLeft = 0
+    expect(currentDPS(s).toString()).toBe(boss1.toString())
   })
 })

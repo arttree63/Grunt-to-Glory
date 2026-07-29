@@ -761,3 +761,13 @@ button {
   vertical-align: 1px;
 }
 .set-block { color: var(--text); }
+
+/* 總攻就緒:全技能轉好時整排呼吸發光——「我決定現在全放」是爽感的本體 */
+.skills.all-ready .skill:not(.locked):not(:disabled) {
+  border-color: var(--gold);
+  box-shadow: 0 0 10px rgba(242, 193, 78, 0.35);
+  animation: all-ready-pulse 1.1s ease-in-out infinite;
+}
+@keyframes all-ready-pulse {
+  50% { box-shadow: 0 0 18px rgba(242, 193, 78, 0.6); }
+}

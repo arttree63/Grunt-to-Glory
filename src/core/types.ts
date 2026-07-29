@@ -215,10 +215,18 @@ export interface GameState {
   destinyEarned: number
   /** 各技能剩餘冷卻(秒) */
   skillCd: Partial<Record<SkillId, number>>
-  /** 生效中的技能 buff */
-  buff: ActiveBuff | null
+  /**
+   * 生效中的技能 buff(多槽併存,v1.6 總攻改版)。
+   * ⚠️ 單槽互斥是「開全套總攻」在結構上不存在的原因——爽感的本體是
+   * 「我決定現在全放」,所以不同技能的 buff 必須能疊;同一技能重放則刷新自己。
+   */
+  buffs: ActiveBuff[]
   /** 印記層數(軍勢 / 追風印記 / 法令,三職業共用同一個計數) */
   sigils: number
+  /** 戰意昂揚:本輪滿層引爆的累積層數(輪內永久乘算,轉生歸零) */
+  zealStacks: number
+  /** 乘勝推進:Boss 擊破後的加速剩餘秒數(暫態) */
+  conquestLeft: number
 
   // ── 傳說裝(關鍵字狀態)──
   /** 順序:本次循環已施放過的不同技能 */
@@ -361,6 +369,7 @@ export interface GameEvent {
     | 'freezeStart'
     | 'freezeBurst'
     | 'burnTick'
+    | 'zealGain'
   floor?: number
   gold?: Decimal
   /** attack 事件:這一擊實際造成的傷害 */
