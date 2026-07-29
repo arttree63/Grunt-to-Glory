@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc -b --noEmit
+
+      - name: Core 單元測試
+        run: npm test
+
+      # 模擬不做斷言,但能抓到崩潰、無窮迴圈、節點死鎖
+      - name: 數值模擬 smoke(神匠)
+        run: DESTINY=artisan npx tsx tools/balance-sim/sim.ts > /dev/null
+
+      - name: 數值模擬 smoke(尋寶獵人)
+        run: DESTINY=hunter npx tsx tools/balance-sim/sim.ts > /dev/null
+
+      - name: 數值模擬 smoke(戰術家)
+        run: DESTINY=tactician npx tsx tools/balance-sim/sim.ts > /dev/null
+
+      - name: Build
+        run: npm run build
