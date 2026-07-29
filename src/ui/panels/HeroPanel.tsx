@@ -4,10 +4,9 @@ import woodUrl from '../../../assets/visual/weapons/base-set/wood.png'
 import * as B from '../../core/balance'
 import { fmt } from '../../core/format'
 import { affordableLevels, bulkUpCost, upCost } from '../../core/formulas'
-import { critRate, currentDPS, dpsBreakdown, goldPerSec, talentPoints } from '../../core/game'
+import { critRate, currentDPS, dpsBreakdown, goldPerSec } from '../../core/game'
 import { availableJobs, JOBS, nextTierJobs } from '../../core/jobs'
 import { SKILLS } from '../../core/skills'
-import { STATS } from '../../core/talents'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 import { useHold } from '../useHold'
@@ -22,15 +21,12 @@ export default function HeroPanel() {
   const s = useGameState()
   const buy = useGame((st) => st.buy)
   const promote = useGame((st) => st.promote)
-  const spendTalent = useGame((st) => st.spendTalent)
-  const resetTalents = useGame((st) => st.resetTalents)
   const job = JOBS[s.jobId]
 
   const cost1 = upCost(s.lv)
   const cost10 = bulkUpCost(s.lv, 10)
   const maxN = affordableLevels(s.lv, s.gold)
   const hold1 = useHold(() => buy(1))
-  const free = talentPoints(s)
   const nextJobs = nextTierJobs(s.jobId)
   const canPromote = availableJobs(s.jobId, s.lv)
 
@@ -105,46 +101,8 @@ export default function HeroPanel() {
         </button>
       </div>
 
-      <h3 style={{ marginTop: 16 }}>
-        天 賦 配 點
-        {free > 0 && <span style={{ color: 'var(--gold)' }}> ・{free} 點可用</span>}
-      </h3>
-      <div className="affix" style={{ marginBottom: 6 }}>
-        每升一級得 1 點。傷害成長已拆進力量,全點力量等於原本的升級曲線。
-      </div>
-      {STATS.map((st) => (
-        <div className="card" key={st.id}>
-          <div className="head">
-            <b>
-              {st.name} <small className="affix">{st.short}</small>
-              <span style={{ color: 'var(--gold)', marginLeft: 6 }}>{s.talents[st.id]}</span>
-            </b>
-            <span>
-              <button
-                className="btn primary"
-                style={{ padding: '5px 10px' }}
-                disabled={free === 0}
-                onClick={() => spendTalent(st.id, 1)}
-              >
-                +1
-              </button>
-              <button
-                className="btn"
-                style={{ padding: '5px 10px', marginLeft: 6 }}
-                disabled={free === 0}
-                onClick={() => spendTalent(st.id, free)}
-              >
-                +{free || ''}全
-              </button>
-            </span>
-          </div>
-          <div className="affix">{st.desc}</div>
-        </div>
-      ))}
-      <div className="btn-row">
-        <button className="btn" onClick={resetTalents}>
-          洗點(免費,點數全部退回)
-        </button>
+      <div className="empty" style={{ textAlign: 'left', lineHeight: 1.7 }}>
+        天賦配點已由「命運」分頁的命運樹取代——那裡的選擇是機制而不是數值。
       </div>
 
       {nextJobs.length > 0 && (

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import * as B from '../balance'
-import { D, Decimal } from '../decimal'
+import { D } from '../decimal'
 import { bossPartSlot, forgeLevel, forgeUpgradeChance, QUALITIES, SLOTS } from '../equipment'
 import { fmt, fmtTime } from '../format'
 import { bossHP, critMultiplier, goldDrop, heroDPS, isBossFloor, medalsFromFloor, mobHP, upCost } from '../formulas'
 import { availableJobs, JOBS } from '../jobs'
 import { SKILLS } from '../skills'
+import { pendingChoice } from '../destiny'
 import { heirloomSlots, techOfflineHours } from '../techs'
 import {
   applyTick,
@@ -13,17 +14,15 @@ import {
   buyElite,
   buyTech,
   canFineForge,
+  chooseDestiny,
+  pickDestinyNode,
   claimDailyElite,
   fineForge,
   goldMult,
   castSkill,
   click,
-  critRate,
-  resetTalents,
   skillCooldown,
   skillReady,
-  spendTalent,
-  talentPoints,
   computeOffline,
   createInitialState,
   currentDPS,
@@ -66,20 +65,6 @@ describe('formulas', () => {
     expect(heroDPS({ lv: 1, techMult: 1.5 }).toNumber()).toBeCloseTo(B.BASE_DPS * 1.5)
     expect(heroDPS({ lv: 1, morale: 100 }).toNumber()).toBeCloseTo(B.BASE_DPS * 1.4)
     expect(medalsFromFloor(87)).toBe(8)
-  })
-
-  it('全點力量 = 改版前已驗證的 1.072/級曲線(天賦不是額外變強)', () => {
-    // 天賦改版的核心約束。力量同時給傷害倍率與暴擊傷害,兩個都是乘區,
-    // 任何一邊調大都會讓整條曲線偏離已驗證的基準 → 這裡跨等級釘死。
-    for (const lv of [1, 25, 50, 100, 200]) {
-      const s = createInitialState()
-      s.lv = lv
-      spendTalent(s, 'str', talentPoints(s))
-      const legacy = D(5).mul(Decimal.pow(1.072, lv - 1))
-      const ratio = currentDPS(s).div(legacy).toNumber()
-      expect(ratio).toBeGreaterThan(0.95)
-      expect(ratio).toBeLessThan(1.05)
-    }
   })
 
   it('暴擊真的進傷害公式,不再只是跳字', () => {
@@ -276,56 +261,77 @@ describe('養成與經濟', () => {
   })
 })
 
-describe('天賦配點', () => {
-  it('每升一級 1 點,不能超支', () => {
+describe('命運樹', () => {
+  it('選擇路徑會拿到起始能力,一輪只能選一次', () => {
     const s = createInitialState()
-    s.lv = 11
-    expect(talentPoints(s)).toBe(10)
-    expect(spendTalent(s, 'str', 4)).toBe(4)
-    expect(talentPoints(s)).toBe(6)
-    expect(spendTalent(s, 'agi', 99)).toBe(6) // 只給得出剩下的
-    expect(talentPoints(s)).toBe(0)
-    expect(spendTalent(s, 'luk', 1)).toBe(0)
+    expect(s.destinyPath).toBe(null)
+    expect(chooseDestiny(s, 'artisan')).toBe(true)
+    expect(s.destinyPath).toBe('artisan')
+    expect(s.destinyNodes).toEqual(['artisan_start'])
+    expect(chooseDestiny(s, 'hunter')).toBe(false) // 不能改
   })
 
-  it('力量提升傷害,敏捷提升暴擊率', () => {
+  it('里程碑發命運點,用當輪層數', () => {
     const s = createInitialState()
-    s.lv = 21
-    const base = currentDPS(s)
-    spendTalent(s, 'str', 10)
-    const withStr = currentDPS(s)
-    expect(withStr.div(base).toNumber()).toBeGreaterThan(1.2)
-
-    const s2 = createInitialState()
-    s2.lv = 21
-    const crit0 = critRate(s2)
-    spendTalent(s2, 'agi', 10)
-    expect(critRate(s2)).toBeCloseTo(crit0 + 10 * B.AGI_CRIT_RATE)
-    expect(currentDPS(s2).gt(currentDPS(createInitialState()))).toBe(true)
+    chooseDestiny(s, 'artisan')
+    s.lv = 200 // 推得動
+    let guard = 0
+    while (s.floor < B.DESTINY_MILESTONES[0] && guard++ < 5000) applyTick(s, 100)
+    applyTick(s, 100)
+    expect(s.destinyPoints).toBe(1)
+    expect(s.destinyEarned).toBe(1)
   })
 
-  it('幸運提升金幣、智力縮短冷卻', () => {
+  it('未使用命運點有上限,滿了停發但不擋推進', () => {
     const s = createInitialState()
-    s.lv = 41
-    const g0 = goldMult(s)
-    spendTalent(s, 'luk', 10)
-    expect(goldMult(s) / g0).toBeCloseTo(1 + 10 * B.LUK_GOLD)
-
-    const s2 = createInitialState()
-    s2.lv = 41
-    s2.jobId = 'infantry'
-    const cd0 = skillCooldown(s2, 'shieldRush')
-    spendTalent(s2, 'int', 20)
-    expect(skillCooldown(s2, 'shieldRush')).toBeCloseTo(cd0 * (1 - 20 * B.INT_CDR))
+    chooseDestiny(s, 'artisan')
+    s.lv = 300
+    const floorBefore = s.floor
+    let guard = 0
+    while (s.floor < 200 && guard++ < 20000) applyTick(s, 100)
+    expect(s.destinyPoints).toBeLessThanOrEqual(B.DESTINY_POINT_CAP)
+    expect(s.floor).toBeGreaterThan(floorBefore) // 推進沒有被卡住
   })
 
-  it('洗點把點數全部退回', () => {
+  it('二選一:選了一個,另一個本輪關閉', () => {
     const s = createInitialState()
-    s.lv = 31
-    spendTalent(s, 'str', 20)
-    resetTalents(s)
-    expect(talentPoints(s)).toBe(30)
-    expect(s.talents.str).toBe(0)
+    chooseDestiny(s, 'artisan')
+    s.destinyPoints = 1
+
+    const choice = pendingChoice(s)!
+    expect(choice.map((n) => n.id)).toEqual(['artisan_1a', 'artisan_1b'])
+
+    expect(pickDestinyNode(s, 'artisan_1a')).toBe(true)
+    expect(s.destinyNodes).toContain('artisan_1a')
+    expect(s.destinyPoints).toBe(0)
+
+    // 沒點數不能再選,而且下一個決策點換成第二層
+    expect(pickDestinyNode(s, 'artisan_1b')).toBe(false)
+    s.destinyPoints = 1
+    expect(pendingChoice(s)!.map((n) => n.id)).toEqual(['artisan_2a', 'artisan_2b'])
+    expect(pickDestinyNode(s, 'artisan_1b')).toBe(false) // 上一層的選項已關閉
+  })
+
+  it('不能選不屬於當前決策點的節點', () => {
+    const s = createInitialState()
+    chooseDestiny(s, 'artisan')
+    s.destinyPoints = 1
+    expect(pickDestinyNode(s, 'hunter_1a')).toBe(false)
+    expect(pickDestinyNode(s, 'artisan_3a')).toBe(false)
+  })
+
+  it('轉生後命運樹重新來過', () => {
+    const s = createInitialState()
+    chooseDestiny(s, 'hunter')
+    s.destinyPoints = 2
+    s.destinyEarned = 2
+    s.highestFloor = 50
+
+    const next = prestige(s)!
+    expect(next.destinyPath).toBe(null)
+    expect(next.destinyNodes).toEqual([])
+    expect(next.destinyPoints).toBe(0)
+    expect(next.destinyEarned).toBe(0)
   })
 })
 
@@ -656,18 +662,18 @@ describe('存檔', () => {
     expect(back.techs).toEqual({ valor: 0, supply: 0, legacy: 0, camp: 0, heirloom: 0 })
   })
 
-  it('v5 存檔遷移到 v6:既有等級的天賦點自動補進力量,戰力不下降', () => {
+  it('v7 存檔遷移到 v8:天賦移除、不自動替玩家選流派、補一枚命運點', () => {
     const s = createInitialState()
     s.lv = 51
-    const v5 = JSON.parse(JSON.stringify(serialize(s)))
-    v5.version = 5
-    delete v5.talents
+    const v7 = JSON.parse(JSON.stringify(serialize(s))) as Record<string, unknown>
+    v7.version = 7
+    v7.talents = { str: 50, agi: 0, int: 0, luk: 0 } // 舊格式
 
-    const back = deserialize(v5)
-    expect(back.talents.str).toBe(50) // 等級 51 → 50 點全給力量
-    expect(talentPoints(back)).toBe(0)
-    // 舊玩家的 DPS 不因為改版變弱
+    const back = deserialize(v7 as never)
     expect(back.lv).toBe(51)
+    expect(back.destinyPath).toBe(null) // 不替玩家選,這是最重要的一個選擇
+    expect(back.destinyNodes).toEqual([])
+    expect(back.destinyPoints).toBe(1) // 補償
   })
 
   it('壞存檔回退成新局而不是崩潰', () => {

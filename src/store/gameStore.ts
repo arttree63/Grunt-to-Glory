@@ -3,7 +3,16 @@ import * as B from '../core/balance'
 import { D, type Decimal } from '../core/decimal'
 import { QUALITIES } from '../core/equipment'
 import * as G from '../core/game'
-import type { Equipment, GameState, JobId, SkillId, Slot, StatId, TechId } from '../core/types'
+import type {
+  DestinyNodeId,
+  DestinyPathId,
+  Equipment,
+  GameState,
+  JobId,
+  SkillId,
+  Slot,
+  TechId,
+} from '../core/types'
 import { gameEvents } from './events'
 import { loadGame, saveGame, wipeSave } from './persist'
 
@@ -24,8 +33,8 @@ interface Store {
   click: () => void
   buy: (n: number | 'max') => void
   promote: (job: JobId) => void
-  spendTalent: (stat: StatId, n?: number) => void
-  resetTalents: () => void
+  chooseDestiny: (path: DestinyPathId) => void
+  pickDestinyNode: (id: DestinyNodeId) => void
   castSkill: (id: SkillId) => void
   forge: () => Equipment | null
   fineForge: (opts: G.FineForgeOptions) => Equipment | null
@@ -93,13 +102,13 @@ export const useGame = create<Store>((set, get) => ({
     bump(set, get)
   },
 
-  spendTalent(stat, n = 1) {
-    G.spendTalent(get().s, stat, n)
+  chooseDestiny(path) {
+    G.chooseDestiny(get().s, path)
     bump(set, get)
   },
 
-  resetTalents() {
-    G.resetTalents(get().s)
+  pickDestinyNode(id) {
+    G.pickDestinyNode(get().s, id)
     bump(set, get)
   },
 

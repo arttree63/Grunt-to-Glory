@@ -5,8 +5,8 @@ export type Quality = 'white' | 'green' | 'blue' | 'purple' | 'gold' | 'crimson'
 export type AffixType = 'dmg' | 'gold' | 'crit' | 'clickDmg'
 export type JobId = 'rookie' | 'infantry' | 'scout' | 'marshal' | 'paladin' | 'shadow' | 'archmage'
 export type SkillId = 'shieldRush' | 'gale' | 'judgement' | 'bulwark' | 'shadowClone' | 'meteor'
-export type StatId = 'str' | 'agi' | 'int' | 'luk'
-export type Talents = Record<StatId, number>
+export type DestinyPathId = 'artisan' | 'hunter' | 'tactician'
+export type DestinyNodeId = string
 
 /** 技能造成的限時 buff */
 export interface ActiveBuff {
@@ -61,8 +61,14 @@ export interface GameState {
   bossRetryFloor: number | null
 
   morale: number
-  /** 天賦配點 */
-  talents: Talents
+  /** 本輪選擇的命運路徑 */
+  destinyPath: DestinyPathId | null
+  /** 已解鎖的命運節點(本輪) */
+  destinyNodes: DestinyNodeId[]
+  /** 未使用的命運點 */
+  destinyPoints: number
+  /** 本輪已發出幾枚命運點,用來對里程碑 */
+  destinyEarned: number
   /** 各技能剩餘冷卻(秒) */
   skillCd: Partial<Record<SkillId, number>>
   /** 生效中的技能 buff */
@@ -113,6 +119,7 @@ export interface GameEvent {
     | 'eventSpawn'
     | 'eventKill'
     | 'eventEscape'
+    | 'destinyPoint'
     | 'skill'
   floor?: number
   gold?: Decimal

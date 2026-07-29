@@ -32,8 +32,6 @@ export function moraleMult(morale: number): number {
 
 export interface DpsInput {
   lv: number
-  /** 力量天賦的傷害乘區 */
-  strMult?: number
   /** 轉生科技的傷害乘區(techDamageMult) */
   techMult?: number
   /** 裝備詞條加成,如 0.35 = +35% */
@@ -45,10 +43,9 @@ export interface DpsInput {
   buffMult?: number
 }
 
-/** 主角 DPS:等級 × 力量 × 科技 × 裝備 × 戰意 × 暴擊期望 × 技能 */
+/** 主角 DPS:等級 × 科技 × 裝備 × 戰意 × 暴擊期望 × 技能 */
 export function heroDPS({
   lv,
-  strMult = 1,
   techMult = 1,
   equipBonus = 0,
   morale = 0,
@@ -57,7 +54,6 @@ export function heroDPS({
 }: DpsInput): Decimal {
   return D(B.BASE_DPS)
     .mul(Decimal.pow(B.BASE_DMG_PER_LV, lv - 1))
-    .mul(strMult)
     .mul(techMult)
     .mul(1 + equipBonus)
     .mul(moraleMult(morale))

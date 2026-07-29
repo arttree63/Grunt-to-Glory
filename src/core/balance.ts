@@ -10,14 +10,12 @@ export const RAMP_FLOOR = 30
 export const GROWTH_GOLD = 1.15 // 金幣每層倍率(低於 HP → 自然撞牆)
 export const COST_GROWTH = 1.09 // 升級成本每級倍率
 /**
- * 每級傷害拆成「等級基礎 × 力量點數」兩段。
- * 1.045 × 1.026 = 1.0722 ≈ 改版前的 1.072,
- * 也就是「全點力量」剛好等於舊曲線,分散配點是拿傷害換效益而非額外變強。
+ * 每級傷害。命運樹改版後回歸單一常數:
+ * **基礎成長對所有玩家一致**,命運樹只改變玩法與資源路線,不改變基礎 DPS 曲線。
+ * 這樣才不會像舊的四維天賦一樣,出現「不點某屬性就殘廢」的唯一解。
  */
-export const BASE_DMG_PER_LV = 1.045
-export const STR_DMG_PER_POINT = 1.024
-/** 舊常數保留給文件對照:全點力量時的等效每級倍率 */
-export const DMG_PER_LV = BASE_DMG_PER_LV * STR_DMG_PER_POINT
+export const DMG_PER_LV = 1.072
+export const BASE_DMG_PER_LV = DMG_PER_LV
 
 // 基準值
 export const BASE_MOB_HP = 10
@@ -153,12 +151,8 @@ export const TICK_HZ = 10 // 邏輯固定 tick
 export const CRIT_RATE = 0.18
 export const CRIT_MULT = 3
 
-// 天賦每點效果
-export const STR_CRIT_DMG = 0.005 // 暴傷也是乘區,值太大會讓全點力量超出舊曲線
-export const AGI_CRIT_RATE = 0.005
-export const AGI_CLICK = 0.03
-export const INT_SKILL_DMG = 0.03
-export const INT_CDR = 0.005
-export const INT_CDR_CAP = 0.5
-export const LUK_GOLD = 0.015
-export const LUK_FORGE = 0.002
+// 命運樹
+/** 本輪達到這些層數各給一枚命運點(用當輪層數,不是歷史最高) */
+export const DESTINY_MILESTONES = [20, 50, 90]
+/** 未使用命運點上限。滿了就停發,但不阻止推進(掛機玩家回來不用連點十次) */
+export const DESTINY_POINT_CAP = 2

@@ -1,6 +1,5 @@
 import { D } from './decimal'
 import { createInitialState, SAVE_VERSION } from './game'
-import { emptyTalents } from './talents'
 import { emptyTechs } from './techs'
 import type { GameState } from './types'
 
@@ -20,7 +19,10 @@ export interface SaveData {
   bossFailed: boolean
   bossRetryFloor: number | null
   morale: number
-  talents: GameState['talents']
+  destinyPath: GameState['destinyPath']
+  destinyNodes: GameState['destinyNodes']
+  destinyPoints: number
+  destinyEarned: number
   materials: number
   forgeCount: number
   pityCount: number
@@ -53,7 +55,10 @@ export function serialize(s: GameState): SaveData {
     bossFailed: s.bossFailed,
     bossRetryFloor: s.bossRetryFloor,
     morale: s.morale,
-    talents: s.talents,
+    destinyPath: s.destinyPath,
+    destinyNodes: s.destinyNodes,
+    destinyPoints: s.destinyPoints,
+    destinyEarned: s.destinyEarned,
     materials: s.materials,
     forgeCount: s.forgeCount,
     pityCount: s.pityCount,
@@ -102,10 +107,9 @@ function migrate(raw: SaveData): SaveData {
   if (d.version < 5) {
     d.version = 5
   }
-  // v5 → v6:天賦配點。舊存檔的等級已經吃過「含配點期望值」的舊曲線,
-  // 這裡把既有等級的點數全部補進力量,玩家戰力不會因為改版下降(之後可自行洗點)
+  // v5 → v6:曾經加入四維天賦。v8 已把天賦整套移除,所以這一步現在是空的,
+  // 保留只是為了讓版本鏈連續(舊存檔仍會依序走到 v8)
   if (d.version < 6) {
-    if (!d.talents) d.talents = { str: Math.max(0, (d.lv ?? 1) - 1), agi: 0, int: 0, luk: 0 }
     d.version = 6
   }
   // v6 → v7:Boss 失敗改為退回前一層,需要記住要重挑戰哪一層
@@ -113,6 +117,18 @@ function migrate(raw: SaveData): SaveData {
     // 舊存檔停在 Boss 層 farm;把重試層設成當前層,讀檔後行為一致
     d.bossRetryFloor = d.bossFailed ? (d.floor ?? null) : null
     d.version = 7
+  }
+  // v7 → v8:四維天賦改為命運樹。
+  // 不做一對一轉換——兩套系統沒有可靠對應,而且照「原本全點力量」自動配流派
+  // 等於上線第一刻就替玩家做掉最重要的選擇。改為全額返還:
+  // 天賦效果移除後基礎曲線回到原始基準(沒有人變弱),再送一枚命運點當補償。
+  if (d.version < 8) {
+    const hadTalents = 'talents' in (d as Record<string, unknown>)
+    d.destinyPath = null
+    d.destinyNodes = []
+    d.destinyPoints = hadTalents ? 1 : 0
+    d.destinyEarned = 0
+    d.version = 8
   }
   return d
 }
@@ -136,7 +152,10 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     bossFailed: !!d.bossFailed,
     bossRetryFloor: d.bossRetryFloor ?? null,
     morale: d.morale ?? 0,
-    talents: d.talents ?? emptyTalents(),
+    destinyPath: d.destinyPath ?? null,
+    destinyNodes: d.destinyNodes ?? [],
+    destinyPoints: d.destinyPoints ?? 0,
+    destinyEarned: d.destinyEarned ?? 0,
     materials: d.materials ?? 0,
     forgeCount: d.forgeCount ?? 0,
     pityCount: d.pityCount ?? 0,

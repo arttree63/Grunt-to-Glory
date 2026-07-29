@@ -18,15 +18,16 @@ import {
   heirloomCandidates,
   pendingMedals,
   promote,
+  chooseDestiny,
+  pickDestinyNode,
   skillReady,
-  spendTalent,
-  talentPoints,
   prestige,
   salvage,
 } from '../../src/core/game'
 import { availableJobs, JOBS } from '../../src/core/jobs'
 import { canBuyTech, heirloomSlots, techDamageMult, techGoldMult } from '../../src/core/techs'
-import type { GameState, Techs } from '../../src/core/types'
+import { pendingChoice } from '../../src/core/destiny'
+import type { DestinyPathId, GameState, Techs } from '../../src/core/types'
 import { equipPower, QUALITY_NAME, score, SLOTS } from '../../src/core/equipment'
 import { D, Decimal } from '../../src/core/decimal'
 
@@ -94,6 +95,10 @@ interface RunResult {
 }
 
 /** active = 玩家持續點擊(戰意滿),否則純掛機 */
+/** 代理玩家走哪條命運。之後每條流派要各跑一次,驗證沒有差距十倍的選擇 */
+const destinyAgent: DestinyPathId = (globalThis as { process?: { env: Record<string, string | undefined> } })
+  .process?.env?.DESTINY as DestinyPathId ?? 'tactician'
+
 function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(SEED)): RunResult {
   const s = start
   spendMedals(s) // 開局先把勳章花掉
@@ -124,9 +129,10 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
         else salvage(s, e.id)
       }
 
-      // 天賦:全點力量。這剛好等於改版前已驗證的 1.072/級曲線,
-      // 當作「最大輸出」上界來比較,分散配點是玩家自己拿傷害換效益。
-      spendTalent(s, 'str', talentPoints(s))
+      // 命運樹:代理玩家選定路徑後,有點就照固定偏好選(節點效果第二批才實作)
+      if (!s.destinyPath) chooseDestiny(s, destinyAgent)
+      const choice = pendingChoice(s)
+      if (choice) pickDestinyNode(s, choice[0].id)
 
       // 轉職:Lv.20 走重裝步兵(掛機取向),Lv.100 升聖騎士
       for (const j of availableJobs(s.jobId, s.lv)) {

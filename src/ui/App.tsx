@@ -12,17 +12,17 @@ import Tutorial from './Tutorial'
 import EquipPanel from './panels/EquipPanel'
 import ForgePanel from './panels/ForgePanel'
 import HeroPanel from './panels/HeroPanel'
-import MercPanel from './panels/MercPanel'
+import DestinyPanel from './panels/DestinyPanel'
 import ShopPanel from './panels/ShopPanel'
 import { useGameState } from './useGameState'
 
-type Tab = 'hero' | 'equip' | 'forge' | 'merc' | 'shop'
+type Tab = 'hero' | 'equip' | 'forge' | 'destiny' | 'shop'
 
 const TABS: Array<{ id: Tab; icon: string; label: string }> = [
   { id: 'hero', icon: '🗡️', label: '英雄' },
   { id: 'equip', icon: '🎽', label: '裝備' },
   { id: 'forge', icon: '🔨', label: '鐵匠鋪' },
-  { id: 'merc', icon: '🐕', label: '傭兵' },
+  { id: 'destiny', icon: '🌿', label: '命運' },
   { id: 'shop', icon: '🏅', label: '商店' },
 ]
 
@@ -162,6 +162,7 @@ function Game() {
               {t.label}
               {t.id === 'hero' && canUpgrade && <i className="dot" />}
               {t.id === 'forge' && s.materials >= B.FORGE_COST && <i className="dot" />}
+              {t.id === 'destiny' && (s.destinyPoints > 0 || !s.destinyPath) && <i className="dot" />}
             </button>
           ))}
         </div>
@@ -174,7 +175,7 @@ function Game() {
             {tab === 'hero' && <HeroPanel />}
             {tab === 'equip' && <EquipPanel />}
             {tab === 'forge' && <ForgePanel />}
-            {tab === 'merc' && <MercPanel />}
+            {tab === 'destiny' && <DestinyPanel />}
             {tab === 'shop' && <ShopPanel />}
           </div>
         </>

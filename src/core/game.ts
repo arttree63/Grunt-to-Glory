@@ -24,18 +24,7 @@ import {
 } from './formulas'
 import { JOBS } from './jobs'
 import { SKILLS } from './skills'
-import {
-  agiClickBonus,
-  agiCritRate,
-  emptyTalents,
-  freePoints,
-  intCdr,
-  intSkillDamage,
-  lukForge,
-  lukGold,
-  strCritDamage,
-  strDamageMult,
-} from './talents'
+import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, pendingChoice } from './destiny'
 import {
   canBuyTech,
   emptyTechs,
@@ -47,6 +36,8 @@ import {
   techStartGold,
 } from './techs'
 import type {
+  DestinyNodeId,
+  DestinyPathId,
   Equipment,
   EventKind,
   GameEvent,
@@ -54,7 +45,6 @@ import type {
   JobId,
   SkillId,
   Slot,
-  StatId,
   TechId,
   Techs,
 } from './types'
@@ -80,7 +70,10 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     bossFailed: false,
     bossRetryFloor: null,
     morale: 0,
-    talents: emptyTalents(),
+    destinyPath: null,
+    destinyNodes: [],
+    destinyPoints: 0,
+    destinyEarned: 0,
     skillCd: {},
     buff: null,
     event: null,
@@ -104,27 +97,20 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 7
+export const SAVE_VERSION = 8
 
 // ---------- 數值查詢 ----------
 
 /** 金幣總乘區:裝備詞條(加法)× 後勤補給科技(乘法) */
 export function goldMult(s: GameState): number {
   return (
-    (1 + equipBonuses(s.equipped).gold + (JOBS[s.jobId].bonus.gold ?? 0) + lukGold(s.talents)) *
-    techGoldMult(s.techs)
+    (1 + equipBonuses(s.equipped).gold + (JOBS[s.jobId].bonus.gold ?? 0)) * techGoldMult(s.techs)
   )
 }
 
 export function critRate(s: GameState): number {
   const buffCrit = s.buff ? (SKILLS[s.buff.skillId].critAdd ?? 0) : 0
-  return (
-    B.CRIT_RATE +
-    equipBonuses(s.equipped).crit +
-    (JOBS[s.jobId].bonus.crit ?? 0) +
-    agiCritRate(s.talents) +
-    buffCrit
-  )
+  return B.CRIT_RATE + equipBonuses(s.equipped).crit + (JOBS[s.jobId].bonus.crit ?? 0) + buffCrit
 }
 
 /** 技能 buff 的傷害乘區 */
@@ -137,11 +123,10 @@ export function currentDPS(s: GameState): Decimal {
   const job = JOBS[s.jobId].bonus
   return heroDPS({
     lv: s.lv,
-    strMult: strDamageMult(s.talents),
     techMult: techDamageMult(s.techs),
     equipBonus: bonus.dmg + (job.dmg ?? 0),
     morale: s.morale,
-    critMult: critMultiplier(critRate(s), strCritDamage(s.talents)),
+    critMult: critMultiplier(critRate(s)),
     buffMult: buffMult(s),
   }).mul(equipPower(s.equipped)) // 每件裝備獨立乘區
 }
@@ -264,6 +249,7 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
 
   const dt = dtMs / 1000
   tickSkills(s, dt)
+  grantDestinyPoints(s, raw)
   let dmg = currentDPS(s).mul(dt) // 本 tick 的總傷害量
 
   // 突發事件優先吃傷害:出現期間取代當前目標
@@ -366,7 +352,7 @@ function rewardEvent(s: GameState, kind: EventKind, events: GameEvent[], rng: Rn
 
 /** 點擊:疊戰意(點擊強化自動攻擊,不另計傷害) */
 export function click(s: GameState): void {
-  const clickBonus = equipBonuses(s.equipped).clickDmg + agiClickBonus(s.talents)
+  const clickBonus = equipBonuses(s.equipped).clickDmg
   s.morale = Math.min(B.MORALE_MAX, s.morale + B.MORALE_PER_CLICK * (1 + clickBonus))
 }
 
@@ -382,30 +368,45 @@ export function retryBoss(s: GameState): boolean {
   return true
 }
 
-// ---------- 天賦 ----------
+// ---------- 命運樹 ----------
 
-/** 未分配點數 */
-export function talentPoints(s: GameState): number {
-  return freePoints(s.lv, s.talents)
+/** 選擇本輪的命運路徑,同時獲得起始能力。一輪只能選一次 */
+export function chooseDestiny(s: GameState, path: DestinyPathId): boolean {
+  if (s.destinyPath !== null) return false
+  s.destinyPath = path
+  s.destinyNodes = [DESTINY_PATHS[path].start]
+  return true
 }
 
-export function spendTalent(s: GameState, stat: StatId, n = 1): number {
-  const can = Math.min(n, talentPoints(s))
-  if (can <= 0) return 0
-  s.talents[stat] += can
-  return can
+/** 花一枚命運點解鎖節點。二選一的另一個從此關閉(本輪) */
+export function pickDestinyNode(s: GameState, id: DestinyNodeId): boolean {
+  if (s.destinyPoints <= 0) return false
+  const choice = pendingChoice(s)
+  if (!choice || !choice.some((n) => n.id === id)) return false
+  s.destinyPoints--
+  s.destinyNodes.push(id)
+  return true
 }
 
-/** 洗點:MVP 期免費,先讓玩家敢試 build */
-export function resetTalents(s: GameState): void {
-  s.talents = emptyTalents()
+/** 里程碑發點。用當輪層數,每輪重新來過 */
+function grantDestinyPoints(s: GameState, events: GameEvent[]) {
+  const next = B.DESTINY_MILESTONES[s.destinyEarned]
+  if (next === undefined || s.floor < next) return
+  // 未使用的點滿了就停發,但不擋推進(掛機玩家回來不必連點十次)
+  if (s.destinyPoints >= B.DESTINY_POINT_CAP) return
+  s.destinyPoints++
+  s.destinyEarned++
+  events.push({ type: 'destinyPoint', floor: s.floor })
 }
+
+export const destinyPaths = () => ALL_PATHS
+export const destinyNode = (id: DestinyNodeId) => DESTINY_NODES[id]
 
 // ---------- 主動技能 ----------
 
 /** 實際冷卻(受智力縮減) */
-export function skillCooldown(s: GameState, id: SkillId): number {
-  return SKILLS[id].cd * (1 - intCdr(s.talents))
+export function skillCooldown(_s: GameState, id: SkillId): number {
+  return SKILLS[id].cd
 }
 
 export function skillReady(s: GameState, id: SkillId): boolean {
@@ -423,14 +424,14 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
   const events: GameEvent[] = [{ type: 'skill', skillId: id }]
 
   if (sk.burstSeconds) {
-    const dmg = currentDPS(s).mul(sk.burstSeconds * (1 + intSkillDamage(s.talents)))
+    const dmg = currentDPS(s).mul(sk.burstSeconds)
     if (s.event) {
       s.event.hp = s.event.hp.sub(dmg)
     } else {
       s.enemyHp = s.enemyHp.sub(dmg)
     }
   } else if (sk.duration) {
-    s.buff = { skillId: id, timeLeft: sk.duration * (1 + intSkillDamage(s.talents)) }
+    s.buff = { skillId: id, timeLeft: sk.duration }
   }
   return events
 }
@@ -480,7 +481,6 @@ export function forge(s: GameState, rng: Rng = Math.random): Equipment | null {
 
   const e = rollEquipment(rng, {
     forgeCount: s.forgeCount,
-    luckBonus: lukForge(s.talents),
     guaranteePurple: s.pityCount >= B.PITY_FORGE,
   })
 
@@ -525,7 +525,6 @@ export function fineForge(s: GameState, opts: FineForgeOptions, rng: Rng = Math.
 
   const e = rollEquipment(rng, {
     forgeCount: s.forgeCount,
-    luckBonus: lukForge(s.talents),
     guaranteePurple: opts.useElite || s.pityCount >= B.PITY_FORGE,
     guaranteeGold: s.pityLegendary >= B.PITY_LEGENDARY,
     lockSlot: opts.slot,
@@ -597,6 +596,7 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
 
   const next = createInitialState(s.medals + gain, s.runs + 1, { ...s.techs })
   next.inventory = keep
+  // 命運樹每輪重新選,不帶過去(跨輪的收藏留給之後的傳承圖鑑)
   next.forgeCount = s.forgeCount // 鐵匠鋪等級不隨轉生歸零
   next.pityCount = s.pityCount // 保底計數跨轉生保留
   next.pityLegendary = s.pityLegendary
