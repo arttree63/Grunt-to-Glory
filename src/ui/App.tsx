@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import * as B from '../core/balance'
 import { fmt, fmtTime } from '../core/format'
 import { upCost } from '../core/formulas'
-import { bossGap, chargeMult, comboMult, pendingMedals } from '../core/game'
+import { bossGap, chargeMult, comboMult, pendingMedals, sigilCap, sigilName } from '../core/game'
 import { hasNode } from '../core/destiny'
 import { SKILLS } from '../core/skills'
+import { canBuyTech, TECHS } from '../core/techs'
 import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
 import { FloorDots, FloorToast } from './FloorProgress'
@@ -73,6 +74,12 @@ function BossHint() {
     >
       <b>挑戰第 {target} 層 Boss</b>
       <small>{ready ? advice : `還差 ${gap.toFixed(1)} 倍 DPS・${advice}`}</small>
+      {/* 失敗補償看不見就補償不到心情 */}
+      {s.valiantStacks > 0 && (
+        <small style={{ color: 'var(--gold)' }}>
+          越戰越勇 ×{s.valiantStacks}・Boss 戰傷害 +{Math.round(s.valiantStacks * B.VALIANT_DMG * 100)}%
+        </small>
+      )}
     </button>
   )
 }
@@ -141,7 +148,7 @@ function RunSummary() {
 /** 每輪結束至少給一個「已經快到了」的目標 */
 function nextGoal(s: ReturnType<typeof useGameState>): string {
   if (s.medals >= B.ELITE_MEDAL_COST) return '勳章夠換一塊菁英素材了,精工鍛造保證出菁英以上'
-  if (s.medals >= 8) return '勳章夠買「家族傳承」,下一代可以多帶一件傳家寶'
+  if (s.medals >= 8) return '勳章夠買「家族傳承」,到傳承頁的軍需處買,下一代可以多帶一件裝備'
   if (s.medals >= 3) return '勳章夠買第一級科技,傷害或金幣擇一'
   if (s.codex.length === 0) return '走神匠命運選「傳家之器」,本代最好的裝備會留進圖鑑'
   return '換一條命運試試,職業會走向不同的結果'
@@ -155,6 +162,9 @@ function Game() {
 
   const hpRatio = s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0
   const canUpgrade = s.gold.gte(upCost(s.lv))
+  // 傳承頁其實就是商店(勳章科技 + 兌換),但沒有紅點玩家不會自己去翻
+  const canBuyAnything =
+    TECHS.some((t) => canBuyTech(s.techs, s.medals, t.id)) || s.medals >= B.ELITE_MEDAL_COST
 
   return (
     <div className="wrap">
@@ -232,12 +242,48 @@ function Game() {
           </div>
         )}
 
+        {/* ⚠️ 狀態文字用固定槽位由下往上堆:46 / 74 / 102,兩個元件不可寫死同一個座標 */}
         {s.buff && (
           <div
             className="retry"
-            style={{ top: 'auto', bottom: 46, pointerEvents: 'none', color: 'var(--morale-b)' }}
+            style={{
+              top: 'auto',
+              bottom: s.charging || s.chargeBurstLeft > 0 ? 102 : 46,
+              pointerEvents: 'none',
+              color: 'var(--morale-b)',
+            }}
           >
-            {SKILLS[s.buff.skillId].name} 生效中 {s.buff.timeLeft.toFixed(1)}s
+            {SKILLS[s.buff.skillId].name} {s.buff.permanent ? '常駐中' : `生效中 ${s.buff.timeLeft.toFixed(1)}s`}
+          </div>
+        )}
+
+        {/* 印記層數:核心循環(疊→挑時機引爆)原本只在技能格角落 11px,戰鬥中看不到 */}
+        {s.sigils > 0 && (
+          <div
+            className="retry"
+            style={{ top: 'auto', bottom: 186, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
+          >
+            {sigilName(s)} {s.sigils}/{sigilCap(s)}
+            <small className="affix"> 用第二技能引爆</small>
+          </div>
+        )}
+
+        {s.relicLeft > 0 && (
+          <div
+            className="retry"
+            style={{ top: 'auto', bottom: 130, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
+          >
+            遺物弱點 ×{B.RELIC_MULT}・{s.relicLeft.toFixed(1)}s
+          </div>
+        )}
+
+        {s.bannerStored > 0 && (
+          <div
+            className="retry"
+            style={{ top: 'auto', bottom: 158, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
+          >
+            軍旗 儲 {s.bannerStored.toFixed(1)}s
+            <small className="affix"> 下次施放技能時釋放</small>
           </div>
         )}
 
@@ -264,6 +310,7 @@ function Game() {
               {t.id === 'forge' && s.materials >= B.FORGE_COST && <i className="dot" />}
               {t.id === 'destiny' && (s.destinyPoints > 0 || !s.destinyPath) && <i className="dot" />}
               {t.id === 'journal' && s.encounters.length > 0 && <i className="dot" />}
+              {t.id === 'legacy' && canBuyAnything && <i className="dot" />}
             </button>
           ))}
         </div>

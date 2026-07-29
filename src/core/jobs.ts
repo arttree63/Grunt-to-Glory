@@ -16,6 +16,12 @@ export interface Job {
   awakenSkill?: SkillId
   /** 命運限定二轉:本輪命運必須是這條才會出現 */
   requiresDestiny?: DestinyPathId
+  /**
+   * 二轉的「既有技能進化」。content-design 定案:Lv.100 要一次給三層內容
+   * (新主動 + 新被動 + **既有技能進化**),前兩項早就有了,這是補上的第三項。
+   * 進化不是換一個更大的數字,而是讓一轉那招在循環裡多做一件事。
+   */
+  evolve?: { skill: SkillId; name: string; desc: string }
   /** 換裝視覺:披風色 / 武器樣式(render 讀) */
   look: { cape: number; weapon: 'wood' | 'sword' | 'dagger' }
 }
@@ -78,6 +84,7 @@ export const JOBS: Record<JobId, Job> = {
     bonus: { dmg: 0.6, morale: 0.5 },
     skills: ['shieldRush', 'bulwark'],
     awakenSkill: 'rally',
+    evolve: { skill: 'shieldRush', name: '盾牆突擊・堅陣', desc: '視窗期間的擊殺累積雙倍軍勢' },
     look: { cape: 0xc8b06a, weapon: 'sword' },
   },
   shadow: {
@@ -90,6 +97,7 @@ export const JOBS: Record<JobId, Job> = {
     bonus: { crit: 0.3 },
     skills: ['gale', 'shadowClone'],
     awakenSkill: 'windMark',
+    evolve: { skill: 'gale', name: '疾風連刺・殘影', desc: '視窗期間攻擊間隔縮短,切得更細' },
     look: { cape: 0x2a2a3a, weapon: 'dagger' },
   },
   archmage: {
@@ -102,6 +110,7 @@ export const JOBS: Record<JobId, Job> = {
     bonus: { gold: 0.6 },
     skills: ['judgement', 'meteor'],
     awakenSkill: 'edict',
+    evolve: { skill: 'judgement', name: '聖光審判・連判', desc: '每次施放留下三枚法令,而不是一枚' },
     look: { cape: 0x3a6b8a, weapon: 'sword' },
   },
   // ── 命運限定二轉:一轉職業 + 本輪命運共同決定 ──
@@ -118,6 +127,7 @@ export const JOBS: Record<JobId, Job> = {
     bonus: { dmg: 0.5, morale: 0.5 },
     skills: ['shieldRush', 'bulwark'],
     awakenSkill: 'rally',
+    evolve: { skill: 'shieldRush', name: '盾牆突擊・堅陣', desc: '視窗期間的擊殺累積雙倍軍勢' },
     look: { cape: 0x8a6a3a, weapon: 'sword' },
   },
   shadowvanguard: {
@@ -131,6 +141,7 @@ export const JOBS: Record<JobId, Job> = {
     bonus: { crit: 0.25 },
     skills: ['gale', 'shadowClone'],
     awakenSkill: 'windMark',
+    evolve: { skill: 'gale', name: '疾風連刺・殘影', desc: '視窗期間攻擊間隔縮短,切得更細' },
     look: { cape: 0x1f2a3a, weapon: 'dagger' },
   },
   relicarbiter: {
@@ -144,6 +155,7 @@ export const JOBS: Record<JobId, Job> = {
     bonus: { gold: 0.5 },
     skills: ['judgement', 'meteor'],
     awakenSkill: 'edict',
+    evolve: { skill: 'judgement', name: '聖光審判・連判', desc: '每次施放留下三枚法令,而不是一枚' },
     look: { cape: 0x6b5a2a, weapon: 'sword' },
   },
 }

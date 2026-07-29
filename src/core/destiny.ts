@@ -48,7 +48,7 @@ export const DESTINY_NODES: Record<DestinyNodeId, DestinyNode> = Object.fromEntr
     N('artisan_1b', 'artisan', 1, '孤注一擲', '可消耗雙倍素材,把本次打造的最低品質提高一階'),
     N('artisan_2a', 'artisan', 2, '武器吞噬', '武器可吞噬新打造的武器,獲得部分屬性成長'),
     N('artisan_2b', 'artisan', 2, '精工銘刻', '精工成功時有機會產生特殊詞條;失敗不再完全損失素材'),
-    N('artisan_3a', 'artisan', 3, '傳家之器', '本輪最高階裝備登錄傳承圖鑑,未來輪迴有機率以殘缺版本出現'),
+    N('artisan_3a', 'artisan', 3, '傳家之器', '本輪最高階裝備登錄傳承圖鑑;銘刻的傳家之器殘缺程度較輕,並多保留一條詞綴'),
     N('artisan_3b', 'artisan', 3, '活體神兵', '武器隨擊敗 Boss 次數進化,外觀與效果同步改變'),
 
     // ── 尋寶獵人:事件流。把事件從隨機插曲變成可期待、可操作的內容

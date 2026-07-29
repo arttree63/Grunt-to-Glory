@@ -66,14 +66,24 @@ export default function JournalPanel() {
           <h3 style={{ marginTop: 16 }}>命 運 交 易</h3>
           <div className="card">
             <div className="head">
-              <b>放棄事件收穫,換一枚命運點</b>
+              <b>用本輪的事件收穫換一枚命運點</b>
               <button className="btn primary" disabled={!canBarter} onClick={barter}>
                 交易
               </button>
             </div>
             <div className="affix">
+              交易會清空「本輪完成過的事件種類」(黃金路線的進度也會歸零),換來一枚命運點。
+            </div>
+            <div className="affix" style={{ marginTop: 4 }}>
               本輪已用 {s.barterUsed} / {B.BARTER_MAX_PER_RUN} 次
-              {s.eventKindsDone.length === 0 && '・需要先完成一次事件'}
+              {/* disabled 時一定要說出是哪個條件沒過,不然按鈕變灰玩家只會困惑 */}
+              {s.barterUsed >= B.BARTER_MAX_PER_RUN
+                ? '・本輪次數已用完'
+                : s.eventKindsDone.length === 0
+                  ? '・需要先完成一次事件'
+                  : s.destinyPoints >= B.DESTINY_POINT_CAP
+                    ? `・命運點已滿 ${B.DESTINY_POINT_CAP} 枚,先去命運頁花掉`
+                    : ''}
             </div>
           </div>
         </>

@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, nextMilestone, pendingChoice } from '../../core/destiny'
 import { QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
+import * as B from '../../core/balance'
 import { heirloomCandidates, pendingMedals } from '../../core/game'
-import { heirloomSlots } from '../../core/techs'
+import { LEGENDS } from '../../core/legends'
+import { SETS } from '../../core/sets'
+import { heirloomSlots, TECHS } from '../../core/techs'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 
@@ -15,6 +18,11 @@ function PrestigeSection() {
   const gain = pendingMedals(s)
   const candidates = heirloomCandidates(s)
   const slots = heirloomSlots(s.techs)
+  // 再推幾層就多一枚勳章 —— 「差一點」比「你還早」有用得多
+  const toNext = B.MEDAL_PER_FLOORS - (s.highestFloor % B.MEDAL_PER_FLOORS)
+  // 首輪拿不到最便宜的科技(3 枚)就退役,等於白白丟掉這一代
+  const cheapest = Math.min(...TECHS.map((t) => t.cost))
+  const tooEarly = s.runs === 0 && gain < cheapest
 
   return (
     <>
@@ -30,6 +38,17 @@ function PrestigeSection() {
         </span>
       </div>
 
+      {gain > 0 && (
+        <div className="affix" style={{ marginBottom: 6 }}>
+          再推進 {toNext} 層(到第 {s.highestFloor + toNext} 層)就多一枚勳章。
+          {tooEarly && (
+            <div style={{ color: 'var(--gold)', marginTop: 4 }}>
+              現在退役只有 {gain} 枚,最便宜的科技要 {cheapest} 枚 —— 通常再推一段更划算。
+            </div>
+          )}
+        </div>
+      )}
+
       {!confirm ? (
         <div className="btn-row">
           <button className="btn primary" disabled={gain <= 0} onClick={() => setConfirm(true)}>
@@ -41,23 +60,29 @@ function PrestigeSection() {
           <div className="affix" style={{ marginBottom: 8, lineHeight: 1.7 }}>
             這一代的等級、金幣、素材與命運都會歸零,換得 {gain} 枚勳章與一段列傳。
             <br />
-            可指定 {slots} 件裝備當傳家寶帶給下一代。
+            可指定 {slots} 件裝備完整帶給下一代;
+            <b>銘刻的傳家之器另計</b>,會以殘缺版回來,打贏 {B.HEIRLOOM_REPAIR_BOSSES} 個 Boss 後修復。
           </div>
-          {candidates.slice(0, 8).map((e) => {
+          <div className="affix" style={{ marginBottom: 4 }}>
+            已選 {picked.length}/{slots} 件
+          </div>
+          {candidates.slice(0, 10).map((e) => {
             const on = picked.includes(e.id)
+            const full = !on && picked.length >= slots
             return (
               <button
                 key={e.id}
                 className="row"
-                style={{ width: '100%', textAlign: 'left', opacity: on ? 1 : 0.6 }}
-                onClick={() =>
-                  setPicked(on ? picked.filter((id) => id !== e.id) : [...picked, e.id].slice(-slots))
-                }
+                style={{ width: '100%', textAlign: 'left', opacity: on ? 1 : full ? 0.3 : 0.6 }}
+                disabled={full} // 滿了就擋住,不要靜默把最舊的選擇換掉
+                onClick={() => setPicked(on ? picked.filter((id) => id !== e.id) : [...picked, e.id])}
               >
                 <span style={{ color: `var(--q-${e.quality})` }}>
                   {on ? '● ' : '○ '}
-                  {QUALITY_NAME[e.quality]}
-                  {SLOT_NAME[e.slot]}
+                  {/* 兩件「傳奇武器」分不出誰是誰:傳說名與套裝標籤才是玩家在挑的東西 */}
+                  {e.legend ? LEGENDS[e.legend].name : `${QUALITY_NAME[e.quality]}${SLOT_NAME[e.slot]}`}
+                  {e.setTag && <small className="set-chip">{SETS[e.setTag].name}</small>}
+                  {e.heirloom && <small style={{ color: 'var(--gold)' }}> 傳家之器</small>}
                 </span>
               </button>
             )
@@ -155,9 +180,13 @@ export default function DestinyPanel() {
         const n = DESTINY_NODES[id]
         if (!n) return null
         return (
-          <div className="row" key={id}>
-            <span className="k">{n.tier === 0 ? '起始' : `第 ${n.tier} 個決策`}</span>
-            <span className="v">{n.name}</span>
+          <div key={id} style={{ padding: '4px 0' }}>
+            <div className="row" style={{ border: 'none', padding: 0 }}>
+              <span className="k">{n.tier === 0 ? '起始' : `第 ${n.tier} 個決策`}</span>
+              <span className="v">{n.name}</span>
+            </div>
+            {/* 只列名稱的話,玩家過幾層就忘了自己選到什麼效果 */}
+            <div className="tier3" style={{ paddingLeft: 8 }}>{n.desc}</div>
           </div>
         )
       })}

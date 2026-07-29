@@ -578,3 +578,28 @@ button {
   color: var(--dim2);
   margin-top: 2px;
 }
+
+
+/* 裝備卡三級字階(clicker-ui § 七之四:字級必須反映資訊優先序) */
+/* 一級:傳說特性 / 套裝名——這件會怎麼改變玩法 */
+.tier1 { font-size: 13px; font-weight: 700; line-height: 1.5; }
+/* 二級:基底與關鍵詞綴 */
+.tier2 { font-size: 12px; line-height: 1.55; }
+/* 三級:一般註記,字級下限 11px(不可再小) */
+.tier3 { font-size: 11px; opacity: 0.8; line-height: 1.5; }
+/* 換裝比較預設收合成一行,展開才看細節 */
+.compare > summary { cursor: pointer; padding: 4px 0; list-style: none; }
+.compare > summary::-webkit-details-marker { display: none; }
+
+/* 套裝標籤:獨立 chip,不挪用品質色(色弱玩家會把藍字誤讀成「稀有」) */
+.set-chip {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border: 1px solid var(--q-blue);
+  border-radius: 4px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  vertical-align: 1px;
+}
+.set-block { color: var(--text); }

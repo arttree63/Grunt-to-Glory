@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import * as B from '../balance'
 import { D } from '../decimal'
-import { bossPartSlot, forgeLevel, forgeUpgradeChance, QUALITIES, score, SLOTS } from '../equipment'
+import {
+  bossPartSlot,
+  compareEquipment,
+  forgeLevel,
+  forgeUpgradeChance,
+  QUALITIES,
+  score,
+  SLOTS,
+} from '../equipment'
+import { LEGENDS } from '../legends'
+import { SETS } from '../sets'
+import { MERCS, unlockedMercs } from '../mercs'
+import { KEYWORD_NAME, keywordSupported } from '../keywords'
 import { fmt, fmtTime } from '../format'
 import { bossHP, critMultiplier, goldDrop, heroDPS, isBossFloor, medalsFromFloor, mobHP, upCost } from '../formulas'
 import { availableJobs, destinyJobs, JOBS } from '../jobs'
@@ -10,6 +22,12 @@ import { pendingChoice } from '../destiny'
 import { heirloomSlots, techOfflineHours } from '../techs'
 import {
   applyTick,
+  attackInterval,
+  buffMult,
+  hasLegend,
+  setCount,
+  setProgress,
+  ironwallActive,
   buyLevels,
   buyElite,
   buyTech,
@@ -40,6 +58,7 @@ import {
   computeOffline,
   createInitialState,
   currentDPS,
+  inscribeHeirloom,
   inCheckWindow,
   equip,
   forge,
@@ -47,7 +66,12 @@ import {
   prestige,
   promote,
   retryBoss,
+  bestFloorEver,
+  matrixKey,
+  matrixOutcome,
+  setActiveMerc,
   salvage,
+  salvageBelow,
   spawnEnemy,
 } from '../game'
 import { deserialize, serialize } from '../save'
@@ -318,12 +342,29 @@ describe('點擊的價值(不放在常數乘區)', () => {
     const s = createInitialState()
     s.lv = 30
     s.morale = B.MORALE_MAX - B.MORALE_PER_CLICK
-    const hpBefore = s.enemyHp
 
     const events = click(s)
     expect(events.some((e) => e.type === 'moraleBurst')).toBe(true)
     expect(s.morale).toBe(0)
+    // 這一擊在低層會直接把怪打死 → 敵人已換下一隻,所以驗的是「有打出傷害」而不是血量變低
+    expect(events.some((e) => e.type === 'attack' || e.type === 'kill')).toBe(true)
+  })
+
+  it('點擊會自己出一次手:一次點擊 = 一個 attack 事件 = 一次扣血', () => {
+    const s = createInitialState()
+    s.lv = 1
+    s.enemyMaxHp = D(1e6)
+    s.enemyHp = D(1e6)
+    const hpBefore = s.enemyHp
+
+    const events = click(s)
+    const atk = events.filter((e) => e.type === 'attack')
+    expect(atk).toHaveLength(1) // 揮砍與扣血 1:1,不會有空點
     expect(s.enemyHp.lt(hpBefore)).toBe(true)
+    expect(atk[0].damage!.toNumber()).toBeCloseTo(
+      currentDPS(s).mul(B.CLICK_DMG_SEC).toNumber(),
+      5,
+    )
   })
 
   it('素材:事件中點擊換素材,有上限,且不隨層數貶值', () => {
@@ -333,14 +374,20 @@ describe('點擊的價值(不放在常數乘區)', () => {
     applyTick(s, 100)
     expect(s.event).not.toBe(null)
 
-    for (let i = 0; i < B.EVENT_CLICK_MAT_CAP + 5; i++) click(s)
-    expect(s.materials).toBe(B.EVENT_CLICK_MAT_CAP) // 到上限就停
+    // 事件血量拉高,免得點擊把事件打死之後改成算擊殺素材
+    s.event!.hp = D(1e9)
+    s.event!.maxHp = D(1e9)
+    let gained = 0
+    for (let i = 0; i < B.EVENT_CLICK_MAT_CAP + 5; i++) {
+      gained += click(s).filter((e) => e.type === 'clickMaterial').length
+    }
+    expect(gained).toBe(B.EVENT_CLICK_MAT_CAP) // 到上限就停
   })
 
-  it('素材:沒有事件時點擊不給素材', () => {
+  it('素材:沒有事件時點擊不給「點擊素材」(擊殺掉的素材照算)', () => {
     const s = createInitialState()
-    for (let i = 0; i < 10; i++) click(s)
-    expect(s.materials).toBe(0)
+    const events = Array.from({ length: 10 }, () => click(s)).flat()
+    expect(events.some((e) => e.type === 'clickMaterial')).toBe(false)
   })
 })
 
@@ -1142,23 +1189,72 @@ describe('歷代列傳與傳承', () => {
     expect(s.chronicle.length).toBeLessThanOrEqual(B.CHRONICLE_MAX)
   })
 
-  it('傳家寶不會蓋掉圖鑑給的殘缺版(回歸測試)', () => {
+  it('傳家之器:銘刻的那件必定回來,但以殘缺版出現(保留機制不保留強度)', () => {
     const s = createInitialState()
     s.highestFloor = 50
-    s.destinyNodes = ['artisan_start', 'artisan_3a']
-    s.destinyPath = 'artisan'
-    s.equipped.weapon = { id: 'best', slot: 'weapon', quality: 'gold', affixes: [] }
-
-    // codex 一定會給(機率 100%)時,傳家寶與殘缺版要並存
-    const orig = Math.random
-    Math.random = () => 0
-    try {
-      const next = prestige(s, ['best'])!
-      expect(next.inventory.some((e) => e.id === 'best')).toBe(true) // 傳家寶還在
-      expect(next.inventory.length).toBeGreaterThan(1) // 殘缺版沒被蓋掉
-    } finally {
-      Math.random = orig
+    s.equipped.weapon = {
+      id: 'best',
+      slot: 'weapon',
+      quality: 'gold',
+      base: 'guard',
+      legend: 'lostbanner',
+      setTag: 'ironwall',
+      affixes: [
+        { type: 'dmg', value: 0.12 },
+        { type: 'crit', value: 0.09 },
+      ],
     }
+    expect(inscribeHeirloom(s, 'best')).toBe(true)
+
+    const next = prestige(s)!
+    const relic = next.inventory.find((e) => e.heirloom)!
+    expect(relic).toBeDefined()
+    expect(relic.legend).toBe('lostbanner') // 機制留著
+    expect(relic.setTag).toBe('ironwall')
+    expect(relic.affixes).toHaveLength(B.HEIRLOOM_AFFIX_KEEP) // 只留代表性詞綴
+    expect(relic.broken).toBe(true)
+    expect(QUALITIES.indexOf(relic.quality)).toBe(QUALITIES.indexOf('gold') - B.HEIRLOOM_BROKEN_TIERS)
+    expect(relic.fullQuality).toBe('gold') // 修復後回到原品質
+    expect(next.inscribedId).toBe(relic.id)
+  })
+
+  it('傳家之器:打贏指定數量的 Boss 後修復回完整品質', () => {
+    const s = createInitialState()
+    s.inventory.push({
+      id: 'relic',
+      slot: 'weapon',
+      quality: 'blue',
+      fullQuality: 'gold',
+      broken: true,
+      heirloom: true,
+      affixes: [],
+    })
+    s.lv = 400 // 打得動 Boss
+    s.floor = 10
+    spawnEnemy(s)
+    for (let i = 0; i < B.HEIRLOOM_REPAIR_BOSSES; i++) {
+      s.floor = 10
+      s.bossFailed = false
+      spawnEnemy(s)
+      applyTick(s, 1000)
+    }
+    const relic = s.inventory.find((e) => e.id === 'relic')!
+    expect(s.bossKills).toBeGreaterThanOrEqual(B.HEIRLOOM_REPAIR_BOSSES)
+    expect(relic.broken).toBe(false)
+    expect(relic.quality).toBe('gold')
+  })
+
+  it('傳家之器不佔「家族傳承」的攜帶名額', () => {
+    const s = createInitialState()
+    s.highestFloor = 50
+    s.equipped.weapon = { id: 'best', slot: 'weapon', quality: 'gold', affixes: [] }
+    s.inventory.push({ id: 'other', slot: 'head', quality: 'purple', affixes: [] })
+    inscribeHeirloom(s, 'best')
+
+    const next = prestige(s, ['best', 'other'])!
+    // 銘刻件走傳家之器(殘缺版),名額讓給另一件完整帶走
+    expect(next.inventory.some((e) => e.id === 'other')).toBe(true)
+    expect(next.inventory.some((e) => e.heirloom && e.broken)).toBe(true)
   })
 
   it('本輪增量:列傳記錄這代帶來的永久變化', () => {
@@ -1360,5 +1456,545 @@ describe('存檔', () => {
   it('壞存檔回退成新局而不是崩潰', () => {
     expect(deserialize(null).lv).toBe(1)
     expect(deserialize({ foo: 1 } as never).floor).toBe(1)
+  })
+})
+
+describe('裝備四層架構(基底 / 詞綴分類 / 傳說)', () => {
+  const gold = (over: Partial<import('../types').Equipment> = {}): import('../types').Equipment => ({
+    id: `t${Math.random()}`,
+    slot: 'body',
+    quality: 'gold',
+    base: 'guard',
+    affixes: [],
+    ...over,
+  })
+
+  it('冷卻縮短詞綴有效,但不得低於基礎的 30%(系統級護欄)', () => {
+    const s = createInitialState()
+    const base = skillCooldown(s, 'shieldRush')
+    s.equipped.body = gold({ base: undefined, affixes: [{ type: 'cdr', value: 0.2 }] })
+    expect(skillCooldown(s, 'shieldRush')).toBeCloseTo(base * 0.8, 5)
+
+    // 塞滿五件超額冷卻縮短 → 卡在下限,不會歸零(否則冷卻完成類效果可以自我循環)
+    for (const sl of SLOTS) s.equipped[sl] = gold({ slot: sl, base: undefined, affixes: [{ type: 'cdr', value: 0.5 }] })
+    expect(skillCooldown(s, 'shieldRush')).toBeCloseTo(base * B.CD_FLOOR, 5)
+  })
+
+  it('基底只改節奏:快速縮短攻擊間隔、重擊拉長', () => {
+    const s = createInitialState()
+    const plain = attackInterval(s)
+    for (const sl of SLOTS) s.equipped[sl] = gold({ slot: sl, base: 'swift' })
+    const swift = attackInterval(s)
+    for (const sl of SLOTS) s.equipped[sl] = gold({ slot: sl, base: 'heavy' })
+    expect(swift).toBeLessThan(plain)
+    expect(attackInterval(s)).toBeGreaterThan(plain)
+  })
+
+  it('不退之壁:軍陣不倒數,倍率換成原本視窗的平均值', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.equipped.body = gold({ legend: 'wall' })
+    expect(hasLegend(s, 'wall')).toBe(true)
+
+    castSkill(s, 'shieldRush')
+    expect(s.buff?.permanent).toBe(true)
+    const sk = SKILLS.shieldRush
+    // 常駐倍率 = 原視窗平均值 × 常駐溢價(補回 Boss 視窗內拿不到的爆發)
+    const avg =
+      (((sk.duration ?? 0) * sk.dmgMult! + (sk.cd - (sk.duration ?? 0))) / sk.cd) *
+      B.WALL_PERMANENT_BONUS
+    expect(buffMult(s)).toBeCloseTo(avg, 5)
+
+    applyTick(s, 60_000) // 遠超過原本 10 秒視窗
+    expect(s.buff).not.toBe(null)
+    expect(buffMult(s)).toBeCloseTo(avg, 5)
+  })
+
+  it('失落軍旗:滿戰意改為儲存,下次施放技能時一起釋放', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.equipped.weapon = gold({ slot: 'weapon', legend: 'lostbanner' })
+    for (let i = 0; i < 30; i++) click(s)
+    expect(s.bannerStored).toBeGreaterThan(0)
+
+    const stored = s.bannerStored
+    const hpBefore = s.enemyHp
+    castSkill(s, 'shieldRush')
+    expect(s.bannerStored).toBe(0)
+    expect(s.enemyHp.lt(hpBefore)).toBe(true)
+    // 每次滿檔存一份,總量是原本爆發秒數的 BANNER_STORE 倍
+    expect(stored % (B.MORALE_BURST_SEC * B.BANNER_STORE)).toBeCloseTo(0, 5)
+  })
+
+  it('倒轉沙漏:把手上的技能各放過一輪就推進冷卻,觸發後上鎖', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.highestFloor = B.AWAKEN_FLOOR
+    chooseDestiny(s, 'tactician')
+    s.destinyNodes.push('tactician_1a')
+    s.equipped.head = gold({ slot: 'head', legend: 'hourglass', base: 'focus' })
+    s.sigils = 3
+    // 一轉只有兩招,門檻就是兩招(寫死 3 會讓這件裝備在 Lv.100 前完全是死的)
+    expect(availableSkills(s)).toHaveLength(2)
+
+    castSkill(s, 'shieldRush')
+    const afterCast = s.skillCd.shieldRush!
+    castSkill(s, 'rally') // 湊滿一輪 → 推進最長冷卻的技能
+    const progressed = s.skillCd.shieldRush!
+    expect(progressed).toBeCloseTo(afterCast - skillCooldown(s, 'shieldRush') * B.HOURGLASS_PROGRESS, 5)
+
+    // 上鎖期間再湊滿也不再推進(冷卻完成類不得連鎖自我觸發)
+    s.sigils = 3
+    s.skillCd.rally = 0
+    castSkill(s, 'rally')
+    castSkill(s, 'rally')
+    expect(s.skillCd.shieldRush).toBeLessThan(progressed + 0.01)
+    expect(s.skillCd.shieldRush).toBeGreaterThan(progressed - 1.1) // 只有 tick 的自然遞減
+  })
+
+  it('精工保底那一次必定附上傳說(部位與基底對得上時)', () => {
+    const s = createInitialState()
+    s.materials = 999
+    s.eliteMaterials = 5
+    s.partMaterials.body = 1
+    s.pityLegendary = B.PITY_LEGENDARY
+    const e = fineForge(s, { useElite: true, base: 'guard', slot: 'body' }, () => 0.5)
+    expect(e?.legend).toBe('wall')
+    expect(LEGENDS.wall.tags.every((t) => KEYWORD_NAME[t])).toBe(true)
+  })
+
+  it('傳說不回傳戰力 %,改回傳構築關係', () => {
+    const s = createInitialState()
+    const empty = s.equipped
+    const legendItem = gold({ legend: 'wall' })
+    const plain = gold({ quality: 'blue' })
+    expect(compareEquipment(legendItem, empty).powerDelta).toBeUndefined()
+    expect(compareEquipment(legendItem, empty).relation).toBe('opens_new')
+    expect(compareEquipment(plain, empty).powerDelta).toBeDefined()
+  })
+
+  it('關鍵字表標出現行引擎做不到的效果(提案前的擋牆)', () => {
+    expect(keywordSupported('chain')).toBe(false) // 需要多目標
+    expect(keywordSupported('store')).toBe(true)
+  })
+
+  it('v13 存檔遷移到 v14:舊裝備沒有基底與傳說,不影響既有強度', () => {
+    const s = createInitialState()
+    s.equipped.body = { id: 'old', slot: 'body', quality: 'gold', affixes: [{ type: 'dmg', value: 0.1 }] }
+    const v13 = JSON.parse(JSON.stringify(serialize(s))) as Record<string, unknown>
+    v13.version = 13
+    delete v13.castOrder
+    delete v13.bannerStored
+
+    const back = deserialize(v13 as never)
+    expect(back.equipped.body?.base).toBeUndefined()
+    expect(back.castOrder).toEqual([])
+    expect(back.bannerStored).toBe(0)
+  })
+})
+
+describe('一鍵分解的保護', () => {
+  it('傳家之器 / 傳說 / 套裝件不會被一鍵分解掃掉,即使品質很低', () => {
+    const s = createInitialState()
+    s.inventory.push(
+      { id: 'junk', slot: 'head', quality: 'white', affixes: [] },
+      // 殘缺版傳奇會降成稀有 → 舊版「分解稀有以下」會把玩家唯一的傳家之器銷毀
+      { id: 'relic', slot: 'weapon', quality: 'blue', heirloom: true, broken: true, affixes: [] },
+      { id: 'legend', slot: 'body', quality: 'white', legend: 'wall', affixes: [] },
+      { id: 'setpiece', slot: 'boots', quality: 'green', setTag: 'ironwall', affixes: [] },
+    )
+
+    const r = salvageBelow(s, QUALITIES.indexOf('blue'))
+    expect(r.count).toBe(1)
+    expect(r.protectedCount).toBe(3)
+    expect(s.inventory.map((e) => e.id).sort()).toEqual(['legend', 'relic', 'setpiece'])
+  })
+})
+
+describe('套裝標籤(裝備第四層)', () => {
+  const tagged = (slot: import('../types').Slot, tag: import('../types').SetTagId): import('../types').Equipment => ({
+    id: `s${slot}${tag}`,
+    slot,
+    quality: 'blue', // 標籤制:任何品質都可能帶標籤,不是稀有度階級
+    setTag: tag,
+    affixes: [],
+  })
+
+  it('標籤不綁部位,穿幾件就算幾件', () => {
+    const s = createInitialState()
+    s.equipped.weapon = tagged('weapon', 'ironwall')
+    s.equipped.trinket = tagged('trinket', 'ironwall')
+    expect(setCount(s, 'ironwall')).toBe(2)
+    expect(setCount(s, 'commander')).toBe(0)
+    expect(setProgress(s)).toEqual([{ tag: 'ironwall', count: 2 }])
+  })
+
+  it('帝國鐵壁 2 件:軍陣期間攻擊間隔縮短,沒有軍陣時不變', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.equipped.weapon = tagged('weapon', 'ironwall')
+    s.equipped.head = tagged('head', 'ironwall')
+    const idle = attackInterval(s)
+    expect(ironwallActive(s)).toBe(false)
+
+    castSkill(s, 'shieldRush')
+    expect(ironwallActive(s)).toBe(true)
+    expect(attackInterval(s)).toBeCloseTo(idle * B.IRONWALL_INTERVAL, 5)
+  })
+
+  it('帝國鐵壁 3 件:軍陣結束時自動引爆印記', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.highestFloor = B.AWAKEN_FLOOR
+    chooseDestiny(s, 'tactician')
+    s.destinyNodes.push('tactician_1a')
+    for (const sl of ['weapon', 'head', 'body'] as const) s.equipped[sl] = tagged(sl, 'ironwall')
+
+    castSkill(s, 'shieldRush')
+    s.sigils = 5
+    // 敵人設得夠厚,這段時間不會有擊殺 → 印記不會被連斬回補,才驗得到「自動引爆後歸零」
+    s.enemyMaxHp = D(1e6)
+    s.enemyHp = D(1e6)
+    const hpBefore = s.enemyHp
+    applyTick(s, SKILLS.shieldRush.duration! * 1000 + 200)
+    expect(s.sigils).toBe(0)
+    expect(s.enemyHp.lt(hpBefore)).toBe(true)
+  })
+
+  it('戰術指揮官 3 件:完成指令後下一個技能威力提高、冷卻延長', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.highestFloor = B.AWAKEN_FLOOR
+    chooseDestiny(s, 'tactician')
+    s.destinyNodes.push('tactician_1a')
+    for (const sl of ['weapon', 'head', 'body'] as const) s.equipped[sl] = tagged(sl, 'commander')
+
+    castSkill(s, 'shieldRush')
+    s.sigils = 3
+    castSkill(s, 'rally') // 兩招各一次 = 完成一道指令
+    expect(s.commandReady).toBe(true)
+
+    // 指揮形態:buff 持續時間拉長,但該次冷卻也延長(拿冷卻換威力)
+    s.skillCd.shieldRush = 0
+    castSkill(s, 'shieldRush')
+    expect(s.commandReady).toBe(false)
+    expect(s.buff!.timeLeft).toBeCloseTo(SKILLS.shieldRush.duration! * B.COMMANDER_POWER, 5)
+    expect(s.skillCd.shieldRush!).toBeCloseTo(skillCooldown(s, 'shieldRush') * B.COMMANDER_CD, 5)
+  })
+
+  it('套裝效果只寫機制,不給純倍率', () => {
+    // 兩套的敘述都必須落在關鍵字表內(共鳴判定與 UI 篩選依賴這個值域)
+    for (const set of Object.values(SETS)) {
+      expect(set.tags.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('v14 存檔遷移到 v15:舊裝備沒有套裝標籤', () => {
+    const s = createInitialState()
+    const v14 = JSON.parse(JSON.stringify(serialize(s))) as Record<string, unknown>
+    v14.version = 14
+    delete v14.commandReady
+    const back = deserialize(v14 as never)
+    expect(back.commandReady).toBe(false)
+    expect(back.equipped.weapon?.setTag).toBeUndefined()
+  })
+})
+
+describe('二轉的既有技能進化(Lv.100 的第三層內容)', () => {
+  it('堅陣:視窗期間的擊殺累積雙倍軍勢', () => {
+    const base = createInitialState()
+    base.lv = 20
+    promote(base, 'infantry')
+    const evo = createInitialState()
+    evo.lv = 100
+    promote(evo, 'infantry')
+    promote(evo, 'paladin')
+    expect(JOBS.paladin.evolve?.skill).toBe('shieldRush')
+
+    for (const s of [base, evo]) {
+      s.highestFloor = B.AWAKEN_FLOOR
+      chooseDestiny(s, 'tactician')
+      s.destinyNodes.push('tactician_1a')
+      castSkill(s, 'shieldRush')
+      s.sigils = 0
+      s.lv = 120 // 打得動但不會一 tick 打爆上限,才比得出累積速率
+      applyTick(s, 300)
+    }
+    // 兩邊擊殺數相同,印記卻不同 → 差的就是進化
+    expect(evo.sigils).toBe(base.sigils * B.EVOLVE_SIGIL_MULT)
+  })
+
+  it('連判:聖光審判施放後留下三枚法令而不是一枚', () => {
+    const base = createInitialState()
+    base.lv = 20
+    promote(base, 'marshal')
+    const evo = createInitialState()
+    evo.lv = 100
+    promote(evo, 'marshal')
+    promote(evo, 'archmage')
+
+    for (const s of [base, evo]) {
+      s.highestFloor = B.AWAKEN_FLOOR
+      chooseDestiny(s, 'tactician')
+      s.destinyNodes.push('tactician_1a')
+      castSkill(s, 'judgement')
+    }
+    expect(base.sigils).toBe(1)
+    expect(evo.sigils).toBe(B.EVOLVE_EDICT_SIGILS)
+  })
+
+  it('殘影:疾風連刺視窗期間攻擊間隔縮短(傷害中性,只是切得更細)', () => {
+    const s = createInitialState()
+    s.lv = 100
+    promote(s, 'scout')
+    promote(s, 'shadow')
+    const idle = attackInterval(s)
+    castSkill(s, 'gale')
+    expect(attackInterval(s)).toBeCloseTo(idle * B.EVOLVE_INTERVAL, 5)
+  })
+
+  it('一轉沒有進化,二轉才有(三層內容的第三層)', () => {
+    expect(JOBS.infantry.evolve).toBeUndefined()
+    expect(JOBS.scout.evolve).toBeUndefined()
+    expect(JOBS.marshal.evolve).toBeUndefined()
+    for (const id of ['paladin', 'shadow', 'archmage', 'forgewarden', 'shadowvanguard', 'relicarbiter'] as const) {
+      expect(JOBS[id].evolve).toBeDefined()
+    }
+  })
+})
+
+describe('命運 × 職業矩陣圖鑑', () => {
+  it('二轉達成會記進矩陣,並記下是第幾代', () => {
+    const s = createInitialState()
+    s.runs = 2
+    s.lv = 100
+    chooseDestiny(s, 'artisan')
+    promote(s, 'infantry')
+    expect(Object.keys(s.jobMatrix)).toHaveLength(0) // 一轉不算
+
+    promote(s, 'forgewarden')
+    expect(s.jobMatrix[matrixKey('infantry', 'artisan')]).toBe(3) // 第 3 代
+  })
+
+  it('矩陣跨轉生保留,且不會被後面的代數覆蓋', () => {
+    const s = createInitialState()
+    s.lv = 100
+    s.highestFloor = 50
+    chooseDestiny(s, 'tactician')
+    promote(s, 'scout')
+    promote(s, 'shadowvanguard')
+
+    const next = prestige(s)!
+    expect(next.jobMatrix[matrixKey('scout', 'tactician')]).toBe(1)
+
+    next.lv = 100
+    chooseDestiny(next, 'tactician')
+    promote(next, 'scout')
+    promote(next, 'shadowvanguard')
+    expect(next.jobMatrix[matrixKey('scout', 'tactician')]).toBe(1) // 首次達成的代數不變
+  })
+
+  it('九格都有出路:命運限定優先,其餘走通用二轉', () => {
+    const tier1 = ['infantry', 'scout', 'marshal'] as const
+    const paths = ['artisan', 'tactician', 'hunter'] as const
+    const unique = tier1.flatMap((t) => paths.map((p) => matrixOutcome(t, p))).filter((id) => {
+      return id && JOBS[id].requiresDestiny
+    })
+    for (const t of tier1) for (const p of paths) expect(matrixOutcome(t, p)).not.toBe(null)
+    expect(unique).toHaveLength(3) // 首版三組命運限定二轉
+  })
+
+  it('v16 存檔遷移到 v17:舊存檔沒有矩陣紀錄,從這代開始累積', () => {
+    const s = createInitialState()
+    const v16 = JSON.parse(JSON.stringify(serialize(s))) as Record<string, unknown>
+    v16.version = 16
+    delete v16.jobMatrix
+    expect(deserialize(v16 as never).jobMatrix).toEqual({})
+  })
+})
+
+describe('演出鉤子(core → render 的資料契約)', () => {
+  it('印記引爆會回報消耗了幾層,演出才畫得出 N 道射線', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.highestFloor = B.AWAKEN_FLOOR
+    chooseDestiny(s, 'tactician')
+    s.destinyNodes.push('tactician_1a')
+    s.sigils = 7
+
+    const ev = castSkill(s, 'rally').find((e) => e.type === 'skill')!
+    expect(ev.count).toBe(7)
+    expect(ev.damage).toBeDefined()
+  })
+
+  it('buff 型技能不回報層數,但要帶得出技能 id', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    const ev = castSkill(s, 'shieldRush').find((e) => e.type === 'skill')!
+    expect(ev.skillId).toBe('shieldRush')
+    expect(ev.count).toBeUndefined()
+  })
+
+  it('冷卻被推進時會發事件(追風者之靴 / 倒轉沙漏的演出來源)', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.highestFloor = B.AWAKEN_FLOOR
+    chooseDestiny(s, 'tactician')
+    s.destinyNodes.push('tactician_1a')
+    s.equipped.head = {
+      id: 'hourglass',
+      slot: 'head',
+      quality: 'gold',
+      base: 'focus',
+      legend: 'hourglass',
+      affixes: [],
+    }
+    s.sigils = 3
+
+    castSkill(s, 'shieldRush')
+    const ev = castSkill(s, 'rally').find((e) => e.type === 'cooldownAdvance')
+    expect(ev).toBeDefined()
+    expect(ev!.skillId).toBe('shieldRush')
+    expect(ev!.seconds).toBeGreaterThan(0)
+  })
+})
+
+describe('傭兵(v1.5:低頻高辨識度的事件源)', () => {
+  const withMerc = (id: import('../types').MercId) => {
+    const s = createInitialState()
+    s.lv = 150
+    s.mercBestFloor = 200 // 全部解鎖
+    setActiveMerc(s, id)
+    s.mercTimer = 0.05 // 馬上觸發
+    return s
+  }
+
+  it('盜賊背刺:造成傷害並留下一枚印記(破綻)', () => {
+    const s = withMerc('rogue')
+    s.lv = 20
+    promote(s, 'infantry')
+    s.enemyMaxHp = D(1e9)
+    s.enemyHp = D(1e9)
+    const ev = applyTick(s, 100)
+    expect(ev.some((e) => e.type === 'mercAct' && e.mercId === 'rogue')).toBe(true)
+    expect(s.sigils).toBe(1)
+    expect(s.enemyHp.lt(D(1e9))).toBe(true)
+  })
+
+  it('冰法師凍結:期間傷害進池不結算,解凍一次引爆;Boss 倒數照走', () => {
+    const s = withMerc('icemage')
+    s.floor = 10
+    spawnEnemy(s)
+    const t0 = s.bossTimeLeft
+    applyTick(s, 100) // 觸發凍結
+    expect(s.freezeLeft).toBeGreaterThan(0)
+
+    const hpAtFreeze = s.enemyHp
+    applyTick(s, 1000)
+    expect(s.enemyHp.toString()).toBe(hpAtFreeze.toString()) // 凍結中血量不動
+    expect(s.frozenPool.gt(0)).toBe(true)
+    expect(s.bossTimeLeft).toBeLessThan(t0) // ⚠️ 倒數不停:凍結不偷時間
+
+    const before = s.floor
+    const ev = applyTick(s, 1500) // 解凍
+    expect(s.freezeLeft).toBe(0)
+    expect(ev.some((e) => e.type === 'freezeBurst')).toBe(true)
+    expect(s.floor).toBeGreaterThan(before) // 引爆的傷害真的結算了(直接推層)
+  })
+
+  it('冰法師:每場 Boss 凍結上限(護欄)', () => {
+    const s = withMerc('icemage')
+    s.floor = 10
+    spawnEnemy(s)
+    s.freezeUsedThisBoss = B.FREEZE_BOSS_CAP
+    applyTick(s, 100)
+    expect(s.freezeLeft).toBe(0) // 上限已滿,不再凍結
+  })
+
+  it('傭兵傷害占比壓在 15% 護欄內(常數自檢)', () => {
+    expect(B.MERC_ROGUE_SEC / MERCS.rogue.interval).toBeLessThanOrEqual(0.15)
+    expect(B.MERC_SAPPER_SEC / MERCS.sapper.interval).toBeLessThanOrEqual(0.15)
+    expect(B.MERC_PYRO_SEC / MERCS.pyro.interval).toBeLessThanOrEqual(0.15)
+  })
+
+  it('roster 跨轉生:出戰傭兵與歷代最高層都帶到下一代', () => {
+    const s = createInitialState()
+    s.highestFloor = 95
+    s.mercBestFloor = 60
+    setActiveMerc(s, 'hound')
+    const next = prestige(s)!
+    expect(next.activeMerc).toBe('hound')
+    expect(next.mercBestFloor).toBe(95)
+    expect(unlockedMercs(bestFloorEver(next))).toContain('sapper') // 90 層已解鎖
+  })
+})
+
+describe('行為型傳說(v1.5:分帳不加量)', () => {
+  it('雙生影刃:疾風連刺期間攻擊拆成本體/分身兩份,總量不變', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'scout')
+    s.equipped.weapon = { id: 'tb', slot: 'weapon', quality: 'gold', base: 'swift', legend: 'twinblade', affixes: [] }
+    s.enemyMaxHp = D(1e12)
+    s.enemyHp = D(1e12)
+    castSkill(s, 'gale')
+
+    const ev = applyTick(s, 900).filter((e) => e.type === 'attack')
+    const hero = ev.find((e) => e.source === 'hero')
+    const clone = ev.find((e) => e.source === 'clone')
+    expect(hero).toBeDefined()
+    expect(clone).toBeDefined()
+    const ratio = clone!.damage!.div(hero!.damage!.add(clone!.damage!)).toNumber()
+    expect(ratio).toBeCloseTo(B.TWIN_CLONE_SHARE, 5)
+  })
+
+  it('熔火軍旗:盾牆突擊插旗,軍旗期間攻擊分一份由軍旗打出', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.equipped.weapon = { id: 'bf', slot: 'weapon', quality: 'gold', base: 'heavy', legend: 'bannerflag', affixes: [] }
+    s.enemyMaxHp = D(1e12)
+    s.enemyHp = D(1e12)
+    castSkill(s, 'shieldRush')
+    expect(s.bannerLeft).toBeGreaterThan(0)
+
+    const ev = applyTick(s, 900).filter((e) => e.type === 'attack')
+    expect(ev.some((e) => e.source === 'zone')).toBe(true)
+  })
+
+  it('裁決餘燼:七成立即、三成化為燃燒,數秒內燒完(總量守恆)', () => {
+    const plain = createInitialState()
+    plain.lv = 20
+    promote(plain, 'marshal')
+    // ⚠️ 兩邊裝備要同規格(只差 legend),否則品質乘區 ×1.5 會污染比值
+    plain.equipped.body = { id: 'pl', slot: 'body', quality: 'gold', base: 'focus', affixes: [] }
+    plain.enemyMaxHp = D(1e12)
+    plain.enemyHp = D(1e12)
+    castSkill(plain, 'judgement')
+    const plainDealt = D(1e12).sub(plain.enemyHp)
+
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'marshal')
+    s.equipped.body = { id: 'em', slot: 'body', quality: 'gold', base: 'focus', legend: 'ember', affixes: [] }
+    s.enemyMaxHp = D(1e12)
+    s.enemyHp = D(1e12)
+    castSkill(s, 'judgement')
+    const immediate = D(1e12).sub(s.enemyHp)
+    expect(immediate.div(plainDealt).toNumber()).toBeCloseTo(B.EMBER_IMMEDIATE, 2)
+    expect(s.burnLeft).toBeGreaterThan(0)
+
+    // 燒完後總量要追平(允許普攻的微小誤差:比較燃燒補回的量)
+    applyTick(s, (B.EMBER_BURN_DURATION + 1) * 1000)
+    expect(s.burnLeft).toBe(0)
   })
 })

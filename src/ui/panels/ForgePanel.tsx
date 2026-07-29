@@ -5,7 +5,13 @@ import partMaterialUrl from '../../../assets/visual/items/core-resources/part-ma
 import * as B from '../../core/balance'
 import {
   AFFIX_NAME,
+  BASE_DESC,
+  BASE_NAME,
+  BASE_TENDENCY,
+  BASES,
+  compareEquipment,
   forgeLevel,
+  RELATION_NAME,
   forgeUpgradeChance,
   QUALITY_NAME,
   score,
@@ -14,9 +20,114 @@ import {
 } from '../../core/equipment'
 import { hasNode } from '../../core/destiny'
 import { canFineForge, forgeHeat, forgeHeatBonus, pityLeft, pityLegendaryLeft } from '../../core/game'
-import type { Equipment, Slot } from '../../core/types'
+import { LEGENDS } from '../../core/legends'
+import { SETS } from '../../core/sets'
+import { SetTagBlock } from './EquipPanel'
+import { KEYWORD_NAME } from '../../core/keywords'
+import { SKILLS } from '../../core/skills'
+import type { BaseType, Equipment, Slot } from '../../core/types'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
+
+/**
+ * 鍛造結果:先講這件會怎麼改變玩法,戰力百分比放最後。
+ * ⚠️ 只顯示綠箭頭的話,整套構築設計會退化成「數字大的就穿」(裝備規範 § 八)。
+ */
+function ForgeResult({
+  e,
+  equipped,
+  onEquip,
+}: {
+  e: Equipment
+  equipped: Record<Slot, Equipment | null>
+  onEquip: () => void
+}) {
+  const legend = e.legend ? LEGENDS[e.legend] : null
+  const diff = compareEquipment(e, equipped)
+  // 換上這件之後會湊到幾件(玩家要看的是「換上會不會成套」,不是現在有幾件)
+  const setAfter = e.setTag
+    ? 1 + SLOTS.filter((sl) => sl !== e.slot && equipped[sl]?.setTag === e.setTag).length
+    : 0
+  return (
+    <div className="card" style={legend ? { borderColor: 'var(--q-gold)' } : undefined}>
+      <div className="head">
+        <b style={{ color: `var(--q-${e.quality})` }}>
+          {legend ? legend.name : `${QUALITY_NAME[e.quality]}${SLOT_NAME[e.slot]}`}
+          {e.setTag && <small className="set-chip">{SETS[e.setTag].name}</small>}
+        </b>
+        <button className="btn" style={{ padding: '5px 10px' }} onClick={onEquip}>
+          直接裝備
+        </button>
+      </div>
+
+      {legend && (
+        <>
+          <div className="affix" style={{ color: 'var(--q-gold)', marginTop: 2 }}>
+            核心特性:{legend.effect}
+          </div>
+          <div className="affix">
+            標籤 {legend.tags.map((t) => KEYWORD_NAME[t]).join(' · ')}
+            {legend.affects.length > 0 && `・影響技能 ${legend.affects.map((sk) => SKILLS[sk].name).join('、')}`}
+          </div>
+          <div className="affix">適合構築:{legend.builds}</div>
+          <div className="affix" style={{ opacity: 0.75 }}>
+            不可重鑄:傳說特性固定,重鑄只影響一般詞綴
+          </div>
+        </>
+      )}
+      <SetTagBlock e={e} count={setAfter} />
+      {e.base && (
+        <div className="affix">
+          {BASE_NAME[e.base]}基底 — {BASE_DESC[e.base]}
+        </div>
+      )}
+      <div className="affix">
+        {QUALITY_NAME[e.quality]}
+        {SLOT_NAME[e.slot]}・
+        {e.affixes.map((a, i) => (
+          <span key={i}>
+            {i > 0 && ' / '}
+            {AFFIX_NAME[a.type]} +{Math.round(a.value * 100)}%
+          </span>
+        ))}
+      </div>
+
+      <div className="affix" style={{ marginTop: 6, opacity: 0.9 }}>
+        ── 與目前裝備比較 ──
+        {diff.lost.map((t, i) => (
+          <div key={`l${i}`}>將失去 {t}</div>
+        ))}
+        {diff.gained.map((t, i) => (
+          <div key={`g${i}`} style={{ color: 'var(--text-strong)' }}>
+            將獲得 {t}
+          </div>
+        ))}
+        {/* 傳說不顯示戰力 %:它們是 power-neutral 的,顯示數字只會把玩家推回綠箭頭思維 */}
+        {diff.powerDelta === undefined ? (
+          <div style={{ color: 'var(--text-strong)' }}>{RELATION_NAME[diff.relation]}</div>
+        ) : (
+          <div>
+            戰力 {diff.powerDelta >= 0 ? '+' : ''}
+            {Math.round(diff.powerDelta * 100)}%
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 鍛造選項跨開合保留。⚠️ 放 module 變數而不是 state:
+ * 面板切 tab 就整個卸載,玩家每輪都要重選「精工 + 部位 + 菁英 + 基底」四次點擊。
+ * 這不進存檔,重開遊戲回預設即可。
+ */
+const sticky = {
+  mode: 'normal' as 'normal' | 'fine',
+  slot: null as Slot | null,
+  useElite: false,
+  allIn: false,
+  base: null as BaseType | null,
+}
 
 export default function ForgePanel() {
   const s = useGameState()
@@ -24,12 +135,18 @@ export default function ForgePanel() {
   const fineForge = useGame((st) => st.fineForge)
   const equip = useGame((st) => st.equip)
   const [results, setResults] = useState<Equipment[]>([])
-  const [mode, setMode] = useState<'normal' | 'fine'>('normal')
-  const [slot, setSlot] = useState<Slot | null>(null)
-  const [useElite, setUseElite] = useState(false)
-  const [allIn, setAllIn] = useState(false)
+  const [mode, setModeState] = useState<'normal' | 'fine'>(sticky.mode)
+  const [slot, setSlotState] = useState<Slot | null>(sticky.slot)
+  const [useElite, setUseEliteState] = useState(sticky.useElite)
+  const [allIn, setAllInState] = useState(sticky.allIn)
+  const [base, setBaseState] = useState<BaseType | null>(sticky.base)
+  const setMode = (v: typeof mode) => (sticky.mode = v, setModeState(v))
+  const setSlot = (v: Slot | null) => (sticky.slot = v, setSlotState(v))
+  const setUseElite = (v: boolean) => (sticky.useElite = v, setUseEliteState(v))
+  const setAllIn = (v: boolean) => (sticky.allIn = v, setAllInState(v))
+  const setBase = (v: BaseType | null) => (sticky.base = v, setBaseState(v))
 
-  const fineOpts = { slot: slot ?? undefined, useElite }
+  const fineOpts = { slot: slot ?? undefined, useElite, base: base ?? undefined }
   const canFine = canFineForge(s, fineOpts)
 
   const run = (times: number, fine: boolean) => {
@@ -39,7 +156,8 @@ export default function ForgePanel() {
       if (!e) break
       out.push(e)
     }
-    setResults(out.sort((a, b) => score(b) - score(a))) // 最高品質置頂
+    // 帶傳說特性者置頂,其餘依品質。玩家要先看到「會改變玩法的那一件」
+    setResults(out.sort((a, b) => Number(!!b.legend) - Number(!!a.legend) || score(b) - score(a)))
   }
 
   // 所見即所得預覽
@@ -69,6 +187,9 @@ export default function ForgePanel() {
         </span>
         <span className="v" style={{ color: s.eliteMaterials > 0 ? 'var(--q-purple)' : undefined }}>
           {s.eliteMaterials}
+          {s.eliteMaterials === 0 && (
+            <small className="affix"> 寶箱怪 / 每日首殺 Boss / 傳承頁軍需處兌換</small>
+          )}
         </span>
       </div>
       <div className="row">
@@ -185,6 +306,31 @@ export default function ForgePanel() {
             {useElite ? '● ' : '○ '}投入菁英素材(保證菁英以上)
           </button>
 
+          {/* 定向基底:白裝基底是傳說的入口,投對素材才打得出想要的那一系 */}
+          {useElite && (
+            <>
+              <div className="row" style={{ marginTop: 8 }}>
+                <span className="k">指定基底</span>
+                <span className="v affix">決定這一錘可能出哪一系傳說</span>
+              </div>
+              <div className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 4 }}>
+                {BASES.map((b) => (
+                  <button
+                    key={b}
+                    className={`btn${base === b ? ' primary' : ''}`}
+                    style={{ padding: '8px 2px', fontSize: 11 }}
+                    onClick={() => setBase(base === b ? null : b)}
+                  >
+                    {BASE_NAME[b]}
+                    <br />
+                    <small className="affix">{BASE_TENDENCY[b]}</small>
+                  </button>
+                ))}
+              </div>
+              {base && <div className="affix">{BASE_DESC[base]}</div>}
+            </>
+          )}
+
           <div className="card" style={{ marginTop: 10 }}>
             <b style={{ color: useElite ? 'var(--q-purple)' : 'var(--text-strong)' }}>{preview}</b>
             <div className="affix" style={{ marginTop: 4 }}>
@@ -219,7 +365,15 @@ export default function ForgePanel() {
               十 連
             </button>
           </div>
-          {!canFine && <div className="empty">素材不足</div>}
+          {!canFine && (
+            <div className="empty">
+              {s.materials < B.FINE_FORGE_COST
+                ? `還差怪物素材 ${B.FINE_FORGE_COST - s.materials}(打怪就會掉)`
+                : slot && s.partMaterials[slot] < 1
+                  ? `需要 1 個${SLOT_NAME[slot]}素材(每 10 層 Boss 掉落)`
+                  : '需要 1 個菁英素材'}
+            </div>
+          )}
         </>
       )}
 
@@ -227,25 +381,7 @@ export default function ForgePanel() {
         <>
           <h3 style={{ marginTop: 16 }}>鍛造結果</h3>
           {results.map((e) => (
-            <div className="card" key={e.id}>
-              <div className="head">
-                <b style={{ color: `var(--q-${e.quality})` }}>
-                  {QUALITY_NAME[e.quality]}
-                  {SLOT_NAME[e.slot]}
-                </b>
-                <button className="btn" style={{ padding: '5px 10px' }} onClick={() => equip(e.id)}>
-                  直接裝備
-                </button>
-              </div>
-              <div className="affix">
-                {e.affixes.map((a, i) => (
-                  <span key={i}>
-                    {i > 0 && ' / '}
-                    {AFFIX_NAME[a.type]} +{Math.round(a.value * 100)}%
-                  </span>
-                ))}
-              </div>
-            </div>
+            <ForgeResult key={e.id} e={e} equipped={s.equipped} onEquip={() => equip(e.id)} />
           ))}
         </>
       )}

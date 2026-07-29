@@ -1,12 +1,12 @@
 import { create } from 'zustand'
 import * as B from '../core/balance'
 import { D, type Decimal } from '../core/decimal'
-import { QUALITIES } from '../core/equipment'
 import * as G from '../core/game'
 import type {
   DestinyNodeId,
   DestinyPathId,
   EncounterId,
+  MercId,
   Equipment,
   GameState,
   JobId,
@@ -50,9 +50,13 @@ interface Store {
   unequip: (slot: Slot) => void
   salvage: (id: string) => void
   salvageBelow: (quality: number) => void
+  /** 最近一次一鍵分解的結果(給 UI 回饋用) */
+  lastSalvage: { count: number; materials: number; protectedCount: number } | null
   retryBoss: () => void
   buyTech: (id: TechId) => void
   prestige: (heirloomIds?: string[]) => void
+  inscribeHeirloom: (id: string) => void
+  setActiveMerc: (id: MercId | null) => void
   dismissOffline: () => void
   dismissRunSummary: () => void
   reset: () => Promise<void>
@@ -63,6 +67,7 @@ const bump = (set: (p: Partial<Store>) => void, get: () => Store) => set({ rev: 
 export const useGame = create<Store>((set, get) => ({
   s: G.createInitialState(),
   rev: 0,
+  lastSalvage: null,
   loaded: false,
   offline: null,
   lastRun: null,
@@ -181,10 +186,8 @@ export const useGame = create<Store>((set, get) => ({
   },
 
   salvageBelow(qualityIdx) {
-    const s = get().s
-    for (const e of [...s.inventory]) {
-      if (QUALITIES.indexOf(e.quality) <= qualityIdx) G.salvage(s, e.id)
-    }
+    const r = G.salvageBelow(get().s, qualityIdx)
+    set({ lastSalvage: r })
     bump(set, get)
   },
 
@@ -198,6 +201,13 @@ export const useGame = create<Store>((set, get) => ({
     bump(set, get)
   },
 
+  setActiveMerc(id) {
+    if (G.setActiveMerc(get().s, id)) bump(set, get)
+  },
+  inscribeHeirloom(id) {
+    // ⚠️ state 是原地變動的,一律用 bump 觸發重繪(直接 set 新物件不會讓 useGameState 更新)
+    if (G.inscribeHeirloom(get().s, id)) bump(set, get)
+  },
   prestige(heirloomIds = []) {
     const next = G.prestige(get().s, heirloomIds)
     if (next) {

@@ -31,6 +31,15 @@ export interface SaveData {
   routeBuff: GameState['routeBuff']
   barterUsed: number
   sigils: number
+  castOrder: GameState['castOrder']
+  relicPending: boolean
+  bannerStored: number
+  commandReady: boolean
+  inscribedId: string | null
+  jobMatrix: GameState['jobMatrix']
+  activeMerc: GameState['activeMerc']
+  mercBestFloor: number
+  legendsSeen: GameState['legendsSeen']
   combo: number
   valiantStacks: number
   destinyPath: GameState['destinyPath']
@@ -81,6 +90,15 @@ export function serialize(s: GameState): SaveData {
     routeBuff: s.routeBuff,
     barterUsed: s.barterUsed,
     sigils: s.sigils,
+    castOrder: s.castOrder,
+    relicPending: s.relicPending,
+    bannerStored: s.bannerStored,
+    commandReady: s.commandReady,
+    inscribedId: s.inscribedId,
+    jobMatrix: s.jobMatrix,
+    activeMerc: s.activeMerc,
+    mercBestFloor: s.mercBestFloor,
+    legendsSeen: s.legendsSeen,
     combo: s.combo,
     valiantStacks: s.valiantStacks,
     destinyPath: s.destinyPath,
@@ -196,6 +214,43 @@ function migrate(raw: SaveData): SaveData {
     d.sigils = d.sigils ?? 0
     d.version = 13
   }
+  // v13 → v14:裝備四層架構(基底 / 詞綴分類 / 傳說)。
+  // 舊裝備沒有 base 與 legend,留 undefined = 無修正,不動玩家既有裝備的強度
+  if (d.version < 14) {
+    d.castOrder = d.castOrder ?? []
+    d.relicPending = d.relicPending ?? false
+    d.bannerStored = d.bannerStored ?? 0
+    d.version = 14
+  }
+  // v14 → v15:套裝標籤。舊裝備沒有 setTag = 沒有標籤,不動既有強度
+  if (d.version < 15) {
+    d.commandReady = d.commandReady ?? false
+    d.version = 15
+  }
+  // v15 → v16:傳家之器合併為單一系統(銘刻 → 殘缺 → 修復)。
+  // 舊存檔沒有銘刻紀錄,留 null 讓玩家自己選一件,不替他決定
+  if (d.version < 16) {
+    d.inscribedId = d.inscribedId ?? null
+    d.version = 16
+  }
+  // v16 → v17:命運 × 職業矩陣圖鑑。舊存檔沒有紀錄,從這一代開始累積
+  if (d.version < 17) {
+    d.jobMatrix = d.jobMatrix ?? {}
+    d.version = 17
+  }
+  // v17 → v18:傭兵歸位(v1.5)。老獵犬本來就在畫面上,直接當出戰傭兵;
+  // 歷代最高用當前 highestFloor 保底,老玩家已推過的層數直接算解鎖進度
+  if (d.version < 18) {
+    d.activeMerc = d.activeMerc ?? 'hound'
+    d.mercBestFloor = d.mercBestFloor ?? d.highestFloor ?? 1
+    // 舊玩家身上/背包已有的傳說直接入圖鑑,不要讓已擁有的顯示成「未取得」
+    d.legendsSeen =
+      d.legendsSeen ??
+      [...(d.inventory ?? []), ...Object.values(d.equipped ?? {})]
+        .map((e) => e?.legend)
+        .filter((x): x is NonNullable<typeof x> => !!x)
+    d.version = 18
+  }
   return d
 }
 
@@ -230,6 +285,15 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     routeBuff: d.routeBuff ?? null,
     barterUsed: d.barterUsed ?? 0,
     sigils: d.sigils ?? 0,
+    castOrder: d.castOrder ?? [],
+    relicPending: !!d.relicPending,
+    bannerStored: d.bannerStored ?? 0,
+    commandReady: !!d.commandReady,
+    inscribedId: d.inscribedId ?? null,
+    jobMatrix: d.jobMatrix ?? {},
+    activeMerc: d.activeMerc ?? 'hound',
+    mercBestFloor: d.mercBestFloor ?? 1,
+    legendsSeen: d.legendsSeen ?? [],
     combo: d.combo ?? 0,
     valiantStacks: d.valiantStacks ?? 0,
     destinyPath: d.destinyPath ?? null,

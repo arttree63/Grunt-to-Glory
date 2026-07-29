@@ -32,7 +32,7 @@ export const TECHS: Tech[] = [
   {
     id: 'heirloom',
     name: '家族傳承',
-    desc: '轉生可多帶 1 件傳家寶',
+    desc: '轉生可多帶 1 件裝備',
     cost: B.TECH_COST_HEIRLOOM,
     maxLevel: B.TECH_HEIRLOOM_MAX,
   },
@@ -47,7 +47,7 @@ export const TECHS: Tech[] = [
 
 export const emptyTechs = (): Techs => ({ valor: 0, supply: 0, legacy: 0, camp: 0, heirloom: 0 })
 
-/** 傳家寶欄位數:轉生時能帶走幾件裝備 */
+/** 攜帶名額:轉生時能帶走幾件裝備(傳家之器另計,不佔名額)*/
 export function heirloomSlots(techs: Techs): number {
   return B.HEIRLOOM_SLOTS + techs.heirloom
 }

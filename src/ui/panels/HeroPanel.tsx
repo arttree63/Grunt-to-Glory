@@ -4,7 +4,25 @@ import woodUrl from '../../../assets/visual/weapons/base-set/wood.png'
 import * as B from '../../core/balance'
 import { fmt } from '../../core/format'
 import { affordableLevels, bulkUpCost, upCost } from '../../core/formulas'
-import { critRate, currentDPS, destinyOutcome, dpsBreakdown, goldPerSec, revealStage } from '../../core/game'
+import {
+  activeLegends,
+  availableSkills,
+  critRate,
+  currentDPS,
+  destinyNode,
+  destinyOutcome,
+  dpsBreakdown,
+  goldPerSec,
+  isAwakened,
+  bestFloorEver,
+  revealStage,
+  skillEvolve,
+  setProgress,
+  skillCooldown,
+} from '../../core/game'
+import { LEGENDS } from '../../core/legends'
+import { ALL_MERCS, unlockedMercs } from '../../core/mercs'
+import { SETS } from '../../core/sets'
 import { DESTINY_PATHS } from '../../core/destiny'
 import { availableJobs, destinySuffix, JOBS, nextTierJobs } from '../../core/jobs'
 import { SKILLS } from '../../core/skills'
@@ -112,9 +130,161 @@ function PromotionSection() {
                   {SKILLS[sk].icon} {SKILLS[sk].name}:{SKILLS[sk].desc}
                 </div>
               ))}
+            {/* Lv.100 一次給三層:新主動 + 新被動 + 既有技能進化,第三層要在預覽時就看得到 */}
+            {stage === 'full' && j.evolve && (
+              <div className="affix" style={{ color: 'var(--gold)' }}>
+                ▲ {j.evolve.name}:{j.evolve.desc}
+              </div>
+            )}
             {stage === 'named' && <div className="affix">接近 Lv.{j.reqLv} 時會顯示完整能力</div>}
           </div>
         ))}
+    </>
+  )
+}
+
+/**
+ * 能力四區(clicker-ui § 七之二)。⚠️ 這一塊之前整塊沒做,
+ * 導致玩家轉職後**全遊戲沒有任何地方**能查自己的技能與被動在幹嘛
+ * (技能說明只存在於技能列的 title,手機沒有 hover)。
+ */
+function AbilitySections() {
+  const s = useGameState()
+  const job = JOBS[s.jobId]
+  const skills = availableSkills(s)
+  const nodes = s.destinyNodes.map((id) => destinyNode(id)).filter(Boolean)
+  const legends = activeLegends(s)
+  const sets = setProgress(s).filter((p) => p.count >= 2)
+
+  const Section = ({ title, count, children }: { title: string; count: number; children: React.ReactNode }) => (
+    <>
+      <div className="row" style={{ marginTop: 10 }}>
+        <span className="k" style={{ color: 'var(--text-strong)' }}>{title}</span>
+        <span className="v">{count}</span>
+      </div>
+      {children}
+    </>
+  )
+  const Line = ({ name, desc }: { name: string; desc: string }) => (
+    <div style={{ padding: '2px 0 4px 8px' }}>
+      <div style={{ fontSize: 12, color: 'var(--text-strong)' }}>{name}</div>
+      <div className="affix">{desc}</div>
+    </div>
+  )
+
+  return (
+    <>
+      <Section title="主動技能" count={skills.length}>
+        {skills.length === 0 && <div className="affix" style={{ paddingLeft: 8 }}>Lv.20 轉職後獲得第一個技能</div>}
+        {skills.map((id) => {
+          const evo = skillEvolve(s)
+          return (
+            <div key={id}>
+              <Line
+                name={`${SKILLS[id].icon} ${SKILLS[id].name}`}
+                desc={`${SKILLS[id].desc}・冷卻 ${Math.round(skillCooldown(s, id))}s`}
+              />
+              {evo?.skill === id && (
+                <div className="tier3" style={{ paddingLeft: 8, color: 'var(--gold)' }}>
+                  ▲ {evo.name}:{evo.desc}
+                </div>
+              )}
+            </div>
+          )
+        })}
+        {JOBS[s.jobId].awakenSkill && !isAwakened(s) && (
+          <div className="affix" style={{ paddingLeft: 8 }}>
+            職業覺醒後解鎖第二技能:抵達第 {B.AWAKEN_FLOOR} 層 + 取得一個命運節點
+          </div>
+        )}
+      </Section>
+
+      <Section title="戰鬥法則" count={job.tier > 0 ? 1 : 0}>
+        {job.tier > 0 ? (
+          <Line name={job.name} desc={job.desc} />
+        ) : (
+          <div className="affix" style={{ paddingLeft: 8 }}>轉職後獲得職業的核心被動</div>
+        )}
+      </Section>
+
+      <Section title="命運刻印" count={nodes.length}>
+        {nodes.length === 0 && <div className="affix" style={{ paddingLeft: 8 }}>到「命運」分頁選一條路</div>}
+        {nodes.map((n) => (
+          <Line key={n!.id} name={n!.name} desc={n!.desc} />
+        ))}
+      </Section>
+
+      <Section title="裝備機制" count={legends.length + sets.length}>
+        {legends.length + sets.length === 0 && (
+          <div className="affix" style={{ paddingLeft: 8 }}>
+            傳說裝與套裝標籤會改變技能的運作方式,到鐵匠鋪精工鍛造
+          </div>
+        )}
+        {legends.map((id) => (
+          <Line key={id} name={LEGENDS[id].name} desc={LEGENDS[id].effect} />
+        ))}
+        {sets.map((p) => (
+          <Line
+            key={p.tag}
+            name={`${SETS[p.tag].name} ${p.count}/3`}
+            desc={p.count >= 3 ? SETS[p.tag].three : SETS[p.tag].two}
+          />
+        ))}
+      </Section>
+
+      <Section title="傭兵" count={s.activeMerc ? 1 : 0}>
+        <MercSection />
+      </Section>
+
+      <div className="affix" style={{ marginTop: 10 }}>
+        天賦配點已由「命運」分頁取代——那裡的選擇是機制而不是數值。
+      </div>
+    </>
+  )
+}
+
+/**
+ * 傭兵區(v1.5 § 五):同時 1 隻、招牌行為 8~15 秒一次、傷害占比 ≤15%。
+ * 解鎖走歷代最高層(跨轉生)——推進本身就是收集傭兵的進度。
+ */
+function MercSection() {
+  const s = useGameState()
+  const setMerc = useGame((st) => st.setActiveMerc)
+  const unlocked = unlockedMercs(bestFloorEver(s))
+
+  return (
+    <>
+      {ALL_MERCS.map((m) => {
+        const owned = unlocked.includes(m.id)
+        const active = s.activeMerc === m.id
+        return (
+          <div key={m.id} style={{ padding: '2px 0 4px 8px', opacity: owned ? 1 : 0.5 }}>
+            <div className="row" style={{ border: 'none', padding: 0 }}>
+              <span className="k" style={{ color: owned ? 'var(--text-strong)' : undefined }}>
+                {m.icon} {m.name}
+                <small className="affix"> {m.archetype}型</small>
+              </span>
+              <span className="v">
+                {owned ? (
+                  <button
+                    className={`btn${active ? ' primary' : ''}`}
+                    style={{ padding: '6px 12px', minHeight: 32 }}
+                    onClick={() => setMerc(active ? null : m.id)}
+                  >
+                    {active ? '出戰中' : '出戰'}
+                  </button>
+                ) : (
+                  <small className="affix">歷代最高到第 {m.unlockFloor} 層解鎖</small>
+                )}
+              </span>
+            </div>
+            <div className="tier3">{owned ? m.signature : '???'}</div>
+          </div>
+        )
+      })}
+      <div className="tier3" style={{ paddingLeft: 8 }}>
+        同時只能帶 1 隻。傭兵每 8~15 秒發動一次招牌行為,不做普攻。
+      </div>
     </>
   )
 }
@@ -180,7 +350,7 @@ export default function HeroPanel() {
       </div>
       <div className="row">
         <span className="k">戰功勳章</span>
-        <span className="v">{s.medals} 枚(到商店買科技)</span>
+        <span className="v">{s.medals} 枚(到「傳承」分頁的軍需處買科技)</span>
       </div>
 
       <div className="btn-row">
@@ -201,9 +371,7 @@ export default function HeroPanel() {
         </button>
       </div>
 
-      <div className="empty" style={{ textAlign: 'left', lineHeight: 1.7 }}>
-        天賦配點已由「命運」分頁的命運樹取代——那裡的選擇是機制而不是數值。
-      </div>
+      <AbilitySections />
 
       {nextJobs.length > 0 && <PromotionSection />}
     </div>

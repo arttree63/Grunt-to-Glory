@@ -1,6 +1,7 @@
 import * as B from './balance'
 import { D, Decimal } from './decimal'
 import {
+  baseMods,
   bossPartSlot,
   equipBonuses,
   equipPower,
@@ -23,6 +24,9 @@ import {
   upCost,
 } from './formulas'
 import { destinyJobs, JOBS } from './jobs'
+import { legendFor } from './legends'
+import { MERCS, unlockedMercs } from './mercs'
+import { SETS } from './sets'
 import { SKILLS } from './skills'
 import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, hasNode, pendingChoice } from './destiny'
 import { makeChronicleEntry } from './chronicle'
@@ -38,6 +42,7 @@ import {
   techStartGold,
 } from './techs'
 import type {
+  BaseType,
   DestinyNodeId,
   DestinyPathId,
   EncounterId,
@@ -46,6 +51,9 @@ import type {
   GameEvent,
   GameState,
   JobId,
+  LegendId,
+  MercId,
+  SetTagId,
   SkillId,
   Slot,
   TechId,
@@ -85,6 +93,28 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     skillCd: {},
     buff: null,
     sigils: 0,
+    castOrder: [],
+    hourglassLock: 0,
+    windUses: 0,
+    windAcc: 0,
+    relicPending: false,
+    relicLeft: 0,
+    bannerStored: 0,
+    commandReady: false,
+    inscribedId: null,
+    jobMatrix: {},
+    activeMerc: 'hound', // 老獵犬開局就在場上(貼圖早就有了,只是一直沒有行為)
+    mercTimer: 10,
+    freezeUsedThisBoss: 0,
+    freezeLeft: 0,
+    frozenPool: D(0),
+    burnLeft: 0,
+    burnDps: D(0),
+    bannerLeft: 0,
+    zoneLeft: 0,
+    zoneDps: D(0),
+    mercBestFloor: 0,
+    legendsSeen: [],
     attackAcc: 0,
     eventClickMats: 0,
     event: null,
@@ -120,7 +150,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 13
+export const SAVE_VERSION = 18
 
 // ---------- 數值查詢 ----------
 
@@ -132,13 +162,69 @@ export function goldMult(s: GameState): number {
 }
 
 export function critRate(s: GameState): number {
-  const buffCrit = s.buff ? (SKILLS[s.buff.skillId].critAdd ?? 0) : 0
+  // 常駐化的 buff(不退之壁)一律取原本視窗的平均值,暴擊型 buff 也不例外——
+  // 漏掉這裡的話,疾風連刺的 +60% 暴擊會變成永久,單件傳說直接破 power-neutral
+  const sk = s.buff ? SKILLS[s.buff.skillId] : null
+  const uptime = s.buff?.permanent && sk ? ((sk.duration ?? 0) / sk.cd) * B.WALL_PERMANENT_BONUS : 1
+  const buffCrit = sk ? (sk.critAdd ?? 0) * uptime : 0
   return B.CRIT_RATE + equipBonuses(s.equipped).crit + (JOBS[s.jobId].bonus.crit ?? 0) + buffCrit
 }
 
-/** 技能 buff 的傷害乘區 */
+/** 本職業的既有技能進化(二轉才有);沒有就是 null */
+export function skillEvolve(s: GameState) {
+  return JOBS[s.jobId].evolve ?? null
+}
+
+/** 這個技能在目前職業有沒有進化 */
+function evolved(s: GameState, id: SkillId): boolean {
+  return JOBS[s.jobId].evolve?.skill === id
+}
+
+/** 身上是否帶著某件傳說 */
+export function hasLegend(s: GameState, id: LegendId): boolean {
+  return SLOTS.some((sl) => s.equipped[sl]?.legend === id)
+}
+
+/** 身上所有傳說(UI 用) */
+export function activeLegends(s: GameState): LegendId[] {
+  return SLOTS.map((sl) => s.equipped[sl]?.legend).filter((l): l is LegendId => !!l)
+}
+
+/** 身上帶著幾件同一個套裝標籤(標籤制:不綁部位) */
+export function setCount(s: GameState, tag: SetTagId): number {
+  return SLOTS.filter((sl) => s.equipped[sl]?.setTag === tag).length
+}
+
+/** 已裝備的套裝標籤與件數,UI 直接顯示進度 */
+export function setProgress(s: GameState): Array<{ tag: SetTagId; count: number }> {
+  return (Object.keys(SETS) as SetTagId[])
+    .map((tag) => ({ tag, count: setCount(s, tag) }))
+    .filter((p) => p.count > 0)
+}
+
+/** 帝國鐵壁 2 件:持續型技能展開的軍陣是否生效中 */
+export function ironwallActive(s: GameState): boolean {
+  return setCount(s, 'ironwall') >= 2 && !!s.buff && !!SKILLS[s.buff.skillId].duration
+}
+
+/** 暴擊傷害加成:詞綴 + 重擊基底 */
+export function critDamageBonus(s: GameState): number {
+  return equipBonuses(s.equipped).critDmg + baseMods(s.equipped).critDmg
+}
+
+/**
+ * 技能 buff 的傷害乘區。
+ * 不退之壁把「短視窗高倍率」換成「常駐平均倍率」——
+ * 平均值直接由原本的視窗與冷卻算出來,所以總輸出不變(power-neutral),
+ * 變的是玩家不再需要抓視窗。
+ */
 export function buffMult(s: GameState): number {
-  return s.buff ? (SKILLS[s.buff.skillId].dmgMult ?? 1) : 1
+  if (!s.buff) return 1
+  const sk = SKILLS[s.buff.skillId]
+  if (!sk.dmgMult) return 1
+  if (!s.buff.permanent) return sk.dmgMult
+  const dur = sk.duration ?? 0
+  return ((dur * sk.dmgMult + (sk.cd - dur)) / sk.cd) * B.WALL_PERMANENT_BONUS
 }
 
 export function currentDPS(s: GameState): Decimal {
@@ -150,9 +236,12 @@ export function currentDPS(s: GameState): Decimal {
     equipBonus: bonus.dmg + (job.dmg ?? 0),
     morale: s.morale,
     moraleBoosted: inCheckWindow(s),
-    critMult: critMultiplier(critRate(s)),
+    critMult: critMultiplier(critRate(s), critDamageBonus(s)),
     buffMult: buffMult(s) * comboMult(s) * chargeMult(s) * valiantMult(s),
-  }).mul(equipPower(s.equipped)) // 每件裝備獨立乘區
+  })
+    .mul(equipPower(s.equipped)) // 每件裝備獨立乘區
+    .mul(s.isBoss ? 1 + bonus.bossDmg : 1)
+    .mul(s.relicLeft > 0 ? B.RELIC_MULT : 1) // 貪婪之眼的遺物弱點
 }
 
 export interface DpsPart {
@@ -170,7 +259,9 @@ export function dpsBreakdown(s: GameState): DpsPart[] {
     { label: '轉生科技', mult: techDamageMult(s.techs) },
     { label: '裝備品質', mult: equipPower(s.equipped) },
     { label: '裝備詞條', mult: 1 + bonus.dmg },
+    { label: '暴擊期望', mult: critMultiplier(critRate(s), critDamageBonus(s)) },
     { label: '戰意', mult: 1 + s.morale * B.MORALE_DMG_PER_POINT },
+    ...(s.isBoss && bonus.bossDmg > 0 ? [{ label: '對 Boss', mult: 1 + bonus.bossDmg }] : []),
   ]
 }
 
@@ -196,6 +287,12 @@ export function spawnEnemy(s: GameState) {
     s.isBoss = true
     s.enemyMaxHp = bossHP(s.floor)
     s.bossTimeLeft = B.BOSS_TIME
+    s.freezeUsedThisBoss = 0
+    // 貪婪之眼:打造出好東西後,下一場 Boss 開場帶著遺物弱點
+    if (s.relicPending) {
+      s.relicPending = false
+      s.relicLeft = B.RELIC_WINDOW
+    }
   } else {
     s.isBoss = false
     s.enemyMaxHp = mobHP(s.floor)
@@ -205,8 +302,15 @@ export function spawnEnemy(s: GameState) {
 
 function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Math.random) {
   const mult = boss ? B.BOSS_GOLD_MULT : 1
-  // buff 視窗期間的擊殺會累積印記(軍勢 / 追風印記)
-  if (s.buff && SKILLS[s.buff.skillId].duration) gainSigil(s)
+  // buff 視窗期間的擊殺會累積印記(軍勢 / 追風印記)。
+  // 不退之壁把視窗變成常駐,若照原樣累積會變成每殺必給 → 印記速率暴增。
+  // 改為依原本的視窗佔比擲骰,累積速率因此與沒穿時相同。
+  if (s.buff && SKILLS[s.buff.skillId].duration) {
+    const sk = SKILLS[s.buff.skillId]
+    // 堅陣(二轉進化):視窗期間的擊殺累積雙倍
+    const n = evolved(s, s.buff.skillId) ? B.EVOLVE_SIGIL_MULT : 1
+    if (!s.buff.permanent || rng() < (sk.duration ?? 0) / sk.cd) gainSigil(s, n)
+  }
   // 連斬:每次擊殺 +1 層並重置衰減視窗
   if (hasNode(s, 'tactician_start')) {
     const before = s.combo
@@ -221,7 +325,9 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
   const g = goldDrop(s.floor).mul(mult).mul(goldMult(s)).mul(routeGold)
   s.gold = s.gold.add(g)
   const routeMat = s.routeBuff?.kind === 'material' ? B.ROUTE_BUFF_MULT : 1
-  const gained = (boss ? B.BOSS_MATERIALS : B.MATERIAL_PER_MOB) * routeMat
+  // 素材獲取詞綴:小數部分用機率補,長期期望才對得上(直接 floor 會讓 +12% 完全消失)
+  const rawMat = (boss ? B.BOSS_MATERIALS : B.MATERIAL_PER_MOB) * routeMat * (1 + equipBonuses(s.equipped).matFind)
+  const gained = Math.floor(rawMat) + (rng() < rawMat % 1 ? 1 : 0)
   s.materials += gained
   s.forgeHeatMaterials += gained
   events.push({ type: boss ? 'bossKill' : 'kill', gold: g, floor: s.floor })
@@ -229,6 +335,7 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
   if (!boss) return
   s.bossKills++
   tickLivingWeapon(s, events)
+  tickHeirloomRepair(s, events)
   // 部位素材:首殺必掉,重複擊殺機率掉
   const first = s.floor > s.maxBossKilled
   if (first) s.maxBossKilled = s.floor
@@ -299,8 +406,10 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
     s.morale = Math.max(0, s.morale - decay * dtMs)
   }
 
-  tickSkills(s, dt)
+  tickSkills(s, dt, raw)
   tickTactician(s, dt)
+  tickMerc(s, dt, raw, rng)
+  tickCombatStatus(s, dt, raw, rng)
   grantDestinyPoints(s, raw)
   if (s.charging) return mergeKills(raw) // 蓄勢期間停止輸出
 
@@ -319,9 +428,8 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   // ── 攻擊驅動:傷害按攻擊間隔成塊套用 ──
   // 血條跟著揮砍一格一格掉,而不是連續流失。總量不變(累積多久就打多少),
   // 所以數值曲線不受影響;渲染層的揮砍也由這裡發出的 attack 事件驅動,兩者不會漂移。
-  // 攻擊節奏只由攻擊間隔決定。點擊不另外觸發攻擊——
-  // 否則累積不足時會變成「點了什麼都沒發生」的空點,反而更不同步。
-  // 點擊的影響走戰意:戰意越高攻擊間隔越短,揮砍與扣血因此永遠一對一。
+  // 自動攻擊的節奏由攻擊間隔決定;玩家點擊則是**另一次獨立的出手**
+  // (click() 自己發 attack 事件 + 自己扣血),兩邊都維持「一次揮砍 = 一次扣血」。
   const interval = attackInterval(s)
   s.attackAcc += dt
   if (s.attackAcc < interval) {
@@ -331,40 +439,89 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   }
   const swung = s.attackAcc
   s.attackAcc = 0
-  let dmg = currentDPS(s).mul(swung)
-  raw.push({ type: 'attack', damage: dmg })
+  const dmg = currentDPS(s).mul(swung)
+  // 行為型傳說的分帳:總量不變(power-neutral by construction),
+  // 只是把同一份傷害拆給不同的「行動者」——演出因此能畫出分身/軍旗各自出手
+  const galeWindow = s.buff && !!SKILLS[s.buff.skillId].critAdd
+  if (galeWindow && hasLegend(s, 'twinblade')) {
+    raw.push({ type: 'attack', damage: dmg.mul(1 - B.TWIN_CLONE_SHARE), source: 'hero' })
+    raw.push({ type: 'attack', damage: dmg.mul(B.TWIN_CLONE_SHARE), source: 'clone' })
+  } else if (s.bannerLeft > 0) {
+    raw.push({ type: 'attack', damage: dmg.mul(1 - B.BANNER_ZONE_SHARE), source: 'hero' })
+    raw.push({ type: 'attack', damage: dmg.mul(B.BANNER_ZONE_SHARE), source: 'zone' })
+  } else {
+    raw.push({ type: 'attack', damage: dmg })
+  }
+  tickWindBoots(s, rng, raw)
 
   // 突發事件優先吃傷害:出現期間取代當前目標
+  if (s.event) {
+    dealDamage(s, dmg, raw, rng)
+    if (s.event && s.event.timeLeft <= 0) escapeEvent(s, raw, rng)
+    return mergeKills(raw) // 事件期間不推進一般戰鬥
+  }
+
+  dealDamage(s, dmg, raw, rng)
+
+  // 逾時判定放在傷害之後,讓這一擊有機會先擊破
+  checkBossTimeout(s, raw)
+  return mergeKills(raw)
+}
+
+/**
+ * 追風者之靴:這一擊有沒有暴擊,決定要不要推進第二技能的冷卻。
+ * 暴擊在本引擎原本只活在期望值裡,這件裝備讓它變成看得見的事件。
+ * 每秒上限 B.WINDBOOTS_PER_SEC 次(系統級護欄:冷卻完成類不得無限觸發)。
+ */
+function tickWindBoots(s: GameState, rng: Rng, events: GameEvent[]) {
+  if (!hasLegend(s, 'windboots')) return
+  if (s.windUses >= B.WINDBOOTS_PER_SEC) return
+  if (rng() >= Math.min(1, critRate(s))) return
+  const target = JOBS[s.jobId].awakenSkill
+  const cdLeft = target ? (s.skillCd[target] ?? 0) : 0
+  if (!target || cdLeft <= 0) return
+  s.windUses++
+  const left = cdLeft - B.WINDBOOTS_CD_SEC
+  if (left <= 0) delete s.skillCd[target]
+  else s.skillCd[target] = left
+  events.push({ type: 'cooldownAdvance', skillId: target, seconds: B.WINDBOOTS_CD_SEC })
+}
+
+/**
+ * 把一份傷害套用到當前目標,並處理擊殺與溢出。
+ * 自動攻擊、點擊、戰意爆發、套裝自動引爆全部走這裡——
+ * 走同一條路才不會出現「血扣了但沒結算擊殺」或「畫面揮了血條沒動」。
+ */
+function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng) {
+  let dmg = damage
+  // 凍結(DeferDamageWindow):期間所有傷害累積,解凍時一次引爆。
+  // 倒數與冷卻照常進行——凍結不偷時間,只改結算節奏(power-neutral 的關鍵)
+  if (s.freezeLeft > 0) {
+    s.frozenPool = s.frozenPool.add(dmg)
+    return
+  }
   if (s.event) {
     s.event.hp = s.event.hp.sub(dmg)
     if (s.event.hp.lte(0)) {
       rewardEvent(s, s.event.kind, raw, rng)
       s.event = null
       s.eventCooldown = eventInterval(rng, s)
-    } else if (s.event.timeLeft <= 0) {
-      escapeEvent(s, raw, rng)
     }
-    return mergeKills(raw) // 事件期間不推進一般戰鬥
+    return
   }
-
   // 溢出傷害要帶到下一隻,否則推進速度會被攻擊頻率鎖死
   // (實測:Lv.80 時每次只殺一隻會讓實際進度比數值模型慢 4.8 倍)
   for (let i = 0; i < MAX_KILLS_PER_TICK; i++) {
     if (s.enemyHp.gt(dmg)) {
       s.enemyHp = s.enemyHp.sub(dmg)
-      dmg = D(0)
-      break
+      return
     }
     dmg = dmg.sub(s.enemyHp)
     s.enemyHp = D(0)
     reward(s, s.isBoss, raw, rng)
     nextEnemy(s, raw)
-    if (dmg.lte(0)) break
+    if (dmg.lte(0)) return
   }
-
-  // 逾時判定放在傷害之後,讓這一擊有機會先擊破
-  checkBossTimeout(s, raw)
-  return mergeKills(raw)
 }
 
 /** 事件逾時逃走。誘餌箱會留下較低階獎勵 */
@@ -436,7 +593,10 @@ function spawnEvent(s: GameState, events: GameEvent[], rng: Rng) {
 /** 事件基礎金幣 */
 function eventGold(s: GameState, kind: EventKind): Decimal {
   const mult = kind === 'chest' ? B.CHEST_GOLD_MULT : B.GOBLIN_GOLD_MULT
-  return goldDrop(s.floor).mul(mult).mul(goldMult(s))
+  return goldDrop(s.floor)
+    .mul(mult)
+    .mul(goldMult(s))
+    .mul(1 + equipBonuses(s.equipped).eventGold)
 }
 
 function rewardEvent(s: GameState, kind: EventKind, events: GameEvent[], rng: Rng) {
@@ -482,8 +642,15 @@ function markEventKind(s: GameState, kind: string) {
   }
 }
 
-/** 點擊:疊戰意(點擊強化自動攻擊,不另計傷害) */
-export function click(s: GameState): GameEvent[] {
+/**
+ * 點擊。做三件事,缺一不可:
+ *   1. **直接出手**:點一下就是一次揮砍、一次扣血(1:1,不會有空點)
+ *   2. 疊戰意:縮短自動攻擊間隔,Boss/事件視窗內效果加倍且不衰減
+ *   3. 滿檔爆發:填補 10~30 秒的期待層
+ *
+ * rng 可注入以便模擬可重現(點擊會擊殺 → 會抽部位素材掉落)。
+ */
+export function click(s: GameState, rng: Rng = Math.random): GameEvent[] {
   const events: GameEvent[] = []
 
   // 事件中點擊直接換素材。素材不隨 1.16^層 貶值,
@@ -498,13 +665,23 @@ export function click(s: GameState): GameEvent[] {
   const clickBonus = equipBonuses(s.equipped).clickDmg
   s.morale = Math.min(B.MORALE_MAX, s.morale + B.MORALE_PER_CLICK * (1 + clickBonus))
 
+  // 點擊自己的一擊:折算成 B.CLICK_DMG_SEC 秒份 DPS,吃「點擊戰意」詞綴
+  const dmg = currentDPS(s).mul(B.CLICK_DMG_SEC * (1 + clickBonus))
+  events.push({ type: 'attack', damage: dmg })
+  dealDamage(s, dmg, events, rng)
+
   // 戰意滿檔爆發:填補 10~30 秒的期待層(「快滿了」)
   if (s.morale >= B.MORALE_MAX) {
     s.morale = 0
-    const dmg = currentDPS(s).mul(B.MORALE_BURST_SEC)
-    if (s.event) s.event.hp = s.event.hp.sub(dmg)
-    else s.enemyHp = s.enemyHp.sub(dmg)
-    events.push({ type: 'moraleBurst', damage: dmg })
+    // 失落軍旗:不當場炸掉,存進軍旗等下一個技能一起放(總量不變,節奏變了)
+    if (hasLegend(s, 'lostbanner')) {
+      s.bannerStored += B.MORALE_BURST_SEC * B.BANNER_STORE
+      events.push({ type: 'bannerStore' })
+    } else {
+      const burst = currentDPS(s).mul(B.MORALE_BURST_SEC)
+      events.push({ type: 'moraleBurst', damage: burst })
+      dealDamage(s, burst, events, rng)
+    }
   }
   return events
 }
@@ -581,9 +758,16 @@ export function inCheckWindow(s: GameState): boolean {
   return s.isBoss || s.event !== null
 }
 
-/** 實際攻擊間隔。戰意越高打得越快(傷害中性,只是切得更細) */
+/**
+ * 實際攻擊間隔。戰意越高打得越快(傷害中性,只是切得更細)。
+ * 基底也只改這裡:快速基底切得細、重擊基底一擊沉重,總傷害不變。
+ */
 export function attackInterval(s: GameState): number {
-  return B.ATTACK_INTERVAL / (1 + s.morale * B.MORALE_ATTACK_SPEED)
+  const mod = Math.max(0.3, 1 + baseMods(s.equipped).interval)
+  const formation = ironwallActive(s) ? B.IRONWALL_INTERVAL : 1
+  // 殘影(二轉進化):自己那招的視窗期間切得更細
+  const echo = s.buff && evolved(s, s.buff.skillId) && SKILLS[s.buff.skillId].critAdd ? B.EVOLVE_INTERVAL : 1
+  return (B.ATTACK_INTERVAL * mod * formation * echo) / (1 + s.morale * B.MORALE_ATTACK_SPEED)
 }
 
 // ---------- 職業覺醒與印記 ----------
@@ -636,9 +820,15 @@ export function sigilModifier(s: GameState): string | null {
 
 // ---------- 主動技能 ----------
 
-/** 實際冷卻(受智力縮減) */
-export function skillCooldown(_s: GameState, id: SkillId): number {
-  return SKILLS[id].cd
+/**
+ * 實際冷卻 = 基礎 × (1 + 基底修正 − 冷卻縮短詞綴)。
+ * ⚠️ 下限 B.CD_FLOOR 是系統級護欄,不是這裡的隨手保護:
+ * 冷卻一旦能無限縮到 0,「冷卻完成 / 重複」類效果就能自我循環。
+ */
+export function skillCooldown(s: GameState, id: SkillId): number {
+  const bonus = equipBonuses(s.equipped)
+  const mod = 1 + baseMods(s.equipped).cd - bonus.cdr
+  return SKILLS[id].cd * Math.max(B.CD_FLOOR, mod)
 }
 
 export function skillReady(s: GameState, id: SkillId): boolean {
@@ -655,36 +845,278 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
   if (!skillReady(s, id)) return []
   const sk = SKILLS[id]
   s.skillCd[id] = skillCooldown(s, id)
-  const events: GameEvent[] = [{ type: 'skill', skillId: id }]
+  const events: GameEvent[] = []
+  // 這一招實際打出多少,最後回填給 skill 事件——
+  // 全遊戲最大的一擊(印記引爆 / 隕石術)原本是完全沒有演出的
+  let skillDamage = D(0)
+
+  const bonus = equipBonuses(s.equipped)
+  // 演出要知道「這一發吃了幾層」,才畫得出 N 道射線
+  const spent = SKILLS[id].consumesSigils ? s.sigils : 0
+  // 戰術指揮官:指揮形態拿冷卻換威力,不是白送威力
+  const command = s.commandReady
+  if (command) {
+    s.commandReady = false
+    s.skillCd[id] = (s.skillCd[id] ?? 0) * B.COMMANDER_CD
+  }
+  const skillDmg = (1 + bonus.skillDmg) * (command ? B.COMMANDER_POWER : 1)
+
+  // 失落軍旗:戰意滿檔存起來的爆發,在這裡「轉化」成技能的一部分一起釋放
+  if (s.bannerStored > 0) {
+    const stored = currentDPS(s).mul(s.bannerStored)
+    if (s.event) s.event.hp = s.event.hp.sub(stored)
+    else s.enemyHp = s.enemyHp.sub(stored)
+    s.bannerStored = 0
+    events.push({ type: 'moraleBurst', damage: stored })
+  }
 
   if (sk.consumesSigils) {
-    const dmg = currentDPS(s).mul(s.sigils * B.SIGIL_BURST_SEC)
+    // 法典殘頁:保留三分之一不清空,每枚威力降低 → 從「攢滿再引爆」變成「連續小引爆」
+    const codex = hasLegend(s, 'codexpage')
+    const perSigil = B.SIGIL_BURST_SEC * (1 + bonus.sigilPower) * (codex ? B.CODEX_POWER : 1)
+    const dmg = currentDPS(s).mul(s.sigils * perSigil * skillDmg)
+    skillDamage = skillDamage.add(dmg)
     if (s.event) s.event.hp = s.event.hp.sub(dmg)
     else s.enemyHp = s.enemyHp.sub(dmg)
-    s.sigils = 0
+    s.sigils = codex ? Math.floor(s.sigils * B.CODEX_KEEP) : 0
   } else if (sk.burstSeconds) {
-    const dmg = currentDPS(s).mul(sk.burstSeconds)
+    let dmg = currentDPS(s).mul(sk.burstSeconds * skillDmg)
+    skillDamage = skillDamage.add(dmg)
+    // 裁決餘燼:七成立即、三成化為燃燒(總量不變——差別是敵人會持續冒火)
+    if (hasLegend(s, 'ember')) {
+      applyBurn(s, dmg.mul(1 - B.EMBER_IMMEDIATE), B.EMBER_BURN_DURATION)
+      dmg = dmg.mul(B.EMBER_IMMEDIATE)
+    }
     if (s.event) {
       s.event.hp = s.event.hp.sub(dmg)
     } else {
       s.enemyHp = s.enemyHp.sub(dmg)
     }
-    gainSigil(s) // 立即傷害型(聖光審判)每次施放留下一枚法令
+    // 立即傷害型(聖光審判)每次施放留下法令;連判(二轉進化)留三枚
+    gainSigil(s, evolved(s, id) ? B.EVOLVE_EDICT_SIGILS : 1)
   } else if (sk.duration) {
-    s.buff = { skillId: id, timeLeft: sk.duration }
+    // 熔火軍旗:盾牆突擊系(dmgMult buff)施放時插旗,軍旗與視窗同壽命
+    if (sk.dmgMult && hasLegend(s, 'bannerflag')) s.bannerLeft = sk.duration
+    // 不退之壁:軍陣留在場上直到下次施放(倍率改用平均值,見 buffMult)
+    const permanent = hasLegend(s, 'wall')
+    s.buff = {
+      skillId: id,
+      timeLeft: permanent
+        ? Infinity
+        : sk.duration *
+          (1 + bonus.buffDur + baseMods(s.equipped).buffDur) *
+          (command ? B.COMMANDER_POWER : 1),
+      permanent,
+    }
   }
+
+  trackCastOrder(s, id, events)
+  events.push({
+    type: 'skill',
+    skillId: id,
+    damage: skillDamage.gt(0) ? skillDamage : undefined,
+    count: spent || undefined,
+  })
   return events
 }
 
-function tickSkills(s: GameState, dt: number) {
+/**
+ * 「不同技能」的門檻:取「設計值」與「目前實際擁有的技能數」較小者,下限 2。
+ * ⚠️ 一轉只有 2 招(既有 + 覺醒)、二轉才有 3 招。寫死 3 會讓所有走「順序」的效果
+ * 在 Lv.100 前完全不觸發——玩家在第 30 層打到的東西會是死的。
+ * 下限 2 是為了覺醒前(只有 1 招)不要每放一次就觸發。
+ */
+function distinctNeeded(s: GameState, want: number): number {
+  return Math.max(2, Math.min(want, availableSkills(s).length))
+}
+
+/**
+ * 順序:記錄施放過的不同技能,湊滿一輪就讓最長冷卻的技能立即推進一段(倒轉沙漏)。
+ * ⚠️ 觸發後上鎖 B.HOURGLASS_LOCK 秒——「冷卻完成」關鍵字若能自我觸發就是無限循環,
+ * 這是系統級護欄的一部分,不是這件裝備的備註。
+ */
+function trackCastOrder(s: GameState, id: SkillId, events: GameEvent[]) {
+  if (!s.castOrder.includes(id)) s.castOrder.push(id)
+
+  // 戰術指揮官 3 件:把手上的技能各放過一輪就完成一道指令,下一個技能轉化
+  if (setCount(s, 'commander') >= 3 && s.castOrder.length >= distinctNeeded(s, B.COMMANDER_DISTINCT)) {
+    s.commandReady = true
+    s.castOrder = []
+    return
+  }
+  if (!hasLegend(s, 'hourglass')) return
+  if (s.castOrder.length < distinctNeeded(s, B.HOURGLASS_DISTINCT) || s.hourglassLock > 0) return
+
+  const longest = availableSkills(s)
+    .filter((sid) => (s.skillCd[sid] ?? 0) > 0)
+    .sort((a, b) => skillCooldown(s, b) - skillCooldown(s, a))[0]
+  if (longest) {
+    const advance = skillCooldown(s, longest) * B.HOURGLASS_PROGRESS
+    const left = (s.skillCd[longest] ?? 0) - advance
+    if (left <= 0) delete s.skillCd[longest]
+    else s.skillCd[longest] = left
+    events.push({ type: 'cooldownAdvance', skillId: longest, seconds: advance })
+  }
+  s.castOrder = []
+  s.hourglassLock = B.HOURGLASS_LOCK
+}
+
+/** 換一隻出戰傭兵(英雄頁第五區)。null = 收起 */
+export function setActiveMerc(s: GameState, id: MercId | null): boolean {
+  if (id !== null && !unlockedMercs(bestFloorEver(s)).includes(id)) return false
+  s.activeMerc = id
+  s.mercTimer = mercInterval(s, Math.random)
+  return true
+}
+
+/** 歷代最高層(解鎖傭兵用):目前輪 + 矩陣時代之前沒有記錄,用 highestFloor 保底 */
+export function bestFloorEver(s: GameState): number {
+  return Math.max(s.highestFloor, s.mercBestFloor)
+}
+
+function mercInterval(s: GameState, rng: Rng): number {
+  const m = s.activeMerc ? MERCS[s.activeMerc] : null
+  if (!m) return 10
+  return m.interval * (1 - B.MERC_INTERVAL_JITTER + rng() * B.MERC_INTERVAL_JITTER * 2)
+}
+
+/**
+ * 傭兵招牌行為(v1.5 § 五):每 8~15 秒一次、可被說出「剛剛牠做了什麼」。
+ * 傷害一律折算 N 秒份 DPS,占比壓在 ≤15% 護欄內(常數見 balance.ts)。
+ */
+function tickMerc(s: GameState, dt: number, events: GameEvent[], rng: Rng) {
+  if (!s.activeMerc) return
+  s.mercTimer -= dt
+  if (s.mercTimer > 0) return
+  s.mercTimer = mercInterval(s, rng)
+
+  const id = s.activeMerc
+  events.push({ type: 'mercAct', mercId: id })
+  switch (id) {
+    case 'hound':
+      // 經濟行為,不佔傷害預算
+      s.materials += B.MATERIAL_PER_MOB
+      s.forgeHeatMaterials += B.MATERIAL_PER_MOB
+      break
+    case 'rogue': {
+      // 背刺 + 留下破綻(轉為印記,與第二技能咬合)
+      const dmg = currentDPS(s).mul(B.MERC_ROGUE_SEC)
+      events.push({ type: 'attack', damage: dmg, source: 'merc' })
+      dealDamage(s, dmg, events, rng)
+      gainSigil(s)
+      break
+    }
+    case 'icemage': {
+      // 凍結:Boss 每場上限、非 Boss 不限;正在凍結中則跳過
+      if (s.freezeLeft > 0) break
+      if (s.isBoss && s.freezeUsedThisBoss >= B.FREEZE_BOSS_CAP) break
+      if (s.isBoss) s.freezeUsedThisBoss++
+      s.freezeLeft = B.FREEZE_DURATION
+      s.frozenPool = D(0)
+      events.push({ type: 'freezeStart' })
+      break
+    }
+    case 'sapper':
+      // 砲台:場地物件,存在期間由 tickCombatStatus 週期開火
+      s.zoneLeft = Math.max(s.zoneLeft, B.MERC_SAPPER_DURATION)
+        s.zoneDps = currentDPS(s).mul(B.MERC_SAPPER_SEC / B.MERC_SAPPER_DURATION)
+      break
+    case 'pyro':
+      // 燃燒:狀態原型,短時間內燒完(30 秒 Boss 檢定內必定結算)
+      applyBurn(s, currentDPS(s).mul(B.MERC_PYRO_SEC), B.MERC_PYRO_BURN_SEC)
+      break
+  }
+}
+
+/** 施加/疊加燃燒:剩餘的燒量與新的合併,重算每秒傷害 */
+function applyBurn(s: GameState, total: Decimal, duration: number) {
+  const remaining = s.burnDps.mul(Math.max(0, s.burnLeft))
+  s.burnLeft = duration
+  s.burnDps = remaining.add(total).div(duration)
+}
+
+/** 凍結解凍、燃燒滴傷、砲台開火(行為原型的時間驅動部分) */
+function tickCombatStatus(s: GameState, dt: number, events: GameEvent[], rng: Rng) {
+  if (s.freezeLeft > 0) {
+    s.freezeLeft -= dt
+    if (s.freezeLeft <= 0) {
+      s.freezeLeft = 0
+      const pool = s.frozenPool
+      s.frozenPool = D(0)
+      if (pool.gt(0)) {
+        // 解凍引爆:累積的傷害一次結算 + 冰法師的小額獎勵
+        const bonus = s.activeMerc === 'icemage' ? currentDPS(s).mul(B.MERC_ICE_BONUS_SEC) : D(0)
+        const total = pool.add(bonus)
+        events.push({ type: 'freezeBurst', damage: total })
+        dealDamage(s, total, events, rng)
+      }
+    }
+    return // 凍結期間燃燒與砲台也暫停(它們的傷害會進池,乾脆停表)
+  }
+  if (s.burnLeft > 0) {
+    const step = Math.min(dt, s.burnLeft)
+    const dmg = s.burnDps.mul(step)
+    s.burnLeft -= dt
+    if (dmg.gt(0)) {
+      events.push({ type: 'burnTick', damage: dmg })
+      dealDamage(s, dmg, events, rng)
+    }
+    if (s.burnLeft <= 0) {
+      s.burnLeft = 0
+      s.burnDps = D(0)
+    }
+  }
+  if (s.bannerLeft > 0) s.bannerLeft = Math.max(0, s.bannerLeft - dt)
+  if (s.zoneLeft > 0) {
+    const step = Math.min(dt, s.zoneLeft)
+    const dmg = s.zoneDps.mul(step)
+    s.zoneLeft -= dt
+    if (dmg.gt(0)) {
+      events.push({ type: 'attack', damage: dmg, source: 'zone' })
+      dealDamage(s, dmg, events, rng)
+    }
+    if (s.zoneLeft <= 0) s.zoneLeft = 0
+  }
+}
+
+/**
+ * 帝國鐵壁 3 件:軍陣結束時把視窗內累積的印記自動引爆一次。
+ * 威力低於手動引爆(B.IRONWALL_AUTO_POWER)——玩家用「挑時機」換到的東西不能白送。
+ */
+function autoDetonate(s: GameState, events: GameEvent[]) {
+  if (setCount(s, 'ironwall') < 3 || s.sigils <= 0) return
+  const id = JOBS[s.jobId].awakenSkill
+  if (!id || !availableSkills(s).includes(id)) return
+  const spent = s.sigils
+  const dmg = currentDPS(s).mul(s.sigils * B.SIGIL_BURST_SEC * B.IRONWALL_AUTO_POWER)
+  if (s.event) s.event.hp = s.event.hp.sub(dmg)
+  else s.enemyHp = s.enemyHp.sub(dmg)
+  s.sigils = 0
+  events.push({ type: 'skill', skillId: id, damage: dmg, count: spent })
+}
+
+function tickSkills(s: GameState, dt: number, events: GameEvent[]) {
   for (const id of Object.keys(s.skillCd) as SkillId[]) {
     const left = (s.skillCd[id] ?? 0) - dt
     if (left <= 0) delete s.skillCd[id]
     else s.skillCd[id] = left
   }
-  if (s.buff) {
+  if (s.buff && !s.buff.permanent) {
     s.buff.timeLeft -= dt
-    if (s.buff.timeLeft <= 0) s.buff = null
+    if (s.buff.timeLeft <= 0) {
+      // ⚠️ 先引爆再清 buff:軍陣是「結束時的最後一擊」,
+      // 順序反過來會讓自動引爆吃不到增益倍率,實測直接掉 18% 輸出
+      autoDetonate(s, events)
+      s.buff = null
+    }
+  }
+  if (s.hourglassLock > 0) s.hourglassLock = Math.max(0, s.hourglassLock - dt)
+  if (s.relicLeft > 0) s.relicLeft = Math.max(0, s.relicLeft - dt)
+  // 追風者之靴的每秒觸發上限
+  s.windAcc += dt
+  if (s.windAcc >= 1) {
+    s.windAcc = 0
+    s.windUses = 0
   }
 }
 
@@ -711,8 +1143,25 @@ export function promote(s: GameState, jobId: JobId): boolean {
   if (job.from !== s.jobId || s.lv < job.reqLv) return false
   // 命運限定二轉:本輪命運不符就不能轉
   if (job.requiresDestiny && job.requiresDestiny !== s.destinyPath) return false
+  const from = s.jobId
   s.jobId = jobId
+  // 二轉達成 → 記進矩陣圖鑑(跨輪保留),這是「下輪想試別的組合」的來源
+  if (job.tier === 2 && s.destinyPath) {
+    const key = matrixKey(from, s.destinyPath)
+    if (s.jobMatrix[key] === undefined) s.jobMatrix[key] = s.runs + 1
+  }
   return true
+}
+
+/** 矩陣格子的 key:一轉職業 × 本輪命運 */
+export function matrixKey(tier1: JobId, destiny: DestinyPathId): string {
+  return `${tier1}:${destiny}`
+}
+
+/** 這一格走到的二轉是誰(已實作的命運限定優先,其餘走通用二轉 + 命運後綴) */
+export function matrixOutcome(tier1: JobId, destiny: DestinyPathId): JobId | null {
+  const list = destinyJobs(tier1, destiny)
+  return (list.find((j) => j.requiresDestiny)?.id ?? list[0]?.id) ?? null
 }
 
 // ---------- 戰術家流派 ----------
@@ -848,6 +1297,10 @@ export function forgeHeatBonus(s: GameState): number {
 /** 打造後結算:清爐火,並處理餘火回收 */
 function afterForge(s: GameState, e: Equipment, cost: number) {
   s.forgeHeatMaterials = 0
+  // 貪婪之眼:打出菁英以上就備妥下一場 Boss 的遺物弱點(把鍛造與 Boss 檢定串起來)
+  if (hasLegend(s, 'greedeye') && QUALITIES.indexOf(e.quality) >= QUALITIES.indexOf('purple')) {
+    s.relicPending = true
+  }
   // 餘火回收:打出來比身上該部位差 → 退素材
   if (hasNode(s, 'artisan_1a')) {
     const cur = s.equipped[e.slot]
@@ -901,6 +1354,7 @@ export function forge(s: GameState, rng: Rng = Math.random, opts: ForgeOptions =
   const e = rollEquipment(rng, {
     forgeCount: s.forgeCount,
     heatBonus: forgeHeatBonus(s),
+    qualityBonus: equipBonuses(s.equipped).forgeQuality,
     minQualityBoost: allIn ? 1 : 0,
     guaranteePurple: s.pityCount >= B.PITY_FORGE,
   })
@@ -929,6 +1383,8 @@ export interface FineForgeOptions {
   slot?: Slot
   /** 投入菁英素材 → 品質下限紫 */
   useElite?: boolean
+  /** 定向基底:投入菁英素材時可指定,決定這一錘有機會打出哪一系傳說 */
+  base?: BaseType
 }
 
 export function canFineForge(s: GameState, opts: FineForgeOptions): boolean {
@@ -946,14 +1402,32 @@ export function fineForge(s: GameState, opts: FineForgeOptions, rng: Rng = Math.
   if (opts.useElite) s.eliteMaterials--
 
   const inscribe = hasNode(s, 'artisan_2b')
+  const pityHit = s.pityLegendary >= B.PITY_LEGENDARY
   const e = rollEquipment(rng, {
     forgeCount: s.forgeCount,
     heatBonus: forgeHeatBonus(s),
+    qualityBonus: equipBonuses(s.equipped).forgeQuality,
     extraAffix: inscribe && rng() < B.INSCRIBE_AFFIX_CHANCE ? 1 : 0,
     guaranteePurple: opts.useElite || s.pityCount >= B.PITY_FORGE,
-    guaranteeGold: s.pityLegendary >= B.PITY_LEGENDARY,
+    guaranteeGold: pityHit,
     lockSlot: opts.slot,
+    forceBase: opts.useElite ? opts.base : undefined,
   })
+
+  // 傳說特性:傳奇以上才可能帶,且部位與基底要對得上某件傳說。
+  // 保底那一次必定帶——否則保底只給了品質,給不到「會改變玩法的東西」。
+  if (QUALITIES.indexOf(e.quality) >= QUALITIES.indexOf('gold')) {
+    const l = legendFor(e.slot, e.base)
+    if (l && (pityHit || rng() < B.LEGEND_CHANCE)) {
+      e.legend = l.id
+      if (!s.legendsSeen.includes(l.id)) s.legendsSeen.push(l.id) // 傳說圖鑑(跨輪)
+    }
+  }
+  // 套裝標籤:標籤制,任何品質都可能帶。投入部位素材 + 菁英素材時才有機會
+  if (opts.slot && opts.useElite && rng() < B.SET_TAG_CHANCE) {
+    const tags = Object.keys(SETS) as SetTagId[]
+    e.setTag = tags[Math.floor(rng() * tags.length)]
+  }
 
   // 精工銘刻:出低於菁英視為失敗,退還部分素材
   if (inscribe && QUALITIES.indexOf(e.quality) < QUALITIES.indexOf('purple')) {
@@ -989,6 +1463,32 @@ export function unequip(s: GameState, slot: Slot): boolean {
   return true
 }
 
+/**
+ * 這件能不能被「一鍵分解」掃掉。
+ * ⚠️ 傳家之器是全遊戲唯一「必定回來」的承諾;傳說特性與套裝標籤是玩法本身。
+ * 這三種即使品質低(殘缺版傳奇會降成稀有)也不可以被一鍵操作銷毀。
+ */
+export function protectedFromBulkSalvage(e: Equipment): boolean {
+  return !!e.heirloom || !!e.legend || !!e.setTag
+}
+
+/** 一鍵分解:回傳分解件數、返還素材、以及保護了幾件 */
+export function salvageBelow(s: GameState, maxQualityIdx: number) {
+  let count = 0
+  let materials = 0
+  let protectedCount = 0
+  for (const e of [...s.inventory]) {
+    if (QUALITIES.indexOf(e.quality) > maxQualityIdx) continue
+    if (protectedFromBulkSalvage(e)) {
+      protectedCount++
+      continue
+    }
+    materials += salvage(s, e.id)
+    count++
+  }
+  return { count, materials, protectedCount }
+}
+
 export function salvage(s: GameState, id: string): number {
   const idx = s.inventory.findIndex((e) => e.id === id)
   if (idx < 0) return 0
@@ -1005,7 +1505,46 @@ export function pendingMedals(s: GameState): number {
   return medalsFromFloor(s.highestFloor)
 }
 
-/** 可帶走的傳家寶(已裝備 + 背包,依評分排序),UI 用來讓玩家挑 */
+/**
+ * 銘刻為傳家之器。同時只能有一件,銘刻新的會取代舊的。
+ * 這是 v1.2「傳家寶銘刻制」與神匠「傳家之器」合併後的**唯一**入口。
+ */
+export function inscribeHeirloom(s: GameState, id: string): boolean {
+  const all = [...s.inventory, ...SLOTS.map((sl) => s.equipped[sl]).filter((e): e is Equipment => !!e)]
+  const target = all.find((e) => e.id === id)
+  if (!target) return false
+  for (const e of all) e.heirloom = e.id === id
+  s.inscribedId = id
+  return true
+}
+
+/** 本輪銘刻的那一件(找不到代表已被分解/吞噬) */
+export function inscribedItem(s: GameState): Equipment | null {
+  if (!s.inscribedId) return null
+  const all = [...s.inventory, ...SLOTS.map((sl) => s.equipped[sl]).filter((e): e is Equipment => !!e)]
+  return all.find((e) => e.id === s.inscribedId) ?? null
+}
+
+/** 殘缺的傳家之器修復進度(還差幾個 Boss) */
+export function heirloomRepairLeft(s: GameState): number {
+  return Math.max(0, B.HEIRLOOM_REPAIR_BOSSES - s.bossKills)
+}
+
+/**
+ * 傳家之器的修復:本輪擊破足夠的 Boss 後,殘缺版回到完整品質。
+ * 產生「這件會不會回來」(轉生時揭曉)與「回來後能不能修好」(本輪目標)兩層期待。
+ */
+function tickHeirloomRepair(s: GameState, events: GameEvent[]) {
+  if (s.bossKills < B.HEIRLOOM_REPAIR_BOSSES) return
+  for (const e of [...s.inventory, ...SLOTS.map((sl) => s.equipped[sl])]) {
+    if (!e || !e.broken) continue
+    e.quality = e.fullQuality ?? e.quality
+    e.broken = false
+    events.push({ type: 'heirloomRestored', equipment: e })
+  }
+}
+
+/** 可帶走的裝備(已裝備 + 背包,依評分排序),UI 用來讓玩家挑 */
 export function heirloomCandidates(s: GameState): Equipment[] {
   const equipped = SLOTS.map((slot) => s.equipped[slot]).filter((e): e is Equipment => !!e)
   return [...equipped, ...s.inventory].sort((a, b) => score(b) - score(a))
@@ -1021,30 +1560,48 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
 
   const pool = heirloomCandidates(s)
   const keep = heirloomIds
+    .filter((id) => id !== s.inscribedId) // 銘刻件走傳家之器,不佔攜帶名額
     .slice(0, heirloomSlots(s.techs))
     .map((id) => pool.find((e) => e.id === id))
     .filter((e): e is Equipment => !!e)
 
   const next = createInitialState(s.medals + gain, s.runs + 1, { ...s.techs })
 
-  // 傳家之器:本輪最高階裝備登錄傳承圖鑑(跨轉生保留)
+  // 傳承圖鑑:本輪最高階裝備登錄(跨轉生保留)
   next.codex = [...s.codex]
+  next.jobMatrix = { ...s.jobMatrix }
+  next.activeMerc = s.activeMerc
+  next.mercBestFloor = Math.max(s.mercBestFloor, s.highestFloor)
+  next.legendsSeen = [...s.legendsSeen]
   if (hasNode(s, 'artisan_3a')) {
     const best = heirloomCandidates(s)[0]
     if (best && !next.codex.some((c) => c.id === best.id)) next.codex.push({ ...best })
   }
-  // 圖鑑收藏有機率讓下一代開局就拿到殘缺版(品質降一階)
-  if (next.codex.length > 0 && Math.random() < B.HEIRLOOM_CODEX_CHANCE) {
-    const pick = next.codex[Math.floor(Math.random() * next.codex.length)]
-    const qi = Math.max(0, QUALITIES.indexOf(pick.quality) - 1)
-    next.inventory.push({
-      ...pick,
-      id: `codex${Date.now().toString(36)}`,
+
+  // 傳家之器:銘刻的那一件**必定**回來,但保留機制不保留強度——
+  // 傳說特性與套裝標籤留著,品質降階成殘缺版,打贏幾個 Boss 才修復。
+  // 這樣既有「它會不會回來」的期待,又不會下一輪開局就碾壓。
+  const inscribed = inscribedItem(s)
+  if (inscribed) {
+    const artisan = hasNode(s, 'artisan_3a')
+    const tiers = artisan ? B.HEIRLOOM_ARTISAN_TIERS : B.HEIRLOOM_BROKEN_TIERS
+    const keepAffix = artisan ? B.HEIRLOOM_ARTISAN_AFFIX_KEEP : B.HEIRLOOM_AFFIX_KEEP
+    const qi = Math.max(0, QUALITIES.indexOf(inscribed.quality) - tiers)
+    const relic: Equipment = {
+      ...inscribed,
+      id: `heir${Date.now().toString(36)}`,
       quality: QUALITIES[qi],
+      fullQuality: inscribed.quality,
+      broken: QUALITIES[qi] !== inscribed.quality,
+      heirloom: true,
+      affixes: inscribed.affixes.slice(0, keepAffix),
       growth: 1,
       livingSteps: 0,
-    })
+    }
+    next.inventory.push(relic)
+    next.inscribedId = relic.id
   }
+
   // ⚠️ 用 push 不是覆蓋:上面圖鑑可能已經放了一件殘缺版,
   // 原本寫成 next.inventory = keep 會把它蓋掉,等於傳家之器的跨輪獎勵永遠發不出去
   next.inventory = [...keep, ...next.inventory]

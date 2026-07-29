@@ -65,22 +65,64 @@ import hero2Url from '../../assets/visual/rookie-soldier/idle/idle-2.png'
 import hero3Url from '../../assets/visual/rookie-soldier/idle/idle-3.png'
 import hero4Url from '../../assets/visual/rookie-soldier/idle/idle-4.png'
 import forestUrl from '../../assets/visual/scenes/forest-border-v1.png'
-import type { JobId } from '../core/types'
+import type { JobId, LegendId, MercId, SkillId } from '../core/types'
 
 /**
  * 戰鬥演出層。只讀 snapshot 做畫面,不 import React / store 邏輯。
  * 構圖與回饋規格見 .claude/skills/clicker-ui/SKILL.md。
  */
+/**
+ * 演出層每幀讀的狀態快照。⚠️ core 不碰畫面,所以「畫面需要知道的東西」一律走這裡或事件,
+ * 不可以讓 render 去 import 遊戲邏輯。新增欄位請保持扁平與便宜(每幀呼叫)。
+ */
 export interface BattleSnapshot {
-  floor: number
   isBoss: boolean
   /** 突發事件種類,無事件為 null */
   event: 'chest' | 'goblin' | null
-  hpRatio: number
   morale: number
   jobId: JobId
-  /** 一次自動揮砍的傷害顯示文字 */
-  autoDmgText: string
+  /** 帝國鐵壁 2 件的軍陣生效中(腳下多一圈) */
+  formation: boolean
+
+  // ── 以下是給「技能與傳說要有身分」用的(視覺缺口清單 § 一、§ 二)──
+  /** 生效中的 buff 是哪一招 → 每招畫自己的持續期間效果 */
+  buffSkill: SkillId | null
+  /** 不退之壁:軍陣常駐(不倒數) */
+  buffPermanent: boolean
+  /** buff 剩餘秒數(常駐時為 Infinity) */
+  buffLeft: number
+  /** 印記層數與上限 → 主角頭上的 pips */
+  sigils: number
+  sigilMax: number
+  /** 連斬層數 → 腳下環狀刻度 */
+  combo: number
+  /** 蓄勢中 / 已累積層數 → 武器蓄光 */
+  charging: boolean
+  chargeStacks: number
+  /** 貪婪之眼:遺物弱點剩餘秒數 → Boss 身上的金色弱點 */
+  relicLeft: number
+  /** 失落軍旗:已儲存的爆發秒數 → 武器亮度 */
+  bannerStored: number
+  /** 戰術指揮官:下一招是指揮形態 → 技能格金框 */
+  commandReady: boolean
+  /** 身上的傳說(用來決定要不要畫該傳說的「觸發前提示」) */
+  legends: LegendId[]
+  /** Boss 剩餘秒數(<5 秒要畫邊緣警戒);非 Boss 為 null */
+  bossTimeLeft: number | null
+
+  // ── v1.5 行為原型(演出:分身 / 軍旗 / 砲台 / 燃燒 / 凍結)──
+  /** 出戰傭兵(null = 沒帶)。老獵犬沿用現有 dog sprite */
+  activeMerc: MercId | null
+  /** 雙生影刃:分身出場中(疾風連刺視窗 + 傳說) */
+  cloneActive: boolean
+  /** 熔火軍旗:軍旗剩餘秒數 */
+  bannerLeft: number
+  /** 砲台剩餘秒數 */
+  zoneLeft: number
+  /** 燃燒剩餘秒數(敵人身上的火) */
+  burnLeft: number
+  /** 凍結剩餘秒數(畫面褪色、敵人停格) */
+  freezeLeft: number
 }
 
 const HERO_FRAME_MS = 180
@@ -166,6 +208,7 @@ export class BattleScene {
   private dmgLayer = new Container()
   private hero = new Container()
   private heroAura = new Graphics()
+  private formationFx = new Graphics()
   private heroBody = new Container()
   private heroSprite: AnimatedSprite
   private heroJob: JobId = 'rookie'
@@ -185,6 +228,15 @@ export class BattleScene {
   private W = 0
   private H = 0
   private destroyed = false
+  /** 地面流線層:製造「小兵正在往前走」的前進感 */
+  private groundLayer = new Container()
+  private streaks: Array<Graphics & { _t: number; _x: number; _len: number }> = []
+  private streakTimer = 0
+  private critNumCooldown = 0
+  private dust: Array<Graphics & { _t: number; _x: number }> = []
+  private dustTimer = 0
+  /** 進層時的加速衝刺(0~1,會衰減) */
+  private marchBoost = 0
 
   private constructor(
     private getSnap: () => BattleSnapshot,
@@ -209,8 +261,8 @@ export class BattleScene {
     const { app, world } = this
     app.stage.addChild(world)
     this.mobLayer.sortableChildren = true
-    world.addChild(this.bg, this.mobLayer, this.impactLayer, this.hero, this.dog, this.dmgLayer)
-    this.hero.addChild(this.heroAura, this.heroBody, this.slashFx)
+    world.addChild(this.bg, this.groundLayer, this.mobLayer, this.impactLayer, this.hero, this.dog, this.dmgLayer)
+    this.hero.addChild(this.heroAura, this.formationFx, this.heroBody, this.slashFx)
     this.heroBody.addChild(this.heroSprite)
 
     this.heroSprite.anchor.set(0.5, 233 / 256)
@@ -237,10 +289,68 @@ export class BattleScene {
 
   destroy() {
     this.destroyed = true
+    this.streaks = []
+    this.dust = []
     this.app.destroy(true, { children: true })
   }
 
   // ---------- 對外演出介面 ----------
+
+  /**
+   * 技能命中:比普通攻擊更重的演出(震屏 + 大字)。
+   * ⚠️ 目前三招共用同一組演出 —— 技能身分要靠 `skillId` 分流(視覺缺口清單 § 一)。
+   * `sigilsSpent` 是這一發吃掉的印記層數,可用來畫 N 道射線。
+   */
+  skillHit(text: string, skillId?: SkillId, sigilsSpent = 0) {
+    if (this.destroyed) return
+    void skillId
+    void sigilsSpent
+    this.shake = 9
+    this.zoom = 1.6
+    const y = this.boss ? this.H * 0.3 : this.H * 0.4
+    this.damageNum(this.W / 2, y, text, true)
+  }
+
+  /**
+   * 傭兵招牌行為。⚠️ 目前只有一行提示——各傭兵的專屬演出見視覺缺口清單 § 6.2
+   * (盜賊繞後拖影 / 冰晶與畫面褪色 / 砲台實體 / 燃燒粒子)。
+   */
+  onMercAct(mercId: MercId) {
+    if (this.destroyed) return
+    const names: Record<MercId, string> = {
+      hound: '老獵犬叼回素材',
+      rogue: '盜賊背刺',
+      icemage: '冰法師凍結',
+      sapper: '工兵架砲',
+      pyro: '火術士點燃',
+    }
+    this.notice(names[mercId])
+  }
+
+  /**
+   * 冷卻被推進(追風者之靴的暴擊、倒轉沙漏的順序)。
+   * ⚠️ 目前只有一行提示 —— 應該做成技能格冷卻條跳一格 + 腳下風紋(清單 F9 / F10)。
+   */
+  onCooldownAdvance(skillId: SkillId, seconds: number) {
+    if (this.destroyed) return
+    void skillId
+    this.notice(`冷卻 −${seconds.toFixed(1)}s`)
+  }
+
+  /** 一行提示(拿到命運點、素材、傳家之器復原…),不搶戰鬥焦點 */
+  notice(text: string) {
+    if (this.destroyed) return
+    this.damageNum(this.W / 2, this.H * 0.24, text, false)
+  }
+
+  /** 事件中點擊換素材。⚠️ 不可複用金幣模板,會拼出「+素材 +1 金」 */
+  onMaterial() {
+    if (this.destroyed) return
+    const target = this.eventView ?? this.frontMob()
+    const x = target ? target.view.x : this.W / 2
+    const y = target ? target.view.y : this.H * 0.45
+    this.damageNum(x, y - 20, '素材 +1', false)
+  }
 
   /** 揮砍一次(點擊或自動)。crit 走金字大字 */
   swing(dmgText: string, crit = false) {
@@ -268,6 +378,11 @@ export class BattleScene {
       this.hitNum(this.W / 2, this.H * 0.34, dmgText, crit)
     } else {
       const target = this.frontMob()
+      if (!target) {
+        // 剛清完屏的那幾百毫秒還是會有出手,沒有 fallback 會變成「點了沒反應」
+        this.spawnImpact(this.W / 2, this.H * 0.55, 0.5)
+        this.hitNum(this.W / 2, this.H * 0.5, dmgText, crit)
+      }
       if (target) {
         target.flash()
         target.view.y -= 10
@@ -308,6 +423,7 @@ export class BattleScene {
     if (this.destroyed) return
     for (let i = this.dmgLayer.children.length - 1; i >= 0; i--) this.dmgLayer.children[i].destroy()
     this.hitNumCooldown = 0
+    this.critNumCooldown = 0
     this.goldNumCooldown = 0
   }
 
@@ -345,12 +461,17 @@ export class BattleScene {
    * 所以節流 + 依序錯開位置;暴擊不節流,它本來就該被看見。
    */
   private hitNum(x: number, y: number, txt: string, crit: boolean) {
-    if (!crit) {
+    // 點擊改為直接出手後跳字量翻倍,暴擊完全不節流會把 12 上限洗掉其他字
+    if (crit) {
+      if (this.critNumCooldown > 0) return
+      this.critNumCooldown = 100
+    } else {
       if (this.hitNumCooldown > 0) return
       this.hitNumCooldown = 160
     }
-    const slot = this.hitNumSlot++ % 3
-    this.damageNum(x + (slot - 1) * 46, y - slot * 22, txt, crit)
+    // 點擊改為會直接出手後,跳字量幾乎翻倍 → 錯開位置從 3 格加到 5 格
+    const slot = this.hitNumSlot++ % 5
+    this.damageNum(x + (slot - 2) * 44, y - slot * 20, txt, crit)
   }
 
   private damageNum(x: number, y: number, txt: string, crit: boolean) {
@@ -379,6 +500,7 @@ export class BattleScene {
     this.elapsed += ms
     this.goldNumCooldown -= ms
     this.hitNumCooldown -= ms
+    this.critNumCooldown -= ms
     const resized = this.W !== this.app.screen.width || this.H !== this.app.screen.height
     this.W = this.app.screen.width
     this.H = this.app.screen.height
@@ -427,10 +549,18 @@ export class BattleScene {
     // 揮砍不再由渲染層自己計時,改由 core 的 attack 事件驅動,
     // 這樣血條每一格的下降都對得上一次揮砍(BattleCanvas 轉發)
 
-    // 待機呼吸
-    this.heroBody.y = Math.sin(this.elapsed * 0.003) * 3
+    this.tickMarch(ms)
+    this.tickDust(ms, !this.boss && !this.eventView)
 
+    // 行進中的身體晃動:呼吸(慢)+ 走路踏步(快),再加一點左右擺
+    this.heroBody.y = Math.sin(this.elapsed * 0.003) * 3 + Math.sin(this.elapsed * 0.011) * 1.6
+    this.heroBody.x = Math.sin(this.elapsed * 0.0055) * 1.8
+    this.dog.y = this.H * 0.895 + Math.sin(this.elapsed * 0.013 + 1) * 1.8
+
+    // 背景微幅浮動:靜止的底圖會讓所有前進感被「背景完全不動」抵銷
+    this.bg.y = this.H / 2 + Math.sin(this.elapsed * 0.0016) * 2
     this.drawAura(snap.morale)
+    this.drawFormation(snap.formation)
     this.layoutHero()
 
     // 傷害跳字
@@ -452,10 +582,101 @@ export class BattleScene {
     this.world.pivot.set((this.W * (z - 1)) / 2 / z, (this.H * (z - 1)) / 2 / z)
   }
 
+  /**
+   * 前進感:地面流線由遠處(地平線)朝鏡頭加速掠過,用的是與怪物相同的深度曲線(t²),
+   * 所以「地面往後退」與「怪物向前湧」看起來是同一個世界在動。
+   * ⚠️ 純程式繪製,沒有新美術成本(逐幀動畫是禁用的)。
+   */
+  private tickMarch(ms: number) {
+    const { W, H } = this
+    // Boss 戰與突發事件都不前進:那兩個都是停下來處理的事,
+    // 地面繼續流會變成寶箱怪定在原地卻像月球漫步
+    const marching = !this.boss && !this.eventView
+    // 進層時衝刺一下,推進被「看見」而不只是數字加一
+    // 半衰期約 460ms:0.997 的話進層衝刺一眨眼就沒了,根本感知不到
+    this.marchBoost *= Math.pow(0.9985, ms)
+    const speed = marching ? (0.00045 + this.marchBoost * 0.0014) * ms : 0
+
+    this.streakTimer -= ms
+    if (marching && this.streakTimer <= 0 && this.streaks.length < 18) {
+      this.streakTimer = 70 + Math.random() * 80
+      const g = new Graphics() as (typeof this.streaks)[number]
+      g._t = 0
+      // 一半跑小徑(淺色地面痕),一半跑兩側(深色景物,掠過感最強的就是這些)
+      const side = Math.random() < 0.55
+      g._x = side ? (Math.random() < 0.5 ? -1 : 1) * (0.85 + Math.random() * 0.8) : (Math.random() - 0.5) * 0.8
+      g._len = side ? 1.4 + Math.random() * 1.6 : 0.4 + Math.random() * 0.8
+      this.groundLayer.addChild(g)
+      this.streaks.push(g)
+    }
+
+    for (let i = this.streaks.length - 1; i >= 0; i--) {
+      const g = this.streaks[i]
+      g._t += speed * (1 + g._len * 0.25)
+      if (g._t >= 1) {
+        g.destroy()
+        this.streaks.splice(i, 1)
+        continue
+      }
+      const ease = g._t * g._t
+      const side = Math.abs(g._x) > 0.8
+      const y = H * (0.45 + (side ? 0.62 : 0.5) * ease)
+      // 側邊係數壓到 0.8:1.15 會讓景物在 ease≈0.35 就飛出畫面,可見壽命只有三分之一
+      const x = W * (0.5 + g._x * (0.08 + (side ? 0.8 : 0.5) * ease))
+      const w = Math.max(1, W * (side ? 0.045 : 0.014) * (0.15 + ease))
+      const h = Math.max(1, H * (side ? 0.11 : 0.024) * g._len * (0.12 + ease))
+      const alpha = (side ? 0.14 : 0.09) + 0.3 * ease
+      g.clear()
+      g.rect(-w / 2, -h / 2, w, h).fill({ color: side ? 0x120c1a : 0xffffff, alpha })
+      g.position.set(x, y)
+    }
+  }
+
+  /**
+   * 踏步塵土。⚠️ 前進感的主力其實是這個:
+   * 腳邊在動比遠處在動好認得多,而且它跟身體的踏步相位同步,看起來才是「他在走」。
+   */
+  private tickDust(ms: number, marching: boolean) {
+    const { W, H } = this
+    this.dustTimer -= ms
+    if (marching && this.dustTimer <= 0 && this.dust.length < 10) {
+      // 與 heroBody 的踏步同一個相位來源(elapsed * 0.011),落地那一刻才揚塵
+      this.dustTimer = 260 + Math.random() * 120
+      const g = new Graphics() as (typeof this.dust)[number]
+      g._t = 0
+      g._x = (Math.random() - 0.5) * 0.09
+      this.dust.push(g)
+      this.groundLayer.addChild(g)
+    }
+    for (let i = this.dust.length - 1; i >= 0; i--) {
+      const g = this.dust[i]
+      g._t += ms / (marching ? 700 : 400)
+      if (g._t >= 1) {
+        g.destroy()
+        this.dust.splice(i, 1)
+        continue
+      }
+      const r = Math.min(W, H) * (0.012 + 0.03 * g._t)
+      g.clear()
+      g.circle(0, 0, r).fill({ color: 0xd8c9b0, alpha: 0.16 * (1 - g._t) })
+      // 往鏡頭方向(下)並向後散,像被踩開的塵
+      g.position.set(W * (0.5 + g._x) + g._x * W * 1.2 * g._t, H * (0.9 + 0.05 * g._t))
+    }
+  }
+
+  /** 進到下一層:地面加速掠過 + 一點鏡頭推進,讓「往前」看得見 */
+  onFloorUp() {
+    if (this.destroyed) return
+    this.marchBoost = 1
+    this.zoom = Math.max(this.zoom, 0.6)
+  }
+
   private clearMobs() {
     this.mobs.forEach((m) => m.view.destroy())
     this.mobs = []
   }
+
+
 
   private createMob(startT = 0) {
     const textures = Math.random() < 0.55 ? this.assets.goblin : this.assets.imp
@@ -509,6 +730,17 @@ export class BattleScene {
     const r = 70 + Math.sin(this.elapsed * 0.01) * 6
     this.heroAura.ellipse(0, 6, r * 1.3, r * 0.5).fill({ color: 0x3fae9f, alpha: a * 0.25 })
     this.heroAura.ellipse(0, 6, r * 1.15, r * 0.42).stroke({ width: 3, color: 0x8affe0, alpha: a })
+  }
+
+  /** 軍陣:套裝 2 件生效時腳下的方陣圈,讓「套裝真的在運作」看得見 */
+  private drawFormation(active: boolean) {
+    this.formationFx.clear()
+    if (!active) return
+    const pulse = 1 + Math.sin(this.elapsed * 0.004) * 0.03
+    this.formationFx
+      .ellipse(0, 8, 96 * pulse, 34 * pulse)
+      .stroke({ width: 2, color: 0xf2c14e, alpha: 0.5 })
+    this.formationFx.ellipse(0, 8, 70 * pulse, 25 * pulse).stroke({ width: 1, color: 0xf2c14e, alpha: 0.3 })
   }
 }
 

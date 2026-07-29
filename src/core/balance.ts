@@ -47,6 +47,13 @@ export const MORALE_DMG_PER_POINT = 0.004 // 滿層 +40% DPS
  * 掛機玩家戰意為 0,加倍對他們毫無影響,所以這條天然不懲罰掛機。
  */
 export const MORALE_CHECK_BOOST = 2
+/**
+ * 點擊直接造成的傷害,折算成幾秒份 DPS。
+ * ⚠️ 玩家要的是「點了有打到」,所以點擊必須自己出一次手、自己扣一次血,
+ * 而不是只餵戰意等爆發。但它同時是個常數乘區,必然被 1.16^層 貶值,
+ * 所以數字不能大到讓「不點就過不了」——調校目標是積極玩家比掛機領先兩成上下。
+ */
+export const CLICK_DMG_SEC = 0.3
 export const MORALE_BURST_SEC = 4
 /** 每個事件最多能用點擊換到幾個素材 */
 export const EVENT_CLICK_MAT_CAP = 12
@@ -104,6 +111,58 @@ export const AFFIX_COUNT = {
   gold: 3,
   crimson: 4,
 } as const
+
+/**
+ * 詞綴出現權重。輸出類權重最高——玩家一眼看得懂的還是傷害,
+ * 循環/經濟類負責製造流派傾向,但不能常見到把輸出稀釋掉(舊版只有 4 種,一半是輸出)。
+ */
+export const AFFIX_WEIGHT = {
+  dmg: 6,
+  crit: 5,
+  critDmg: 3,
+  skillDmg: 2,
+  bossDmg: 2,
+  cdr: 2,
+  buffDur: 2,
+  sigilPower: 2,
+  clickDmg: 2,
+  gold: 3,
+  matFind: 2,
+  forgeQuality: 2,
+  eventGold: 2,
+} as const
+
+/**
+ * 詞綴值域倍率。同樣「+10%」在不同詞綴上的實際價值差很多——
+ * 暴擊率 +10% 約 +15% DPS,暴擊傷害 +10% 只有 +4%。若不修正,
+ * 玩家會學到「除了暴擊率其他都是垃圾」,分類管理就白做了。
+ */
+export const AFFIX_VALUE_MULT = {
+  critDmg: 2.5,
+  skillDmg: 1.5,
+  buffDur: 1.5,
+  sigilPower: 1.5,
+} as const
+
+/**
+ * 白裝基底修正(每件裝備各算一份,5 件同基底才有明顯體感)。
+ * ⚠️ 基底改的是節奏不是強度:攻擊間隔在本引擎是傷害中性的(傷害 = DPS × 累積時間),
+ * 所以「快 vs 重」不會讓人變強,只會讓打擊感與技能節奏不同。
+ * 唯一帶輸出的是重擊的暴擊傷害,5 件滿配約 +8%,壓在 power-neutral 的 ±10% 內。
+ */
+export const BASE_MODS = {
+  swift: { interval: -0.06, cd: 0.03, buffDur: 0, critDmg: 0 },
+  heavy: { interval: 0.08, cd: 0, buffDur: 0, critDmg: 0.04 },
+  guard: { interval: 0, cd: 0.04, buffDur: 0.06, critDmg: 0 },
+  focus: { interval: 0.03, cd: -0.05, buffDur: 0, critDmg: 0 },
+} as const
+
+/**
+ * 系統級護欄(機制關鍵字表 § 三之二):任何技能的實際冷卻不得低於基礎值的 30%。
+ * 「冷卻完成 / 重複 / 複製」這類關鍵字互相組合最容易做出無限循環,下限是全域規則,
+ * 不是個別裝備的備註。
+ */
+export const CD_FLOOR = 0.3
 
 /** 詞條值域(%) */
 export const AFFIX_RANGE = {
@@ -208,8 +267,22 @@ export const FORGE_UPGRADE_CAP = 0.5
 // 普通鍛造保底:連續 N 次未出紫以上 → 必出紫以上(跨轉生保留)
 export const PITY_FORGE = 30
 
-// 轉生可指定帶走的傳家寶件數(基準;「家族傳承」科技每級 +1,最多全身 5 件)
+// 轉生可指定帶走的裝備件數(基準;「家族傳承」科技每級 +1,最多全身 5 件)
 export const HEIRLOOM_SLOTS = 1
+
+// ── 傳家之器(統一系統,取代 v1.2「傳家寶銘刻制」的獨立規則)──
+/**
+ * 銘刻的那一件跨輪必定回來,但**保留機制不保留強度**:
+ * 傳說特性、套裝標籤、一條代表性詞綴留著,品質降階變成「殘缺版」,
+ * 打贏幾個 Boss 後修復回原本品質。這樣才不會下一輪開局就碾壓。
+ */
+export const HEIRLOOM_BROKEN_TIERS = 2
+/** 神匠系:殘缺程度較輕,且多保留一條詞綴 */
+export const HEIRLOOM_ARTISAN_TIERS = 1
+export const HEIRLOOM_AFFIX_KEEP = 1
+export const HEIRLOOM_ARTISAN_AFFIX_KEEP = 2
+/** 修復條件:本輪擊破幾個 Boss */
+export const HEIRLOOM_REPAIR_BOSSES = 3
 
 // 離線收益
 export const OFFLINE_RATE = 0.6 // 6 折
@@ -253,8 +326,85 @@ export const INSCRIBE_REFUND = 0.5
 export const LIVING_BOSS_PER_STEP = 3
 export const LIVING_GROWTH = 0.07
 export const LIVING_MAX_STEPS = 5
-/** 傳家之器:下一輪開局取得殘缺版的機率(品質降一階) */
-export const HEIRLOOM_CODEX_CHANCE = 0.5
+
+// ── 傭兵(v1.5 § 五)──
+/**
+ * 招牌行為的傷害折算(N 秒份 DPS)。占比 ≈ N / 間隔,全部壓在 ≤15% 護欄內:
+ * 盜賊 1.2/10 = 12%、工兵 1.4/12 ≈ 11.7%、火術士 1.2/11 ≈ 11%、冰法師 0.5/14 ≈ 3.6%+引爆中性。
+ */
+export const MERC_ROGUE_SEC = 1.2
+export const MERC_SAPPER_SEC = 1.4
+export const MERC_SAPPER_DURATION = 4
+export const MERC_PYRO_SEC = 1.2
+export const MERC_PYRO_BURN_SEC = 5
+export const MERC_ICE_BONUS_SEC = 0.5
+/** 冰法師凍結秒數與每場 Boss 觸發上限(v1.5 § 7.3 護欄) */
+export const FREEZE_DURATION = 2
+export const FREEZE_BOSS_CAP = 2
+/** 行為間隔的隨機幅度 ±30% */
+export const MERC_INTERVAL_JITTER = 0.3
+
+// ── 行為型傳說(v1.5 § 11.1,全部 power-neutral:分帳不加量)──
+/** 雙生影刃:疾風連刺期間,攻擊拆成本體/分身兩份(總量不變) */
+export const TWIN_CLONE_SHARE = 0.3
+/** 熔火軍旗:盾牆突擊插旗;軍旗存在期間攻擊分一份由軍旗打出(總量不變) */
+export const BANNER_ZONE_SHARE = 0.15
+/** 裁決餘燼:聖光審判 70% 立即、30% 轉為燃燒(短時間內燒完,Boss 30 秒檢定內必定結算完) */
+export const EMBER_IMMEDIATE = 0.7
+export const EMBER_BURN_DURATION = 4
+
+// ── 二轉的既有技能進化(Lv.100 的第三層內容)──
+/** 堅陣:視窗期間擊殺的印記倍數 */
+export const EVOLVE_SIGIL_MULT = 2
+/** 殘影:視窗期間的攻擊間隔倍率(傷害中性,只是切得更細) */
+export const EVOLVE_INTERVAL = 0.75
+/** 連判:立即傷害型技能施放後留下的印記數 */
+export const EVOLVE_EDICT_SIGILS = 3
+
+// ── 傳說裝(裝備第三層)──
+/**
+ * 精工鍛造出傳奇以上、且部位與基底對得上某件傳說時,附帶傳說特性的機率。
+ * 傳奇保底(PITY_LEGENDARY)觸發時必定附帶,否則保底只給品質、給不到玩法。
+ */
+export const LEGEND_CHANCE = 0.4
+/**
+ * 不退之壁的常駐溢價。⚠️ 定案為 1(無溢價):乾淨的牆上量測證明視窗平均本身就是
+ * 輸出中性的;先前的 −18.9% 是擊殺回饋雜訊,靠它校出來的 1.12 反而超標 +11%。
+ * 留著這個常數是因為測試引用它;若未來要補「失去挑時機的自由」的體感補償,從這裡調。
+ */
+export const WALL_PERMANENT_BONUS = 1
+/** 倒轉沙漏:施放幾個不同技能觸發、推進冷卻的比例、觸發後鎖多久(護欄:防自我循環) */
+export const HOURGLASS_DISTINCT = 3
+export const HOURGLASS_PROGRESS = 0.15
+export const HOURGLASS_LOCK = 30
+/** 追風者之靴:每次暴擊推進第二技能幾秒、每秒觸發次數上限(護欄) */
+export const WINDBOOTS_CD_SEC = 0.25
+export const WINDBOOTS_PER_SEC = 2
+/** 法典殘頁:引爆後保留的印記比例、每枚威力倍率 */
+export const CODEX_KEEP = 1 / 3
+export const CODEX_POWER = 0.95
+/**
+ * 失落軍旗:儲存的爆發只留原本的幾成。
+ * 儲存起來的爆發會在施放技能時釋放,而技能常常伴隨增益視窗 → 同樣的秒數打出更多傷害。
+ * 這個係數把「挑時機」賺到的部分收回去,讓它回到 power-neutral(實測未收前 +11.9%)。
+ */
+export const BANNER_STORE = 0.7
+/** 貪婪之眼:遺物弱點的持續秒數與傷害倍率(Boss 30 秒檢定內約 +5%) */
+export const RELIC_WINDOW = 3
+export const RELIC_MULT = 1.5
+
+// ── 套裝標籤(裝備第四層)──
+/** 精工鍛造投入部位素材 + 菁英素材時,附加套裝標籤的機率 */
+export const SET_TAG_CHANCE = 0.3
+/** 帝國鐵壁 2 件:軍陣期間的攻擊間隔倍率(傷害中性,只是切得更細) */
+export const IRONWALL_INTERVAL = 0.75
+/** 帝國鐵壁 3 件:軍陣結束時自動引爆印記,威力為手動引爆的幾成 */
+export const IRONWALL_AUTO_POWER = 0.1
+/** 戰術指揮官 3 件:指揮形態的威力倍率與冷卻代價(拿冷卻換威力,不是白送) */
+export const COMMANDER_POWER = 1.6
+export const COMMANDER_CD = 1.15
+/** 完成一道指令需要幾個不同技能 */
+export const COMMANDER_DISTINCT = 3
 
 /** 列傳保留幾代 */
 export const CHRONICLE_MAX = 30

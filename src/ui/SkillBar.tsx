@@ -46,6 +46,7 @@ export default function SkillBar() {
           style={{ color: s.charging ? 'var(--morale-b)' : undefined }}
         >
           {s.charging ? '⏸' : '⚡'}
+          <span style={{ fontSize: 9, display: 'block', marginTop: -2 }}>蓄勢</span>
         </button>
       )}
       {slots.map((id, i) => {
@@ -108,7 +109,8 @@ export default function SkillBar() {
                 </span>
               </>
             )}
-            {ready && s.buff?.skillId === id && (
+            {/* ⚠️ 不能加 ready:一般技能的持續時間短於冷卻,加了等於 buff 期間永遠不亮 */}
+            {s.buff?.skillId === id && (
               <span
                 style={{
                   position: 'absolute',

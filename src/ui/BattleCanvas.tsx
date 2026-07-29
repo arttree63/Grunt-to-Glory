@@ -2,9 +2,10 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { fmt } from '../core/format'
 import * as B from '../core/balance'
 import { critMultiplier } from '../core/formulas'
-import { attackInterval, critRate, currentDPS } from '../core/game'
+import { activeLegends, critRate, ironwallActive, sigilCap } from '../core/game'
 import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
+import { SKILLS } from '../core/skills'
 import { useGame } from '../store/gameStore'
 
 export default function BattleCanvas({ children }: { children?: ReactNode }) {
@@ -16,13 +17,30 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
     const snapshot = (): BattleSnapshot => {
       const s = useGame.getState().s
       return {
-        floor: s.floor,
         isBoss: s.isBoss,
         event: s.event?.kind ?? null,
-        hpRatio: s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0,
         morale: s.morale,
         jobId: s.jobId,
-        autoDmgText: fmt(currentDPS(s).mul(attackInterval(s))),
+        formation: ironwallActive(s),
+        buffSkill: s.buff?.skillId ?? null,
+        buffPermanent: !!s.buff?.permanent,
+        buffLeft: s.buff?.timeLeft ?? 0,
+        sigils: s.sigils,
+        sigilMax: sigilCap(s),
+        combo: s.combo,
+        charging: s.charging,
+        chargeStacks: s.chargeStacks,
+        relicLeft: s.relicLeft,
+        bannerStored: s.bannerStored,
+        commandReady: s.commandReady,
+        legends: activeLegends(s),
+        bossTimeLeft: s.isBoss ? s.bossTimeLeft : null,
+        activeMerc: s.activeMerc,
+        cloneActive: !!s.buff && !!SKILLS[s.buff.skillId].critAdd && activeLegends(s).includes('twinblade'),
+        bannerLeft: s.bannerLeft,
+        zoneLeft: s.zoneLeft,
+        burnLeft: s.burnLeft,
+        freezeLeft: s.freezeLeft,
       }
     }
 
@@ -49,10 +67,34 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.swing((crit ? '暴擊 ' : '') + fmt(shown), crit)
       } else if (e.type === 'moraleBurst') {
         scene.swing('戰意爆發 ' + fmt(e.damage!), true)
+      } else if (e.type === 'skill') {
+        // 技能直傷原本完全沒有演出:血條瞬空但畫面什麼都沒發生
+        const name = SKILLS[e.skillId!].name
+        // count = 消耗掉的印記層數,演出可以據此畫 N 道射線
+        scene.skillHit(e.damage ? `${name} ${fmt(e.damage)}` : name, e.skillId!, e.count ?? 0)
+      } else if (e.type === 'cooldownAdvance') {
+        scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0)
+      } else if (e.type === 'mercAct') {
+        scene.onMercAct(e.mercId!)
+      } else if (e.type === 'freezeBurst') {
+        scene.skillHit(`冰裂 ${fmt(e.damage!)}`)
+      } else if (e.type === 'bannerStore') {
+        scene.notice('收 旗')
+      } else if (e.type === 'heirloomRestored') {
+        scene.notice('傳家之器・復原')
+      } else if (e.type === 'destinyPoint') {
+        scene.notice('獲得命運點')
+      } else if (e.type === 'partDrop') {
+        scene.notice('部位素材 +1')
+      } else if (e.type === 'eliteDrop') {
+        scene.notice('菁英素材 +1')
+      } else if (e.type === 'weaponEvolve') {
+        scene.notice('武器進化')
       } else if (e.type === 'clickMaterial') {
-        scene.onKill('素材 +1')
+        scene.onMaterial()
       } else if (e.type === 'runReset') scene.clearNumbers()
       else if (e.type === 'kill') scene.onKill(fmt(e.gold!))
+      else if (e.type === 'floorUp') scene.onFloorUp()
       else if (e.type === 'bossKill') scene.onBossKill()
       else if (e.type === 'bossFail') scene.onBossFail()
       else if (e.type === 'eventKill') scene.onEventKill(fmt(e.gold!), !!e.count)
