@@ -260,6 +260,15 @@ function startLoop() {
     }
   }, STEP)
 
+  // 熱更新會換掉模組,舊的 setInterval 卻還在跑,累積下來會有好幾份迴圈
+  // 同時推進(攻擊變得又快又零星)。這裡在模組被替換時把它收掉。
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      if (loopId !== null) window.clearInterval(loopId)
+      loopId = null
+    })
+  }
+
   const flush = () => void saveGame(useGame.getState().s)
   window.addEventListener('pagehide', flush)
   document.addEventListener('visibilitychange', () => {
