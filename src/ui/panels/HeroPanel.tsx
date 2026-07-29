@@ -29,6 +29,7 @@ import { SKILLS } from '../../core/skills'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 import { useHold } from '../useHold'
+import { BadgeIcon, GameIcon } from '../GameIcon'
 
 const WEAPON_ART = {
   wood: woodUrl,
@@ -65,7 +66,7 @@ function PromotionSection() {
             <div className="affix">{j.desc}</div>
             {j.skills.map((sk) => (
               <div className="affix" key={sk} style={{ color: 'var(--text)' }}>
-                {SKILLS[sk].icon} {SKILLS[sk].name}:{SKILLS[sk].desc}
+                <GameIcon name={sk} size={15} /> {SKILLS[sk].name}:{SKILLS[sk].desc}
               </div>
             ))}
           </div>
@@ -127,7 +128,7 @@ function PromotionSection() {
             {stage === 'full' &&
               j.skills.map((sk) => (
                 <div className="affix" key={sk} style={{ color: 'var(--text)' }}>
-                  {SKILLS[sk].icon} {SKILLS[sk].name}:{SKILLS[sk].desc}
+                  <GameIcon name={sk} size={15} /> {SKILLS[sk].name}:{SKILLS[sk].desc}
                 </div>
               ))}
             {/* Lv.100 一次給三層:新主動 + 新被動 + 既有技能進化,第三層要在預覽時就看得到 */}
@@ -165,9 +166,9 @@ function AbilitySections() {
       {children}
     </>
   )
-  const Line = ({ name, desc }: { name: string; desc: string }) => (
+  const Line = ({ name, desc, icon }: { name: string; desc: string; icon?: React.ReactNode }) => (
     <div style={{ padding: '2px 0 4px 8px' }}>
-      <div style={{ fontSize: 12, color: 'var(--text-strong)' }}>{name}</div>
+      <div className="icon-line" style={{ fontSize: 12, color: 'var(--text-strong)' }}>{icon}{name}</div>
       <div className="affix">{desc}</div>
     </div>
   )
@@ -181,7 +182,8 @@ function AbilitySections() {
           return (
             <div key={id}>
               <Line
-                name={`${SKILLS[id].icon} ${SKILLS[id].name}`}
+                name={SKILLS[id].name}
+                icon={<GameIcon name={id} size={16} />}
                 desc={`${SKILLS[id].desc}・冷卻 ${Math.round(skillCooldown(s, id))}s`}
               />
               {evo?.skill === id && (
@@ -221,12 +223,13 @@ function AbilitySections() {
           </div>
         )}
         {legends.map((id) => (
-          <Line key={id} name={LEGENDS[id].name} desc={LEGENDS[id].effect} />
+          <Line key={id} name={LEGENDS[id].name} icon={<BadgeIcon kind="legend" />} desc={LEGENDS[id].effect} />
         ))}
         {sets.map((p) => (
           <Line
             key={p.tag}
             name={`${SETS[p.tag].name} ${p.count}/3`}
+            icon={<BadgeIcon kind="set" />}
             desc={p.count >= 3 ? SETS[p.tag].three : SETS[p.tag].two}
           />
         ))}
@@ -261,7 +264,7 @@ function MercSection() {
           <div key={m.id} style={{ padding: '2px 0 4px 8px', opacity: owned ? 1 : 0.5 }}>
             <div className="row" style={{ border: 'none', padding: 0 }}>
               <span className="k" style={{ color: owned ? 'var(--text-strong)' : undefined }}>
-                {m.icon} {m.name}
+                <span className="icon-line"><GameIcon name={m.id} size={17} />{m.name}</span>
                 <small className="affix"> {m.archetype}型</small>
               </span>
               <span className="v">
@@ -269,6 +272,7 @@ function MercSection() {
                   <button
                     className={`btn${active ? ' primary' : ''}`}
                     style={{ padding: '6px 12px', minHeight: 32 }}
+                    aria-label={`${m.name}${active ? '退場' : '出戰'}`}
                     onClick={() => setMerc(active ? null : m.id)}
                   >
                     {active ? '出戰中' : '出戰'}

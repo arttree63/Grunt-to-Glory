@@ -19,6 +19,7 @@ import {
 import type { DestinyPathId, JobId, TechId, Techs } from '../../core/types'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
+import { QualityMark } from '../GameIcon'
 
 function techSummary(techs: Techs, id: TechId): string {
   if (id === 'valor') return `傷害 ×${techDamageMult(techs).toFixed(2)}`
@@ -286,8 +287,9 @@ export default function LegacyPanel() {
       ) : (
         <div className="grid">
           {s.codex.map((e) => (
-            <div className="card" key={e.id} style={{ marginBottom: 0 }}>
+            <div className={`card quality-frame q-${e.quality}`} key={e.id} style={{ marginBottom: 0 }}>
               <b style={{ color: `var(--q-${e.quality})`, fontSize: 13 }}>
+                <QualityMark quality={e.quality} />
                 {QUALITY_NAME[e.quality]}
                 {SLOT_NAME[e.slot]}
               </b>

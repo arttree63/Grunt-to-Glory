@@ -5,8 +5,11 @@ import { hasNode } from '../core/destiny'
 import { JOBS } from '../core/jobs'
 import { SKILLS } from '../core/skills'
 import type { SkillId } from '../core/types'
+import { gameEvents } from '../store/events'
 import { useGame } from '../store/gameStore'
 import { useGameState } from './useGameState'
+import { BadgeIcon, GameIcon } from './GameIcon'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * 下一格要解鎖什麼。空格不是留白,是預告載體——
@@ -35,9 +38,24 @@ export default function SkillBar() {
   const owned = availableSkills(s)
   const preview = nextUnlock(s)
   const slots: Array<SkillId | null> = [...owned]
+  const [advancedSkill, setAdvancedSkill] = useState<SkillId | null>(null)
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const off = gameEvents.on((event) => {
+      if (event.type !== 'cooldownAdvance' || !event.skillId) return
+      setAdvancedSkill(event.skillId)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => setAdvancedSkill(null), 360)
+    })
+    return () => {
+      off()
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+    }
+  }, [])
 
   return (
-    <div className="skills">
+    <div className={`skills${s.commandReady ? ' command-ready' : ''}`}>
       {hasNode(s, 'tactician_1b') && (
         <button
           className="skill"
@@ -45,7 +63,7 @@ export default function SkillBar() {
           title="蓄勢:暫停輸出累積層數,再按一次釋放爆發"
           style={{ color: s.charging ? 'var(--morale-b)' : undefined }}
         >
-          {s.charging ? '⏸' : '⚡'}
+          <GameIcon name={s.charging ? 'pause' : 'charge'} />
           <span style={{ fontSize: 9, display: 'block', marginTop: -2 }}>蓄勢</span>
         </button>
       )}
@@ -57,14 +75,15 @@ export default function SkillBar() {
         const pct = ready ? 0 : left / skillCooldown(s, id)
         return (
           <button
-            className="skill"
+            className={`skill${advancedSkill === id ? ' cooldown-advanced' : ''}`}
             key={id}
             onClick={() => cast(id)}
             disabled={!ready}
+            aria-label={sk.name}
             title={`${sk.name}:${sk.desc}`}
             style={{ position: 'relative', overflow: 'hidden', opacity: ready ? 1 : 0.55 }}
           >
-            {sk.icon}
+            <GameIcon name={id} />
             {sk.consumesSigils && s.sigils > 0 && (
               <span
                 style={{
@@ -130,6 +149,7 @@ export default function SkillBar() {
           className="skill locked"
           style={{ fontSize: 9, lineHeight: 1.3, textAlign: 'center', padding: 4, opacity: 0.6 }}
         >
+          <BadgeIcon kind="lock" />
           {preview}
         </div>
       )}

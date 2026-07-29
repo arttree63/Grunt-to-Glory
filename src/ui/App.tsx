@@ -18,16 +18,17 @@ import DestinyPanel from './panels/DestinyPanel'
 import JournalPanel from './panels/JournalPanel'
 import LegacyPanel from './panels/LegacyPanel'
 import { useGameState } from './useGameState'
+import { GameIcon } from './GameIcon'
 
 type Tab = 'hero' | 'equip' | 'forge' | 'destiny' | 'journal' | 'legacy'
 
-const TABS: Array<{ id: Tab; icon: string; label: string }> = [
-  { id: 'hero', icon: '🗡️', label: '英雄' },
-  { id: 'equip', icon: '🎽', label: '裝備' },
-  { id: 'forge', icon: '🔨', label: '鐵匠鋪' },
-  { id: 'destiny', icon: '🌿', label: '命運' },
-  { id: 'journal', icon: '📖', label: '旅途' },
-  { id: 'legacy', icon: '🏅', label: '傳承' },
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'hero', label: '英雄' },
+  { id: 'equip', label: '裝備' },
+  { id: 'forge', label: '鐵匠鋪' },
+  { id: 'destiny', label: '命運' },
+  { id: 'journal', label: '旅途' },
+  { id: 'legacy', label: '傳承' },
 ]
 
 const MAPS = ['森林邊境', '地底城', '古堡', '神殿']
@@ -304,7 +305,7 @@ function Game() {
               className={`tab${tab === t.id ? ' active' : ''}`}
               onClick={() => setTab(tab === t.id ? null : t.id)}
             >
-              <span>{t.icon}</span>
+              <span><GameIcon name={t.id} size={19} /></span>
               {t.label}
               {t.id === 'hero' && canUpgrade && <i className="dot" />}
               {t.id === 'forge' && s.materials >= B.FORGE_COST && <i className="dot" />}

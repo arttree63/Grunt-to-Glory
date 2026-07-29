@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { fmt } from '../core/format'
 import * as B from '../core/balance'
 import { critMultiplier } from '../core/formulas'
-import { activeLegends, critRate, ironwallActive, sigilCap } from '../core/game'
+import { activeLegends, critRate, heirloomRepairLeft, ironwallActive, sigilCap } from '../core/game'
 import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
 import { SKILLS } from '../core/skills'
@@ -35,6 +35,9 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         commandReady: s.commandReady,
         legends: activeLegends(s),
         bossTimeLeft: s.isBoss ? s.bossTimeLeft : null,
+        valiantStacks: s.valiantStacks,
+        hourglassSteps: new Set(s.castOrder).size,
+        encounterWaiting: s.encounters.length > 0,
         activeMerc: s.activeMerc,
         cloneActive: !!s.buff && !!SKILLS[s.buff.skillId].critAdd && activeLegends(s).includes('twinblade'),
         bannerLeft: s.bannerLeft,
@@ -64,7 +67,7 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         const crit = Math.random() < rate
         const base = e.damage!.div(critMultiplier(rate))
         const shown = crit ? base.mul(B.CRIT_MULT) : base
-        scene.swing((crit ? '暴擊 ' : '') + fmt(shown), crit)
+        scene.swing((crit ? '暴擊 ' : '') + fmt(shown), crit, e.source ?? 'hero')
       } else if (e.type === 'moraleBurst') {
         scene.swing('戰意爆發 ' + fmt(e.damage!), true)
       } else if (e.type === 'skill') {
@@ -76,12 +79,16 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0)
       } else if (e.type === 'mercAct') {
         scene.onMercAct(e.mercId!)
+      } else if (e.type === 'freezeStart') {
+        scene.onFreezeStart()
       } else if (e.type === 'freezeBurst') {
-        scene.skillHit(`冰裂 ${fmt(e.damage!)}`)
+        scene.onFreezeBurst(`冰裂 ${fmt(e.damage!)}`)
+      } else if (e.type === 'burnTick') {
+        scene.onBurnTick(`燃燒 ${fmt(e.damage!)}`)
       } else if (e.type === 'bannerStore') {
-        scene.notice('收 旗')
+        scene.onBannerStore()
       } else if (e.type === 'heirloomRestored') {
-        scene.notice('傳家之器・復原')
+        scene.onHeirloomRestored()
       } else if (e.type === 'destinyPoint') {
         scene.notice('獲得命運點')
       } else if (e.type === 'partDrop') {
@@ -92,10 +99,18 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.notice('武器進化')
       } else if (e.type === 'clickMaterial') {
         scene.onMaterial()
+      } else if (e.type === 'encounter') {
+        scene.onEncounter()
+      } else if (e.type === 'levelUp') {
+        scene.onLevelUp()
       } else if (e.type === 'runReset') scene.clearNumbers()
       else if (e.type === 'kill') scene.onKill(fmt(e.gold!))
       else if (e.type === 'floorUp') scene.onFloorUp()
-      else if (e.type === 'bossKill') scene.onBossKill()
+      else if (e.type === 'bossKill') {
+        const s = useGame.getState().s
+        const hasBrokenHeirloom = [...s.inventory, ...Object.values(s.equipped)].some((item) => item?.broken)
+        scene.onBossKill(hasBrokenHeirloom ? heirloomRepairLeft(s) : undefined)
+      }
       else if (e.type === 'bossFail') scene.onBossFail()
       else if (e.type === 'eventKill') scene.onEventKill(fmt(e.gold!), !!e.count)
       else if (e.type === 'eventEscape') scene.onEventEscape()

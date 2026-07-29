@@ -29,6 +29,7 @@ import { QUALITIES as Q } from '../../core/equipment'
 import { DEVOUR_GROWTH as B_DEVOUR } from '../../core/balance'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
+import { BadgeIcon, MechanicIcon, QualityMark } from '../GameIcon'
 
 /** 觸控目標下限 44px(手機誤觸「分解」會永久失去裝備) */
 const TOUCH = { padding: '10px 12px', minHeight: 44 } as const
@@ -45,10 +46,10 @@ export function SetTagBlock({ e, count }: { e: Equipment; count: number }) {
   return (
     <div className="set-block">
       <div className="tier1">
-        <span className="set-chip">{set.name}</span> 已裝備 {count}/3
+        <span className="set-chip"><BadgeIcon kind="set" />{set.name}</span> 已裝備 {count}/3
       </div>
-      <div className="tier2">{count >= 2 ? '✔ ' : '🔒 未啟動 '}2 件 {set.two}</div>
-      <div className="tier2">{count >= 3 ? '✔ ' : '🔒 未啟動 '}3 件 {set.three}</div>
+      <div className="tier2">{count >= 2 ? '✓ ' : <><BadgeIcon kind="lock" /> 未啟動 </>}2 件 {set.two}</div>
+      <div className="tier2">{count >= 3 ? '✓ ' : <><BadgeIcon kind="lock" /> 未啟動 </>}3 件 {set.three}</div>
       {count < 3 && <div className="tier3">還需任意 {3 - count} 件帶「{set.name}」標籤的裝備</div>}
     </div>
   )
@@ -69,13 +70,13 @@ function Affixes({
       {legend && (
         <>
           <div className="tier1" style={{ color: 'var(--q-gold)' }}>
-            {legend.name}
+            <BadgeIcon kind="legend" /> {legend.name}
           </div>
           <div className="tier2" style={{ color: 'var(--q-gold)' }}>
             {legend.effect}
           </div>
           <div className="tier3">
-            標籤 {legend.tags.map((t) => KEYWORD_NAME[t]).join(' · ')}・不可重鑄
+            標籤 {legend.tags.map((t) => <span className="mechanic-chip" key={t}><MechanicIcon tag={t} />{KEYWORD_NAME[t]}</span>)}・不可重鑄
           </div>
         </>
       )}
@@ -87,7 +88,7 @@ function Affixes({
       )}
       {e.heirloom && (
         <div className="affix" style={{ color: 'var(--gold)' }}>
-          <b>傳家之器</b>
+          <BadgeIcon kind="heirloom" /> <b>傳家之器</b>
           {e.broken ? `・殘缺版,再擊破 ${repairLeft} 個 Boss 修復` : '・轉生後必定回來'}
         </div>
       )}
@@ -193,10 +194,11 @@ export default function EquipPanel() {
             <span className="k">{SLOT_NAME[slot]}</span>
             {e ? (
               <span className="v" style={{ color: qColor(e.quality) }}>
+                <QualityMark quality={e.quality} />
                 {e.base && <small className="affix">{BASE_NAME[e.base]} </small>}
                 {e.legend ? LEGENDS[e.legend].name : QUALITY_NAME[e.quality]}
-                {e.setTag && <small className="set-chip">{SETS[e.setTag].name}</small>}
-                {e.heirloom && <small style={{ color: 'var(--gold)' }}> 傳家之器</small>}
+                {e.setTag && <small className="set-chip"><BadgeIcon kind="set" />{SETS[e.setTag].name}</small>}
+                {e.heirloom && <small style={{ color: 'var(--gold)' }}> <BadgeIcon kind="heirloom" />傳家之器</small>}
                 {(e.growth ?? 1) > 1 && (
                   <small style={{ color: 'var(--gold)' }}> +{Math.round(((e.growth ?? 1) - 1) * 100)}%</small>
                 )}
@@ -229,6 +231,9 @@ export default function EquipPanel() {
                 style={{ padding: '6px 10px', minHeight: 32, fontSize: 11 }}
                 onClick={() => setRarity(f)}
               >
+                {f === 'legend' && <BadgeIcon kind="legend" />}
+                {f === 'set' && <BadgeIcon kind="set" />}
+                {Q.includes(f as Quality) && <QualityMark quality={f as Quality} />}
                 {label}
               </button>
             ))}
@@ -242,7 +247,7 @@ export default function EquipPanel() {
                   style={{ padding: '6px 10px', minHeight: 32, fontSize: 11 }}
                   onClick={() => setKw(kw === t ? null : t)}
                 >
-                  {KEYWORD_NAME[t]}
+                  <MechanicIcon tag={t} />{KEYWORD_NAME[t]}
                 </button>
               ))}
             </div>
@@ -260,9 +265,11 @@ export default function EquipPanel() {
           const better = !cur || score(e) > score(cur)
           const diff = compareEquipment(e, s.equipped)
           return (
-            <div className="card" key={e.id}>
+            <div className={`card quality-frame q-${e.quality}`} key={e.id}>
               <div className="head">
                 <b style={{ color: qColor(e.quality) }}>
+                  <QualityMark quality={e.quality} />
+                  {e.legend && <BadgeIcon kind="legend" />}
                   {e.legend ? LEGENDS[e.legend].name : `${QUALITY_NAME[e.quality]}${SLOT_NAME[e.slot]}`}
                   {better && !e.legend && <span style={{ color: '#6dc46d', fontSize: 11 }}> ▲更好</span>}
                 </b>

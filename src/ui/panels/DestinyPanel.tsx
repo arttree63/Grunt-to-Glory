@@ -8,6 +8,7 @@ import { SETS } from '../../core/sets'
 import { heirloomSlots, TECHS } from '../../core/techs'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
+import { BadgeIcon, QualityMark } from '../GameIcon'
 
 /** 轉生 = 開始新的命運,所以入口放在命運頁 */
 function PrestigeSection() {
@@ -79,10 +80,12 @@ function PrestigeSection() {
               >
                 <span style={{ color: `var(--q-${e.quality})` }}>
                   {on ? '● ' : '○ '}
+                  <QualityMark quality={e.quality} />
                   {/* 兩件「傳奇武器」分不出誰是誰:傳說名與套裝標籤才是玩家在挑的東西 */}
+                  {e.legend && <BadgeIcon kind="legend" />}
                   {e.legend ? LEGENDS[e.legend].name : `${QUALITY_NAME[e.quality]}${SLOT_NAME[e.slot]}`}
-                  {e.setTag && <small className="set-chip">{SETS[e.setTag].name}</small>}
-                  {e.heirloom && <small style={{ color: 'var(--gold)' }}> 傳家之器</small>}
+                  {e.setTag && <small className="set-chip"><BadgeIcon kind="set" />{SETS[e.setTag].name}</small>}
+                  {e.heirloom && <small style={{ color: 'var(--gold)' }}> <BadgeIcon kind="heirloom" />傳家之器</small>}
                 </span>
               </button>
             )

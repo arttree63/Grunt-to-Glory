@@ -28,6 +28,7 @@ import { SKILLS } from '../../core/skills'
 import type { BaseType, Equipment, Slot } from '../../core/types'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
+import { BadgeIcon, MechanicIcon, QualityMark } from '../GameIcon'
 
 /**
  * 鍛造結果:先講這件會怎麼改變玩法,戰力百分比放最後。
@@ -49,11 +50,13 @@ function ForgeResult({
     ? 1 + SLOTS.filter((sl) => sl !== e.slot && equipped[sl]?.setTag === e.setTag).length
     : 0
   return (
-    <div className="card" style={legend ? { borderColor: 'var(--q-gold)' } : undefined}>
+    <div className={`card quality-frame q-${e.quality}`} style={legend ? { borderColor: 'var(--q-gold)' } : undefined}>
       <div className="head">
         <b style={{ color: `var(--q-${e.quality})` }}>
+          <QualityMark quality={e.quality} />
+          {legend && <BadgeIcon kind="legend" />}
           {legend ? legend.name : `${QUALITY_NAME[e.quality]}${SLOT_NAME[e.slot]}`}
-          {e.setTag && <small className="set-chip">{SETS[e.setTag].name}</small>}
+          {e.setTag && <small className="set-chip"><BadgeIcon kind="set" />{SETS[e.setTag].name}</small>}
         </b>
         <button className="btn" style={{ padding: '5px 10px' }} onClick={onEquip}>
           直接裝備
@@ -66,7 +69,7 @@ function ForgeResult({
             核心特性:{legend.effect}
           </div>
           <div className="affix">
-            標籤 {legend.tags.map((t) => KEYWORD_NAME[t]).join(' · ')}
+            標籤 {legend.tags.map((t) => <span className="mechanic-chip" key={t}><MechanicIcon tag={t} />{KEYWORD_NAME[t]}</span>)}
             {legend.affects.length > 0 && `・影響技能 ${legend.affects.map((sk) => SKILLS[sk].name).join('、')}`}
           </div>
           <div className="affix">適合構築:{legend.builds}</div>
@@ -172,6 +175,11 @@ export default function ForgePanel() {
   return (
     <div>
       <h3>鐵 匠 鋪</h3>
+      {s.relicPending && (
+        <div className="card" style={{ borderColor: 'var(--q-gold)', color: 'var(--gold)' }}>
+          <BadgeIcon kind="legend" /> 貪婪之眼已鎖定：下場 Boss 將帶有遺物弱點
+        </div>
+      )}
 
       <div className="row">
         <span className="k resource-label">

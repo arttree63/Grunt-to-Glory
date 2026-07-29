@@ -4,6 +4,26 @@
 > 依據:設計修訂案 v1.5 § 八(傳說三層回饋)、§ 九(技能辨識演出)、clicker-ui skill § 七之三 / § 七之五
 > 本檔只列**畫面上缺什麼**與**掛在哪個既有鉤子上**。玩法規則見 content-design,數值見 game-balance。
 
+## 2026-07-29 Codex 視覺驗收結果
+
+已完成並通過瀏覽器驗收:
+
+- 三系技能專屬演出、第二技能印記射線、疾風專屬跳字節奏。
+- 普攻與自動攻擊會驅動主角蓄力、扭身前斬、回復站姿的實際揮舞動作。
+- 六件既有傳說的場上提示、觸發與痕跡；技能格冷卻推進閃光。
+- 印記 pips、連斬刻度、蓄勢／軍旗蓄光、Boss 倒數警戒、越戰越勇紅光。
+- Boss／突發事件／進層／升級／旅途事件節點演出。
+- 分身、軍旗、燃燒、凍結與五種傭兵招牌行為。
+- 四名人形傭兵與工兵砲台的正式四幀 idle 素材，已接入戰鬥場景。
+- 技能、分頁、傭兵、17 種機制關鍵字、傳說／套裝／傳家之器與六階品質 icon。
+- `npm run typecheck` 通過；core 單一測試檔 147 項通過；瀏覽器無執行期警告或錯誤。
+
+交由 Claude 接手:
+
+- F18 爆燃圓需要 core 提供燃燒層數或「滿層」事件。
+- F21 是未來多目標／範圍玩法的預留語言，目前沒有對應玩法鉤子。
+- `src/core/skills.ts`、`src/core/mercs.ts` 的 `icon` 資料仍是 emoji；實際 UI 已全面改用 SVG，可由 Claude 決定是否清理未使用欄位。
+
 ---
 
 ## 零、動手前必讀
@@ -171,13 +191,13 @@ bossTimeLeft   // Boss 剩餘秒數(<5 秒畫邊緣警戒);非 Boss 為 null
 
 | 機制 | 事件 / snapshot | 目前演出 | 需要 |
 |---|---|---|---|
-| 傭兵招牌行為 | `mercAct`(帶 mercId) | 一行文字 `onMercAct()` | 各傭兵專屬演出(盜賊繞後拖影/冰晶/砲台/點燃) |
-| 凍結 | `freezeStart` / `freezeBurst`(帶 damage)+ `snapshot.freezeLeft` | 冰裂只有大字 | 畫面褪色 + 敵人停格 + 冰晶,解凍冰裂 |
-| 燃燒 | `burnTick`(帶 damage)+ `snapshot.burnLeft` | **無** | 敵人身上火焰粒子,燒完熄滅 |
-| 分身(雙生影刃) | `attack` 事件 `source: 'clone'` + `snapshot.cloneActive` | **無** | 半透明主角輪廓,自己揮刀、跳自己的字 |
-| 軍旗(熔火軍旗) | `attack` 事件 `source: 'zone'` + `snapshot.bannerLeft` | **無** | 插旗動畫 + 軍旗位置打出衝擊 |
-| 砲台(工兵) | `attack` 事件 `source: 'zone'` + `snapshot.zoneLeft` | **無** | 砲台實體 + 週期開火 |
-| 傭兵本體 | `snapshot.activeMerc` | 只有老獵犬(現有 dog sprite) | 其餘四隻 idle(見 § 6.2) |
+| 傭兵招牌行為 | `mercAct`(帶 mercId) | ✅ 盜賊拖影／冰晶／砲台／點燃／獵犬衝擊 | — |
+| 凍結 | `freezeStart` / `freezeBurst`(帶 damage)+ `snapshot.freezeLeft` | ✅ 畫面褪色、敵人停格、冰晶與解凍冰裂 | — |
+| 燃燒 | `burnTick`(帶 damage)+ `snapshot.burnLeft` | ✅ 敵人火焰粒子與熄滅 | 滿層爆燃仍需 core 鉤子 |
+| 分身(雙生影刃) | `attack` 事件 `source: 'clone'` + `snapshot.cloneActive` | ✅ 半透明英雄輪廓、獨立攻擊與跳字 | — |
+| 軍旗(熔火軍旗) | `attack` 事件 `source: 'zone'` + `snapshot.bannerLeft` | ✅ 插旗、陰影、場域與獨立衝擊 | — |
+| 砲台(工兵) | `attack` 事件 `source: 'zone'` + `snapshot.zoneLeft` | ✅ 四幀砲台實體、陰影與週期開火 | — |
+| 傭兵本體 | `snapshot.activeMerc` | ✅ 五種傭兵皆有四幀 idle | — |
 
 ⚠️ `attack` 事件現在帶 `source`(hero / clone / zone / merc):**分身與軍旗的跳字要從各自位置跳出**,
 這正是「同一份傷害變成雙行動者」的可見化——分帳不加量,體感卻完全不同。
@@ -198,8 +218,8 @@ bossTimeLeft   // Boss 剩餘秒數(<5 秒畫邊緣警戒);非 Boss 為 null
 
 > 依「要做什麼東西」重新切一次,方便分工與估工。
 > 現有美術資產在 `assets/visual/`:場景 1 張、英雄 7 套 idle、怪物 3 種、事件怪 2 種、
-> 傭兵老獵犬 1 套、武器 12 件、素材 icon 3 種、fx 兩組(`slash-warm`、`hit-impact`)。
-> **除了這些以外,畫面上所有東西都是程式畫的或 emoji。**
+> 傭兵 5 套 idle、工兵砲台 1 套 idle、武器 12 件、素材 icon 3 種、fx 兩組
+> (`slash-warm`、`hit-impact`)。UI 機制 icon 已改為 SVG，其他戰鬥特效由程式繪製。
 
 ### 6.1 特效(程式補間,不需要美術)
 
@@ -233,12 +253,12 @@ bossTimeLeft   // Boss 剩餘秒數(<5 秒畫邊緣警戒);非 Boss 為 null
 |---|---|---|---|---|---|
 | O1 | 主角分身 | 半透明主角輪廓,可同步攻擊 | 短時 ≤3 | **可複用英雄貼圖**(染色 + 透明) | ❌ |
 | O2 | 軍旗 | 插在地上的場地物件 | 場地 ≤3 | 需要 1 張(或程式畫旗形) | ❌ |
-| O3 | 砲台 | 工兵放置,週期攻擊 | 場地 ≤3 | 需要 1 套 idle | ❌ |
+| O3 | 砲台 | 工兵放置,週期攻擊 | 場地 ≤3 | 需要 1 套 idle | ✅ |
 | O4 | 法陣 / 區域 | 地面圓形區域 | 場地 ≤3 | 程式畫即可 | ❌ |
-| O5 | 傭兵・盜賊 | 位移型招牌行為 | 常駐 ≤2 | 需要 1 套 idle(+ 可選背刺姿) | ❌ |
-| O6 | 傭兵・冰法師 | 控制型 | 同上 | 需要 1 套 idle | ❌ |
-| O7 | 傭兵・工兵 | 場地型 | 同上 | 需要 1 套 idle | ❌ |
-| O8 | 傭兵・火術士 | 狀態型 | 同上 | 需要 1 套 idle | ❌ |
+| O5 | 傭兵・盜賊 | 位移型招牌行為 | 常駐 ≤2 | 需要 1 套 idle(+ 可選背刺姿) | ✅ idle |
+| O6 | 傭兵・冰法師 | 控制型 | 同上 | 需要 1 套 idle | ✅ |
+| O7 | 傭兵・工兵 | 場地型 | 同上 | 需要 1 套 idle | ✅ |
+| O8 | 傭兵・火術士 | 狀態型 | 同上 | 需要 1 套 idle | ✅ |
 | O9 | 老獵犬 | 已有貼圖 | — | ✅ 已有 | ⚠️ 只有待機,無行為 |
 | O10 | 遺物弱點標記 | 掛在 Boss 身上的可擊破點 | — | 程式畫即可 | ❌ |
 

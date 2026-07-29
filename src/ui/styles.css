@@ -237,6 +237,24 @@ button {
   gap: 10px;
   justify-content: center;
   margin-bottom: 10px;
+  border-radius: 14px;
+  transition:
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+.skills.command-ready {
+  background: #e8b94a12;
+  box-shadow:
+    0 0 0 2px #e8b94ad9,
+    0 0 18px #e8b94a66;
+  animation: command-ready-pulse 1.15s ease-in-out infinite;
+}
+@keyframes command-ready-pulse {
+  50% {
+    box-shadow:
+      0 0 0 3px #ffe39ae8,
+      0 0 25px #e8b94a8a;
+  }
 }
 .skill {
   width: 52px;
@@ -253,6 +271,145 @@ button {
 .skill.locked {
   opacity: 0.35;
 }
+.skill.cooldown-advanced {
+  animation: cooldown-advance-flash 0.36s ease-out;
+}
+@keyframes cooldown-advance-flash {
+  0% {
+    box-shadow: inset 0 0 0 3px #ffffff, 0 0 22px #8ff4ff;
+    transform: translateY(-3px) scale(1.08);
+    filter: brightness(1.8);
+  }
+  100% {
+    box-shadow: inset 0 0 0 0 transparent, 0 0 0 transparent;
+    transform: none;
+    filter: none;
+  }
+}
+.game-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  vertical-align: -4px;
+}
+.icon-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.mechanic-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  margin-right: 3px;
+  border: 1px solid currentColor;
+  border-radius: 50% 50% 42% 42%;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+.mechanic-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 5px 2px 2px;
+  white-space: nowrap;
+}
+.badge-icon {
+  position: relative;
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-right: 3px;
+  color: currentColor;
+  vertical-align: -2px;
+}
+.badge-icon.legend {
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: 2px solid currentColor;
+  transform: rotate(45deg);
+  box-shadow: 0 0 6px currentColor;
+}
+.badge-icon.legend::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50% 0 50% 50%;
+  background: currentColor;
+}
+.badge-icon.set {
+  background: currentColor;
+  clip-path: polygon(50% 2%, 100% 92%, 0 92%);
+}
+.badge-icon.set::after {
+  content: "";
+  position: absolute;
+  inset: 4px 3px 3px;
+  background: var(--bg-card);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.badge-icon.heirloom {
+  border: 1px solid currentColor;
+  clip-path: polygon(50% 0, 94% 18%, 84% 74%, 50% 100%, 16% 74%, 6% 18%);
+}
+.badge-icon.heirloom::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 3px;
+  width: 4px;
+  height: 6px;
+  border-left: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+}
+.badge-icon.lock {
+  width: 11px;
+  height: 9px;
+  margin-left: 2px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+.badge-icon.lock::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: -7px;
+  width: 5px;
+  height: 7px;
+  border: 1px solid currentColor;
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+}
+.quality-mark {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-right: 5px;
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  color: inherit;
+  vertical-align: 1px;
+}
+.quality-mark.q-white { border-radius: 2px; }
+.quality-mark.q-green { border-radius: 50%; border-style: dashed; }
+.quality-mark.q-blue { border-width: 2px; border-radius: 2px 7px; }
+.quality-mark.q-purple { transform: skew(-8deg); border-style: double; border-width: 3px; }
+.quality-mark.q-gold { clip-path: polygon(50% 0, 100% 28%, 82% 100%, 18% 100%, 0 28%); }
+.quality-mark.q-crimson { clip-path: polygon(50% 0, 88% 12%, 100% 55%, 72% 100%, 28% 100%, 0 55%, 12% 12%); border-width: 2px; }
+.quality-frame {
+  position: relative;
+  border-left-width: 3px;
+}
+.quality-frame.q-green { border-left-style: dashed; }
+.quality-frame.q-blue { border-left-style: double; border-left-width: 5px; }
+.quality-frame.q-purple { box-shadow: inset 3px 0 0 var(--q-purple); }
+.quality-frame.q-gold { box-shadow: inset 3px 0 0 var(--q-gold), 0 0 8px #f2c14e20; }
+.quality-frame.q-crimson { box-shadow: inset 3px 0 0 var(--q-crimson), 0 0 10px #d34b4b35; }
 .tabs {
   display: flex;
   gap: 6px;
@@ -593,7 +750,8 @@ button {
 
 /* 套裝標籤:獨立 chip,不挪用品質色(色弱玩家會把藍字誤讀成「稀有」) */
 .set-chip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   margin-left: 4px;
   padding: 0 5px;
   border: 1px solid var(--q-blue);

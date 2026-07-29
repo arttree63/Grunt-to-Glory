@@ -2,6 +2,7 @@ import { useState } from 'react'
 import * as B from '../core/balance'
 import { sigilName } from '../core/game'
 import { useGameState } from './useGameState'
+import { GameIcon } from './GameIcon'
 
 const KEY = 'little-soldier-tutorial'
 const TIP_KEY = 'little-soldier-tips'
@@ -13,11 +14,11 @@ const TIP_KEY = 'little-soldier-tips'
  */
 const STEPS = [
   {
-    icon: '⚔️',
+    icon: 'hero' as const,
     title: '點畫面就是攻擊',
     body: '每點一下就是一次揮砍,直接造成傷害;連點還會累積「戰意」讓小兵打得更快。掛著不管也會自己推進。',
   },
-  { icon: '🗡️', title: '金幣拿去升級', body: '英雄分頁按升級。等級是傷害的主要來源,長按可以連點。' },
+  { icon: 'charge' as const, title: '金幣拿去升級', body: '英雄分頁按升級。等級是傷害的主要來源,長按可以連點。' },
 ]
 
 /** 情境提示:條件成立時出現一次,看過就不再出現 */
@@ -76,7 +77,7 @@ export default function Tutorial() {
           <p style={{ textAlign: 'center', marginBottom: 14 }}>從無名雜兵爬到傳奇英雄</p>
           {STEPS.map((step) => (
             <div key={step.title} style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-              <span style={{ fontSize: 20 }}>{step.icon}</span>
+              <span><GameIcon name={step.icon} /></span>
               <span>
                 <b style={{ fontSize: 13 }}>{step.title}</b>
                 <br />
