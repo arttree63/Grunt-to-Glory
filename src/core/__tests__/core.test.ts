@@ -90,6 +90,9 @@ describe('formulas', () => {
 
 describe('format', () => {
   it('數值縮寫階梯', () => {
+    expect(fmt(0.75)).toBe('0.8') // 早期單次攻擊低於 1,不可捨去成 0
+    expect(fmt(5)).toBe('5')
+    expect(fmt(32.3)).toBe('32')
     expect(fmt(999)).toBe('999')
     expect(fmt(1234)).toBe('1.2K')
     expect(fmt(3.4e6)).toBe('3.4M')

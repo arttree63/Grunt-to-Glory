@@ -7,8 +7,11 @@ const LETTERS = 'abcdefghijklmnopqrstuvwxyz'
 export function fmt(v: Num, decimals = 1): string {
   const d = v instanceof Decimal ? v : D(v)
   if (d.lt(0)) return '-' + fmt(d.neg(), decimals)
-  // 1000 以下一律整數:金幣/傷害出現小數點會顯得廉價
-  if (d.lt(1000)) return String(Math.floor(d.toNumber()))
+  // 10 以下保留一位小數:早期單次攻擊會低於 1,無條件捨去會顯示成 0
+  const n = d.toNumber()
+  if (d.lt(10)) return Number.isInteger(n) ? String(n) : n.toFixed(1)
+  // 10~1000 走整數:金幣出現小數點會顯得廉價
+  if (d.lt(1000)) return String(Math.floor(n))
   const tier = Math.floor(d.log10() / 3)
   const mantissa = d.div(Decimal.pow(1000, tier)).toNumber()
   return mantissa.toFixed(decimals) + suffix(tier)
