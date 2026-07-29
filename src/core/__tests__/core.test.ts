@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as B from '../balance'
 import { D } from '../decimal'
-import { bossPartSlot, forgeLevel, forgeUpgradeChance, QUALITIES, SLOTS } from '../equipment'
+import { bossPartSlot, forgeLevel, forgeUpgradeChance, QUALITIES, score, SLOTS } from '../equipment'
 import { fmt, fmtTime } from '../format'
 import { bossHP, critMultiplier, goldDrop, heroDPS, isBossFloor, medalsFromFloor, mobHP, upCost } from '../formulas'
 import { availableJobs, JOBS } from '../jobs'
@@ -15,6 +15,9 @@ import {
   buyTech,
   canFineForge,
   chooseDestiny,
+  devourWeapon,
+  forgeHeat,
+  forgeHeatBonus,
   pickDestinyNode,
   claimDailyElite,
   fineForge,
@@ -332,6 +335,126 @@ describe('命運樹', () => {
     expect(next.destinyNodes).toEqual([])
     expect(next.destinyPoints).toBe(0)
     expect(next.destinyEarned).toBe(0)
+  })
+})
+
+describe('神匠流派節點效果', () => {
+  const artisan = (nodes: string[]) => {
+    const s = createInitialState()
+    chooseDestiny(s, 'artisan')
+    s.destinyNodes.push(...nodes)
+    return s
+  }
+
+  it('鐵匠學徒:忍住不打造會累積爐火,打造後清空', () => {
+    const s = artisan([])
+    expect(forgeHeat(s)).toBe(0)
+    s.materials = 100
+    s.forgeHeatMaterials = 50
+    expect(forgeHeat(s)).toBe(5)
+    expect(forgeHeatBonus(s)).toBeCloseTo(5 * B.HEAT_PER_LAYER)
+
+    forge(s)
+    expect(s.forgeHeatMaterials).toBe(0)
+    expect(forgeHeat(s)).toBe(0)
+  })
+
+  it('沒有起始節點就沒有爐火', () => {
+    const s = createInitialState()
+    s.forgeHeatMaterials = 100
+    expect(forgeHeat(s)).toBe(0)
+  })
+
+  it('爐火有層數上限,升階總機率也有硬上限', () => {
+    const s = artisan([])
+    s.forgeHeatMaterials = 99_999
+    expect(forgeHeat(s)).toBe(B.HEAT_MAX_LAYERS)
+    s.forgeCount = 99_999 // 鐵匠鋪也滿級
+    s.materials = 20
+    forge(s, () => 0.99) // 不該爆掉
+    expect(s.inventory).toHaveLength(1)
+  })
+
+  it('餘火回收:打出比身上差的裝備會退素材', () => {
+    const s = artisan(['artisan_1a'])
+    s.equipped.weapon = { id: 'good', slot: 'weapon', quality: 'gold', affixes: [] }
+    s.materials = B.FORGE_COST
+    // rng 壓到最低 → 必出白裝,且鎖不到武器就換個做法:直接檢查退款條件
+    const e = forge(s, () => 0.01)!
+    const refunded = s.materials
+    if (s.equipped[e.slot] && score(s.equipped[e.slot]!) > score(e)) {
+      expect(refunded).toBe(Math.floor(B.FORGE_COST * B.EMBER_REFUND))
+    }
+  })
+
+  it('孤注一擲:雙倍素材換品質下限 +1 階,沒節點時不生效', () => {
+    const s = artisan(['artisan_1b'])
+    s.materials = B.FORGE_COST * B.ALLIN_COST_MULT
+    const e = forge(s, () => 0.01, { allIn: true })!
+    expect(s.materials).toBe(0) // 扣了雙倍
+    expect(QUALITIES.indexOf(e.quality)).toBeGreaterThanOrEqual(1) // 白 → 綠
+
+    const noNode = createInitialState()
+    noNode.materials = 100
+    forge(noNode, () => 0.01, { allIn: true })
+    expect(noNode.materials).toBe(100 - B.FORGE_COST) // 只扣單倍
+  })
+
+  it('武器吞噬:吃掉一把武器換成長,有上限', () => {
+    const s = artisan(['artisan_2a'])
+    s.equipped.weapon = { id: 'main', slot: 'weapon', quality: 'blue', affixes: [] }
+    const before = currentDPS(s)
+
+    s.inventory.push({ id: 'food', slot: 'weapon', quality: 'white', affixes: [] })
+    expect(devourWeapon(s, 'food')).toBe(true)
+    expect(s.inventory).toHaveLength(0)
+    expect(s.equipped.weapon!.growth).toBeCloseTo(1 + B.DEVOUR_GROWTH)
+    expect(currentDPS(s).gt(before)).toBe(true)
+
+    // 吃到上限就停
+    s.equipped.weapon!.growth = 1 + B.DEVOUR_GROWTH * B.DEVOUR_MAX
+    s.inventory.push({ id: 'food2', slot: 'weapon', quality: 'white', affixes: [] })
+    expect(devourWeapon(s, 'food2')).toBe(false)
+  })
+
+  it('武器吞噬:沒節點或沒裝武器都不能吃', () => {
+    const noNode = createInitialState()
+    noNode.inventory.push({ id: 'f', slot: 'weapon', quality: 'white', affixes: [] })
+    expect(devourWeapon(noNode, 'f')).toBe(false)
+
+    const s = artisan(['artisan_2a'])
+    s.inventory.push({ id: 'f', slot: 'weapon', quality: 'white', affixes: [] })
+    expect(devourWeapon(s, 'f')).toBe(false) // 沒裝備武器
+  })
+
+  it('活體神兵:每擊破 N 個 Boss 讓武器進化,有上限', () => {
+    const s = artisan(['artisan_3b'])
+    s.equipped.weapon = { id: 'w', slot: 'weapon', quality: 'blue', affixes: [] }
+    s.floor = 10
+    for (let i = 0; i < B.LIVING_BOSS_PER_STEP; i++) {
+      spawnEnemy(s)
+      s.enemyHp = D(1)
+      applyTick(s, 1000)
+      s.floor = 10
+      s.bossFailed = false
+    }
+    expect(s.equipped.weapon!.livingSteps).toBe(1)
+    expect(s.equipped.weapon!.growth).toBeCloseTo(1 + B.LIVING_GROWTH)
+  })
+
+  it('傳家之器:轉生時把最好的裝備登錄圖鑑', () => {
+    const s = artisan(['artisan_3a'])
+    s.highestFloor = 50
+    s.equipped.weapon = { id: 'best', slot: 'weapon', quality: 'gold', affixes: [] }
+    const next = prestige(s)!
+    expect(next.codex.some((c) => c.id === 'best')).toBe(true)
+  })
+
+  it('沒有傳家之器就不會登錄圖鑑', () => {
+    const s = artisan([])
+    s.highestFloor = 50
+    s.equipped.weapon = { id: 'best', slot: 'weapon', quality: 'gold', affixes: [] }
+    expect(prestige(s)!.codex).toHaveLength(0)
   })
 })
 

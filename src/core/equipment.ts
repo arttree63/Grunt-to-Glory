@@ -64,8 +64,12 @@ export function forgeUpgradeChance(forgeCount: number): number {
 export interface RollOptions {
   /** 累積鍛造次數,決定鐵匠鋪等級 */
   forgeCount?: number
-  /** 幸運天賦的品質升階加成 */
-  luckBonus?: number
+  /** 爐火等額外升階機率(神匠) */
+  heatBonus?: number
+  /** 品質下限提高幾階(孤注一擲) */
+  minQualityBoost?: number
+  /** 額外詞條數(精工銘刻) */
+  extraAffix?: number
   /** 保底或菁英素材觸發:品質下限拉到紫 */
   guaranteePurple?: boolean
   /** 精工保底觸發:品質下限拉到金 */
@@ -79,8 +83,12 @@ export function rollEquipment(rng: Rng = Math.random, opts: RollOptions = {}): E
   let qi = QUALITIES.indexOf(pickQuality(rng))
 
   // 鐵匠鋪等級:機率升一階
-  if (rng() < forgeUpgradeChance(opts.forgeCount ?? 0) + (opts.luckBonus ?? 0))
-    qi = Math.min(QUALITIES.length - 1, qi + 1)
+  const upgradeChance = Math.min(
+    B.FORGE_UPGRADE_HARD_CAP,
+    forgeUpgradeChance(opts.forgeCount ?? 0) + (opts.heatBonus ?? 0),
+  )
+  if (rng() < upgradeChance) qi = Math.min(QUALITIES.length - 1, qi + 1)
+  if (opts.minQualityBoost) qi = Math.min(QUALITIES.length - 1, qi + opts.minQualityBoost)
   // 下限保證:菁英素材 → 紫,精工保底 → 金
   if (opts.guaranteePurple) qi = Math.max(qi, QUALITIES.indexOf('purple'))
   if (opts.guaranteeGold) qi = Math.max(qi, QUALITIES.indexOf('gold'))
@@ -89,7 +97,8 @@ export function rollEquipment(rng: Rng = Math.random, opts: RollOptions = {}): E
   const slot = opts.lockSlot ?? SLOTS[Math.floor(rng() * SLOTS.length)]
   const [lo, hi] = B.AFFIX_RANGE[quality]
   const affixes: Affix[] = []
-  for (let i = 0; i < B.AFFIX_COUNT[quality]; i++) {
+  const affixCount = B.AFFIX_COUNT[quality] + (opts.extraAffix ?? 0)
+  for (let i = 0; i < affixCount; i++) {
     const type = AFFIX_TYPES[Math.floor(rng() * AFFIX_TYPES.length)]
     affixes.push({ type, value: Math.round(lo + rng() * (hi - lo)) / 100 })
   }
@@ -107,17 +116,22 @@ export function equipBonuses(equipped: Record<Slot, Equipment | null>): Record<A
   return out
 }
 
+/** 單件裝備的實際倍率:品質基礎 × 神匠成長 */
+export function itemPower(e: Equipment): number {
+  return B.QUALITY_POWER[e.quality] * (e.growth ?? 1)
+}
+
 /** 品質基礎倍率:每件獨立乘區,5 件相乘 */
 export function equipPower(equipped: Record<Slot, Equipment | null>): number {
   let mult = 1
   for (const slot of SLOTS) {
     const e = equipped[slot]
-    if (e) mult *= B.QUALITY_POWER[e.quality]
+    if (e) mult *= itemPower(e)
   }
   return mult
 }
 
 /** 裝備評分:用於「是否比身上的好」提示。品質權重遠大於詞條,與乘區設計一致 */
 export function score(e: Equipment): number {
-  return B.QUALITY_POWER[e.quality] * 1000 + e.affixes.reduce((s, a) => s + a.value * 100, 0)
+  return itemPower(e) * 1000 + e.affixes.reduce((s, a) => s + a.value * 100, 0)
 }

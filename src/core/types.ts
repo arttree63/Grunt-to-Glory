@@ -35,6 +35,10 @@ export interface Equipment {
   slot: Slot
   quality: Quality
   affixes: Affix[]
+  /** 神匠成長(武器吞噬 / 活體神兵),1 = 未成長 */
+  growth?: number
+  /** 活體神兵已進化幾階 */
+  livingSteps?: number
 }
 
 export interface GameState {
@@ -61,6 +65,12 @@ export interface GameState {
   bossRetryFloor: number | null
 
   morale: number
+  /** 爐火層數的素材基準:距上次打造累積了多少素材(神匠起始節點) */
+  forgeHeatMaterials: number
+  /** 傳承圖鑑:歷代登錄過的裝備(跨轉生保留) */
+  codex: Equipment[]
+  /** 本輪擊破 Boss 次數(活體神兵用) */
+  bossKills: number
   /** 本輪選擇的命運路徑 */
   destinyPath: DestinyPathId | null
   /** 已解鎖的命運節點(本輪) */
@@ -120,6 +130,7 @@ export interface GameEvent {
     | 'eventKill'
     | 'eventEscape'
     | 'destinyPoint'
+    | 'weaponEvolve'
     | 'skill'
   floor?: number
   gold?: Decimal

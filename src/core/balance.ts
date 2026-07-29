@@ -151,6 +151,29 @@ export const TICK_HZ = 10 // 邏輯固定 tick
 export const CRIT_RATE = 0.18
 export const CRIT_MULT = 3
 
+// ── 神匠流派節點數值 ──
+/** 鐵匠學徒:爐火 = 距上次打造累積的素材 / FORGE_COST,每層提高品質升階機率 */
+export const HEAT_PER_LAYER = 0.02
+export const HEAT_MAX_LAYERS = 8
+/** 升階總機率上限(鐵匠鋪等級 + 爐火) */
+export const FORGE_UPGRADE_HARD_CAP = 0.75
+/** 餘火回收:打造出比身上差的裝備,返還素材比例 */
+export const EMBER_REFUND = 0.5
+/** 孤注一擲:雙倍素材換品質下限 +1 階 */
+export const ALLIN_COST_MULT = 2
+/** 武器吞噬:每次吞噬給武器的成長,與上限 */
+export const DEVOUR_GROWTH = 0.05
+export const DEVOUR_MAX = 10
+/** 精工銘刻:額外詞條機率;精工出低於菁英視為失敗,返還比例 */
+export const INSCRIBE_AFFIX_CHANCE = 0.3
+export const INSCRIBE_REFUND = 0.5
+/** 活體神兵:每 N 次擊破 Boss 讓武器成長一階,與上限 */
+export const LIVING_BOSS_PER_STEP = 3
+export const LIVING_GROWTH = 0.1
+export const LIVING_MAX_STEPS = 5
+/** 傳家之器:下一輪開局取得殘缺版的機率(品質降一階) */
+export const HEIRLOOM_CODEX_CHANCE = 0.5
+
 // 命運樹
 /** 本輪達到這些層數各給一枚命運點(用當輪層數,不是歷史最高) */
 export const DESTINY_MILESTONES = [20, 50, 90]

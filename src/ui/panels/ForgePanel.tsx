@@ -12,7 +12,8 @@ import {
   SLOT_NAME,
   SLOTS,
 } from '../../core/equipment'
-import { canFineForge, pityLeft, pityLegendaryLeft } from '../../core/game'
+import { hasNode } from '../../core/destiny'
+import { canFineForge, forgeHeat, forgeHeatBonus, pityLeft, pityLegendaryLeft } from '../../core/game'
 import type { Equipment, Slot } from '../../core/types'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
@@ -26,6 +27,7 @@ export default function ForgePanel() {
   const [mode, setMode] = useState<'normal' | 'fine'>('normal')
   const [slot, setSlot] = useState<Slot | null>(null)
   const [useElite, setUseElite] = useState(false)
+  const [allIn, setAllIn] = useState(false)
 
   const fineOpts = { slot: slot ?? undefined, useElite }
   const canFine = canFineForge(s, fineOpts)
@@ -33,7 +35,7 @@ export default function ForgePanel() {
   const run = (times: number, fine: boolean) => {
     const out: Equipment[] = []
     for (let i = 0; i < times; i++) {
-      const e = fine ? fineForge(fineOpts) : forge()
+      const e = fine ? fineForge(fineOpts) : forge({ allIn })
       if (!e) break
       out.push(e)
     }
@@ -80,6 +82,18 @@ export default function ForgePanel() {
             .join(' ') || '無(每 10 層 Boss 掉落)'}
         </span>
       </div>
+      {hasNode(s, 'artisan_start') && (
+        <div className="row">
+          <span className="k">爐火</span>
+          <span className="v" style={{ color: forgeHeat(s) > 0 ? 'var(--gold)' : undefined }}>
+            {forgeHeat(s)} 層
+            <small className="affix">
+              {' '}
+              品質升階 +{Math.round(forgeHeatBonus(s) * 100)}%・打造後清空
+            </small>
+          </span>
+        </div>
+      )}
       <div className="row">
         <span className="k">鐵匠鋪等級</span>
         <span className="v">
@@ -115,8 +129,21 @@ export default function ForgePanel() {
               )}
             </span>
           </div>
+          {hasNode(s, 'artisan_1b') && (
+            <button
+              className={`btn${allIn ? ' primary' : ''}`}
+              style={{ width: '100%', marginTop: 6 }}
+              onClick={() => setAllIn(!allIn)}
+            >
+              {allIn ? '● ' : '○ '}孤注一擲(素材 ×{B.ALLIN_COST_MULT},品質下限 +1 階)
+            </button>
+          )}
           <div className="btn-row">
-            <button className="btn primary" disabled={s.materials < B.FORGE_COST} onClick={() => run(1, false)}>
+            <button
+              className="btn primary"
+              disabled={s.materials < B.FORGE_COST * (allIn ? B.ALLIN_COST_MULT : 1)}
+              onClick={() => run(1, false)}
+            >
               開 錘
             </button>
             <button className="btn" disabled={s.materials < B.FORGE_COST * 10} onClick={() => run(10, false)}>

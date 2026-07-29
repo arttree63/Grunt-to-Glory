@@ -9,6 +9,7 @@ import {
   SLOTS,
   score,
 } from '../../core/equipment'
+import { hasNode } from '../../core/destiny'
 import type { Equipment } from '../../core/types'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
@@ -35,6 +36,8 @@ export default function EquipPanel() {
   const salvage = useGame((st) => st.salvage)
   const salvageBelow = useGame((st) => st.salvageBelow)
 
+  const devour = useGame((st) => st.devourWeapon)
+  const canDevour = hasNode(s, 'artisan_2a') && !!s.equipped.weapon
   const power = equipPower(s.equipped)
   const equivLv = Math.log(power) / Math.log(DMG_PER_LV)
 
@@ -56,6 +59,9 @@ export default function EquipPanel() {
             {e ? (
               <span className="v" style={{ color: qColor(e.quality) }}>
                 {QUALITY_NAME[e.quality]}
+                {(e.growth ?? 1) > 1 && (
+                  <small style={{ color: 'var(--gold)' }}> +{Math.round(((e.growth ?? 1) - 1) * 100)}%</small>
+                )}
                 <button className="btn" style={{ marginLeft: 8, padding: '4px 8px' }} onClick={() => unequip(slot)}>
                   卸下
                 </button>
@@ -93,6 +99,15 @@ export default function EquipPanel() {
                   >
                     分解 +{SALVAGE_RETURN[e.quality]}
                   </button>
+                  {canDevour && e.slot === 'weapon' && (
+                    <button
+                      className="btn"
+                      style={{ padding: '5px 10px', marginLeft: 6, color: 'var(--gold)' }}
+                      onClick={() => devour(e.id)}
+                    >
+                      餵給武器
+                    </button>
+                  )}
                 </span>
               </div>
               <Affixes e={e} />

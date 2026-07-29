@@ -19,6 +19,9 @@ export interface SaveData {
   bossFailed: boolean
   bossRetryFloor: number | null
   morale: number
+  forgeHeatMaterials: number
+  codex: GameState['codex']
+  bossKills: number
   destinyPath: GameState['destinyPath']
   destinyNodes: GameState['destinyNodes']
   destinyPoints: number
@@ -55,6 +58,9 @@ export function serialize(s: GameState): SaveData {
     bossFailed: s.bossFailed,
     bossRetryFloor: s.bossRetryFloor,
     morale: s.morale,
+    forgeHeatMaterials: s.forgeHeatMaterials,
+    codex: s.codex,
+    bossKills: s.bossKills,
     destinyPath: s.destinyPath,
     destinyNodes: s.destinyNodes,
     destinyPoints: s.destinyPoints,
@@ -130,6 +136,13 @@ function migrate(raw: SaveData): SaveData {
     d.destinyEarned = 0
     d.version = 8
   }
+  // v8 → v9:神匠節點效果(爐火、傳承圖鑑、Boss 計數)
+  if (d.version < 9) {
+    d.forgeHeatMaterials = d.forgeHeatMaterials ?? 0
+    d.codex = d.codex ?? []
+    d.bossKills = d.bossKills ?? 0
+    d.version = 9
+  }
   return d
 }
 
@@ -152,6 +165,9 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     bossFailed: !!d.bossFailed,
     bossRetryFloor: d.bossRetryFloor ?? null,
     morale: d.morale ?? 0,
+    forgeHeatMaterials: d.forgeHeatMaterials ?? 0,
+    codex: d.codex ?? [],
+    bossKills: d.bossKills ?? 0,
     destinyPath: d.destinyPath ?? null,
     destinyNodes: d.destinyNodes ?? [],
     destinyPoints: d.destinyPoints ?? 0,

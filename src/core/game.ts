@@ -24,7 +24,7 @@ import {
 } from './formulas'
 import { JOBS } from './jobs'
 import { SKILLS } from './skills'
-import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, pendingChoice } from './destiny'
+import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, hasNode, pendingChoice } from './destiny'
 import {
   canBuyTech,
   emptyTechs,
@@ -70,6 +70,9 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     bossFailed: false,
     bossRetryFloor: null,
     morale: 0,
+    forgeHeatMaterials: 0,
+    codex: [],
+    bossKills: 0,
     destinyPath: null,
     destinyNodes: [],
     destinyPoints: 0,
@@ -97,7 +100,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 8
+export const SAVE_VERSION = 9
 
 // ---------- 數值查詢 ----------
 
@@ -183,10 +186,14 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
   const mult = boss ? B.BOSS_GOLD_MULT : 1
   const g = goldDrop(s.floor).mul(mult).mul(goldMult(s))
   s.gold = s.gold.add(g)
-  s.materials += boss ? B.BOSS_MATERIALS : B.MATERIAL_PER_MOB
+  const gained = boss ? B.BOSS_MATERIALS : B.MATERIAL_PER_MOB
+  s.materials += gained
+  s.forgeHeatMaterials += gained
   events.push({ type: boss ? 'bossKill' : 'kill', gold: g, floor: s.floor })
 
   if (!boss) return
+  s.bossKills++
+  tickLivingWeapon(s, events)
   // 部位素材:首殺必掉,重複擊殺機率掉
   const first = s.floor > s.maxBossKilled
   if (first) s.maxBossKilled = s.floor
@@ -473,14 +480,75 @@ export function promote(s: GameState, jobId: JobId): boolean {
   return true
 }
 
+// ---------- 神匠流派 ----------
+
+/** 爐火層數:距上次打造累積的素材越多,層數越高(忍住不打造的回報) */
+export function forgeHeat(s: GameState): number {
+  if (!hasNode(s, 'artisan_start')) return 0
+  return Math.min(B.HEAT_MAX_LAYERS, Math.floor(s.forgeHeatMaterials / B.FORGE_COST))
+}
+
+export function forgeHeatBonus(s: GameState): number {
+  return forgeHeat(s) * B.HEAT_PER_LAYER
+}
+
+/** 打造後結算:清爐火,並處理餘火回收 */
+function afterForge(s: GameState, e: Equipment, cost: number) {
+  s.forgeHeatMaterials = 0
+  // 餘火回收:打出來比身上該部位差 → 退素材
+  if (hasNode(s, 'artisan_1a')) {
+    const cur = s.equipped[e.slot]
+    if (cur && score(cur) > score(e)) {
+      s.materials += Math.floor(cost * B.EMBER_REFUND)
+    }
+  }
+}
+
+/** 武器吞噬:讓現有武器吃掉一件武器,換取成長 */
+export function devourWeapon(s: GameState, foodId: string): boolean {
+  if (!hasNode(s, 'artisan_2a')) return false
+  const weapon = s.equipped.weapon
+  if (!weapon) return false
+  const idx = s.inventory.findIndex((e) => e.id === foodId && e.slot === 'weapon')
+  if (idx < 0) return false
+  const grown = Math.round(((weapon.growth ?? 1) - 1) / B.DEVOUR_GROWTH)
+  if (grown >= B.DEVOUR_MAX) return false
+
+  s.inventory.splice(idx, 1)
+  weapon.growth = (weapon.growth ?? 1) + B.DEVOUR_GROWTH
+  return true
+}
+
+/** 活體神兵:擊破 Boss 累積,武器自動進化 */
+function tickLivingWeapon(s: GameState, events: GameEvent[]) {
+  if (!hasNode(s, 'artisan_3b')) return
+  const w = s.equipped.weapon
+  if (!w) return
+  const steps = Math.min(B.LIVING_MAX_STEPS, Math.floor(s.bossKills / B.LIVING_BOSS_PER_STEP))
+  if (steps <= (w.livingSteps ?? 0)) return
+  const gain = steps - (w.livingSteps ?? 0)
+  w.livingSteps = steps
+  w.growth = (w.growth ?? 1) + gain * B.LIVING_GROWTH
+  events.push({ type: 'weaponEvolve', slot: 'weapon' })
+}
+
 // ---------- 鍛造 ----------
 
-export function forge(s: GameState, rng: Rng = Math.random): Equipment | null {
-  if (s.materials < B.FORGE_COST) return null
-  s.materials -= B.FORGE_COST
+export interface ForgeOptions {
+  /** 孤注一擲:雙倍素材換品質下限 +1 階 */
+  allIn?: boolean
+}
+
+export function forge(s: GameState, rng: Rng = Math.random, opts: ForgeOptions = {}): Equipment | null {
+  const allIn = !!opts.allIn && hasNode(s, 'artisan_1b')
+  const cost = allIn ? B.FORGE_COST * B.ALLIN_COST_MULT : B.FORGE_COST
+  if (s.materials < cost) return null
+  s.materials -= cost
 
   const e = rollEquipment(rng, {
     forgeCount: s.forgeCount,
+    heatBonus: forgeHeatBonus(s),
+    minQualityBoost: allIn ? 1 : 0,
     guaranteePurple: s.pityCount >= B.PITY_FORGE,
   })
 
@@ -488,6 +556,7 @@ export function forge(s: GameState, rng: Rng = Math.random): Equipment | null {
   // 保底計數:出紫以上就歸零(傳奇保底只由精工累計,普通鍛造不推進)
   s.pityCount = QUALITIES.indexOf(e.quality) >= QUALITIES.indexOf('purple') ? 0 : s.pityCount + 1
 
+  afterForge(s, e, cost)
   s.inventory.push(e)
   return e
 }
@@ -523,18 +592,27 @@ export function fineForge(s: GameState, opts: FineForgeOptions, rng: Rng = Math.
   if (opts.slot) s.partMaterials[opts.slot]--
   if (opts.useElite) s.eliteMaterials--
 
+  const inscribe = hasNode(s, 'artisan_2b')
   const e = rollEquipment(rng, {
     forgeCount: s.forgeCount,
+    heatBonus: forgeHeatBonus(s),
+    extraAffix: inscribe && rng() < B.INSCRIBE_AFFIX_CHANCE ? 1 : 0,
     guaranteePurple: opts.useElite || s.pityCount >= B.PITY_FORGE,
     guaranteeGold: s.pityLegendary >= B.PITY_LEGENDARY,
     lockSlot: opts.slot,
   })
+
+  // 精工銘刻:出低於菁英視為失敗,退還部分素材
+  if (inscribe && QUALITIES.indexOf(e.quality) < QUALITIES.indexOf('purple')) {
+    s.materials += Math.floor(B.FINE_FORGE_COST * B.INSCRIBE_REFUND)
+  }
 
   s.forgeCount++
   const qi = QUALITIES.indexOf(e.quality)
   s.pityCount = qi >= QUALITIES.indexOf('purple') ? 0 : s.pityCount + 1
   s.pityLegendary = qi >= QUALITIES.indexOf('gold') ? 0 : s.pityLegendary + 1
 
+  afterForge(s, e, B.FINE_FORGE_COST)
   s.inventory.push(e)
   return e
 }
@@ -595,6 +673,25 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
     .filter((e): e is Equipment => !!e)
 
   const next = createInitialState(s.medals + gain, s.runs + 1, { ...s.techs })
+
+  // 傳家之器:本輪最高階裝備登錄傳承圖鑑(跨轉生保留)
+  next.codex = [...s.codex]
+  if (hasNode(s, 'artisan_3a')) {
+    const best = heirloomCandidates(s)[0]
+    if (best && !next.codex.some((c) => c.id === best.id)) next.codex.push({ ...best })
+  }
+  // 圖鑑收藏有機率讓下一代開局就拿到殘缺版(品質降一階)
+  if (next.codex.length > 0 && Math.random() < B.HEIRLOOM_CODEX_CHANCE) {
+    const pick = next.codex[Math.floor(Math.random() * next.codex.length)]
+    const qi = Math.max(0, QUALITIES.indexOf(pick.quality) - 1)
+    next.inventory.push({
+      ...pick,
+      id: `codex${Date.now().toString(36)}`,
+      quality: QUALITIES[qi],
+      growth: 1,
+      livingSteps: 0,
+    })
+  }
   next.inventory = keep
   // 命運樹每輪重新選,不帶過去(跨輪的收藏留給之後的傳承圖鑑)
   next.forgeCount = s.forgeCount // 鐵匠鋪等級不隨轉生歸零
