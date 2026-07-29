@@ -331,6 +331,52 @@ button {
 .row .v {
   font-variant-numeric: tabular-nums;
 }
+.resource-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.resource-icon {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.hero-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 88px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  background: linear-gradient(135deg, #2b2338, #1e1829);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+}
+.hero-identity > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.hero-identity small,
+.hero-identity span {
+  color: var(--dim2);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.hero-identity b {
+  color: var(--text-strong);
+  font-size: 15px;
+  letter-spacing: 2px;
+}
+.hero-weapon {
+  width: 62px;
+  height: 72px;
+  flex: 0 0 62px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 5px 8px #0008);
+}
 .btn {
   background: var(--bg-card);
   border: 1px solid var(--border-card);

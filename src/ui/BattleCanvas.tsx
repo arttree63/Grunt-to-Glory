@@ -1,7 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { fmt } from '../core/format'
 import { currentDPS } from '../core/game'
-import { JOBS } from '../core/jobs'
 import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
 import { useGame } from '../store/gameStore'
@@ -16,15 +15,13 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
     let cancelled = false
     const snapshot = (): BattleSnapshot => {
       const s = useGame.getState().s
-      const look = JOBS[s.jobId].look
       return {
         floor: s.floor,
         isBoss: s.isBoss,
         event: s.event?.kind ?? null,
         hpRatio: s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0,
         morale: s.morale,
-        cape: look.cape,
-        weapon: look.weapon,
+        jobId: s.jobId,
         autoDmgText: fmt(currentDPS(s).mul(AUTO_SWING_SEC)),
       }
     }

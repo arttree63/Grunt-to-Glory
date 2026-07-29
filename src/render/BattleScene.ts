@@ -1,4 +1,71 @@
-import { Application, Container, Graphics, Text } from 'pixi.js'
+import { AnimatedSprite, Application, Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js'
+import hit1Url from '../../assets/visual/fx/hit-impact/impact-1.png'
+import hit2Url from '../../assets/visual/fx/hit-impact/impact-2.png'
+import hit3Url from '../../assets/visual/fx/hit-impact/impact-3.png'
+import hit4Url from '../../assets/visual/fx/hit-impact/impact-4.png'
+import slash1Url from '../../assets/visual/fx/slash-warm/slash-1.png'
+import slash2Url from '../../assets/visual/fx/slash-warm/slash-2.png'
+import slash3Url from '../../assets/visual/fx/slash-warm/slash-3.png'
+import slash4Url from '../../assets/visual/fx/slash-warm/slash-4.png'
+import goblin1Url from '../../assets/visual/monsters/forest-goblin/idle/idle-1.png'
+import goblin2Url from '../../assets/visual/monsters/forest-goblin/idle/idle-2.png'
+import goblin3Url from '../../assets/visual/monsters/forest-goblin/idle/idle-3.png'
+import goblin4Url from '../../assets/visual/monsters/forest-goblin/idle/idle-4.png'
+import imp1Url from '../../assets/visual/monsters/thorn-imp/idle/idle-1.png'
+import imp2Url from '../../assets/visual/monsters/thorn-imp/idle/idle-2.png'
+import imp3Url from '../../assets/visual/monsters/thorn-imp/idle/idle-3.png'
+import imp4Url from '../../assets/visual/monsters/thorn-imp/idle/idle-4.png'
+import boss1Url from '../../assets/visual/monsters/forest-ogre-boss/idle/idle-1.png'
+import boss2Url from '../../assets/visual/monsters/forest-ogre-boss/idle/idle-2.png'
+import boss3Url from '../../assets/visual/monsters/forest-ogre-boss/idle/idle-3.png'
+import boss4Url from '../../assets/visual/monsters/forest-ogre-boss/idle/idle-4.png'
+import boss5Url from '../../assets/visual/monsters/forest-ogre-boss/idle/idle-5.png'
+import boss6Url from '../../assets/visual/monsters/forest-ogre-boss/idle/idle-6.png'
+import boss7Url from '../../assets/visual/monsters/forest-ogre-boss/idle/idle-7.png'
+import boss8Url from '../../assets/visual/monsters/forest-ogre-boss/idle/idle-8.png'
+import boss9Url from '../../assets/visual/monsters/forest-ogre-boss/idle/idle-9.png'
+import chest1Url from '../../assets/visual/events/chest-mimic/idle/idle-1.png'
+import chest2Url from '../../assets/visual/events/chest-mimic/idle/idle-2.png'
+import chest3Url from '../../assets/visual/events/chest-mimic/idle/idle-3.png'
+import chest4Url from '../../assets/visual/events/chest-mimic/idle/idle-4.png'
+import goldenGoblin1Url from '../../assets/visual/events/golden-goblin/idle/idle-1.png'
+import goldenGoblin2Url from '../../assets/visual/events/golden-goblin/idle/idle-2.png'
+import goldenGoblin3Url from '../../assets/visual/events/golden-goblin/idle/idle-3.png'
+import goldenGoblin4Url from '../../assets/visual/events/golden-goblin/idle/idle-4.png'
+import dog1Url from '../../assets/visual/mercenaries/old-hound/idle/idle-1.png'
+import dog2Url from '../../assets/visual/mercenaries/old-hound/idle/idle-2.png'
+import dog3Url from '../../assets/visual/mercenaries/old-hound/idle/idle-3.png'
+import dog4Url from '../../assets/visual/mercenaries/old-hound/idle/idle-4.png'
+import archmage1Url from '../../assets/visual/heroes/archmage/idle/idle-1.png'
+import archmage2Url from '../../assets/visual/heroes/archmage/idle/idle-2.png'
+import archmage3Url from '../../assets/visual/heroes/archmage/idle/idle-3.png'
+import archmage4Url from '../../assets/visual/heroes/archmage/idle/idle-4.png'
+import infantry1Url from '../../assets/visual/heroes/infantry/idle/idle-1.png'
+import infantry2Url from '../../assets/visual/heroes/infantry/idle/idle-2.png'
+import infantry3Url from '../../assets/visual/heroes/infantry/idle/idle-3.png'
+import infantry4Url from '../../assets/visual/heroes/infantry/idle/idle-4.png'
+import marshal1Url from '../../assets/visual/heroes/marshal/idle/idle-1.png'
+import marshal2Url from '../../assets/visual/heroes/marshal/idle/idle-2.png'
+import marshal3Url from '../../assets/visual/heroes/marshal/idle/idle-3.png'
+import marshal4Url from '../../assets/visual/heroes/marshal/idle/idle-4.png'
+import paladin1Url from '../../assets/visual/heroes/paladin/idle/idle-1.png'
+import paladin2Url from '../../assets/visual/heroes/paladin/idle/idle-2.png'
+import paladin3Url from '../../assets/visual/heroes/paladin/idle/idle-3.png'
+import paladin4Url from '../../assets/visual/heroes/paladin/idle/idle-4.png'
+import scout1Url from '../../assets/visual/heroes/scout/idle/idle-1.png'
+import scout2Url from '../../assets/visual/heroes/scout/idle/idle-2.png'
+import scout3Url from '../../assets/visual/heroes/scout/idle/idle-3.png'
+import scout4Url from '../../assets/visual/heroes/scout/idle/idle-4.png'
+import shadow1Url from '../../assets/visual/heroes/shadow/idle/idle-1.png'
+import shadow2Url from '../../assets/visual/heroes/shadow/idle/idle-2.png'
+import shadow3Url from '../../assets/visual/heroes/shadow/idle/idle-3.png'
+import shadow4Url from '../../assets/visual/heroes/shadow/idle/idle-4.png'
+import hero1Url from '../../assets/visual/rookie-soldier/idle/idle-1.png'
+import hero2Url from '../../assets/visual/rookie-soldier/idle/idle-2.png'
+import hero3Url from '../../assets/visual/rookie-soldier/idle/idle-3.png'
+import hero4Url from '../../assets/visual/rookie-soldier/idle/idle-4.png'
+import forestUrl from '../../assets/visual/scenes/forest-border-v1.png'
+import type { JobId } from '../core/types'
 
 /**
  * 戰鬥演出層。只讀 snapshot 做畫面,不 import React / store 邏輯。
@@ -11,30 +78,96 @@ export interface BattleSnapshot {
   event: 'chest' | 'goblin' | null
   hpRatio: number
   morale: number
-  cape: number
-  weapon: 'wood' | 'sword' | 'dagger'
+  jobId: JobId
   /** 一次自動揮砍的傷害顯示文字 */
   autoDmgText: string
 }
 
 const AUTO_SWING_MS = 800
+const HERO_FRAME_MS = 180
+const MOB_FRAME_MS = 200
+const BOSS_FRAME_MS = 180
+const EVENT_FRAME_MS = 180
+const SLASH_FRAME_MS = 70
+const HIT_FRAME_MS = 65
+
+interface VisualAssets {
+  background: Texture
+  heroes: Record<JobId, Texture[]>
+  goblin: Texture[]
+  imp: Texture[]
+  boss: Texture[]
+  chest: Texture[]
+  goldenGoblin: Texture[]
+  dog: Texture[]
+  slash: Texture[]
+  hit: Texture[]
+}
+
+const textureGroups = {
+  heroes: {
+    rookie: [hero1Url, hero2Url, hero3Url, hero4Url],
+    infantry: [infantry1Url, infantry2Url, infantry3Url, infantry4Url],
+    scout: [scout1Url, scout2Url, scout3Url, scout4Url],
+    marshal: [marshal1Url, marshal2Url, marshal3Url, marshal4Url],
+    paladin: [paladin1Url, paladin2Url, paladin3Url, paladin4Url],
+    shadow: [shadow1Url, shadow2Url, shadow3Url, shadow4Url],
+    archmage: [archmage1Url, archmage2Url, archmage3Url, archmage4Url],
+  } satisfies Record<JobId, string[]>,
+  goblin: [goblin1Url, goblin2Url, goblin3Url, goblin4Url],
+  imp: [imp1Url, imp2Url, imp3Url, imp4Url],
+  boss: [boss1Url, boss2Url, boss3Url, boss4Url, boss5Url, boss6Url, boss7Url, boss8Url, boss9Url],
+  chest: [chest1Url, chest2Url, chest3Url, chest4Url],
+  goldenGoblin: [goldenGoblin1Url, goldenGoblin2Url, goldenGoblin3Url, goldenGoblin4Url],
+  dog: [dog1Url, dog2Url, dog3Url, dog4Url],
+  slash: [slash1Url, slash2Url, slash3Url, slash4Url],
+  hit: [hit1Url, hit2Url, hit3Url, hit4Url],
+}
+
+async function loadTextures(urls: string[]): Promise<Texture[]> {
+  const textures = await Promise.all(urls.map((url) => Assets.load<Texture>(url)))
+  textures.forEach((texture) => {
+    texture.source.scaleMode = 'nearest'
+  })
+  return textures
+}
+
+async function loadVisualAssets(): Promise<VisualAssets> {
+  const [background, heroEntries, goblin, imp, boss, chest, goldenGoblin, dog, slash, hit] = await Promise.all([
+    Assets.load<Texture>(forestUrl),
+    Promise.all(
+      Object.entries(textureGroups.heroes).map(async ([jobId, urls]) => {
+        return [jobId, await loadTextures(urls)] as const
+      }),
+    ),
+    loadTextures(textureGroups.goblin),
+    loadTextures(textureGroups.imp),
+    loadTextures(textureGroups.boss),
+    loadTextures(textureGroups.chest),
+    loadTextures(textureGroups.goldenGoblin),
+    loadTextures(textureGroups.dog),
+    loadTextures(textureGroups.slash),
+    loadTextures(textureGroups.hit),
+  ])
+  background.source.scaleMode = 'nearest'
+  const heroes = Object.fromEntries(heroEntries) as Record<JobId, Texture[]>
+  return { background, heroes, goblin, imp, boss, chest, goldenGoblin, dog, slash, hit }
+}
 
 export class BattleScene {
   private app = new Application()
   private world = new Container()
-  private bg = new Graphics()
+  private bg: Sprite
   private mobLayer = new Container()
+  private impactLayer = new Container()
   private dmgLayer = new Container()
   private hero = new Container()
   private heroAura = new Graphics()
   private heroBody = new Container()
-  private cape = new Graphics()
-  private torso = new Graphics()
-  private head = new Graphics()
-  private armPivot = new Container()
-  private weapon = new Graphics()
-  private slashFx = new Graphics()
-  private dog = new Graphics()
+  private heroSprite: AnimatedSprite
+  private heroJob: JobId = 'rookie'
+  private slashFx: AnimatedSprite
+  private dog: AnimatedSprite
 
   private mobs: MobView[] = []
   private boss: BossView | null = null
@@ -44,17 +177,25 @@ export class BattleScene {
   private elapsed = 0
   private spawnTimer = 0
   private autoTimer = 0
-  private dogWag = 0
   private goldNumCooldown = 0
   private W = 0
   private H = 0
   private destroyed = false
 
-  private constructor(private getSnap: () => BattleSnapshot) {}
+  private constructor(
+    private getSnap: () => BattleSnapshot,
+    private assets: VisualAssets,
+  ) {
+    this.bg = new Sprite(assets.background)
+    this.heroSprite = new AnimatedSprite(assets.heroes.rookie)
+    this.slashFx = new AnimatedSprite(assets.slash)
+    this.dog = new AnimatedSprite(assets.dog)
+  }
 
   static async create(el: HTMLElement, getSnap: () => BattleSnapshot): Promise<BattleScene> {
-    const scene = new BattleScene(getSnap)
-    await scene.app.init({ resizeTo: el, backgroundAlpha: 0, antialias: true })
+    const assets = await loadVisualAssets()
+    const scene = new BattleScene(getSnap, assets)
+    await scene.app.init({ resizeTo: el, backgroundAlpha: 0, antialias: false })
     el.appendChild(scene.app.canvas)
     scene.setup()
     return scene
@@ -64,11 +205,25 @@ export class BattleScene {
     const { app, world } = this
     app.stage.addChild(world)
     this.mobLayer.sortableChildren = true
-    world.addChild(this.bg, this.mobLayer, this.hero, this.dog, this.dmgLayer)
+    world.addChild(this.bg, this.mobLayer, this.impactLayer, this.hero, this.dog, this.dmgLayer)
     this.hero.addChild(this.heroAura, this.heroBody, this.slashFx)
-    this.heroBody.addChild(this.cape, this.torso, this.head, this.armPivot)
-    this.armPivot.addChild(this.weapon)
-    this.armPivot.rotation = 0.5
+    this.heroBody.addChild(this.heroSprite)
+
+    this.heroSprite.anchor.set(0.5, 233 / 256)
+    this.heroSprite.animationSpeed = frameSpeed(HERO_FRAME_MS)
+    this.heroSprite.play()
+
+    this.slashFx.anchor.set(0.5)
+    this.slashFx.animationSpeed = frameSpeed(SLASH_FRAME_MS)
+    this.slashFx.loop = false
+    this.slashFx.visible = false
+    this.slashFx.onComplete = () => {
+      this.slashFx.visible = false
+    }
+
+    this.dog.anchor.set(0.5, 233 / 256)
+    this.dog.animationSpeed = frameSpeed(HERO_FRAME_MS)
+    this.dog.play()
 
     this.W = app.screen.width
     this.H = app.screen.height
@@ -87,28 +242,34 @@ export class BattleScene {
   swing(dmgText: string, crit = false) {
     if (this.destroyed) return
     const snap = this.getSnap()
-    this.armPivot.rotation = -1.5
-    this.slashFx
-      .clear()
-      .arc(0, -40, 92, -2.4, -0.5)
-      .stroke({ width: 9, color: snap.morale >= 100 ? 0x8affe0 : 0xfff0c0, alpha: 0.9 })
+    this.slashFx.visible = true
     this.slashFx.alpha = 1
+    this.slashFx.tint = snap.morale >= 100 ? 0x8affe0 : 0xffffff
+    this.slashFx.gotoAndPlay(0)
     this.shake = Math.min(this.shake + 4, 9)
     this.zoom = 1
 
     if (this.eventView) {
       this.eventView.flash()
+      this.spawnImpact(this.W / 2, this.H * 0.48, 0.56)
       this.damageNum(this.W / 2 + (Math.random() - 0.5) * 60, this.H * 0.42, dmgText, crit)
     } else if (this.boss) {
       this.boss.flash()
       this.boss.view.y += 6
+      this.spawnImpact(
+        this.W / 2 + (Math.random() - 0.5) * this.W * 0.3,
+        this.H * 0.3,
+        0.72,
+      )
       this.damageNum(this.W / 2 + (Math.random() - 0.5) * this.W * 0.4, this.H * 0.34, dmgText, crit)
     } else {
       const target = this.frontMob()
       if (target) {
         target.flash()
         target.view.y -= 10
-        this.damageNum(target.view.x, target.view.y - 60 * target.view.scale.y, dmgText, crit)
+        const hit = target.hitPoint()
+        this.spawnImpact(hit.x, hit.y, target.view.scale.x)
+        this.damageNum(target.view.x, target.view.y - target.view.height * 0.82, dmgText, crit)
       }
     }
   }
@@ -119,7 +280,7 @@ export class BattleScene {
     let target = this.frontMob()
     // 邏輯擊殺速度可能快過視覺生成:補一隻已接近的,確保每次擊殺都有回饋
     if (!target) {
-      target = new MobView(0.8)
+      target = this.createMob(0.8)
       this.mobLayer.addChild(target.view)
       target.layout(0, this.W, this.H)
       this.mobs.push(target)
@@ -191,12 +352,14 @@ export class BattleScene {
     this.W = this.app.screen.width
     this.H = this.app.screen.height
     if (resized) this.drawStatic()
+    this.syncHeroJob(snap.jobId)
 
     // 突發事件出場 / 退場
     if (snap.event && this.eventView?.kind !== snap.event) {
       this.eventView?.view.destroy()
       this.clearMobs()
-      this.eventView = new EventView(snap.event)
+      const textures = snap.event === 'chest' ? this.assets.chest : this.assets.goldenGoblin
+      this.eventView = new EventView(snap.event, textures)
       this.mobLayer.addChild(this.eventView.view)
       this.shake = 8
     } else if (!snap.event && this.eventView) {
@@ -208,7 +371,7 @@ export class BattleScene {
     // Boss 出場 / 退場
     if (snap.isBoss && !this.boss) {
       this.clearMobs()
-      this.boss = new BossView(this.W, this.H)
+      this.boss = new BossView(this.assets.boss)
       this.mobLayer.addChild(this.boss.view)
       this.shake = 12
     } else if (!snap.isBoss && this.boss) {
@@ -217,13 +380,12 @@ export class BattleScene {
     }
 
     if (this.boss) {
-      this.boss.idle += ms * 0.002
-      this.boss.view.y = this.H * 0.26 + Math.sin(this.boss.idle) * 8
+      this.boss.layout(ms, this.W, this.H)
     } else if (!this.eventView) {
       // 一般層:持續湧怪,同屏上限 4
       this.spawnTimer -= ms
       if (this.spawnTimer <= 0 && this.mobs.length < 4) {
-        const m = new MobView()
+        const m = this.createMob()
         this.mobLayer.addChild(m.view)
         this.mobs.push(m)
         this.spawnTimer = 450 + Math.random() * 500
@@ -238,17 +400,11 @@ export class BattleScene {
       this.swing(snap.autoDmgText, false)
     }
 
-    // 待機呼吸 + 揮臂回彈
+    // 待機呼吸
     this.heroBody.y = Math.sin(this.elapsed * 0.003) * 3
-    this.armPivot.rotation += (0.5 - this.armPivot.rotation) * 0.15
-    this.slashFx.alpha *= 0.82
 
     this.drawAura(snap.morale)
-    this.drawHero(snap)
-
-    // 傭兵搖尾
-    this.dogWag += ms * 0.01
-    this.dog.rotation = Math.sin(this.dogWag) * 0.05
+    this.layoutHero()
 
     // 傷害跳字
     for (let i = this.dmgLayer.children.length - 1; i >= 0; i--) {
@@ -274,77 +430,49 @@ export class BattleScene {
     this.mobs = []
   }
 
+  private createMob(startT = 0) {
+    const textures = Math.random() < 0.55 ? this.assets.goblin : this.assets.imp
+    return new MobView(textures, startT)
+  }
+
+  private spawnImpact(x: number, y: number, scale: number) {
+    const impact = new AnimatedSprite(this.assets.hit)
+    impact.anchor.set(0.5)
+    impact.position.set(x, y)
+    impact.scale.set(Math.max(0.2, scale))
+    impact.animationSpeed = frameSpeed(HIT_FRAME_MS)
+    impact.loop = false
+    impact.onComplete = () => impact.destroy()
+    this.impactLayer.addChild(impact)
+    impact.play()
+  }
+
   private drawStatic() {
     const { W, H, bg } = this
-    bg.clear()
-    // 天空帶狀漸層
-    ;[0x241b33, 0x2d2140, 0x37294e].forEach((c, i) => {
-      bg.rect(0, H * 0.13 * i, W, H * 0.14).fill(c)
-    })
-    // 遠山剪影
-    bg.poly([0, H * 0.42, W * 0.2, H * 0.3, W * 0.4, H * 0.4, W * 0.62, H * 0.27, W * 0.85, H * 0.38, W, H * 0.33, W, H * 0.5, 0, H * 0.5]).fill(0x1c1528)
-    // 地面
-    bg.rect(0, H * 0.42, W, H * 0.58).fill(0x2b2135)
-    // 小徑:梯形展開到腳下 → 視線引導
-    bg.poly([W * 0.44, H * 0.42, W * 0.56, H * 0.42, W * 0.88, H, W * 0.12, H]).fill(0x3a2c46)
-    // 徑上碎石
-    for (let i = 0; i < 9; i++) {
-      const t = i / 9
-      const y = H * (0.46 + 0.5 * t * t)
-      const s = 2 + 7 * t
-      bg.ellipse(W * (0.5 + ((i % 3) - 1) * 0.09 * (0.4 + t)), y, s * 1.6, s * 0.7).fill(0x473557)
-    }
-    // 兩側樹影
-    ;([[0.06, 0.4, 0.9], [0.94, 0.38, 1], [0.13, 0.55, 1.6], [0.9, 0.6, 1.9]] as const).forEach(([x, y, s]) => {
-      bg.poly([W * x - 14 * s, H * y + 60 * s, W * x, H * y - 40 * s, W * x + 14 * s, H * y + 60 * s]).fill(0x171021)
-    })
+    bg.anchor.set(0.5)
+    bg.position.set(W / 2, H / 2)
+    bg.scale.set(Math.max(W / bg.texture.width, H / bg.texture.height))
 
     this.dog.position.set(W / 2 - Math.min(W, H) * 0.24, H * 0.895)
     this.dog.zIndex = 999
-    const ds = Math.min(W, H * 0.62) / 300
+    const ds = Math.min(W, H * 0.62) / 760
     this.dog.scale.set(ds)
-    this.dog.clear()
-    this.dog.ellipse(0, 0, 20, 13).fill(0xb08a5a)
-    this.dog.circle(14, -10, 9).fill(0xb08a5a)
-    this.dog.poly([8, -18, 12, -8, 16, -16]).fill(0x8a6a48)
-    this.dog.poly([18, -18, 22, -8, 26, -16]).fill(0x8a6a48)
   }
 
-  private drawHero(snap: BattleSnapshot) {
+  private layoutHero() {
     const { W, H } = this
     const s = Math.min(W, H * 0.62) / 300
-    this.heroBody.scale.set(s * 1.15)
+    this.heroBody.scale.set(s * 0.96)
     this.hero.position.set(W / 2, H * 0.86)
+    this.slashFx.position.set(0, -H * 0.12)
+    this.slashFx.scale.set(s * 0.66)
+  }
 
-    // 披風(背面最顯眼的換裝件,轉職換色)
-    this.cape.clear()
-    this.cape.poly([-26, -46, 26, -46, 34, 52, 12, 44, 0, 56, -12, 44, -34, 52]).fill(snap.cape)
-    this.cape.poly([-26, -46, 0, -40, -34, 52]).fill(darken(snap.cape))
-
-    this.torso.clear()
-    this.torso.roundRect(-24, -52, 48, 66, 10).fill(0x5a4a3a)
-    this.torso.roundRect(-24, -52, 48, 14, 7).fill(0x6e5a45)
-    this.torso.moveTo(0, -50).lineTo(0, 10).stroke({ width: 3, color: 0x3d3228 })
-
-    this.head.clear()
-    this.head.circle(0, -66, 15).fill(0xd8a878)
-    this.head.roundRect(-16, -84, 32, 20, 9).fill(0x7a7f8a)
-    this.head.rect(-16, -70, 32, 4).fill(0x9aa0ac)
-
-    this.armPivot.position.set(20, -40)
-    this.weapon.clear()
-    this.weapon.roundRect(-4, 0, 9, 20, 4).fill(0xd8a878) // 手臂
-    if (snap.weapon === 'wood') {
-      this.weapon.roundRect(-2.5, 14, 6, 10, 2).fill(0x8a6a48)
-      this.weapon.roundRect(-3.5, -46, 8, 62, 3).fill(0xb08a5a)
-    } else if (snap.weapon === 'sword') {
-      this.weapon.roundRect(-4, 14, 9, 10, 2).fill(0x4a4a52)
-      this.weapon.roundRect(-4.5, -54, 10, 70, 3).fill(0xc8ccd8)
-      this.weapon.rect(-1, -54, 2, 70).fill(0x8f96a8)
-    } else {
-      this.weapon.roundRect(-3, 12, 7, 9, 2).fill(0x3a3a42)
-      this.weapon.poly([-4, 8, 4, 8, 1, -34, -1, -34]).fill(0xd8e0e8)
-    }
+  private syncHeroJob(jobId: JobId) {
+    if (jobId === this.heroJob) return
+    this.heroJob = jobId
+    this.heroSprite.textures = this.assets.heroes[jobId]
+    this.heroSprite.gotoAndPlay(0)
   }
 
   private drawAura(morale: number) {
@@ -362,55 +490,49 @@ interface FloatText extends Text {
   _life: number
 }
 
-function darken(c: number): number {
-  const r = Math.floor(((c >> 16) & 0xff) * 0.78)
-  const g = Math.floor(((c >> 8) & 0xff) * 0.78)
-  const b = Math.floor((c & 0xff) * 0.78)
-  return (r << 16) | (g << 8) | b
+function frameSpeed(frameMs: number): number {
+  return 1000 / 60 / frameMs
 }
 
 /** 小怪:t 0(深處)→ 1(近戰位),深度感公式見 clicker-ui skill 第三節 */
 class MobView {
-  view = new Graphics()
+  view: AnimatedSprite
   t: number
   private speed = 0.0016 + Math.random() * 0.0008
   private offset = (Math.random() - 0.5) * 0.26
-  private hue = [0x6da05e, 0x5e8aa0, 0xa08a5e][Math.floor(Math.random() * 3)]
   private flashLeft = 0
 
-  constructor(startT = 0) {
+  constructor(textures: Texture[], startT = 0) {
+    this.view = new AnimatedSprite(textures)
     this.t = startT
-    this.draw(false)
-  }
-
-  private draw(flash: boolean) {
-    const col = flash ? 0xffffff : this.hue
-    const dark = flash ? 0xffffff : 0x2a2a2a
-    const g = this.view
-    g.clear()
-    g.roundRect(-22, -34, 44, 44, 12).fill(col)
-    g.circle(-9, -16, 4.5).fill(dark)
-    g.circle(9, -16, 4.5).fill(dark)
-    g.roundRect(-8, -6, 16, 4, 2).fill(dark)
-    g.poly([-22, -34, -14, -46, -8, -34]).fill(col)
-    g.poly([8, -34, 14, -46, 22, -34]).fill(col)
+    this.view.anchor.set(0.5, 233 / 256)
+    this.view.animationSpeed = frameSpeed(MOB_FRAME_MS) * (0.9 + Math.random() * 0.2)
+    this.view.gotoAndPlay(Math.floor(Math.random() * textures.length))
   }
 
   flash() {
     this.flashLeft = 70
-    this.draw(true)
+    this.view.tint = 0xffe8b0
+  }
+
+  hitPoint() {
+    return {
+      x: this.view.x,
+      y: this.view.y - this.view.height * 0.56,
+    }
   }
 
   layout(ms: number, W: number, H: number) {
     if (this.flashLeft > 0) {
       this.flashLeft -= ms
-      if (this.flashLeft <= 0) this.draw(false)
+      if (this.flashLeft <= 0) this.view.tint = 0xffffff
     }
     if (this.t < 1) this.t = Math.min(1, this.t + this.speed * ms)
     const ease = this.t * this.t
-    const y = H * (0.44 + 0.27 * ease)
+    // 像素怪本體比原型向量怪高,近戰位略上移避免壓住主角頭盔
+    const y = H * (0.44 + 0.22 * ease)
     const x = W * (0.5 + this.offset * (0.3 + 0.7 * ease))
-    const sc = (0.25 + 0.95 * ease) * (Math.min(W, H) / 420)
+    const sc = (0.25 + 0.95 * ease) * (Math.min(W, H) / 420) * 0.32
     this.view.position.set(x, y)
     this.view.scale.set(sc)
     this.view.zIndex = y
@@ -420,52 +542,39 @@ class MobView {
 
 /** 突發事件:寶箱怪 / 黃金哥布林,出現在近戰位、金色高亮 */
 class EventView {
-  view = new Graphics()
+  view: AnimatedSprite
   private t = 0
   private flashLeft = 0
 
-  constructor(public kind: 'chest' | 'goblin') {
-    this.draw(false)
-  }
-
-  private draw(flash: boolean) {
-    const g = this.view
-    g.clear()
-    if (this.kind === 'chest') {
-      const body = flash ? 0xffffff : 0x8a6a3a
-      const trim = flash ? 0xffffff : 0xf2c14e
-      g.roundRect(-34, -20, 68, 40, 6).fill(body)
-      g.roundRect(-34, -34, 68, 20, 8).fill(trim) // 箱蓋
-      g.rect(-6, -24, 12, 30).fill(trim) // 鎖扣
-      g.circle(-14, -4, 4).fill(0x2a2a2a) // 眼
-      g.circle(14, -4, 4).fill(0x2a2a2a)
-    } else {
-      const body = flash ? 0xffffff : 0x7ac46d
-      const gold = flash ? 0xffffff : 0xf2c14e
-      g.circle(0, -14, 22).fill(body) // 頭
-      g.poly([-22, -20, -34, -34, -16, -30]).fill(body) // 耳
-      g.poly([22, -20, 34, -34, 16, -30]).fill(body)
-      g.circle(-8, -16, 4).fill(0x2a2a2a)
-      g.circle(8, -16, 4).fill(0x2a2a2a)
-      g.ellipse(0, 16, 20, 14).fill(gold) // 金袋
-    }
+  constructor(
+    public kind: 'chest' | 'goblin',
+    textures: Texture[],
+  ) {
+    this.view = new AnimatedSprite(textures)
+    this.view.anchor.set(0.5, 233 / 256)
+    this.view.animationSpeed = frameSpeed(EVENT_FRAME_MS)
+    this.view.play()
   }
 
   flash() {
     if (this.flashLeft > 0) return
     this.flashLeft = 70
-    this.draw(true)
+    this.view.tint = 0xffffff
+    this.view.alpha = 0.72
   }
 
   layout(ms: number, W: number, H: number) {
     if (this.flashLeft > 0) {
       this.flashLeft -= ms
-      if (this.flashLeft <= 0) this.draw(false)
+      if (this.flashLeft <= 0) {
+        this.view.tint = 0xffffff
+        this.view.alpha = 1
+      }
     }
     this.t += ms
-    const s = Math.min(W, H) / 300
+    const s = Math.min(W, H) / 520
     // 放在小徑中段:不能低到跟主角背影重疊(主角永遠是焦點)
-    this.view.position.set(W / 2, H * 0.5 + Math.sin(this.t * 0.006) * 6)
+    this.view.position.set(W / 2, H * 0.56 + Math.sin(this.t * 0.006) * 3)
     this.view.scale.set(s * (1 + Math.sin(this.t * 0.012) * 0.04))
     this.view.zIndex = 500
   }
@@ -473,42 +582,33 @@ class EventView {
 
 /** Boss:軀體超出畫面左右、上半屏俯壓 */
 class BossView {
-  view = new Graphics()
-  idle = 0
+  view: AnimatedSprite
   private flashLeft = 0
 
-  constructor(
-    private W: number,
-    private H: number,
-  ) {
-    this.draw(false)
-    this.view.position.set(W / 2, H * 0.26)
+  constructor(textures: Texture[]) {
+    this.view = new AnimatedSprite(textures)
+    this.view.anchor.set(0.5, 233 / 256)
+    this.view.animationSpeed = frameSpeed(BOSS_FRAME_MS)
+    this.view.play()
   }
 
-  private draw(flash: boolean) {
-    const { W, H } = this
-    const body = flash ? 0xffffff : 0x4a6a42
-    const dark = flash ? 0xffffff : 0x1a1a1a
-    const glow = flash ? 0xffffff : 0xc8384a
-    const g = this.view
-    g.clear()
-    g.roundRect(-W * 0.62, -H * 0.3, W * 1.24, H * 0.46, 60).fill(body)
-    g.roundRect(-W * 0.5, H * 0.05, 42, H * 0.22, 20).fill(0x3a5434)
-    g.roundRect(W * 0.5 - 42, H * 0.05, 42, H * 0.22, 20).fill(0x3a5434)
-    g.ellipse(-W * 0.15, 0, 30, 38).fill(dark)
-    g.ellipse(W * 0.15, 0, 30, 38).fill(dark)
-    g.circle(-W * 0.15, 6, 11).fill(glow)
-    g.circle(W * 0.15, 6, 11).fill(glow)
-    g.roundRect(-W * 0.1, H * 0.09, W * 0.2, 14, 7).fill(dark)
+  layout(ms: number, W: number, H: number) {
+    this.view.position.set(W / 2, H * 0.63)
+    this.view.scale.set(W / 200)
+    this.view.zIndex = 300
+    if (this.flashLeft > 0) {
+      this.flashLeft -= ms
+      if (this.flashLeft <= 0) {
+        this.view.tint = 0xffffff
+        this.view.alpha = 1
+      }
+    }
   }
 
   flash() {
     if (this.flashLeft > 0) return
     this.flashLeft = 70
-    this.draw(true)
-    setTimeout(() => {
-      this.flashLeft = 0
-      if (!this.view.destroyed) this.draw(false)
-    }, 70)
+    this.view.tint = 0xfff0c8
+    this.view.alpha = 0.72
   }
 }

@@ -1,3 +1,6 @@
+import daggerUrl from '../../../assets/visual/weapons/base-set/dagger.png'
+import swordUrl from '../../../assets/visual/weapons/base-set/sword.png'
+import woodUrl from '../../../assets/visual/weapons/base-set/wood.png'
 import * as B from '../../core/balance'
 import { fmt } from '../../core/format'
 import { affordableLevels, bulkUpCost, upCost } from '../../core/formulas'
@@ -8,6 +11,12 @@ import { STATS } from '../../core/talents'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 import { useHold } from '../useHold'
+
+const WEAPON_ART = {
+  wood: woodUrl,
+  sword: swordUrl,
+  dagger: daggerUrl,
+}
 
 export default function HeroPanel() {
   const s = useGameState()
@@ -28,9 +37,18 @@ export default function HeroPanel() {
   return (
     <div>
       <h3>英 雄</h3>
-      <div className="row">
-        <span className="k">職業</span>
-        <span className="v">{job.name}</span>
+      <div className="hero-identity">
+        <img
+          className="hero-weapon"
+          src={WEAPON_ART[job.look.weapon]}
+          alt={`${job.name}武器`}
+          draggable={false}
+        />
+        <div>
+          <small>目前職業</small>
+          <b>{job.name}</b>
+          <span>{job.desc}</span>
+        </div>
       </div>
       <div className="row">
         <span className="k">等級</span>

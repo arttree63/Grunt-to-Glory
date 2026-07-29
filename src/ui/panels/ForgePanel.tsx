@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import eliteMaterialUrl from '../../../assets/visual/items/core-resources/elite-material.png'
+import monsterMaterialUrl from '../../../assets/visual/items/core-resources/monster-material.png'
+import partMaterialUrl from '../../../assets/visual/items/core-resources/part-material.png'
 import * as B from '../../core/balance'
 import {
   AFFIX_NAME,
@@ -51,17 +54,26 @@ export default function ForgePanel() {
       <h3>鐵 匠 鋪</h3>
 
       <div className="row">
-        <span className="k">怪物素材</span>
+        <span className="k resource-label">
+          <img className="resource-icon" src={monsterMaterialUrl} alt="" />
+          怪物素材
+        </span>
         <span className="v">{s.materials}</span>
       </div>
       <div className="row">
-        <span className="k">菁英素材</span>
+        <span className="k resource-label">
+          <img className="resource-icon" src={eliteMaterialUrl} alt="" />
+          菁英素材
+        </span>
         <span className="v" style={{ color: s.eliteMaterials > 0 ? 'var(--q-purple)' : undefined }}>
           {s.eliteMaterials}
         </span>
       </div>
       <div className="row">
-        <span className="k">部位素材</span>
+        <span className="k resource-label">
+          <img className="resource-icon" src={partMaterialUrl} alt="" />
+          部位素材
+        </span>
         <span className="v affix">
           {SLOTS.filter((sl) => s.partMaterials[sl] > 0)
             .map((sl) => `${SLOT_NAME[sl]}×${s.partMaterials[sl]}`)
