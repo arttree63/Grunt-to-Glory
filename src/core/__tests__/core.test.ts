@@ -863,7 +863,7 @@ describe('戰術家流派', () => {
 
     s.lv = 400
     s.enemyHp = D(1)
-    applyTick(s, 100)
+    applyTick(s, B.ATTACK_INTERVAL * 1000) // 要夠一次攻擊才會出手
     expect(s.valiantStacks).toBe(0) // 擊破後歸零
   })
 

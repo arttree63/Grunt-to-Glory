@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { fmt } from '../core/format'
-import { currentDPS } from '../core/game'
+import * as B from '../core/balance'
+import { critRate, currentDPS } from '../core/game'
 import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
 import { useGame } from '../store/gameStore'
@@ -37,7 +38,12 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
     const off = gameEvents.on((e) => {
       const scene = sceneRef.current
       if (!scene) return
-      if (e.type === 'kill') scene.onKill(fmt(e.gold!))
+      if (e.type === 'attack') {
+        // 揮砍與傷害由同一個事件驅動,血條每一格下降都對得上一次攻擊
+        const s = useGame.getState().s
+        const crit = Math.random() < critRate(s)
+        scene.swing((crit ? '暴擊 ' : '') + fmt(currentDPS(s).mul(B.ATTACK_INTERVAL).mul(crit ? 3 : 1)), crit)
+      } else if (e.type === 'kill') scene.onKill(fmt(e.gold!))
       else if (e.type === 'bossKill') scene.onBossKill()
       else if (e.type === 'bossFail') scene.onBossFail()
       else if (e.type === 'eventKill') scene.onEventKill(fmt(e.gold!), !!e.count)

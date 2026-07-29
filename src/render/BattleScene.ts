@@ -83,7 +83,6 @@ export interface BattleSnapshot {
   autoDmgText: string
 }
 
-const AUTO_SWING_MS = 800
 const HERO_FRAME_MS = 180
 const MOB_FRAME_MS = 200
 const BOSS_FRAME_MS = 180
@@ -180,7 +179,6 @@ export class BattleScene {
   private zoom = 0
   private elapsed = 0
   private spawnTimer = 0
-  private autoTimer = 0
   private goldNumCooldown = 0
   private W = 0
   private H = 0
@@ -397,12 +395,8 @@ export class BattleScene {
       for (const m of this.mobs) m.layout(ms, this.W, this.H)
     }
 
-    // 自動揮砍:掛機時主角仍在打
-    this.autoTimer -= ms
-    if (this.autoTimer <= 0) {
-      this.autoTimer = AUTO_SWING_MS
-      this.swing(snap.autoDmgText, false)
-    }
+    // 揮砍不再由渲染層自己計時,改由 core 的 attack 事件驅動,
+    // 這樣血條每一格的下降都對得上一次揮砍(BattleCanvas 轉發)
 
     // 待機呼吸
     this.heroBody.y = Math.sin(this.elapsed * 0.003) * 3

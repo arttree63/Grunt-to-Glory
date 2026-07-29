@@ -202,6 +202,12 @@ export const OFFLINE_RATE = 0.6 // 6 折
 export const OFFLINE_CAP_HOURS = 4
 
 // 戰鬥
+/**
+ * 攻擊間隔(秒)。傷害按這個間隔成塊套用,而不是每 tick 連續扣。
+ * 總傷害量不變(dmg = DPS × 累積時間),但血條會跟著揮砍一格一格掉,
+ * 而不是像敵人在流血。渲染層的揮砍由 core 發出的 attack 事件驅動,兩者不會漂移。
+ */
+export const ATTACK_INTERVAL = 0.8
 export const TICK_HZ = 10 // 邏輯固定 tick
 export const CRIT_RATE = 0.18
 export const CRIT_MULT = 3

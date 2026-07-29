@@ -85,6 +85,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     skillCd: {},
     buff: null,
     sigils: 0,
+    attackAcc: 0,
     event: null,
     eventCooldown: B.EVENT_INTERVAL_AVG,
     encounters: [],
@@ -287,51 +288,58 @@ const MAX_KILLS_PER_TICK = 500
 /** 固定 tick;dtMs 由外部 game loop 提供。rng 可注入以便模擬可重現 */
 export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): GameEvent[] {
   const raw: GameEvent[] = []
+  const dt = dtMs / 1000
 
   // 戰意衰減(重裝步兵衰減減半)
   const decay = B.MORALE_DECAY * (1 - (JOBS[s.jobId].bonus.morale ?? 0))
   s.morale = Math.max(0, s.morale - decay * dtMs)
 
-  const dt = dtMs / 1000
   tickSkills(s, dt)
   tickTactician(s, dt)
   grantDestinyPoints(s, raw)
   if (s.charging) return mergeKills(raw) // 蓄勢期間停止輸出
-  let dmg = currentDPS(s).mul(dt) // 本 tick 的總傷害量
+
+  // ── 時間驅動:倒數與生成不受攻擊節奏影響 ──
+  if (s.event) {
+    s.event.timeLeft -= dt
+  } else if (!s.isBoss) {
+    spawnEncounter(s, raw, rng)
+    s.eventCooldown -= dt
+    if (s.eventCooldown <= 0) spawnEvent(s, raw, rng)
+  }
+
+  // Boss 倒數是時間,每個 tick 都照走(只扣一次,不可在攻擊 tick 重複扣)
+  if (s.isBoss && s.enemyHp.gt(0)) s.bossTimeLeft -= dt
+
+  // ── 攻擊驅動:傷害按攻擊間隔成塊套用 ──
+  // 血條跟著揮砍一格一格掉,而不是連續流失。總量不變(累積多久就打多少),
+  // 所以數值曲線不受影響;渲染層的揮砍也由這裡發出的 attack 事件驅動,兩者不會漂移。
+  s.attackAcc += dt
+  if (s.attackAcc < B.ATTACK_INTERVAL) {
+    if (s.event && s.event.timeLeft <= 0) escapeEvent(s, raw, rng)
+    else checkBossTimeout(s, raw)
+    return mergeKills(raw)
+  }
+  const swung = s.attackAcc
+  s.attackAcc = 0
+  raw.push({ type: 'attack' })
+  let dmg = currentDPS(s).mul(swung)
 
   // 突發事件優先吃傷害:出現期間取代當前目標
   if (s.event) {
     s.event.hp = s.event.hp.sub(dmg)
-    s.event.timeLeft -= dt
     if (s.event.hp.lte(0)) {
       rewardEvent(s, s.event.kind, raw, rng)
       s.event = null
       s.eventCooldown = eventInterval(rng, s)
     } else if (s.event.timeLeft <= 0) {
-      // 誘餌箱:逃走仍留下較低階獎勵
-      if (hasNode(s, 'hunter_2a')) {
-        const g = eventGold(s, s.event.kind).mul(B.BAIT_CONSOLATION)
-        s.gold = s.gold.add(g)
-        raw.push({ type: 'eventEscape', kind: s.event.kind, gold: g })
-      } else {
-        raw.push({ type: 'eventEscape', kind: s.event.kind })
-      }
-      s.event = null
-      s.eventCooldown = eventInterval(rng, s)
+      escapeEvent(s, raw, rng)
     }
     return mergeKills(raw) // 事件期間不推進一般戰鬥
   }
 
-  if (!s.isBoss) spawnEncounter(s, raw, rng)
-
-  // 一般層才會刷事件(Boss 戰不打斷)
-  if (!s.isBoss) {
-    s.eventCooldown -= dt
-    if (s.eventCooldown <= 0) spawnEvent(s, raw, rng)
-  }
-
-  // 溢出傷害要帶到下一隻,否則推進速度會被 tick 頻率鎖死
-  // (實測:Lv.80 時每 tick 只殺一隻會讓實際進度比數值模型慢 4.8 倍)
+  // 溢出傷害要帶到下一隻,否則推進速度會被攻擊頻率鎖死
+  // (實測:Lv.80 時每次只殺一隻會讓實際進度比數值模型慢 4.8 倍)
   for (let i = 0; i < MAX_KILLS_PER_TICK; i++) {
     if (s.enemyHp.gt(dmg)) {
       s.enemyHp = s.enemyHp.sub(dmg)
@@ -345,20 +353,36 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
     if (dmg.lte(0)) break
   }
 
-  if (s.isBoss && s.enemyHp.gt(0)) {
-    s.bossTimeLeft -= dt
-    if (s.bossTimeLeft <= 0) {
-      // DPS check 失敗 → 退回前一層 farm(玩家心智模型:打不過就退一層)
-      s.bossFailed = true
-      if (hasNode(s, 'tactician_2a')) s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
-      s.bossRetryFloor = s.floor
-      s.floor = Math.max(1, s.floor - 1)
-      s.killsInFloor = 0
-      raw.push({ type: 'bossFail', floor: s.bossRetryFloor })
-      spawnEnemy(s)
-    }
-  }
+  // 逾時判定放在傷害之後,讓這一擊有機會先擊破
+  checkBossTimeout(s, raw)
   return mergeKills(raw)
+}
+
+/** 事件逾時逃走。誘餌箱會留下較低階獎勵 */
+function escapeEvent(s: GameState, raw: GameEvent[], rng: Rng) {
+  if (!s.event) return
+  if (hasNode(s, 'hunter_2a')) {
+    const g = eventGold(s, s.event.kind).mul(B.BAIT_CONSOLATION)
+    s.gold = s.gold.add(g)
+    raw.push({ type: 'eventEscape', kind: s.event.kind, gold: g })
+  } else {
+    raw.push({ type: 'eventEscape', kind: s.event.kind })
+  }
+  s.event = null
+  s.eventCooldown = eventInterval(rng, s)
+}
+
+/** Boss 逾時判定。倒數本身在 tick 開頭就扣過了,這裡只負責結算 */
+function checkBossTimeout(s: GameState, raw: GameEvent[]) {
+  if (!s.isBoss || s.enemyHp.lte(0) || s.bossTimeLeft > 0) return
+  // DPS check 失敗 → 退回前一層 farm(玩家心智模型:打不過就退一層)
+  s.bossFailed = true
+  if (hasNode(s, 'tactician_2a')) s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
+  s.bossRetryFloor = s.floor
+  s.floor = Math.max(1, s.floor - 1)
+  s.killsInFloor = 0
+  raw.push({ type: 'bossFail', floor: s.bossRetryFloor })
+  spawnEnemy(s)
 }
 
 /** 高 DPS 時單 tick 可能殺掉幾十隻,合併成一則事件,演出層不必被灌爆 */

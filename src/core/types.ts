@@ -140,6 +140,8 @@ export interface GameState {
   buff: ActiveBuff | null
   /** 印記層數(軍勢 / 追風印記 / 法令,三職業共用同一個計數) */
   sigils: number
+  /** 距上次攻擊累積的秒數(暫態,不進存檔) */
+  attackAcc: number
   /** 突發事件(寶箱怪 / 黃金哥布林),出現時取代當前目標 */
   event: RareEvent | null
   /** 下次事件倒數(秒) */
@@ -213,6 +215,7 @@ export interface GameEvent {
     | 'eventKill'
     | 'eventEscape'
     | 'destinyPoint'
+    | 'attack'
     | 'weaponEvolve'
     | 'encounter'
     | 'skill'
