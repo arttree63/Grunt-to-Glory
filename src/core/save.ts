@@ -1,5 +1,5 @@
 import { D } from './decimal'
-import { createInitialState, SAVE_VERSION } from './game'
+import { createInitialState, SAVE_VERSION, spawnEnemy } from './game'
 import { emptyTechs } from './techs'
 import type { GameState } from './types'
 
@@ -265,7 +265,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
   if (!raw || typeof raw.version !== 'number') return createInitialState()
   const d = migrate(raw)
   const base = createInitialState(d.medals ?? 0, d.runs ?? 0, { ...emptyTechs(), ...(d.techs ?? {}) })
-  return {
+  const out: GameState = {
     ...base,
     lv: d.lv ?? 1,
     gold: D(d.gold ?? 0),
@@ -320,4 +320,8 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     equipped: { ...base.equipped, ...(d.equipped ?? {}) },
     lastSaved: d.lastSaved ?? Date.now(),
   }
+  // ⚠️ Boss 戰中存的檔:行為原型(護盾/蓄力/圖騰)是暫態,直接還原會變成無機制木樁。
+  // 限時檢定本來就不該從一半恢復——重開那一場(滿血、計時重來、機制齊全)
+  if (out.isBoss) spawnEnemy(out)
+  return out
 }

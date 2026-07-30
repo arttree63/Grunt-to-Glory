@@ -2292,3 +2292,22 @@ describe('Boss 行為原型(v1.7:敵人不再是木樁)', () => {
     expect(s.lastBossStats!.shellTime).toBeGreaterThanOrEqual(0)
   })
 })
+
+describe('讀檔與 Boss 行為原型', () => {
+  it('Boss 戰中存檔 → 讀回來重開那一場,機制齊全而不是木樁', () => {
+    const s = createInitialState()
+    s.lv = 25
+    s.floor = 10
+    spawnEnemy(s)
+    expect(s.bossKind).toBe('shell')
+    s.enemyHp = s.enemyMaxHp.div(2) // 打到一半存檔
+    s.bossTimeLeft = 12
+
+    const back = deserialize(JSON.parse(JSON.stringify(serialize(s))))
+    expect(back.isBoss).toBe(true)
+    expect(back.bossKind).toBe('shell') // 不是 null 木樁
+    expect(back.shellLeft).toBe(B.SHELL_HITS)
+    expect(back.enemyHp.toString()).toBe(back.enemyMaxHp.toString()) // 重開:滿血
+    expect(back.bossTimeLeft).toBe(B.BOSS_TIME) // 計時重來
+  })
+})
