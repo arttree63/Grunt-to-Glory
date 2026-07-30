@@ -1,6 +1,18 @@
-# Session 交接(2026-07-30 收尾)
+# Session 交接(2026-07-30 二次收尾)
 
-> 給下一個 session 的第一份讀物。現況 = `main` @ `2f9814a`,typecheck / 176 測試 / build 全綠。
+> 給下一個 session 的第一份讀物。現況 = `main`(籃 B 全部 + 籃 C 裁決三階段第一版都已上線),
+> typecheck / 209 測試 / build / sim 全綠。線上:https://arttree63.github.io/Grunt-to-Glory/
+> 存檔版本 v21 → **v25**(runStats/bossLore/tactic/resonance/nemesis,全部只擴不縮)。
+>
+> **收尾回掃修掉的 bug**:本輪敗 3 次但當代打贏的 Boss 原本仍會結宿敵——現在打贏即清
+> `runBossFails[floor]`。
+>
+> **殘留待辦(下一 session 從這裡接)**:
+> 1. **Boss 戰績條件**(第二階段唯一未做):獎勵載體要企劃選(候選制 vs 精工免費/指定基底/重骰券)
+> 2. 宿敵「首次挑戰可選一個情報優勢」與宿怨專屬事件(第一版只顯示前代戰績)
+> 3. 上架硬需求:CrazyGames SDK 雲存檔、音效(GDD § 10.5)
+> 4. Codex 視覺批(§ 四):goal-gradient render 版 / F18 爆燃圓 / 稱號結算排版依賴全備齊
+> 5. 待裁決存量(§ 三)與新機制的實機體感回饋(戰術修正選項強度、共鳴累積速度、精通門檻 5 次是否太快)
 > 讀完本檔 → 讀 README「下一步」→ 讀 GDD v3(唯一有效規格)。
 
 ---

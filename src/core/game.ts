@@ -594,6 +594,8 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
 
   if (!boss) return
   s.bossKills++
+  // 打贏就把這層的失敗紀錄清掉:宿怨當代已了結,轉生時不該再結成宿敵
+  delete s.runBossFails[s.floor]
   // 家族宿敵:擊敗宿敵=宿怨終結,寫進列傳(蓋過其他代表事件)
   if (s.nemesis && !s.nemesis.resolved && s.nemesis.floor === s.floor) {
     s.nemesis.resolved = true

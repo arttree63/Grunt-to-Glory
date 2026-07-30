@@ -2994,4 +2994,17 @@ describe('家族宿敵(籃 C 第三階段第一版)', () => {
     expect(out.runBossFails).toEqual({})
     expect(out.nemesis).toBe(null)
   })
+
+  it('敗多次但當代打贏:失敗紀錄清除,不結宿敵', () => {
+    const s = createInitialState()
+    s.highestFloor = 30
+    s.runBossFails = { 10: { count: 4, bestDealt: 0.8 } }
+    s.lv = 40
+    s.floor = 10
+    spawnEnemy(s)
+    s.enemyHp = D(1)
+    click(s) // 擊破
+    expect(s.runBossFails[10]).toBeUndefined()
+    expect(prestige(s)!.nemesis).toBe(null)
+  })
 })
