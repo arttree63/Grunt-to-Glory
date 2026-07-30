@@ -38,7 +38,7 @@ const TIPS: Array<{ id: string; when: (s: ReturnType<typeof useGameState>) => bo
   {
     id: 'sigil',
     when: (s) => s.sigils > 0,
-    text: '技能開始累積印記。第一個技能負責疊,第二個技能挑時機引爆,疊越多爆得越重。',
+    text: '戰鬥開始累積印記。第二個技能隨時能用；第一個技能、命運與傭兵會加速累積,疊越多爆得越重。',
   },
   {
     id: 'legend',
@@ -60,6 +60,12 @@ export default function Tutorial() {
   const s = useGameState()
   const [done, setDone] = useState(() => localStorage.getItem(KEY) === '1')
   const [seen, setSeen] = useState<string[]>(seenTips)
+  const setUiLock = useGame((st) => st.setUiLock)
+
+  useEffect(() => {
+    setUiLock('modal:tutorial', !done)
+    return () => setUiLock('modal:tutorial', false)
+  }, [done, setUiLock])
 
   const close = () => {
     localStorage.setItem(KEY, '1')

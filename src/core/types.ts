@@ -502,6 +502,7 @@ export interface GameEvent {
     | 'attack'
     | 'runReset'
     | 'moraleBurst'
+    | 'clickFeedback'
     | 'clickMaterial'
     | 'weaponEvolve'
     | 'encounter'
@@ -543,11 +544,12 @@ export interface GameEvent {
   encounterId?: EncounterId
   mercId?: MercId
   /** attack 事件:這一擊來自誰(分帳演出用)。省略 = 主角 */
-  source?: 'hero' | 'clone' | 'zone' | 'merc'
+  source?: 'hero' | 'click' | 'clone' | 'zone' | 'merc'
   /**
    * 觸發歸因(演出用):
    * sigilGain — window(視窗內擊殺)/ chance(不退之壁擲骰)/ combo(戰術家連斬)/
-   *             hunter(尋寶獵人事件)/ edict(聖光施放留印)/ rogue(盜賊背刺破綻)
+   *             hunter(尋寶獵人事件)/ edict(聖光施放留印)/ rogue(盜賊背刺破綻)/
+   *             battle(固定擊殺自然累積)
    * cooldownAdvance — windboots / hourglass / reload(引爆回轉)
    * moraleBurst — lostbanner(失落軍旗釋放,跳字別再寫成普通戰意爆發)
    * skill — ironwall(帝國鐵壁 3 件自動引爆,非玩家手動)
@@ -559,6 +561,7 @@ export interface GameEvent {
     | 'hunter'
     | 'edict'
     | 'rogue'
+    | 'battle'
     | 'windboots'
     | 'hourglass'
     | 'reload'

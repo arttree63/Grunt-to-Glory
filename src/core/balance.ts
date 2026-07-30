@@ -18,10 +18,12 @@ export const DMG_PER_LV = 1.072
 export const BASE_DMG_PER_LV = DMG_PER_LV
 
 // 基準值
-export const BASE_MOB_HP = 10
+/** 戰鬥數字統一放大，HP 與傷害同比例成長，不影響通關速度與經濟。 */
+export const COMBAT_NUMBER_SCALE = 100
+export const BASE_MOB_HP = 10 * COMBAT_NUMBER_SCALE
 export const BASE_GOLD = 5
 export const BASE_UP_COST = 20
-export const BASE_DPS = 3.68 // 乘上基礎暴擊期望 ×1.36 後 ≈ 5,與舊模擬同起點
+export const BASE_DPS = 3.68 * COMBAT_NUMBER_SCALE // 乘上基礎暴擊期望後約 500
 
 // 關卡
 export const MOBS_PER_FLOOR = 3
@@ -225,8 +227,12 @@ export const FORBIDDEN_RATE_MULT = 0.6
 // ── 一轉第二技能(印記體系)──
 /** 印記上限。三個職業共用同一套計數,只有名稱與累積來源不同 */
 export const SIGIL_MAX = 10
+/** 第二技能即使沒有印記也有自己的基本威力，不再只是第一技能的延遲結算按鈕。 */
+export const SIGIL_BASE_BURST_SEC = 3
 /** 每枚印記在消耗時折算成幾秒份的 DPS */
 export const SIGIL_BURST_SEC = 3
+/** 覺醒後每累積幾次擊殺自然獲得一枚印記，第一技能只負責加速累積。 */
+export const PASSIVE_KILLS_PER_SIGIL = 10
 /** 職業覺醒(解鎖第二技能)的雙條件:層數 + 至少一個命運節點 */
 export const AWAKEN_FLOOR = 25
 
@@ -436,7 +442,7 @@ export const TACTIC_KEEP_SIGILS = 3
 
 // ── 完美引爆窗口(籃 C 第二階段,2026-07-30 裁決:過載引爆的簡化版)──
 /** 印記疊滿後的金色窗口秒數;窗口內手動引爆=完美 */
-export const PERFECT_WINDOW_SEC = 1.5
+export const PERFECT_WINDOW_SEC = 4
 /** 完美引爆獎勵:士氣(獎勵放操作感,不放傷害) */
 export const PERFECT_MORALE = 15
 /** 完美引爆獎勵:傭兵行動提早秒數 */

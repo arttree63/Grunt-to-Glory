@@ -8,7 +8,7 @@ import { SETS } from '../../core/sets'
 import { heirloomSlots, TECHS } from '../../core/techs'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
-import { BadgeIcon, QualityMark } from '../GameIcon'
+import { BadgeIcon, GameIcon, QualityMark } from '../GameIcon'
 
 /** 轉生 = 開始新的命運,所以入口放在命運頁 */
 function PrestigeSection() {
@@ -123,16 +123,18 @@ export default function DestinyPanel() {
       .filter((k) => s.resonanceSrc[k] > 0)
       .map((k) => `${RESONANCE_SRC_NAME[k]} ×${s.resonanceSrc[k]}`)
     return (
-      <div>
+      <div className="panel-page destiny-page">
         <h3>命 運</h3>
         <div className="affix" style={{ marginBottom: 10, lineHeight: 1.7 }}>
           選擇這一代小兵的命運。每輪只能選一條,轉生後重新選。
         </div>
         {ALL_PATHS.map((p) => (
-          <div className="card" key={p.id}>
+          <div className="card destiny-card" key={p.id}>
             <div className="head">
-              <b>
-                {p.name} <small className="affix">{p.tagline}</small>
+              <div className="destiny-title">
+                <GameIcon name="destiny" size={30} />
+                <b>
+                  {p.name} <small className="affix">{p.tagline}</small>
                 {/* 共鳴是傾向的呈現,不是推薦——三條照選 */}
                 {strongest === p.id && (
                   <small style={{ marginLeft: 6, color: 'var(--gold)' }}>
@@ -142,7 +144,8 @@ export default function DestinyPanel() {
                 {strongest !== p.id && s.resonance[p.id] > 0 && (
                   <small className="affix" style={{ marginLeft: 6 }}>共鳴 {s.resonance[p.id]}</small>
                 )}
-              </b>
+                </b>
+              </div>
               <button className="btn primary" onClick={() => chooseDestiny(p.id)}>
                 選擇
               </button>
@@ -170,7 +173,7 @@ export default function DestinyPanel() {
   const next = nextMilestone(s)
 
   return (
-    <div>
+    <div className="panel-page destiny-page">
       <h3>
         命 運・{path.name}
         {s.destinyPoints > 0 && <span style={{ color: 'var(--gold)' }}> ・{s.destinyPoints} 點待用</span>}

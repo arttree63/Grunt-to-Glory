@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import * as B from '../core/balance'
-import { fmt, fmtTime } from '../core/format'
+import { fmt, fmtCombat, fmtTime } from '../core/format'
 import { upCost } from '../core/formulas'
 import {
   BOSS_KIND_HINT,
   BOSS_KIND_NAME,
+  availableSkills,
   bossGap,
   bossKindFor,
   channelProgress,
@@ -234,16 +235,49 @@ function Game() {
   const s = useGameState()
   const [tab, setTab] = useState<Tab | null>(null)
   const offline = useGame((st) => st.offline)
+  const lastRun = useGame((st) => st.lastRun)
   const dismissOffline = useGame((st) => st.dismissOffline)
   const spot = useGame((st) => st.spotlight)
+  const setUiLock = useGame((st) => st.setUiLock)
+
+  useEffect(() => {
+    setUiLock('panel', tab !== null)
+    return () => setUiLock('panel', false)
+  }, [setUiLock, tab])
+
+  useEffect(() => {
+    setUiLock('modal:app', !!offline || !!lastRun)
+    return () => setUiLock('modal:app', false)
+  }, [lastRun, offline, setUiLock])
 
   const hpRatio = s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0
   // 紅點三層收斂:同時只亮一顆,由近期目標的優先序決定(core/goals.ts)
   const near = nearGoal(s)
   const activeSets = setProgress(s).filter((set) => set.count >= 2)
+  const flagStatus =
+    s.bannerStored > 0
+      ? {
+          title: `失落軍旗・已儲 ${s.bannerStored.toFixed(1)}s`,
+          detail: '下次施放技能時釋放',
+          color: 'var(--gold)',
+        }
+      : s.bannerLeft > 0
+        ? {
+            title: `熔火軍旗・${s.bannerLeft.toFixed(1)}s`,
+            detail: '攻擊追加軍旗回音・破盾 +2',
+            color: 'var(--boss-b)',
+          }
+        : s.encounters.length > 0 && !s.event && !s.isBoss
+          ? {
+              title: '旅途旗標・有際遇待處理',
+              detail: '到「旅途」分頁查看，不限時',
+              color: '#f0b44c',
+            }
+          : null
+  const hasSkills = availableSkills(s).length > 0
 
   return (
-    <div className="wrap">
+    <div className={`wrap${hasSkills ? ' has-skills' : ' no-skills'}${tab ? ' panel-open' : ''}`}>
       <BattleCanvas>
         <div className="topbar">
           <div className="stage-label">
@@ -364,11 +398,13 @@ function Game() {
             style={{ top: 'auto', bottom: 186, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
           >
             {sigilName(s)} {s.sigils}/{sigilCap(s)}
-            {/* 完美引爆窗口:滿層 1.5 秒內手動引爆給操作獎勵(掛機正常引爆不受影響) */}
+            {/* 完美引爆窗口:滿層後限時手動引爆給操作獎勵(掛機正常引爆不受影響) */}
             {s.perfectWindowLeft > 0 ? (
               <small style={{ color: 'var(--gold)', fontWeight: 700 }}> 金色窗口——現在引爆=完美!</small>
+            ) : s.sigils >= Math.ceil(sigilCap(s) * 0.8) ? (
+              <small style={{ color: 'var(--gold)' }}> 快滿了——準備引爆</small>
             ) : (
-              <small className="affix"> 用第二技能引爆</small>
+              <small className="affix"> 第二技能隨時可用，印記越多越強</small>
             )}
           </div>
         )}
@@ -402,7 +438,7 @@ function Game() {
               />
             </div>
             <small className="affix">
-              還差 {fmt(s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK).sub(s.channelDamage))} 傷害即可打斷
+              還差 {fmtCombat(s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK).sub(s.channelDamage))} 傷害即可打斷
             </small>
           </div>
         )}
@@ -437,13 +473,13 @@ function Game() {
           </div>
         )}
 
-        {s.bannerStored > 0 && (
+        {flagStatus && (
           <div
             className="retry"
-            style={{ top: 'auto', bottom: 158, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
+            style={{ top: 'auto', bottom: 158, pointerEvents: 'none', color: flagStatus.color, fontSize: 13 }}
           >
-            軍旗 儲 {s.bannerStored.toFixed(1)}s
-            <small className="affix"> 下次施放技能時釋放</small>
+            {flagStatus.title}
+            <small className="affix"> {flagStatus.detail}</small>
           </div>
         )}
 

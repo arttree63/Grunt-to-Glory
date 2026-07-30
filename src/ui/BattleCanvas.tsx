@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { fmt } from '../core/format'
+import { fmt, fmtCombat } from '../core/format'
 import * as B from '../core/balance'
 import { critMultiplier } from '../core/formulas'
 import {
@@ -92,15 +92,24 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         const crit = Math.random() < rate
         const base = e.damage!.div(critMultiplier(rate))
         const shown = crit ? base.mul(B.CRIT_MULT) : base
-        scene.swing((e.pierce ? '穿透・' : '') + (crit ? '暴擊 ' : '') + fmt(shown), crit, e.source ?? 'hero')
+        const click = e.source === 'click'
+        const morale = click && (e.count ?? 0) > 0 ? `・戰意 +${Math.round(e.count!)}` : ''
+        scene.swing(
+          (e.pierce ? '穿透・' : '') + (crit ? '暴擊 ' : '') + (click ? '點擊 ' : '') + fmtCombat(shown) + morale,
+          crit,
+          e.source ?? 'hero',
+        )
+      } else if (e.type === 'clickFeedback') {
+        const morale = Math.round(e.count ?? 0)
+        scene.swing(morale > 0 ? `戰意 +${morale}` : '戰意已滿', false, 'click')
       } else if (e.type === 'moraleBurst') {
-        scene.swing(`${e.via === 'lostbanner' ? '失落軍旗' : '戰意爆發'} ${fmt(e.damage!)}`, true)
+        scene.swing(`${e.via === 'lostbanner' ? '失落軍旗' : '戰意爆發'} ${fmtCombat(e.damage!)}`, true)
       } else if (e.type === 'skill') {
         // 技能直傷原本完全沒有演出:血條瞬空但畫面什麼都沒發生
         const name = SKILLS[e.skillId!].name
         // count = 消耗掉的印記層數,演出可以據此畫 N 道射線
-        scene.skillHit(e.damage ? `${name} ${fmt(e.damage)}` : name, e.skillId!, e.count ?? 0, e.via === 'ironwall')
-        if (e.burnDamage) scene.onEmberConvert(fmt(e.burnDamage))
+        scene.skillHit(e.damage ? `${name} ${fmtCombat(e.damage)}` : name, e.skillId!, e.count ?? 0, e.via === 'ironwall')
+        if (e.burnDamage) scene.onEmberConvert(fmtCombat(e.burnDamage))
       } else if (e.type === 'cooldownAdvance') {
         scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0, e.via)
       } else if (e.type === 'sigilGain') {
@@ -132,10 +141,10 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       } else if (e.type === 'freezeStart') {
         scene.onFreezeStart()
       } else if (e.type === 'freezeBurst') {
-        scene.onFreezeBurst(`冰裂 ${fmt(e.damage!)}`)
+        scene.onFreezeBurst(`冰裂 ${fmtCombat(e.damage!)}`)
       } else if (e.type === 'burnTick') {
         // 穿透標記:圖騰在場時火仍燒進本體——規則讓玩家親眼看到,不用文字教
-        scene.onBurnTick(`${e.pierce ? '穿透・' : ''}燃燒 ${fmt(e.damage!)}`)
+        scene.onBurnTick(`${e.pierce ? '穿透・' : ''}燃燒 ${fmtCombat(e.damage!)}`)
       } else if (e.type === 'nemesisResolved') {
         scene.skillHit('宿 怨 終 結 !')
       } else if (e.type === 'perfectBurst') {

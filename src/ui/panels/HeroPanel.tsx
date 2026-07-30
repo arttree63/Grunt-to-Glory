@@ -2,7 +2,7 @@ import daggerUrl from '../../../assets/visual/weapons/base-set/dagger.png'
 import swordUrl from '../../../assets/visual/weapons/base-set/sword.png'
 import woodUrl from '../../../assets/visual/weapons/base-set/wood.png'
 import * as B from '../../core/balance'
-import { fmt } from '../../core/format'
+import { fmt, fmtCombat } from '../../core/format'
 import { affordableLevels, bulkUpCost, upCost } from '../../core/formulas'
 import {
   activeLegends,
@@ -304,9 +304,10 @@ export default function HeroPanel() {
   const hold1 = useHold(() => buy(1))
   const nextJobs = nextTierJobs(s.jobId)
   const canPromoteNow = availableJobs(s.jobId, s.lv, s.destinyPath).length > 0
+  const roleLabel = job.tier === 0 ? '巡守型' : job.tier === 1 ? '轉職兵種' : '進階兵種'
 
   return (
-    <div>
+    <div className="panel-page hero-page">
       <h3>英 雄</h3>
       <div className="hero-identity">
         <img
@@ -315,9 +316,16 @@ export default function HeroPanel() {
           alt={`${job.name}武器`}
           draggable={false}
         />
-        <div>
+        <div className="hero-copy">
           <small>目前職業</small>
-          <b>{job.name}</b>
+          <div className="hero-name-line">
+            <b>{job.name}</b>
+            <span className="role-chip">{roleLabel}</span>
+          </div>
+          <div className="hero-level-line">
+            <strong>Lv.{s.lv}</strong>
+            <span>下一級 {fmt(cost1)} 金</span>
+          </div>
           <span>{job.desc}</span>
         </div>
       </div>
@@ -325,13 +333,19 @@ export default function HeroPanel() {
           玩家到 Lv.20 開英雄頁看不到轉職,回報成「20 級不能轉職」 */}
       {canPromoteNow && <PromotionSection />}
 
-      <div className="row">
-        <span className="k">等級</span>
-        <span className="v">Lv.{s.lv}</span>
-      </div>
-      <div className="row">
-        <span className="k">DPS</span>
-        <span className="v">{fmt(currentDPS(s))}/s</span>
+      <div className="hero-stats">
+        <div>
+          <small>DPS</small>
+          <b>{fmtCombat(currentDPS(s))}/s</b>
+        </div>
+        <div>
+          <small>暴擊率</small>
+          <b>{Math.round(critRate(s) * 100)}%</b>
+        </div>
+        <div>
+          <small>金幣收益</small>
+          <b>{fmt(goldPerSec(s))}/s</b>
+        </div>
       </div>
       <details style={{ margin: '2px 0 6px' }}>
         <summary className="affix" style={{ cursor: 'pointer', padding: '4px 0' }}>
@@ -349,20 +363,15 @@ export default function HeroPanel() {
           全部相乘 × 基礎 {B.BASE_DPS} = 目前 DPS
         </div>
       </details>
-      <div className="row">
-        <span className="k">暴擊率</span>
-        <span className="v">{Math.round(critRate(s) * 100)}%</span>
-      </div>
-      <div className="row">
-        <span className="k">金幣收益</span>
-        <span className="v">{fmt(goldPerSec(s))}/s</span>
-      </div>
-      <div className="row">
-        <span className="k">戰功勳章</span>
-        <span className="v">{s.medals} 枚(到「傳承」分頁的軍需處買科技)</span>
+      <div className="medal-card">
+        <span>
+          <small>戰功勳章</small>
+          <b>{s.medals} 枚</b>
+        </span>
+        <span>到「傳承」分頁的軍需處購買科技</span>
       </div>
 
-      <div className="btn-row">
+      <div className="btn-row upgrade-row">
         <button className="btn primary" disabled={s.gold.lt(cost1)} {...hold1}>
           升級 ×1
           <br />

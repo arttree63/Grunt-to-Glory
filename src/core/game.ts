@@ -193,7 +193,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 25
+export const SAVE_VERSION = 26
 
 // ---------- 數值查詢 ----------
 
@@ -558,6 +558,10 @@ export function diagnoseBoss(st: BossStats | null): BossDiagnosis | null {
 
 function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Math.random) {
   const mult = boss ? B.BOSS_GOLD_MULT : 1
+  // 覺醒後每隔固定擊殺自然獲得一枚印記。第一技能仍是加速器，但第二技能不再被它鎖死。
+  if (isAwakened(s) && s.runStats.kills > 0 && s.runStats.kills % B.PASSIVE_KILLS_PER_SIGIL === 0) {
+    gainSigil(s, 1, events, 'battle')
+  }
   // buff 視窗期間的擊殺會累積印記(軍勢 / 追風印記)。
   // 不退之壁把視窗變成常駐,若照原樣累積會變成每殺必給 → 印記速率暴增。
   // 改為依原本的視窗佔比擲骰,累積速率因此與沒穿時相同。
@@ -1140,16 +1144,20 @@ export function click(s: GameState, rng: Rng = Math.random): GameEvent[] {
 
   // clickDmg 詞綴只加戰意獲取——點擊「傷害」禁止有任何升級軸(GDD v3 § 1.4)
   const clickBonus = equipBonuses(s.equipped).clickDmg
+  const moraleBefore = s.morale
   s.morale = Math.min(B.MORALE_MAX, s.morale + B.MORALE_PER_CLICK * (1 + clickBonus))
+  const moraleGained = s.morale - moraleBefore
 
   // 點擊直接傷害:受每秒預算約束。預算盡了仍給戰意/素材,只是這一下不追加傷害
   const spend = Math.min(B.CLICK_DMG_SEC, s.clickBudget)
   if (spend > 0) {
     s.clickBudget -= spend
     const dmg = currentDPS(s).mul(spend)
-    events.push({ type: 'attack', damage: dmg })
+    events.push({ type: 'attack', damage: dmg, source: 'click', count: moraleGained })
     registerBossHits(s, 1, events)
     dealDamage(s, dmg, events, rng, { source: 'hero' })
+  } else {
+    events.push({ type: 'clickFeedback', count: moraleGained })
   }
 
   // 戰意滿檔爆發:填補 10~30 秒的期待層(「快滿了」)
@@ -1368,7 +1376,6 @@ export function skillCooldown(s: GameState, id: SkillId): number {
 
 export function skillReady(s: GameState, id: SkillId): boolean {
   if (!availableSkills(s).includes(id)) return false
-  if (SKILLS[id].consumesSigils && s.sigils <= 0) return false // 沒有印記就沒東西可消耗
   return (s.skillCd[id] ?? 0) <= 0
 }
 
@@ -1416,7 +1423,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
     const perSigil = B.SIGIL_BURST_SEC * (1 + bonus.sigilPower) * (codex ? B.CODEX_POWER : 1)
     const spentNow = s.sigils
     const wasFull = spentNow >= sigilCap(s)
-    const dmg = currentDPS(s).mul(spentNow * perSigil * skillDmg)
+    const dmg = currentDPS(s).mul((B.SIGIL_BASE_BURST_SEC + spentNow * perSigil) * skillDmg)
     skillDamage = skillDamage.add(dmg)
     registerBossHits(s, 1, events, 'skill') // 引爆是單次重擊,不因層數增加破盾值
     if (s.event) s.event.hp = s.event.hp.sub(dmg)
@@ -1444,7 +1451,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
       s.zealStacks++
       events.push({ type: 'zealGain', count: s.zealStacks })
     }
-    // 完美引爆:滿層後 1.5 秒金色窗口內「手動」引爆。獎勵放操作感不放傷害
+    // 完美引爆:滿層後金色窗口內「手動」引爆。獎勵放操作感不放傷害
     // (士氣/傭兵推進/昂揚再 +1);掛機自動引爆走不進這裡=沒有完美獎勵
     if (wasFull && !auto && s.perfectWindowLeft > 0) {
       s.morale = Math.min(100, s.morale + B.PERFECT_MORALE)
@@ -2167,6 +2174,18 @@ export function salvage(s: GameState, id: string): number {
   if (idx < 0) return 0
   const e = s.inventory[idx]
   s.inventory.splice(idx, 1)
+  if (s.inscribedId === e.id) s.inscribedId = null
+  const back = SALVAGE_RETURN[e.quality]
+  s.materials += back
+  addResonance(s, 'salvage')
+  return back
+}
+
+export function salvageEquipped(s: GameState, slot: Slot): number {
+  const e = s.equipped[slot]
+  if (!e) return 0
+  s.equipped[slot] = null
+  if (s.inscribedId === e.id) s.inscribedId = null
   const back = SALVAGE_RETURN[e.quality]
   s.materials += back
   addResonance(s, 'salvage')

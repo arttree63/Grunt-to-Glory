@@ -24,7 +24,7 @@ import { SETS } from '../../core/sets'
 import { KEYWORD_NAME } from '../../core/keywords'
 import { activeLegends, setProgress } from '../../core/game'
 import type { Equipment, MechanicTag, Quality } from '../../core/types'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { QUALITIES as Q } from '../../core/equipment'
 import { DEVOUR_GROWTH as B_DEVOUR } from '../../core/balance'
 import { useGame } from '../../store/gameStore'
@@ -152,10 +152,13 @@ export default function EquipPanel() {
   // 不可逆操作一律二次確認,用遊戲內樣式而不是原生 confirm
   const [confirmSalvage, setConfirmSalvage] = useState<Equipment | null>(null)
   const [confirmDevour, setConfirmDevour] = useState<Equipment | null>(null)
+  const [selectedSlot, setSelectedSlot] = useState<Equipment['slot'] | null>(null)
   const equip = useGame((st) => st.equip)
   const unequip = useGame((st) => st.unequip)
   const salvage = useGame((st) => st.salvage)
+  const salvageEquipped = useGame((st) => st.salvageEquipped)
   const salvageBelow = useGame((st) => st.salvageBelow)
+  const setUiLock = useGame((st) => st.setUiLock)
 
   const devour = useGame((st) => st.devourWeapon)
   const canDevour = hasNode(s, 'artisan_2a') && !!s.equipped.weapon
@@ -176,8 +179,13 @@ export default function EquipPanel() {
     return true
   })
 
+  useEffect(() => {
+    setUiLock('modal:equip', !!confirmSalvage || !!confirmDevour)
+    return () => setUiLock('modal:equip', false)
+  }, [confirmDevour, confirmSalvage, setUiLock])
+
   return (
-    <div>
+    <div className="panel-page equip-page">
       <h3>裝 備</h3>
       <BuildSummary />
       <div className="row">
@@ -187,31 +195,83 @@ export default function EquipPanel() {
           <small className="affix"> 相當於 +{Math.round(equivLv)} 級</small>
         </span>
       </div>
-      {SLOTS.map((slot) => {
-        const e = s.equipped[slot]
-        return (
-          <div className="row" key={slot}>
-            <span className="k">{SLOT_NAME[slot]}</span>
-            {e ? (
-              <span className="v" style={{ color: qColor(e.quality) }}>
-                <QualityMark quality={e.quality} />
-                {e.base && <small className="affix">{BASE_NAME[e.base]} </small>}
-                {e.legend ? LEGENDS[e.legend].name : QUALITY_NAME[e.quality]}
-                {e.setTag && <small className="set-chip"><BadgeIcon kind="set" />{SETS[e.setTag].name}</small>}
-                {e.heirloom && <small style={{ color: 'var(--gold)' }}> <BadgeIcon kind="heirloom" />傳家之器</small>}
-                {(e.growth ?? 1) > 1 && (
-                  <small style={{ color: 'var(--gold)' }}> +{Math.round(((e.growth ?? 1) - 1) * 100)}%</small>
-                )}
-                <button className="btn" style={{ marginLeft: 8, padding: '4px 8px' }} onClick={() => unequip(slot)}>
-                  卸下
-                </button>
-              </span>
-            ) : (
-              <span className="v affix">空</span>
+      <div className="equipment-slot-list">
+        {SLOTS.map((slot) => {
+          const e = s.equipped[slot]
+          return (
+          <div className={`equip-slot${e ? ' filled' : ''}`} key={slot}>
+            <div className="row">
+              <span className="k">{SLOT_NAME[slot]}</span>
+              {e ? (
+                <span className="v" style={{ color: qColor(e.quality) }}>
+                  <QualityMark quality={e.quality} />
+                  {e.base && <small className="affix">{BASE_NAME[e.base]} </small>}
+                  {e.legend ? LEGENDS[e.legend].name : QUALITY_NAME[e.quality]}
+                  {e.setTag && <small className="set-chip"><BadgeIcon kind="set" />{SETS[e.setTag].name}</small>}
+                  {e.heirloom && <small style={{ color: 'var(--gold)' }}> <BadgeIcon kind="heirloom" />傳家之器</small>}
+                  {(e.growth ?? 1) > 1 && (
+                    <small style={{ color: 'var(--gold)' }}> +{Math.round(((e.growth ?? 1) - 1) * 100)}%</small>
+                  )}
+                  <button
+                    className={`btn${selectedSlot === slot ? ' primary' : ''}`}
+                    style={{ marginLeft: 8, padding: '6px 9px', minHeight: 32 }}
+                    onClick={() => setSelectedSlot(selectedSlot === slot ? null : slot)}
+                  >
+                    {selectedSlot === slot ? '收起' : '詳情'}
+                  </button>
+                </span>
+              ) : (
+                <span className="v affix">尚未裝備</span>
+              )}
+            </div>
+            {e && selectedSlot === slot && (
+              <div className={`card quality-frame q-${e.quality}`} style={{ marginTop: 4 }}>
+                <div className="head">
+                  <b style={{ color: qColor(e.quality) }}>
+                    <QualityMark quality={e.quality} />
+                    {e.legend && <BadgeIcon kind="legend" />}
+                    {itemLabel(e)}
+                  </b>
+                  <small className="affix">已裝備</small>
+                </div>
+                <Affixes
+                  e={e}
+                  setTagCount={e.setTag ? setCount(s, e.setTag) : 0}
+                  repairLeft={heirloomRepairLeft(s)}
+                />
+                <div className="btn-row" style={{ flexWrap: 'wrap' }}>
+                  <button
+                    className="btn"
+                    style={TOUCH}
+                    onClick={() => {
+                      unequip(slot)
+                      setSelectedSlot(null)
+                    }}
+                  >
+                    卸下
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ ...TOUCH, color: 'var(--gold)' }}
+                    onClick={() => {
+                      const cur = inscribed(s)
+                      if (cur && cur.id !== e.id && !confirm(`要改銘刻這件嗎?原本的「${itemLabel(cur)}」會失去傳家之器身分。`))
+                        return
+                      inscribe(e.id)
+                    }}
+                  >
+                    {e.heirloom ? '已銘刻' : '銘刻'}
+                  </button>
+                  <button className="btn" style={TOUCH} onClick={() => setConfirmSalvage(e)}>
+                    分解 +{SALVAGE_RETURN[e.quality]}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
-        )
-      })}
+          )
+        })}
+      </div>
 
       <h3 style={{ marginTop: 16 }}>背 包({s.inventory.length})</h3>
       {s.inventory.length > 3 && (
@@ -406,7 +466,10 @@ export default function EquipPanel() {
                 className="btn primary"
                 style={TOUCH}
                 onPointerDown={() => {
-                  salvage(confirmSalvage.id)
+                  const equipped = s.equipped[confirmSalvage.slot]
+                  if (equipped?.id === confirmSalvage.id) salvageEquipped(confirmSalvage.slot)
+                  else salvage(confirmSalvage.id)
+                  setSelectedSlot(null)
                   setConfirmSalvage(null)
                 }}
               >
