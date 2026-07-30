@@ -43,9 +43,39 @@ export const TECHS: Tech[] = [
     cost: B.TECH_COST_CAMP,
     maxLevel: B.TECH_CAMP_MAX,
   },
+  {
+    id: 'mastery',
+    name: '鍛造熟練',
+    desc: '每輪精工鍛造次數 +1',
+    cost: B.TECH_COST_MASTERY,
+    maxLevel: B.TECH_MASTERY_MAX,
+  },
+  {
+    id: 'herald',
+    name: '傳令兵',
+    desc: '開局直接獲得 1 枚命運點',
+    cost: B.TECH_COST_HERALD,
+    maxLevel: B.TECH_HERALD_MAX,
+  },
+  {
+    id: 'quarter',
+    name: '軍需官',
+    desc: '開局帶著 1 個隨機部位素材',
+    cost: B.TECH_COST_QUARTER,
+    maxLevel: B.TECH_QUARTER_MAX,
+  },
 ]
 
-export const emptyTechs = (): Techs => ({ valor: 0, supply: 0, legacy: 0, camp: 0, heirloom: 0 })
+export const emptyTechs = (): Techs => ({
+  valor: 0,
+  supply: 0,
+  legacy: 0,
+  camp: 0,
+  heirloom: 0,
+  mastery: 0,
+  herald: 0,
+  quarter: 0,
+})
 
 /** 攜帶名額:轉生時能帶走幾件裝備(傳家之器另計,不佔名額)*/
 export function heirloomSlots(techs: Techs): number {
@@ -74,6 +104,11 @@ export function techStartGold(techs: Techs): number {
 /** 離線收益上限(小時) */
 export function techOfflineHours(techs: Techs): number {
   return B.OFFLINE_CAP_HOURS + techs.camp * B.TECH_OFFLINE_HOURS
+}
+
+/** 每輪精工次數(鍛造熟練):買它是為了少受開錘運氣支配,不是為了更大的數字 */
+export function techFineForges(techs: Techs): number {
+  return B.FINE_FORGE_PER_RUN + techs.mastery
 }
 
 export function canBuyTech(techs: Techs, medals: number, id: TechId): boolean {

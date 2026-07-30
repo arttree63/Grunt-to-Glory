@@ -82,6 +82,17 @@ export const TECH_COST_CAMP = 5
 export const TECH_CAMP_MAX = 4
 export const TECH_COST_HEIRLOOM = 8 // 家族傳承:每級 +1 件傳家寶
 export const TECH_HEIRLOOM_MAX = 4
+/**
+ * 準備型科技:不給傷害,改變下一輪的開局條件。
+ * ⚠️ 為什麼不是再加傷害乘數:實測裝備乘區 ×3.5~7.7 已經蓋過科技 ×1.2~3.1,
+ * 再堆乘數只會讓開錘運氣更決定一切。這三項全部指向「降低運氣支配 / 更快成形」。
+ */
+export const TECH_COST_MASTERY = 6 // 鍛造熟練:每輪精工次數 +1(§ 344 已列 P1 槓桿)
+export const TECH_MASTERY_MAX = 3
+export const TECH_COST_HERALD = 10 // 傳令兵:開局直接給命運點,每輪更快進入構築
+export const TECH_HERALD_MAX = 2
+export const TECH_COST_QUARTER = 5 // 軍需官:開局帶部位素材,不必等 Boss 掉才能鎖部位
+export const TECH_QUARTER_MAX = 3
 
 // 新兵祝福:首輪限定金幣加成。設 0 = 停用。
 // 模擬結論:給了首輪會虛高、轉生後淨變弱(第二輪極限反而下降)→ 停用,首輪節奏改由新手斜坡負責。

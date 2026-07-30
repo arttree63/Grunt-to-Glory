@@ -19,6 +19,7 @@ import {
   SLOTS,
 } from '../../core/equipment'
 import { hasNode } from '../../core/destiny'
+import { techFineForges } from '../../core/techs'
 import {
   canFineForge,
   fineForgesLeft,
@@ -359,7 +360,7 @@ export default function ForgePanel() {
 
           <div className="row" style={{ marginTop: 8 }}>
             <span className="k">③ 本次結果預覽</span>
-            <span className="v affix">本輪剩 {fineForgesLeft(s)} / {B.FINE_FORGE_PER_RUN} 次</span>
+            <span className="v affix">本輪剩 {fineForgesLeft(s)} / {techFineForges(s.techs)} 次</span>
           </div>
           <div className="card">
             <b style={{ color: useElite ? 'var(--q-purple)' : 'var(--text-strong)' }}>{preview}</b>

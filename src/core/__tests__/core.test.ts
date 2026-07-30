@@ -19,7 +19,7 @@ import { bossHP, critMultiplier, goldDrop, heroDPS, isBossFloor, medalsFromFloor
 import { availableJobs, destinyJobs, JOBS } from '../jobs'
 import { SKILLS } from '../skills'
 import { pendingChoice } from '../destiny'
-import { heirloomSlots, techOfflineHours } from '../techs'
+import { emptyTechs, heirloomSlots, techFineForges, techOfflineHours } from '../techs'
 import {
   applyTick,
   attackInterval,
@@ -58,6 +58,7 @@ import {
   skillReady,
   computeOffline,
   createInitialState,
+  fineForgesLeft,
   currentDPS,
   inscribeHeirloom,
   inCheckWindow,
@@ -1477,6 +1478,17 @@ describe('存檔', () => {
     expect(back.pityCount).toBe(0)
   })
 
+  it('準備型科技在開局兌現:命運點/部位素材/精工次數', () => {
+    const techs = { ...emptyTechs(), herald: 2, quarter: 3, mastery: 2 }
+    const s = createInitialState(0, 1, techs)
+    expect(s.destinyPoints).toBe(2) // 傳令兵:開局就有命運點,不必等里程碑
+    // 軍需官:輪流分配部位,不會三級全押同一個
+    expect(Object.values(s.partMaterials).reduce((a, b) => a + b, 0)).toBe(3)
+    expect(Math.max(...Object.values(s.partMaterials))).toBe(1)
+    expect(techFineForges(techs)).toBe(B.FINE_FORGE_PER_RUN + 2)
+    expect(fineForgesLeft(s)).toBe(B.FINE_FORGE_PER_RUN + 2)
+  })
+
   it('v2 存檔可遷移到 v3(勳章留著,科技從零開始)', () => {
     const s = createInitialState()
     s.lv = 77
@@ -1488,7 +1500,8 @@ describe('存檔', () => {
     const back = deserialize(v2)
     expect(back.lv).toBe(77)
     expect(back.medals).toBe(12) // 勳章不沒收,玩家自己決定買哪條科技
-    expect(back.techs).toEqual({ valor: 0, supply: 0, legacy: 0, camp: 0, heirloom: 0 })
+    // 對照 emptyTechs() 而不是寫死鍵值:之後新增科技不該讓這個遷移測試壞掉
+    expect(back.techs).toEqual(emptyTechs())
   })
 
   it('v7 存檔遷移到 v8:天賦移除、不自動替玩家選流派、補一枚命運點', () => {

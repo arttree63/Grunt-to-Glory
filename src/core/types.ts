@@ -101,7 +101,18 @@ export interface ActiveBuff {
   /** 不退之壁:軍陣常駐,不倒數(倍率改用平均值,總輸出不變) */
   permanent?: boolean
 }
-export type TechId = 'valor' | 'supply' | 'legacy' | 'camp' | 'heirloom'
+export type TechId =
+  | 'valor'
+  | 'supply'
+  | 'legacy'
+  | 'camp'
+  | 'heirloom'
+  // 準備型科技(2026-07-31):不給傷害乘數,改變「下一輪怎麼開局」。
+  // 加這三項是因為裝備運氣(×3.5~7.7)壓過轉生成長(×1.2~3.1),
+  // 玩家感覺不到「這輪比上輪強」——見 game-balance § 七
+  | 'mastery'
+  | 'herald'
+  | 'quarter'
 export type EventKind = 'chest' | 'goblin'
 /** Boss 行為原型(v1.7):敵人對玩家的構築提出不同的問題 */
 export type BossKind = 'shell' | 'channel' | 'totem'

@@ -38,6 +38,7 @@ import {
   techById,
   techDamageMult,
   techGoldMult,
+  techFineForges,
   techOfflineHours,
   techStartGold,
 } from './techs'
@@ -188,6 +189,13 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     runs,
     techs,
     lastSaved: Date.now(),
+  }
+  // 準備型科技:買的是「下一輪怎麼開局」,所以效果在這裡兌現。
+  // ⚠️ 這三項都不進 DPS 乘區——它們降低運氣支配、讓構築更早成形,不是更大的數字
+  s.destinyPoints = techs.herald
+  for (let i = 0; i < techs.quarter; i++) {
+    // 開局部位素材:輪流分配而非隨機,免得買了三級還全押同一個部位
+    s.partMaterials[SLOTS[i % SLOTS.length]]++
   }
   spawnEnemy(s)
   return s
@@ -2051,7 +2059,9 @@ export interface FineForgeOptions {
 }
 
 export function canFineForge(s: GameState, opts: FineForgeOptions): boolean {
-  if (s.fineForgesUsed >= B.FINE_FORGE_PER_RUN) return false // 每輪上限:決策感集中在高價值鍛造
+  // 每輪上限:決策感集中在高價值鍛造。⚠️ 走 techFineForges 而不是常數,
+  // 否則買了「鍛造熟練」會顯示 4 次卻在第 4 次被這裡擋掉
+  if (s.fineForgesUsed >= techFineForges(s.techs)) return false
   if (s.materials < B.FINE_FORGE_COST) return false
   if (opts.slot && s.partMaterials[opts.slot] < 1) return false
   if (opts.useElite && s.eliteMaterials < 1) return false
@@ -2060,7 +2070,7 @@ export function canFineForge(s: GameState, opts: FineForgeOptions): boolean {
 
 /** 本輪剩幾次精工 */
 export function fineForgesLeft(s: GameState): number {
-  return Math.max(0, B.FINE_FORGE_PER_RUN - s.fineForgesUsed)
+  return Math.max(0, techFineForges(s.techs) - s.fineForgesUsed)
 }
 
 /** 短保底(12 次必出傳說特性)還差幾次 */

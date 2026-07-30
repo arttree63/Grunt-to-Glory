@@ -253,7 +253,7 @@ export default function LegacyPanel() {
 
       <h3 style={{ marginTop: 16 }}>軍 需 處</h3>
       <div className="affix" style={{ marginBottom: 8 }}>
-        勳章在這裡花掉。科技等級永久保留,每級乘算。
+        勳章在這裡花掉,科技等級永久保留。前三項每級乘算;後面幾項改變的是「下一輪怎麼開局」。
       </div>
       {TECHS.map((t) => {
         const lv = s.techs[t.id]
