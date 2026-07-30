@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { KEYWORD_DEF, KEYWORD_NAME } from '../core/keywords'
 import type { MechanicTag, Quality } from '../core/types'
 
 type IconName =
@@ -126,6 +128,37 @@ const TAG_MARK: Record<MechanicTag, string> = {
 
 export function MechanicIcon({ tag }: { tag: MechanicTag }) {
   return <span className="mechanic-icon" aria-hidden="true">{TAG_MARK[tag]}</span>
+}
+
+/**
+ * 機制關鍵字 chip 列。點一下 chip 展開該關鍵字的定義——
+ * 手機沒有 hover,title 不算說明載體(clicker-ui § 七之五),
+ * 玩家看到「儲存」「軍陣」得有地方知道它是什麼意思。
+ */
+export function MechanicChips({ tags }: { tags: MechanicTag[] }) {
+  const [open, setOpen] = useState<MechanicTag | null>(null)
+  return (
+    <>
+      {tags.map((t) => (
+        <span
+          className={`mechanic-chip${open === t ? ' open' : ''}`}
+          key={t}
+          onPointerDown={(e) => {
+            e.stopPropagation()
+            setOpen(open === t ? null : t)
+          }}
+        >
+          <MechanicIcon tag={t} />
+          {KEYWORD_NAME[t]}
+        </span>
+      ))}
+      {open && (
+        <span className="mechanic-def">
+          {KEYWORD_NAME[open]}:{KEYWORD_DEF[open]}
+        </span>
+      )}
+    </>
+  )
 }
 
 export function BadgeIcon({ kind }: { kind: 'legend' | 'set' | 'heirloom' | 'lock' }) {

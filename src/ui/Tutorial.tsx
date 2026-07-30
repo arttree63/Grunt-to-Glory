@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as B from '../core/balance'
 import { sigilName } from '../core/game'
+import { useGame } from '../store/gameStore'
 import { useGameState } from './useGameState'
 import { GameIcon } from './GameIcon'
 
@@ -23,11 +24,7 @@ const STEPS = [
 
 /** 情境提示:條件成立時出現一次,看過就不再出現 */
 const TIPS: Array<{ id: string; when: (s: ReturnType<typeof useGameState>) => boolean; text: string }> = [
-  {
-    id: 'boss',
-    when: (s) => s.isBoss || s.bossFailed,
-    text: `守關者是限時 ${B.BOSS_TIME} 秒的 DPS 檢定。打不過就退回前一層刷素材換裝,隨時可以再挑戰。`,
-  },
+  // 'boss' 提示改走聚光燈教學(SpotlightTeach 的 boss30),不再用角落文字講規則
   {
     id: 'forge',
     when: (s) => s.materials >= B.FORGE_COST,
@@ -107,7 +104,7 @@ export default function Tutorial() {
   return (
     <div
       className="retry"
-      style={{ top: 'auto', bottom: 220, maxWidth: 300, cursor: 'pointer' }}
+      style={{ top: 'auto', bottom: 220, maxWidth: 300, cursor: 'pointer', whiteSpace: 'normal' }}
       onPointerDown={dismiss}
     >
       <div style={{ fontSize: 12, lineHeight: 1.6 }}>
@@ -115,6 +112,88 @@ export default function Tutorial() {
       </div>
       <div className="tier3" style={{ marginTop: 4 }}>
         點一下關閉
+      </div>
+    </div>
+  )
+}
+
+const SPOT_KEY = 'little-soldier-spotlights'
+
+/**
+ * 集中注意力式教學:機制**第一次出現的那一刻**全畫面壓暗、遊戲暫停(Boss 倒數也停,
+ * 不偷玩家時間),只亮著該機制的 HUD(App 依 spotlight id 給對應元素 .spotlit)。
+ * 規則在發生當下用看的學,不用事前文字解釋。每個 id 一生只出現一次。
+ */
+const SPOTS: Array<{ id: string; when: (s: ReturnType<typeof useGameState>) => boolean; text: string }> = [
+  {
+    id: 'boss30',
+    when: (s) => s.isBoss,
+    text: `守關者:${B.BOSS_TIME} 秒內打掉全部血量。失敗沒有懲罰,退回前一層備戰,隨時再來。`,
+  },
+  {
+    id: 'shell',
+    when: (s) => s.isBoss && s.shellLeft > 0,
+    text: '這層護盾看「命中次數」,不看傷害大小——分身、傭兵、燃燒,每一下都算。',
+  },
+  {
+    id: 'channel',
+    when: (s) => s.isBoss && s.channelLeft > 0,
+    text: 'Boss 在蓄力——湊滿打斷條就能打斷它。留一手爆發,就是留給這種時候。',
+  },
+  {
+    id: 'totem',
+    when: (s) => s.isBoss && s.totemHp.gt(0),
+    text: '圖騰在加速倒數——優先點掉它。燃燒與盜賊背刺會無視圖騰,直打本體。',
+  },
+  {
+    id: 'perfect',
+    when: (s) => s.perfectWindowLeft > 0,
+    text: '印記疊滿了——金色窗口內「手動」引爆=完美引爆,有額外獎勵。',
+  },
+]
+
+export function SpotlightTeach() {
+  const s = useGameState()
+  const spotlight = useGame((st) => st.spotlight)
+  const showSpotlight = useGame((st) => st.showSpotlight)
+  const dismissSpotlight = useGame((st) => st.dismissSpotlight)
+  const [seen, setSeen] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(SPOT_KEY) ?? '[]')
+    } catch {
+      return []
+    }
+  })
+
+  useEffect(() => {
+    if (spotlight) return
+    const next = SPOTS.find((t) => !seen.includes(t.id) && t.when(s))
+    if (next) showSpotlight(next.id)
+  })
+
+  const active = SPOTS.find((t) => t.id === spotlight)
+  if (!active) return null
+
+  const done = () => {
+    const next = [...seen, active.id]
+    localStorage.setItem(SPOT_KEY, JSON.stringify(next))
+    setSeen(next)
+    dismissSpotlight()
+  }
+
+  return (
+    <div
+      className="spot-dim"
+      onPointerDown={(e) => {
+        e.stopPropagation()
+        done()
+      }}
+    >
+      <div className="spot-card">
+        <div>{active.text}</div>
+        <div className="tier3" style={{ marginTop: 6 }}>
+          點一下繼續
+        </div>
       </div>
     </div>
   )

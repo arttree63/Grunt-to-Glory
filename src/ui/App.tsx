@@ -29,7 +29,7 @@ import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
 import { FloorDots, FloorToast } from './FloorProgress'
 import SkillBar from './SkillBar'
-import Tutorial from './Tutorial'
+import Tutorial, { SpotlightTeach } from './Tutorial'
 import EquipPanel from './panels/EquipPanel'
 import ForgePanel from './panels/ForgePanel'
 import HeroPanel from './panels/HeroPanel'
@@ -232,6 +232,7 @@ function Game() {
   const [tab, setTab] = useState<Tab | null>(null)
   const offline = useGame((st) => st.offline)
   const dismissOffline = useGame((st) => st.dismissOffline)
+  const spot = useGame((st) => st.spotlight)
 
   const hpRatio = s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0
   // 紅點三層收斂:同時只亮一顆,由近期目標的優先序決定(core/goals.ts)
@@ -269,7 +270,7 @@ function Game() {
             <div className="timer danger">{s.event.timeLeft.toFixed(1)}</div>
           </div>
         ) : s.isBoss ? (
-          <div className="bossbar">
+          <div className={`bossbar${spot === 'boss30' ? ' spotlit' : ''}`}>
             <div className="name">
               第 {s.floor} 層 守關者
               {s.nemesis && !s.nemesis.resolved && s.nemesis.floor === s.floor && '・家 族 宿 敵'}
@@ -337,7 +338,7 @@ function Game() {
         {/* 印記層數:核心循環(疊→挑時機引爆)原本只在技能格角落 11px,戰鬥中看不到 */}
         {s.sigils > 0 && JOBS[s.jobId].awakenSkill && (
           <div
-            className="retry"
+            className={`retry${spot === 'perfect' ? ' spotlit' : ''}`}
             style={{ top: 'auto', bottom: 186, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
           >
             {sigilName(s)} {s.sigils}/{sigilCap(s)}
@@ -354,11 +355,12 @@ function Game() {
             而不是失敗診斷才告訴他差多少。三種原型互斥,共用同一個槽位 */}
         {s.isBoss && s.shellLeft > 0 && (
           <div
-            className="retry"
+            className={`retry${spot === 'shell' ? ' spotlit' : ''}`}
             style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
           >
             護盾 ×{s.shellLeft}・還差 {shellToNext(s)} 點破下一層
-            <div className="goal-bar">
+            {/* 戰術延遲期間投點凍結:盾條直接灰掉,不讓玩家以為還在推進 */}
+            <div className={`goal-bar${s.tacticDelayLeft > 0 ? ' frozen' : ''}`}>
               <div className="fill" style={{ width: `${(1 - shellToNext(s) / B.SHIELD_VALUE_PER_LAYER) * 100}%` }} />
             </div>
             <small className="affix">一次命中 {B.SHIELD_HIT_VALUE} 點・燃燒等狀態 {B.SHIELD_TICK_VALUE} 點</small>
@@ -366,7 +368,7 @@ function Game() {
         )}
         {s.isBoss && s.channelLeft > 0 && (
           <div
-            className="retry"
+            className={`retry${spot === 'channel' ? ' spotlit' : ''}`}
             style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--gold)', fontSize: 14 }}
           >
             {channelProgress(s) >= 0.75 ? '就差一點——現在放!' : '蓄力中'} {s.channelLeft.toFixed(1)}s・打斷{' '}
@@ -384,7 +386,7 @@ function Game() {
         )}
         {s.isBoss && s.totemHp.gt(0) && (
           <div
-            className="retry"
+            className={`retry${spot === 'totem' ? ' spotlit' : ''}`}
             style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
           >
             圖騰 {Math.ceil(s.totemHp.div(s.totemMaxHp).toNumber() * 100)}%・倒數加速中
@@ -429,6 +431,8 @@ function Game() {
             <div className="fill" style={{ width: `${s.morale}%` }} />
           </div>
         </div>
+
+        <SpotlightTeach />
       </BattleCanvas>
 
       <div className="bottom">

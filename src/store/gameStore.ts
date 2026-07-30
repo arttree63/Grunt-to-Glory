@@ -59,6 +59,13 @@ interface Store {
   inscribeHeirloom: (id: string) => void
   setActiveMerc: (id: MercId | null) => void
   toggleAutoCast: () => void
+  /**
+   * 集中注意力式教學:機制第一次出現時全畫面壓暗、只亮該機制的 HUD,
+   * 遊戲暫停(含 Boss 倒數,不偷玩家時間),點一下繼續。值 = 聚焦目標 id。
+   */
+  spotlight: string | null
+  showSpotlight: (id: string) => void
+  dismissSpotlight: () => void
   dismissOffline: () => void
   dismissRunSummary: () => void
   reset: () => Promise<void>
@@ -86,7 +93,16 @@ export const useGame = create<Store>((set, get) => ({
     startLoop()
   },
 
+  spotlight: null,
+  showSpotlight(id) {
+    set({ spotlight: id })
+  },
+  dismissSpotlight() {
+    set({ spotlight: null })
+  },
+
   tick(dtMs) {
+    if (get().spotlight) return // 聚光燈教學中:整個世界暫停,Boss 倒數也不走
     const s = get().s
     const events = G.applyTick(s, dtMs)
     // 每日首殺 Boss 保底菁英素材(core 不碰時鐘,日期由這裡提供)

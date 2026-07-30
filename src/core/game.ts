@@ -1609,7 +1609,7 @@ function tickMerc(s: GameState, dt: number, events: GameEvent[], rng: Rng) {
     case 'rogue': {
       // 背刺 + 留下破綻(轉為印記,與第二技能咬合)
       const dmg = currentDPS(s).mul(B.MERC_ROGUE_SEC)
-      events.push({ type: 'attack', damage: dmg, source: 'merc' })
+      events.push({ type: 'attack', damage: dmg, source: 'merc', pierce: s.totemHp.gt(0) || undefined })
       registerBossHits(s, 1, events, 'merc')
       // 背刺無視圖騰:位移的構築價值——盜賊繞到後面直接捅本體
       dealDamage(s, dmg, events, rng, { pierceTotem: true, source: 'merc' })
@@ -1685,7 +1685,7 @@ function tickCombatStatus(s: GameState, dt: number, events: GameEvent[], rng: Rn
     const dmg = s.burnDps.mul(step)
     s.burnLeft -= dt
     if (dmg.gt(0)) {
-      events.push({ type: 'burnTick', damage: dmg })
+      events.push({ type: 'burnTick', damage: dmg, pierce: s.totemHp.gt(0) || undefined })
       // 狀態週期 tick 投 1 點破盾值(GDD § 5.4)——燃燒流也能拆盾,只是比命中慢
       addShieldValue(s, B.SHIELD_TICK_VALUE, 'burn', events)
       // 燃燒無視圖騰:狀態流的構築價值——火繼續燒本體

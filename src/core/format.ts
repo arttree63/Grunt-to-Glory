@@ -7,8 +7,10 @@ const LETTERS = 'abcdefghijklmnopqrstuvwxyz'
 export function fmt(v: Num, decimals = 1): string {
   const d = v instanceof Decimal ? v : D(v)
   if (d.lt(0)) return '-' + fmt(d.neg(), decimals)
-  // 1000 以下一律整數。單次攻擊的下限由 CLICK_MIN_ACC 保證不會低於 1,
-  // 所以這裡不需要為了避免顯示 0 而讓小數點跑出來
+  // 正值但不足 1 一律顯示 1:點擊預算(CLICK_DMG_SEC=0.05 秒份)、軍旗/分身分帳、
+  // 顯示層暴擊拆分都會產生 <1 的量——「點了有打到」不允許跳出 0(clicker-ui § 五)
+  if (d.gt(0) && d.lt(1)) return '1'
+  // 1000 以下一律整數(金幣出現小數點會顯得廉價)
   if (d.lt(1000)) return String(Math.floor(d.toNumber()))
   const tier = Math.floor(d.log10() / 3)
   const mantissa = d.div(Decimal.pow(1000, tier)).toNumber()

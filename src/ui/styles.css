@@ -343,6 +343,52 @@ button {
   margin: 0 5px 2px 2px;
   white-space: nowrap;
 }
+.mechanic-chip.open {
+  color: var(--gold);
+}
+/* 點 chip 展開的關鍵字定義(手機沒有 hover,title 不算說明載體) */
+.mechanic-def {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-dim, #9a8fb0);
+  white-space: normal;
+}
+
+/* 破盾投點凍結中(戰術延遲/圖騰壓制):盾條灰掉,視覺上就知道現在推不動 */
+.goal-bar.frozen {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+
+/* 集中注意力式教學:壓暗全畫面,只亮 .spotlit 的機制 HUD,世界暫停 */
+.spot-dim {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(10, 7, 14, 0.74);
+  cursor: pointer;
+}
+.spotlit {
+  z-index: 21 !important;
+}
+.bossbar.spotlit {
+  position: relative;
+}
+.spot-card {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 120px;
+  max-width: 300px;
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #241d31ee;
+  border: 1px solid var(--border-card, #3a2f4d);
+  color: var(--text-main, #e8dcc8);
+  text-align: center;
+}
 .badge-icon {
   position: relative;
   display: inline-block;

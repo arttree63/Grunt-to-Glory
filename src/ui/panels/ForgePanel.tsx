@@ -31,12 +31,11 @@ import {
 import { LEGENDS } from '../../core/legends'
 import { SETS } from '../../core/sets'
 import { SetTagBlock } from './EquipPanel'
-import { KEYWORD_NAME } from '../../core/keywords'
 import { SKILLS } from '../../core/skills'
 import type { BaseType, Equipment, Slot } from '../../core/types'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
-import { BadgeIcon, MechanicIcon, QualityMark } from '../GameIcon'
+import { BadgeIcon, MechanicChips, QualityMark } from '../GameIcon'
 
 /**
  * 鍛造結果:先講這件會怎麼改變玩法,戰力百分比放最後。
@@ -77,7 +76,7 @@ function ForgeResult({
             核心特性:{legend.effect}
           </div>
           <div className="affix">
-            標籤 {legend.tags.map((t) => <span className="mechanic-chip" key={t}><MechanicIcon tag={t} />{KEYWORD_NAME[t]}</span>)}
+            標籤 <MechanicChips tags={legend.tags} />
             {legend.affects.length > 0 && `・影響技能 ${legend.affects.map((sk) => SKILLS[sk].name).join('、')}`}
           </div>
           <div className="affix">適合構築:{legend.builds}</div>

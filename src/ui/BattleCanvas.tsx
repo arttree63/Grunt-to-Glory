@@ -88,7 +88,7 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         const crit = Math.random() < rate
         const base = e.damage!.div(critMultiplier(rate))
         const shown = crit ? base.mul(B.CRIT_MULT) : base
-        scene.swing((crit ? '暴擊 ' : '') + fmt(shown), crit, e.source ?? 'hero')
+        scene.swing((e.pierce ? '穿透・' : '') + (crit ? '暴擊 ' : '') + fmt(shown), crit, e.source ?? 'hero')
       } else if (e.type === 'moraleBurst') {
         scene.swing(`${e.via === 'lostbanner' ? '失落軍旗' : '戰意爆發'} ${fmt(e.damage!)}`, true)
       } else if (e.type === 'skill') {
@@ -130,7 +130,8 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       } else if (e.type === 'freezeBurst') {
         scene.onFreezeBurst(`冰裂 ${fmt(e.damage!)}`)
       } else if (e.type === 'burnTick') {
-        scene.onBurnTick(`燃燒 ${fmt(e.damage!)}`)
+        // 穿透標記:圖騰在場時火仍燒進本體——規則讓玩家親眼看到,不用文字教
+        scene.onBurnTick(`${e.pierce ? '穿透・' : ''}燃燒 ${fmt(e.damage!)}`)
       } else if (e.type === 'nemesisResolved') {
         scene.skillHit('宿 怨 終 結 !')
       } else if (e.type === 'perfectBurst') {

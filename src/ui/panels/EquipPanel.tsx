@@ -29,7 +29,7 @@ import { QUALITIES as Q } from '../../core/equipment'
 import { DEVOUR_GROWTH as B_DEVOUR } from '../../core/balance'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
-import { BadgeIcon, MechanicIcon, QualityMark } from '../GameIcon'
+import { BadgeIcon, MechanicChips, MechanicIcon, QualityMark } from '../GameIcon'
 
 /** 觸控目標下限 44px(手機誤觸「分解」會永久失去裝備) */
 const TOUCH = { padding: '10px 12px', minHeight: 44 } as const
@@ -76,7 +76,7 @@ function Affixes({
             {legend.effect}
           </div>
           <div className="tier3">
-            標籤 {legend.tags.map((t) => <span className="mechanic-chip" key={t}><MechanicIcon tag={t} />{KEYWORD_NAME[t]}</span>)}・不可重鑄
+            標籤 <MechanicChips tags={legend.tags} />・不可重鑄
           </div>
         </>
       )}

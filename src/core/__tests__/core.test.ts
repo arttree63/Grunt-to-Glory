@@ -126,6 +126,8 @@ describe('formulas', () => {
 
 describe('format', () => {
   it('數值縮寫階梯', () => {
+    expect(fmt(0)).toBe('0')
+    expect(fmt(0.25)).toBe('1') // 點擊預算/分帳會產生 <1 的傷害,不可顯示 0
     expect(fmt(5)).toBe('5')
     expect(fmt(32.3)).toBe('32') // 金幣不出現小數點
     expect(fmt(999)).toBe('999')

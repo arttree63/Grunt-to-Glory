@@ -568,4 +568,9 @@ export interface GameEvent {
   burnDamage?: Decimal
   /** shellGain 事件:這次投入的破盾值來源(hero/skill/merc/burn/banner…) */
   shellSource?: string
+  /**
+   * attack / burnTick:圖騰在場時仍打進本體(燃燒/背刺的穿透)。
+   * 演出要在跳字標出「穿透」——規則用看的學,不用文字解釋。
+   */
+  pierce?: boolean
 }

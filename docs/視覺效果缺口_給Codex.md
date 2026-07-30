@@ -103,13 +103,28 @@ K1～K9 與帝國鐵壁自動引爆已完成；K10 仍等待設計決策。
 | — | 帝國鐵壁自動引爆與手動同款跳字 | `skill` 事件帶 `via:'ironwall'` | 跳字加「自動」樣式,弱化處理 |
 | K10 | goal-gradient 戰鬥畫面無露出 | 設計決策未定,仍留給 Claude | — |
 
-### B 組其餘(教學/文字類,Claude 處理,不進 Codex 批)
+### B 組教學類(✅ 2026-07-30 Claude 完成,方針改為「演出教學,不用文字」)
 
-- Boss 30 秒規則只教一次(Tutorial 看過永久不再出);失敗診斷只在失敗後短暫可見。
-- 「燃燒/背刺穿透圖騰」規則散在三處文字,事前無教學。
-- 關鍵字(儲存/軍陣/轉化…)只有 chip 無定義說明 → 需 tooltip/長按說明。
-- 圖騰在場時破盾投點被鎖死,但盾條看起來還在動(誤導)。
-- 套裝生效狀態戰鬥畫面無總覽。
+用戶定案:教學不用文字解釋,用**集中注意力式教學**——機制第一次出現時世界暫停
+(含 Boss 倒數)、全畫面壓暗、只亮該機制的 HUD、一句話、點一下繼續、一生一次。
+
+- **SpotlightTeach**(`src/ui/Tutorial.tsx`):boss30 / shell / channel / totem / perfect 五個時刻。
+  store 加 `spotlight` 狀態,tick 暫停;App 依 id 給對應 HUD `.spotlit`(z-index 蓋過 `.spot-dim`)。
+  瀏覽器實測:Boss 開場與蓄力開始時正確觸發、倒數凍結、點掉恢復。
+- **穿透演出**:`attack`/`burnTick` 事件新增 `pierce` 欄位(圖騰在場仍打進本體),
+  跳字前綴「穿透・」——規則用看的學。Codex 可再加專屬視覺(火穿過圖騰的軌跡)。
+- **盾條凍結**:戰術延遲期間 `.goal-bar.frozen`(灰化),不再誤導玩家以為在推進。
+- **關鍵字定義**:`MechanicChips`(GameIcon.tsx)點 chip 展開 KEYWORD_DEF(查閱型,非教學)。
+- 舊 TIPS 的 boss 文字提示已移除(被 boss30 聚光燈取代)。
+- 另修:傷害跳字顯示 0(根因:CLICK_DMG_SEC=0.05 秒份與分帳/暴擊拆分產生 <1 的量,
+  fmt 對 (0,1) 改顯示 1,`format.ts` + 測試);Tutorial 提示框文字溢出(`white-space: normal`)。
+
+### 給 Codex 的新發現(下一批)
+
+- **頂部 notice 疊字**:兩條 Pixi notice(「Boss 蓄力中」「Boss 硬化了」)會互相重疊、
+  又壓到「首領來襲」橫幅——notice 需要槽位堆疊(同 HTML 狀態槽位的做法)。
+- 套裝生效狀態戰鬥畫面無總覽(B 組僅剩此項,可與帝國鐵壁軍陣圈標籤 C8 一起做)。
+- 聚光燈時刻可加演出:壓暗瞬間的聚焦動畫、被亮起 HUD 的脈動。
 
 ---
 
