@@ -24,6 +24,7 @@ import { ACHIEVEMENTS } from '../achievements'
 import { ZONE_SPAN, zoneOf, zoneProgress } from '../zones'
 import { speciesPair } from '../enemies'
 import { ENCOUNTERS, ENCOUNTER_ORDER } from '../encounters'
+import type { EncounterId } from '../types'
 import {
   applyTick,
   attackInterval,
@@ -1480,6 +1481,22 @@ describe('存檔', () => {
     expect(back.floor).toBe(33)
     expect(back.forgeCount).toBe(0)
     expect(back.pityCount).toBe(0)
+  })
+
+  it('離線上限跟著營地帳篷走,撞上限時 capped 為真', () => {
+    const base = createInitialState()
+    const away = (B.OFFLINE_CAP_HOURS + 1) * 3600 * 1000
+    const r1 = computeOffline(base, away)
+    expect(r1.capped).toBe(true)
+    expect(r1.seconds).toBeCloseTo(B.OFFLINE_CAP_HOURS * 3600, 0)
+
+    // 買了營地帳篷之後,同樣的離開時間就不該再被截斷
+    const camped = createInitialState(0, 1, { ...emptyTechs(), camp: 1 })
+    const r2 = computeOffline(camped, away)
+    expect(r2.capped).toBe(false)
+    expect(r2.seconds).toBeGreaterThan(r1.seconds)
+    // ⚠️ UI 顯示的上限必須走 techOfflineHours,不可寫死 OFFLINE_CAP_HOURS
+    expect(techOfflineHours(camped.techs)).toBe(B.OFFLINE_CAP_HOURS + B.TECH_OFFLINE_HOURS)
   })
 
   it('留存事件:七種都可結算、選項各自接到不同系統', () => {

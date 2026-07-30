@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import * as B from '../core/balance'
 import { fmt, fmtCombat, fmtTime } from '../core/format'
-import { upCost } from '../core/formulas'
+import { affordableLevels, upCost } from '../core/formulas'
+import { techOfflineHours } from '../core/techs'
 import {
   BOSS_KIND_HINT,
   BOSS_KIND_NAME,
@@ -258,6 +259,8 @@ function Game() {
   const zone = zoneOf(s.floor)
   const zp = zoneProgress(s.floor)
   const species = speciesPair(s.floor)
+  // 離線金幣換算成等級:報酬要能連到玩家下一個動作,不然只是一個大數字
+  const offlineLevels = offline ? affordableLevels(s.lv, offline.gold) : 0
   const activeSets = setProgress(s).filter((set) => set.count >= 2)
   const [chipsOpen, setChipsOpen] = useState(false)
 
@@ -569,9 +572,23 @@ function Game() {
               你離開了 {fmtTime(offline.seconds)}
               <br />
               小兵持續作戰,帶回 <b style={{ color: 'var(--gold)' }}>{fmt(offline.gold)}</b> 金幣
+              {/* 讓獎勵有意義:純數字看不出多寡,換算成「夠升幾級」才知道值不值得 */}
+              {offlineLevels > 0 && (
+                <>
+                  <br />
+                  <small style={{ color: 'var(--gold)' }}>夠升 {offlineLevels} 級</small>
+                </>
+              )}
               <br />
-              <small>(離線收益為線上的 6 折,上限 {B.OFFLINE_CAP_HOURS} 小時)</small>
+              {/* ⚠️ 上限要用 techOfflineHours(含營地帳篷),寫死基礎值會讓買了科技的玩家看不到生效 */}
+              <small>(離線收益為線上的 6 折,上限 {techOfflineHours(s.techs)} 小時)</small>
             </p>
+            {/* 撞到上限才是玩家真正需要知道的事,也是「營地帳篷」存在的理由 */}
+            {offline.capped && (
+              <p className="affix" style={{ color: 'var(--gold)', marginTop: -4 }}>
+                已達上限——超過的時間沒有計入。到「傳承」的軍需處買「營地帳篷」可以延長。
+              </p>
+            )}
             <button className="btn primary" onClick={dismissOffline}>
               收 下
             </button>

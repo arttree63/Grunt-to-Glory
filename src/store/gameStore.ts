@@ -20,6 +20,8 @@ import { loadGame, saveGame, wipeSave } from './persist'
 interface OfflineReport {
   seconds: number
   gold: Decimal
+  /** 有沒有撞到離線上限。⚠️ core 一直有算,但先前整條被丟掉,玩家不知道自己損失了時間 */
+  capped: boolean
 }
 
 interface Store {
@@ -91,7 +93,7 @@ export const useGame = create<Store>((set, get) => ({
     if (awayMs > 60_000) {
       const r = G.computeOffline(state, awayMs)
       state.gold = state.gold.add(r.gold)
-      offline = { seconds: r.seconds, gold: r.gold }
+      offline = { seconds: r.seconds, gold: r.gold, capped: r.capped }
     }
     set({ s: state, loaded: true, offline, rev: get().rev + 1 })
     startLoop()
@@ -323,7 +325,11 @@ function startLoop() {
       const s = useGame.getState().s
       const r = G.computeOffline(s, dt)
       s.gold = s.gold.add(r.gold)
-      useGame.setState({ s, offline: { seconds: r.seconds, gold: r.gold }, rev: useGame.getState().rev + 1 })
+      useGame.setState({
+        s,
+        offline: { seconds: r.seconds, gold: r.gold, capped: r.capped },
+        rev: useGame.getState().rev + 1,
+      })
       dt = STEP
     }
 
