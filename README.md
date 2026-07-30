@@ -5,6 +5,12 @@
 
 > 存檔 key 仍是 `little-soldier-save`,改名會清掉玩家進度,不要動。
 
+## 線上試玩
+
+**https://arttree63.github.io/Grunt-to-Glory/**
+
+推上 `main` 就會由 `.github/workflows/pages.yml` 自動重建並部署。
+
 ## 指令
 
 ```bash
@@ -14,6 +20,7 @@ npm run sim        # 數值 headless 模擬(調常數後必跑)
 npm run sim:legend # 傳說 power-neutral 檢核(±10%,新增/調整傳說後必跑)
 npm run typecheck
 npm run build
+npm run build:single  # 單檔 HTML(內嵌全部資源,丟任何靜態空間都能跑)
 ```
 
 ## 架構
