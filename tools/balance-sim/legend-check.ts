@@ -123,6 +123,7 @@ function run(
   promote(s, job)
   gearUp(s, legend, slot, setTag, baseFor)
   spawnEnemy(s)
+  disarmBoss(s)
 
   let dealt = D(0)
   let ms = 0
@@ -171,11 +172,26 @@ function run(
       s.bossFailed = false
       s.bossRetryFloor = null
       spawnEnemy(s)
+      disarmBoss(s)
       prev = s.enemyHp
     }
     ms += STEP_MS
   }
   return dealt
+}
+
+/**
+ * ⚠️ 把牆上的 Boss 行為原型(v1.7)拆掉:蓄力/護盾/圖騰會跟受測傳說交互
+ * (爆發型打斷蓄力 → 易傷 ×1.25 被誤算成傳說強度,第七版踩過 +18.8%)。
+ * power-neutral 量的是純輸出;「傳說 × Boss 原型」的匹配優劣是設計本體,不是要修的偏差。
+ */
+function disarmBoss(s: GameState) {
+  s.bossKind = null
+  s.shellLeft = 0
+  s.channelLeft = 0
+  s.channelUsed = 99
+  s.nextTotemAt = 0
+  s.totemHp = D(0)
 }
 
 function avg(xs: Decimal[]): Decimal {

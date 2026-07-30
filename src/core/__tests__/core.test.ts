@@ -67,6 +67,7 @@ import {
   promote,
   retryBoss,
   bestFloorEver,
+  bossKindFor,
   matrixKey,
   matrixOutcome,
   setActiveMerc,
@@ -773,6 +774,8 @@ describe('職業覺醒與第二技能(印記體系)', () => {
 
     s.sigils = 5
     expect(skillReady(s, 'rally')).toBe(true)
+    s.enemyMaxHp = D(1e12)
+    s.enemyHp = D(1e12)
     const before = s.enemyHp
     castSkill(s, 'rally')
     const dealt = before.sub(s.enemyHp)
@@ -1032,6 +1035,9 @@ describe('轉職與主動技能', () => {
     promote(s, 'marshal')
     s.floor = 10
     spawnEnemy(s)
+    s.isBoss = false // 隔離 v1.7 Boss 管線(拆盾減傷是刻意的,另有測試)
+    s.enemyMaxHp = D(1e12)
+    s.enemyHp = D(1e12)
     const before = s.enemyHp
 
     castSkill(s, 'judgement')
@@ -1520,6 +1526,8 @@ describe('裝備四層架構(基底 / 詞綴分類 / 傳說)', () => {
     expect(s.bannerStored).toBeGreaterThan(0)
 
     const stored = s.bannerStored
+    s.enemyMaxHp = D(1e12)
+    s.enemyHp = D(1e12)
     const hpBefore = s.enemyHp
     castSkill(s, 'shieldRush')
     expect(s.bannerStored).toBe(0)
@@ -1751,6 +1759,8 @@ describe('二轉的既有技能進化(Lv.100 的第三層內容)', () => {
       s.highestFloor = B.AWAKEN_FLOOR
       chooseDestiny(s, 'tactician')
       s.destinyNodes.push('tactician_1a')
+      s.enemyMaxHp = D(1e12) // 隔離溢出擊殺 → 連斬 → 額外印記
+      s.enemyHp = D(1e12)
       castSkill(s, 'judgement')
     }
     expect(base.sigils).toBe(1)
@@ -2017,7 +2027,8 @@ describe('遊戲性掃描修復(2026-07-30)', () => {
     spawnEnemy(s)
     // 手動進入凍結,池裡塞遠超 Boss 血量的傷害,然後把倒數歸零
     s.freezeLeft = 5
-    s.frozenPool = s.enemyMaxHp.mul(3)
+    // 第 10 層是拆盾型:盾未破時傷害 ×SHELL_DR,池要大到減傷後仍足以擊殺
+    s.frozenPool = s.enemyMaxHp.mul(3 / B.SHELL_DR)
     s.bossTimeLeft = 0.01
 
     const before = s.floor
@@ -2163,5 +2174,121 @@ describe('總攻 loop(v1.6:buff 併存 / 引爆回轉 / 戰意昂揚 / 乘勝推
     const boss1 = currentDPS(s)
     s.conquestLeft = 0
     expect(currentDPS(s).toString()).toBe(boss1.toString())
+  })
+})
+
+/** 測試用:透過火術士的路徑點燃(applyBurn 是私有) */
+function applyBurnForTest(s: ReturnType<typeof createInitialState>) {
+  s.mercBestFloor = 200
+  setActiveMerc(s, 'pyro')
+  s.mercTimer = 0.01
+  applyTick(s, 50)
+}
+
+describe('Boss 行為原型(v1.7:敵人不再是木樁)', () => {
+  it('原型輪替:X10 拆盾 / X20 蓄力 / X30 圖騰', () => {
+    expect(bossKindFor(10)).toBe('shell')
+    expect(bossKindFor(20)).toBe('channel')
+    expect(bossKindFor(30)).toBe('totem')
+    expect(bossKindFor(40)).toBe('shell')
+  })
+
+  it('拆盾:盾上傷害衰減、命中數打破後易傷;分身一揮算兩次命中', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'scout')
+    s.floor = 10
+    spawnEnemy(s)
+    expect(s.bossKind).toBe('shell')
+    expect(s.shellLeft).toBe(B.SHELL_HITS)
+
+    // 盾上傷害 ×SHELL_DR
+    const before = s.enemyHp
+    click(s)
+    const dealt = before.sub(s.enemyHp)
+    expect(dealt.div(currentDPS(s).mul(B.CLICK_DMG_SEC)).toNumber()).toBeCloseTo(B.SHELL_DR, 2)
+    expect(s.shellLeft).toBe(B.SHELL_HITS - 1) // 點一下 = 一次命中
+
+    // 點到破盾 → 易傷窗口
+    for (let i = 0; i < B.SHELL_HITS; i++) click(s)
+    expect(s.shellLeft).toBe(0)
+    expect(s.shellVulnLeft).toBeGreaterThan(0)
+  })
+
+  it('蓄力:倒數到觸發點開始蓄力;打進足量傷害 → 打斷+易傷;沒斷 → 硬化但仍可通關', () => {
+    const s = createInitialState()
+    s.lv = 1
+    s.floor = 20
+    spawnEnemy(s)
+    expect(s.bossKind).toBe('channel')
+
+    s.bossTimeLeft = B.CHANNEL_TIMES[0] + 0.05
+    applyTick(s, 100)
+    expect(s.channelLeft).toBeGreaterThan(0) // 開始蓄力
+
+    // 灌足量傷害 → 打斷
+    const ev: import('../types').GameEvent[] = []
+    s.lv = 1
+    const need = s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK)
+    s.frozenPool = D(0)
+    // 用凍結池借道 dealDamage(最省事的灌傷害方式)
+    s.freezeLeft = 0.01
+    s.frozenPool = need.mul(1.01)
+    const out = applyTick(s, 100)
+    expect(out.some((e) => e.type === 'interrupted')).toBe(true)
+    expect(s.vulnLeft).toBeGreaterThan(0)
+    void ev
+
+    // 第二次蓄力不打 → 硬化(拖時間但不是失敗判定)
+    s.bossTimeLeft = B.CHANNEL_TIMES[1] + 0.05
+    applyTick(s, 100)
+    expect(s.channelLeft).toBeGreaterThan(0)
+    applyTick(s, (B.CHANNEL_DURATION + 0.2) * 1000)
+    const failed = s.hardenLeft > 0
+    expect(failed).toBe(true)
+  })
+
+  it('圖騰:出場加速倒數、吸走攻擊;燃燒與背刺無視圖騰直打 Boss', () => {
+    const s = createInitialState()
+    s.lv = 1 // 弱到打不掉圖騰,才能觀察加速
+    s.floor = 30
+    spawnEnemy(s)
+    expect(s.bossKind).toBe('totem')
+
+    s.bossTimeLeft = B.TOTEM_FIRST_AT + 0.05
+    applyTick(s, 100)
+    expect(s.totemHp.gt(0)).toBe(true)
+
+    // 倒數加速
+    const t0 = s.bossTimeLeft
+    applyTick(s, 1000)
+    expect(t0 - s.bossTimeLeft).toBeCloseTo(1 * B.TOTEM_TIMER_MULT, 1)
+
+    // 一般傷害吸到圖騰,Boss 不動
+    const bossHp = s.enemyHp
+    s.freezeLeft = 0.01
+    s.frozenPool = s.totemMaxHp.div(2)
+    applyTick(s, 100)
+    expect(s.enemyHp.toString()).toBe(bossHp.toString())
+    expect(s.totemHp.lt(s.totemMaxHp)).toBe(true)
+
+    // 燃燒穿透:Boss 直接掉血
+    applyBurnForTest(s)
+    applyTick(s, 500)
+    expect(s.enemyHp.lt(bossHp)).toBe(true)
+  })
+
+  it('失敗後留下診斷統計(kind / 分帳 / 護盾佔時)', () => {
+    const s = createInitialState()
+    s.lv = 1
+    s.floor = 10
+    spawnEnemy(s)
+    s.bossTimeLeft = 0.01
+    applyTick(s, 100)
+    expect(s.bossFailed).toBe(true)
+    expect(s.lastBossStats).not.toBe(null)
+    expect(s.lastBossStats!.kind).toBe('shell')
+    expect(s.lastBossStats!.win).toBe(false)
+    expect(s.lastBossStats!.shellTime).toBeGreaterThanOrEqual(0)
   })
 })

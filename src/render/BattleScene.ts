@@ -85,7 +85,7 @@ import hero2Url from '../../assets/visual/rookie-soldier/idle/idle-2.png'
 import hero3Url from '../../assets/visual/rookie-soldier/idle/idle-3.png'
 import hero4Url from '../../assets/visual/rookie-soldier/idle/idle-4.png'
 import forestUrl from '../../assets/visual/scenes/forest-border-v1.png'
-import type { JobId, LegendId, MercId, SkillId } from '../core/types'
+import type { BossKind, JobId, LegendId, MercId, SkillId } from '../core/types'
 
 /**
  * 戰鬥演出層。只讀 snapshot 做畫面,不 import React / store 邏輯。
@@ -149,6 +149,15 @@ export interface BattleSnapshot {
   burnLeft: number
   /** 凍結剩餘秒數(畫面褪色、敵人停格) */
   freezeLeft: number
+
+  // ── Boss 行為原型(v1.7)。專屬演出見視覺缺口清單 § 六之三 ──
+  bossKind: BossKind | null
+  /** 拆盾:剩餘命中數(>0 畫盾殼) */
+  shellLeft: number
+  /** 蓄力:剩餘秒數(>0 畫蓄力條與警示) */
+  channelLeft: number
+  /** 圖騰血量比例(>0 畫圖騰實體) */
+  totemRatio: number
 }
 
 const HERO_FRAME_MS = 180

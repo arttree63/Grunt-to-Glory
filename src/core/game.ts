@@ -43,6 +43,7 @@ import {
 } from './techs'
 import type {
   BaseType,
+  BossKind,
   DestinyNodeId,
   DestinyPathId,
   EncounterId,
@@ -80,6 +81,19 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     bossTimeLeft: B.BOSS_TIME,
     bossFailed: false,
     bossRetryFloor: null,
+    bossKind: null,
+    shellLeft: 0,
+    shellVulnLeft: 0,
+    channelLeft: 0,
+    channelUsed: 0,
+    channelDamage: D(0),
+    vulnLeft: 0,
+    hardenLeft: 0,
+    totemHp: D(0),
+    totemMaxHp: D(0),
+    nextTotemAt: 0,
+    bossStats: null,
+    lastBossStats: null,
     morale: 0,
     forgeHeatMaterials: 0,
     codex: [],
@@ -310,6 +324,30 @@ export function spawnEnemy(s: GameState) {
     s.enemyMaxHp = bossHP(s.floor)
     s.bossTimeLeft = B.BOSS_TIME
     s.freezeUsedThisBoss = 0
+    // Boss 行為原型(v1.7):X10 拆盾 / X20 蓄力 / X30 圖騰,循環。
+    // 敵人對構築提出不同的問題——「這一場跟上一場不一樣」從這裡開始
+    s.bossKind = bossKindFor(s.floor)
+    s.shellLeft = s.bossKind === 'shell' ? B.SHELL_HITS : 0
+    s.shellVulnLeft = 0
+    s.channelLeft = 0
+    s.channelUsed = 0
+    s.channelDamage = D(0)
+    s.vulnLeft = 0
+    s.hardenLeft = 0
+    s.totemHp = D(0)
+    s.totemMaxHp = D(0)
+    s.nextTotemAt = s.bossKind === 'totem' ? B.TOTEM_FIRST_AT : 0
+    s.bossStats = {
+      floor: s.floor,
+      kind: s.bossKind,
+      win: false,
+      bySource: {},
+      shellTime: 0,
+      interrupts: 0,
+      channels: 0,
+      totemTime: 0,
+      dealtRatio: 0,
+    }
     // 貪婪之眼:打造出好東西後,下一場 Boss 開場帶著遺物弱點
     if (s.relicPending) {
       s.relicPending = false
@@ -318,8 +356,29 @@ export function spawnEnemy(s: GameState) {
   } else {
     s.isBoss = false
     s.enemyMaxHp = mobHP(s.floor)
+    s.bossKind = null
   }
   s.enemyHp = s.enemyMaxHp
+}
+
+/** X10 拆盾 / X20 蓄力 / X30 圖騰(循環)。第一個 Boss 教最簡單的 */
+export function bossKindFor(floor: number): BossKind {
+  const m = floor % 30
+  if (m === 10) return 'shell'
+  if (m === 20) return 'channel'
+  return 'totem'
+}
+
+export const BOSS_KIND_NAME: Record<BossKind, string> = {
+  shell: '拆盾型',
+  channel: '蓄力型',
+  totem: '圖騰型',
+}
+
+export const BOSS_KIND_HINT: Record<BossKind, string> = {
+  shell: '護盾要吃多次命中才破——攻速、分身、傭兵、點擊都算一次',
+  channel: '蓄力時打出爆發即可打斷——儲存的傷害挑這時放',
+  totem: '圖騰會加速倒數,優先處理——燃燒與背刺可以無視它直打 Boss',
 }
 
 function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Math.random) {
@@ -359,6 +418,11 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
 
   if (!boss) return
   s.bossKills++
+  if (s.bossStats) {
+    s.bossStats.win = true
+    s.lastBossStats = { ...s.bossStats, bySource: { ...s.bossStats.bySource } }
+    s.bossStats = null
+  }
   s.conquestLeft = B.CONQUEST_SEC // 乘勝推進:把擊破做成節奏高點
   tickLivingWeapon(s, events)
   tickHeirloomRepair(s, events)
@@ -448,8 +512,12 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
     if (s.eventCooldown <= 0) spawnEvent(s, raw, rng)
   }
 
-  // Boss 倒數是時間,每個 tick 都照走(只扣一次,不可在攻擊 tick 重複扣)
-  if (s.isBoss && s.enemyHp.gt(0)) s.bossTimeLeft -= dt
+  // Boss 倒數是時間,每個 tick 都照走(只扣一次,不可在攻擊 tick 重複扣)。
+  // 圖騰存活時倒數加速——「必須處理它」的壓力來源
+  if (s.isBoss && s.enemyHp.gt(0)) {
+    s.bossTimeLeft -= dt * (s.totemHp.gt(0) ? B.TOTEM_TIMER_MULT : 1)
+    tickBossMechanics(s, dt, raw)
+  }
 
   // ── 攻擊驅動:傷害按攻擊間隔成塊套用 ──
   // 血條跟著揮砍一格一格掉,而不是連續流失。總量不變(累積多久就打多少),
@@ -469,15 +537,22 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   // 行為型傳說的分帳:總量不變(power-neutral by construction),
   // 只是把同一份傷害拆給不同的「行動者」——演出因此能畫出分身/軍旗各自出手
   const galeWindow = critWindowActive(s)
+  let swingHits = 1
+  let swingSource = 'hero'
   if (galeWindow && hasLegend(s, 'twinblade')) {
     raw.push({ type: 'attack', damage: dmg.mul(1 - B.TWIN_CLONE_SHARE), source: 'hero' })
     raw.push({ type: 'attack', damage: dmg.mul(B.TWIN_CLONE_SHARE), source: 'clone' })
+    swingHits = 2 // 分身多一次命中——拆盾型 Boss 前分身的實質價值
+    swingSource = 'clone'
   } else if (s.bannerLeft > 0) {
     raw.push({ type: 'attack', damage: dmg.mul(1 - B.BANNER_ZONE_SHARE), source: 'hero' })
     raw.push({ type: 'attack', damage: dmg.mul(B.BANNER_ZONE_SHARE), source: 'zone' })
+    swingHits = 2
+    swingSource = 'zone'
   } else {
     raw.push({ type: 'attack', damage: dmg })
   }
+  registerBossHits(s, swingHits, raw)
   tickWindBoots(s, rng, raw)
 
   // 突發事件優先吃傷害:出現期間取代當前目標
@@ -487,7 +562,7 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
     return mergeKills(raw) // 事件期間不推進一般戰鬥
   }
 
-  dealDamage(s, dmg, raw, rng)
+  dealDamage(s, dmg, raw, rng, { source: swingSource === 'hero' ? 'hero' : swingSource })
 
   // 逾時判定放在傷害之後,讓這一擊有機會先擊破
   checkBossTimeout(s, raw, rng)
@@ -518,7 +593,14 @@ function tickWindBoots(s: GameState, rng: Rng, events: GameEvent[]) {
  * 自動攻擊、點擊、戰意爆發、套裝自動引爆全部走這裡——
  * 走同一條路才不會出現「血扣了但沒結算擊殺」或「畫面揮了血條沒動」。
  */
-function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng) {
+interface DealOpts {
+  /** 燃燒與盜賊背刺無視圖騰直接打 Boss(狀態流與位移的構築價值) */
+  pierceTotem?: boolean
+  /** 統計分帳用 */
+  source?: string
+}
+
+function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng, opts: DealOpts = {}) {
   let dmg = damage
   // 凍結(DeferDamageWindow):期間所有傷害累積,解凍時一次引爆。
   // 倒數與冷卻照常進行——凍結不偷時間,只改結算節奏(power-neutral 的關鍵)
@@ -535,6 +617,45 @@ function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng) {
     }
     return
   }
+  // ── Boss 行為管線(v1.7)──
+  if (s.isBoss) {
+    // 圖騰是優先目標:吸走攻擊直到被打掉(溢出的部分繼續打 Boss)
+    if (s.totemHp.gt(0) && !opts.pierceTotem) {
+      if (dmg.lt(s.totemHp)) {
+        s.totemHp = s.totemHp.sub(dmg)
+        return
+      }
+      dmg = dmg.sub(s.totemHp)
+      s.totemHp = D(0)
+      raw.push({ type: 'totemDown' })
+      if (dmg.lte(0)) return
+    }
+    // 減傷/易傷相乘:盾上衰減、蓄力失敗的硬化、打斷成功與破盾的易傷
+    let mult = 1
+    if (s.shellLeft > 0) mult *= B.SHELL_DR
+    if (s.hardenLeft > 0) mult *= B.CHANNEL_HARDEN_DR
+    if (s.vulnLeft > 0) mult *= B.INTERRUPT_VULN
+    if (s.shellVulnLeft > 0) mult *= B.SHELL_BREAK_MULT
+    if (mult !== 1) dmg = dmg.mul(mult)
+    // 蓄力期間打進的傷害累計,達標即打斷
+    if (s.channelLeft > 0) {
+      s.channelDamage = s.channelDamage.add(dmg)
+      if (s.channelDamage.gte(s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK))) {
+        s.channelLeft = 0
+        s.vulnLeft = B.INTERRUPT_VULN_SEC
+        if (s.bossStats) s.bossStats.interrupts++
+        raw.push({ type: 'interrupted' })
+      }
+    }
+    // 統計分帳(以 maxHp 的比例累計,避免大數)
+    if (s.bossStats && s.enemyMaxHp.gt(0)) {
+      const ratio = dmg.div(s.enemyMaxHp).toNumber()
+      const key = opts.source ?? 'hero'
+      s.bossStats.bySource[key] = (s.bossStats.bySource[key] ?? 0) + ratio
+      s.bossStats.dealtRatio += ratio
+    }
+  }
+
   // 溢出傷害要帶到下一隻,否則推進速度會被攻擊頻率鎖死
   // (實測:Lv.80 時每次只殺一隻會讓實際進度比數值模型慢 4.8 倍)
   for (let i = 0; i < MAX_KILLS_PER_TICK; i++) {
@@ -547,6 +668,64 @@ function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng) {
     reward(s, s.isBoss, raw, rng)
     nextEnemy(s, raw)
     if (dmg.lte(0)) return
+  }
+}
+
+/** Boss 行為原型的時間驅動:蓄力排程、圖騰生成、各狀態倒數、統計 */
+function tickBossMechanics(s: GameState, dt: number, raw: GameEvent[]) {
+  if (s.shellVulnLeft > 0) s.shellVulnLeft = Math.max(0, s.shellVulnLeft - dt)
+  if (s.vulnLeft > 0) s.vulnLeft = Math.max(0, s.vulnLeft - dt)
+  if (s.hardenLeft > 0) s.hardenLeft = Math.max(0, s.hardenLeft - dt)
+  if (s.bossStats) {
+    if (s.shellLeft > 0) s.bossStats.shellTime += dt
+    if (s.totemHp.gt(0)) s.bossStats.totemTime += dt
+  }
+
+  if (s.bossKind === 'channel') {
+    if (s.channelLeft > 0) {
+      s.channelLeft -= dt
+      if (s.channelLeft <= 0) {
+        // 沒打斷:硬化(拖時間,但不擋通關——掛機契約)
+        s.channelLeft = 0
+        s.hardenLeft = B.CHANNEL_HARDEN_SEC
+        raw.push({ type: 'channelFailed' })
+      }
+    } else {
+      const next = B.CHANNEL_TIMES[s.channelUsed]
+      if (next !== undefined && s.bossTimeLeft <= next) {
+        s.channelUsed++
+        s.channelLeft = B.CHANNEL_DURATION
+        s.channelDamage = D(0)
+        if (s.bossStats) s.bossStats.channels++
+        raw.push({ type: 'channelStart' })
+      }
+    }
+  }
+
+  if (s.bossKind === 'totem' && s.totemHp.lte(0) && s.nextTotemAt > 0 && s.bossTimeLeft <= s.nextTotemAt) {
+    s.totemMaxHp = s.enemyMaxHp.mul(B.TOTEM_HP_RATIO)
+    s.totemHp = s.totemMaxHp
+    s.nextTotemAt -= B.TOTEM_INTERVAL
+    raw.push({ type: 'totemSpawn' })
+  }
+}
+
+/**
+ * 技能直傷打向當前敵人。⚠️ 不可直接 enemyHp.sub:那會繞過 Boss 的
+ * 減傷/易傷/圖騰/蓄力累計管線(打斷型 Boss 的整個玩法都掛在這條上)。
+ * 非 Boss 時等價於直接扣血。
+ */
+function dealSkillToBoss(s: GameState, dmg: Decimal, events: GameEvent[]) {
+  dealDamage(s, dmg, events, Math.random, { source: 'skill' })
+}
+
+/** 拆盾:每一次「離散的出手」都算一次命中(揮砍/分身/軍旗/點擊/技能/背刺) */
+function registerBossHits(s: GameState, hits: number, raw: GameEvent[]) {
+  if (!s.isBoss || s.shellLeft <= 0 || s.totemHp.gt(0)) return
+  s.shellLeft = Math.max(0, s.shellLeft - hits)
+  if (s.shellLeft === 0) {
+    s.shellVulnLeft = B.SHELL_BREAK_SEC
+    raw.push({ type: 'shellBreak' })
   }
 }
 
@@ -586,6 +765,11 @@ function checkBossTimeout(s: GameState, raw: GameEvent[], rng: Rng) {
   if (s.enemyHp.lte(0) || !s.isBoss) return // 池結算後擊破了(nextEnemy 已在 dealDamage 裡走完)
   // DPS check 失敗 → 退回前一層 farm(玩家心智模型:打不過就退一層)
   s.bossFailed = true
+  if (s.bossStats) {
+    // 失敗的統計要留下來:診斷「差在哪、該改什麼」全靠它
+    s.lastBossStats = { ...s.bossStats, bySource: { ...s.bossStats.bySource } }
+    s.bossStats = null
+  }
   if (hasNode(s, 'tactician_2a')) s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
   s.bossRetryFloor = s.floor
   s.floor = Math.max(1, s.floor - 1)
@@ -711,7 +895,8 @@ export function click(s: GameState, rng: Rng = Math.random): GameEvent[] {
   // 點擊自己的一擊:折算成 B.CLICK_DMG_SEC 秒份 DPS,吃「點擊戰意」詞綴
   const dmg = currentDPS(s).mul(B.CLICK_DMG_SEC * (1 + clickBonus))
   events.push({ type: 'attack', damage: dmg })
-  dealDamage(s, dmg, events, rng)
+  registerBossHits(s, 1, events)
+  dealDamage(s, dmg, events, rng, { source: 'hero' })
 
   // 戰意滿檔爆發:填補 10~30 秒的期待層(「快滿了」)
   if (s.morale >= B.MORALE_MAX) {
@@ -723,7 +908,8 @@ export function click(s: GameState, rng: Rng = Math.random): GameEvent[] {
     } else {
       const burst = currentDPS(s).mul(B.MORALE_BURST_SEC)
       events.push({ type: 'moraleBurst', damage: burst })
-      dealDamage(s, burst, events, rng)
+      registerBossHits(s, 1, events)
+      dealDamage(s, burst, events, rng, { source: 'burst' })
     }
   }
   return events
@@ -907,8 +1093,9 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
   // 失落軍旗:戰意滿檔存起來的爆發,在這裡「轉化」成技能的一部分一起釋放
   if (s.bannerStored > 0) {
     const stored = currentDPS(s).mul(s.bannerStored)
+    registerBossHits(s, 1, events)
     if (s.event) s.event.hp = s.event.hp.sub(stored)
-    else s.enemyHp = s.enemyHp.sub(stored)
+    else dealSkillToBoss(s, stored, events)
     s.bannerStored = 0
     events.push({ type: 'moraleBurst', damage: stored })
   }
@@ -921,8 +1108,9 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
     const wasFull = spentNow >= sigilCap(s)
     const dmg = currentDPS(s).mul(spentNow * perSigil * skillDmg)
     skillDamage = skillDamage.add(dmg)
+    registerBossHits(s, 1, events)
     if (s.event) s.event.hp = s.event.hp.sub(dmg)
-    else s.enemyHp = s.enemyHp.sub(dmg)
+    else dealSkillToBoss(s, dmg, events)
     s.sigils = codex ? Math.floor(s.sigils * B.CODEX_KEEP) : 0
 
     // 引爆回轉(Reload 式):依消耗層數推進其他技能的冷卻,把循環閉合成 loop
@@ -949,10 +1137,11 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
       applyBurn(s, dmg.mul(1 - B.EMBER_IMMEDIATE), B.EMBER_BURN_DURATION)
       dmg = dmg.mul(B.EMBER_IMMEDIATE)
     }
+    registerBossHits(s, 1, events)
     if (s.event) {
       s.event.hp = s.event.hp.sub(dmg)
     } else {
-      s.enemyHp = s.enemyHp.sub(dmg)
+      dealSkillToBoss(s, dmg, events)
     }
     // 立即傷害型(聖光審判)每次施放留下法令;連判(二轉進化)留三枚
     gainSigil(s, evolved(s, id) ? B.EVOLVE_EDICT_SIGILS : 1)
@@ -1071,7 +1260,9 @@ function tickMerc(s: GameState, dt: number, events: GameEvent[], rng: Rng) {
       // 背刺 + 留下破綻(轉為印記,與第二技能咬合)
       const dmg = currentDPS(s).mul(B.MERC_ROGUE_SEC)
       events.push({ type: 'attack', damage: dmg, source: 'merc' })
-      dealDamage(s, dmg, events, rng)
+      registerBossHits(s, 1, events)
+      // 背刺無視圖騰:位移的構築價值——盜賊繞到後面直接捅本體
+      dealDamage(s, dmg, events, rng, { pierceTotem: true, source: 'merc' })
       gainSigil(s)
       break
     }
@@ -1118,7 +1309,7 @@ function tickCombatStatus(s: GameState, dt: number, events: GameEvent[], rng: Rn
         const bonus = s.activeMerc === 'icemage' ? currentDPS(s).mul(B.MERC_ICE_BONUS_SEC) : D(0)
         const total = pool.add(bonus)
         events.push({ type: 'freezeBurst', damage: total })
-        dealDamage(s, total, events, rng)
+        dealDamage(s, total, events, rng, { source: 'frozen' })
       }
     }
     return // 凍結期間燃燒與砲台也暫停(它們的傷害會進池,乾脆停表)
@@ -1129,7 +1320,8 @@ function tickCombatStatus(s: GameState, dt: number, events: GameEvent[], rng: Rn
     s.burnLeft -= dt
     if (dmg.gt(0)) {
       events.push({ type: 'burnTick', damage: dmg })
-      dealDamage(s, dmg, events, rng)
+      // 燃燒無視圖騰:狀態流的構築價值——火繼續燒本體
+      dealDamage(s, dmg, events, rng, { pierceTotem: true, source: 'burn' })
     }
     if (s.burnLeft <= 0) {
       s.burnLeft = 0
@@ -1144,7 +1336,7 @@ function tickCombatStatus(s: GameState, dt: number, events: GameEvent[], rng: Rn
     s.zoneLeft -= dt
     if (dmg.gt(0)) {
       events.push({ type: 'attack', damage: dmg, source: 'zone' })
-      dealDamage(s, dmg, events, rng)
+      dealDamage(s, dmg, events, rng, { source: 'zone' })
     }
     if (s.zoneLeft <= 0) s.zoneLeft = 0
   }
@@ -1160,8 +1352,9 @@ function autoDetonate(s: GameState, events: GameEvent[]) {
   if (!id || !availableSkills(s).includes(id)) return
   const spent = s.sigils
   const dmg = currentDPS(s).mul(s.sigils * B.SIGIL_BURST_SEC * B.IRONWALL_AUTO_POWER)
+  registerBossHits(s, 1, events)
   if (s.event) s.event.hp = s.event.hp.sub(dmg)
-  else s.enemyHp = s.enemyHp.sub(dmg)
+  else dealSkillToBoss(s, dmg, events)
   s.sigils = 0
   events.push({ type: 'skill', skillId: id, damage: dmg, count: spent })
 }

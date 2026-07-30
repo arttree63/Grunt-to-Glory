@@ -294,6 +294,15 @@ bossTimeLeft   // Boss 剩餘秒數(<5 秒畫邊緣警戒);非 Boss 為 null
 | 乘勝推進 | `snapshot` 無、HTML 有文字 | 文字 | 建議吃進 marchBoost:推進期間流線加速(參數已在) |
 | 引爆回轉 | `cooldownAdvance` 事件(引爆時多發數次) | notice | 技能格冷卻條連跳(F10 同款) |
 
+## 六之三、Boss 行為原型的演出(v1.7,機制已在跑)
+
+| 機制 | 事件 / snapshot | 目前演出 | 需要 |
+|---|---|---|---|
+| 拆盾 | `shellBreak` + `snapshot.shellLeft` | 大字「破盾」+HTML 計數 | Boss 身上盾殼層(隨命中碎裂)、破盾炸裂 |
+| 蓄力 | `channelStart/interrupted/channelFailed` + `snapshot.channelLeft` | notice + 大字 | Boss 蓄力光柱 + 打斷進度條、打斷停格、硬化變色 |
+| 圖騰 | `totemSpawn/totemDown` + `snapshot.totemRatio` | notice | **圖騰實體**(場地物件,O 系列)+ 倒數加速的紅色時鐘感 |
+| 戰前預告 | FloorDots 已顯示原型名 | 文字 | 可加 Boss 剪影提示 |
+
 ## 七、驗收(v1.5 § 十二)
 
 關掉技能名稱與說明,只看畫面,測試者要能回答:

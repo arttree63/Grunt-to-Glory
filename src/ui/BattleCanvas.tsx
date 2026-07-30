@@ -36,6 +36,10 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         commandReady: s.commandReady,
         legends: activeLegends(s),
         bossTimeLeft: s.isBoss ? s.bossTimeLeft : null,
+        bossKind: s.bossKind,
+        shellLeft: s.shellLeft,
+        channelLeft: s.channelLeft,
+        totemRatio: s.totemMaxHp.gt(0) ? s.totemHp.div(s.totemMaxHp).toNumber() : 0,
         valiantStacks: s.valiantStacks,
         hourglassSteps: new Set(s.castOrder).size,
         encounterWaiting: s.encounters.length > 0,
@@ -78,6 +82,18 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.skillHit(e.damage ? `${name} ${fmt(e.damage)}` : name, e.skillId!, e.count ?? 0)
       } else if (e.type === 'cooldownAdvance') {
         scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0)
+      } else if (e.type === 'shellBreak') {
+        scene.skillHit('破 盾 !')
+      } else if (e.type === 'channelStart') {
+        scene.notice('Boss 蓄力中——打斷它!')
+      } else if (e.type === 'interrupted') {
+        scene.skillHit('打 斷 !')
+      } else if (e.type === 'channelFailed') {
+        scene.notice('Boss 硬化了')
+      } else if (e.type === 'totemSpawn') {
+        scene.notice('圖騰出現・倒數加速')
+      } else if (e.type === 'totemDown') {
+        scene.notice('圖騰擊破')
       } else if (e.type === 'zealGain') {
         scene.notice(`戰意昂揚 ×${e.count}(本輪傷害 +${e.count! * 2}%)`)
       } else if (e.type === 'mercAct') {

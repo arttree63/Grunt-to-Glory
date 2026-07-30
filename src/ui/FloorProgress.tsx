@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as B from '../core/balance'
 import { isBossFloor } from '../core/formulas'
+import { BOSS_KIND_NAME, bossKindFor } from '../core/game'
 import { gameEvents } from '../store/events'
 import { useGameState } from './useGameState'
 
@@ -21,7 +22,11 @@ export function FloorDots() {
       {Array.from({ length: total }, (_, i) => (
         <i key={i} className={i < done ? 'on' : ''} />
       ))}
-      <span>{nextIsBoss ? `${done}/${total}・下層 Boss` : `${done}/${total}`}</span>
+      <span>
+        {nextIsBoss
+          ? `${done}/${total}・下層 ${BOSS_KIND_NAME[bossKindFor(s.floor + 1)]} Boss`
+          : `${done}/${total}`}
+      </span>
     </div>
   )
 }

@@ -103,6 +103,8 @@ export interface ActiveBuff {
 }
 export type TechId = 'valor' | 'supply' | 'legacy' | 'camp' | 'heirloom'
 export type EventKind = 'chest' | 'goblin'
+/** Boss 行為原型(v1.7):敵人對玩家的構築提出不同的問題 */
+export type BossKind = 'shell' | 'channel' | 'totem'
 /** 留存事件:不限時,保留在「旅途紀錄」等玩家回來處理,不會因掛機錯過 */
 export type EncounterId = 'blacksmith' | 'merchant' | 'crossroad'
 
@@ -132,6 +134,24 @@ export interface ChronicleEntry {
 export interface RouteBuff {
   kind: 'material' | 'gold'
   floorsLeft: number
+}
+
+/** 一場 Boss 戰的統計:失敗後要能告訴玩家「差在哪、該改什麼」 */
+export interface BossStats {
+  floor: number
+  kind: BossKind
+  win: boolean
+  /** 傷害分帳(hero/clone/zone/merc/burn/frozen/skill) */
+  bySource: Record<string, number>
+  /** 護盾佔用的秒數 */
+  shellTime: number
+  /** 打斷成功 / 嘗試次數 */
+  interrupts: number
+  channels: number
+  /** 圖騰存活總秒數 */
+  totemTime: number
+  /** 對 Boss 本體造成的總傷害(相對 maxHp 的比例) */
+  dealtRatio: number
 }
 
 export interface RareEvent {
@@ -193,6 +213,32 @@ export interface GameState {
   bossFailed: boolean
   /** 失敗的是哪一層的 Boss。玩家退回前一層 farm,按鈕或自動重試會回到這層 */
   bossRetryFloor: number | null
+
+  // ── Boss 行為(v1.7,全部單場暫態)──
+  /** 本場 Boss 的行為原型;非 Boss 為 null */
+  bossKind: BossKind | null
+  /** 拆盾:剩餘要吃的命中次數(0 = 已破) */
+  shellLeft: number
+  /** 破盾易傷剩餘秒數 */
+  shellVulnLeft: number
+  /** 蓄力:剩餘秒數(0 = 沒在蓄);本場已用掉哪幾個觸發點 */
+  channelLeft: number
+  channelUsed: number
+  /** 蓄力期間已打進的傷害(達標即打斷) */
+  channelDamage: Decimal
+  /** 打斷成功的易傷 / 失敗的硬化 剩餘秒數 */
+  vulnLeft: number
+  hardenLeft: number
+  /** 圖騰(優先目標;燃燒與背刺無視它直接打 Boss) */
+  totemHp: Decimal
+  totemMaxHp: Decimal
+  /** 下一根圖騰在倒數剩幾秒時出現 */
+  nextTotemAt: number
+
+  // ── Boss 戰統計(失敗診斷用,單場暫態)──
+  bossStats: BossStats | null
+  /** 上一場 Boss 的統計(給失敗診斷 UI;不進存檔) */
+  lastBossStats: BossStats | null
 
   morale: number
   /** 爐火層數的素材基準:距上次打造累積了多少素材(神匠起始節點) */
@@ -370,6 +416,12 @@ export interface GameEvent {
     | 'freezeBurst'
     | 'burnTick'
     | 'zealGain'
+    | 'shellBreak'
+    | 'channelStart'
+    | 'interrupted'
+    | 'channelFailed'
+    | 'totemSpawn'
+    | 'totemDown'
   floor?: number
   gold?: Decimal
   /** attack 事件:這一擊實際造成的傷害 */

@@ -353,6 +353,30 @@ export const BANNER_ZONE_SHARE = 0.15
 export const EMBER_IMMEDIATE = 0.7
 export const EMBER_BURN_DURATION = 4
 
+// ── Boss 行為原型(v1.7:敵人不再是木樁)──
+// ⚠️ 全部活在 Boss 30 秒沙盒內,不碰 farm 曲線。
+// ⚠️ 掛機契約:每個原型純 DPS 都能硬過(約需 ×1.2),主動與對構築只是更容易。
+/** 原型輪替:X10 拆盾 / X20 蓄力 / X30 圖騰(循環)。第一個 Boss 教最簡單的 */
+/** 拆盾:護盾吃 N 次命中才破(不看傷害);盾上傷害衰減;破盾後短暫易傷 */
+export const SHELL_HITS = 10
+export const SHELL_DR = 0.3
+export const SHELL_BREAK_MULT = 1.3
+export const SHELL_BREAK_SEC = 4
+/** 蓄力:剩 20s / 10s 各一次,持續 4s;期間打出 maxHp × 比例即打斷 */
+export const CHANNEL_TIMES = [20, 10]
+export const CHANNEL_DURATION = 4
+export const CHANNEL_HP_TO_BREAK = 0.06
+/** 打斷成功:Boss 易傷;失敗:Boss 硬化(拖時間但不擋通關) */
+export const INTERRUPT_VULN = 1.25
+export const INTERRUPT_VULN_SEC = 6
+export const CHANNEL_HARDEN_DR = 0.6
+export const CHANNEL_HARDEN_SEC = 5
+/** 圖騰:剩 24s 出第一根,之後每 10s;存活期間倒數加速;血量為 Boss 的比例 */
+export const TOTEM_FIRST_AT = 24
+export const TOTEM_INTERVAL = 10
+export const TOTEM_HP_RATIO = 0.03
+export const TOTEM_TIMER_MULT = 1.5
+
 // ── 總攻 loop(v1.6:爽感預算花在技能與輪內成長,不動裝備的 power-neutral)──
 /**
  * 引爆回轉(Reload 式):引爆印記時,依消耗層數推進**其他**技能的冷卻。
