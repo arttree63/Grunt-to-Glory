@@ -16,6 +16,7 @@ import {
 import { DESTINY_PATHS } from '../../core/destiny'
 import { ACHIEVEMENTS, ACHIEVEMENT_GROUPS } from '../../core/achievements'
 import * as sfx from '../../audio/sfx'
+import { heirloomSlots } from '../../core/techs'
 import { PrestigeSection } from './DestinyPanel'
 import { ALL_LEGENDS } from '../../core/legends'
 import { KEYWORD_NAME } from '../../core/keywords'
@@ -39,7 +40,8 @@ function techSummary(techs: Techs, id: TechId): string {
   if (id === 'supply') return `金幣 ×${techGoldMult(techs).toFixed(2)}`
   if (id === 'legacy') return `開局 ${fmt(techStartGold(techs))} 金`
   if (id === 'camp') return `離線上限 ${techOfflineHours(techs)} 小時`
-  return `轉生可帶 ${B.HEIRLOOM_SLOTS + techs.heirloom} 件`
+  // ⚠️ 走 heirloomSlots(),不要在這裡手算——同一個值兩處各算就是離線上限那個 bug 的形狀
+  return `轉生可帶 ${heirloomSlots(techs)} 件`
 }
 
 /**

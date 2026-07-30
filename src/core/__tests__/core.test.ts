@@ -63,6 +63,7 @@ import {
   skillReady,
   computeOffline,
   createInitialState,
+  sigilPerStackSeconds,
   fineForgesLeft,
   currentDPS,
   inscribeHeirloom,
@@ -1481,6 +1482,31 @@ describe('存檔', () => {
     expect(back.floor).toBe(33)
     expect(back.forgeCount).toBe(0)
     expect(back.pityCount).toBe(0)
+  })
+
+  it('印記威力詞綴在「手動」與「套裝自動引爆」兩條路徑都要生效', () => {
+    // ⚠️ 這條守的是「多路徑寫同一個值」:自動引爆先前自己算,
+    // 導致 sigilPower 詞綴與法典殘頁在那條路徑上靜默失效
+    const plain = createInitialState()
+    const geared = createInitialState()
+    geared.equipped.trinket = {
+      id: 'sp',
+      slot: 'trinket',
+      quality: 'gold',
+      affixes: [{ type: 'sigilPower', value: 0.5 }],
+    }
+    expect(sigilPerStackSeconds(geared)).toBeGreaterThan(sigilPerStackSeconds(plain))
+
+    // 法典殘頁也要反映在同一個函式上
+    const codex = createInitialState()
+    codex.equipped.trinket = {
+      id: 'cx',
+      slot: 'trinket',
+      quality: 'gold',
+      affixes: [],
+      legend: 'codexpage',
+    }
+    expect(sigilPerStackSeconds(codex)).not.toBe(sigilPerStackSeconds(plain))
   })
 
   it('離線上限跟著營地帳篷走,撞上限時 capped 為真', () => {

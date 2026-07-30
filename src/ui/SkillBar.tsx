@@ -1,5 +1,5 @@
 import * as B from '../core/balance'
-import { availableSkills, skillCooldown } from '../core/game'
+import { availableSkills, sigilPerStackSeconds, skillCooldown } from '../core/game'
 import { hasNode } from '../core/destiny'
 import { SKILLS } from '../core/skills'
 import type { SkillId } from '../core/types'
@@ -67,7 +67,7 @@ export default function SkillBar() {
           <small>
             冷卻 {Math.round(skillCooldown(s, detailSkill))} 秒
             {SKILLS[detailSkill].consumesSigils &&
-              `・零印記也可施放：${B.SIGIL_BASE_BURST_SEC} 秒份傷害；每枚${SKILLS[detailSkill].sigilName}再加 ${B.SIGIL_BURST_SEC} 秒份`}
+              `・零印記也可施放：${B.SIGIL_BASE_BURST_SEC} 秒份傷害；每枚${SKILLS[detailSkill].sigilName}再加 ${sigilPerStackSeconds(s).toFixed(1)} 秒份`}
           </small>
           {SKILLS[detailSkill].consumesSigils && (
             <small>

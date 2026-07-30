@@ -1362,6 +1362,17 @@ export function sigilName(s: GameState): string {
   return (id && SKILLS[id].sigilName) || '印記'
 }
 
+/**
+ * 每枚印記折算幾秒份 DPS。
+ * ⚠️ **手動引爆與套裝自動引爆一律走這裡**。先前兩條路徑各自算,結果
+ * 「印記威力」詞綴與法典殘頁在自動引爆那條**靜默失效**——玩家花了詞條卻沒有效果,
+ * 而且畫面上看不出來。這是「多路徑寫同一個值」的典型,不要再拆開。
+ */
+export function sigilPerStackSeconds(s: GameState): number {
+  const bonus = equipBonuses(s.equipped)
+  return B.SIGIL_BURST_SEC * (1 + bonus.sigilPower) * (hasLegend(s, 'codexpage') ? B.CODEX_POWER : 1)
+}
+
 /** 印記上限。神匠的囤積思維會提高上限 */
 export function sigilCap(s: GameState): number {
   return B.SIGIL_MAX + (s.destinyPath === 'artisan' ? B.ARTISAN_SIGIL_CAP : 0)
@@ -1447,7 +1458,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
   if (sk.consumesSigils) {
     // 法典殘頁:保留三分之一不清空,每枚威力降低 → 從「攢滿再引爆」變成「連續小引爆」
     const codex = hasLegend(s, 'codexpage')
-    const perSigil = B.SIGIL_BURST_SEC * (1 + bonus.sigilPower) * (codex ? B.CODEX_POWER : 1)
+    const perSigil = sigilPerStackSeconds(s)
     const spentNow = s.sigils
     const wasFull = spentNow >= sigilCap(s)
     const dmg = currentDPS(s).mul((B.SIGIL_BASE_BURST_SEC + spentNow * perSigil) * skillDmg)
@@ -1763,7 +1774,10 @@ function autoDetonate(s: GameState, events: GameEvent[]) {
   const id = JOBS[s.jobId].awakenSkill
   if (!id || !availableSkills(s).includes(id)) return
   const spent = s.sigils
-  const dmg = currentDPS(s).mul(s.sigils * B.SIGIL_BURST_SEC * B.IRONWALL_AUTO_POWER)
+  // ⚠️ 要吃 sigilPower / 法典殘頁 / 技能傷害詞綴,否則玩家的構築在這條路徑上白投。
+  // IRONWALL_AUTO_POWER 才是刻意的減免(「挑時機」的價值不能白送),不是把裝備效果整個拿掉
+  const skillDmg = 1 + equipBonuses(s.equipped).skillDmg
+  const dmg = currentDPS(s).mul(s.sigils * sigilPerStackSeconds(s) * skillDmg * B.IRONWALL_AUTO_POWER)
   registerBossHits(s, 1, events)
   if (s.event) s.event.hp = s.event.hp.sub(dmg)
   else dealSkillToBoss(s, dmg, events)
