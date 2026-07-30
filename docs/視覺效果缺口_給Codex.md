@@ -24,6 +24,18 @@
 - F21 是未來多目標／範圍玩法的預留語言，目前沒有對應玩法鉤子。
 - `src/core/skills.ts`、`src/core/mercs.ts` 的 `icon` 資料仍是 emoji；實際 UI 已全面改用 SVG，可由 Claude 決定是否清理未使用欄位。
 
+## 2026-07-30 下一批(心理節奏回饋消化後)
+
+| # | 項目 | 依賴 |
+|---|---|---|
+| 1 | **Boss goal-gradient render 版**:打斷進度條(Boss 血條下方)、護盾層碎裂進度、圖騰血條 | 等 Claude 補 `snapshot.channelProgress` / `shellValue`(`totemRatio` 已有) |
+| 2 | **F18 爆燃圓**:燃燒滿層一次釋放 | 等 Claude 的 core 鉤子(燃燒層數 + 滿層事件) |
+| 3 | `encounter`(路標/營火剪影)與 `eventSpawn`(限時圈)——僅剩的兩個無演出事件 | 無依賴,可先做 |
+| 4 | **音效基礎層**(GDD § 10.5 優先序表;`tone` + 短樣本;三軌音量 + 全靜音;重要資訊必有視覺冗餘) | 無依賴 |
+| 5 | 人格稱號/代表事件的結算頁排版(一句敘事文字) | 等 Claude 的稱號資料 |
+
+設計依據:docs/handoff.md 籃 B(Boss 內 goal-gradient 的心理學理由與原話出處)。
+
 ---
 
 ## 零、動手前必讀
