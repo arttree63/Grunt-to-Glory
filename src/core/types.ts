@@ -259,6 +259,13 @@ export interface GameState {
   destinyPoints: number
   /** 本輪已發出幾枚命運點,用來對里程碑 */
   destinyEarned: number
+  /**
+   * 自動施放(GDD v3 § 2.4 的最小版)。**預設關**:
+   * 開著才自動放技能,所以純掛機玩家的基準曲線完全不受影響。
+   * 消耗印記型技能等滿層才放——這是「立即施放 / 滿層施放」兩種策略中的後者,
+   * 之後要擴成完整策略模板就從這裡長。
+   */
+  autoCast: boolean
   /** 各技能剩餘冷卻(秒) */
   skillCd: Partial<Record<SkillId, number>>
   /**

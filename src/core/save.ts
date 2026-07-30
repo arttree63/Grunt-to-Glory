@@ -54,6 +54,7 @@ export interface SaveData {
   pityLegendShort: number
   normalForgeProgress: number
   fineForgesUsed: number
+  autoCast: boolean
   partMaterials: GameState['partMaterials']
   eliteMaterials: number
   maxBossKilled: number
@@ -117,6 +118,7 @@ export function serialize(s: GameState): SaveData {
     pityLegendShort: s.pityLegendShort,
     normalForgeProgress: s.normalForgeProgress,
     fineForgesUsed: s.fineForgesUsed,
+    autoCast: s.autoCast,
     partMaterials: s.partMaterials,
     eliteMaterials: s.eliteMaterials,
     maxBossKilled: s.maxBossKilled,
@@ -271,6 +273,11 @@ function migrate(raw: SaveData): SaveData {
     d.fineForgesUsed = d.fineForgesUsed ?? 0
     d.version = 20
   }
+  // v20 → v21:自動施放開關。舊存檔預設關——不替玩家改變行為模式
+  if (d.version < 21) {
+    d.autoCast = d.autoCast ?? false
+    d.version = 21
+  }
   return d
 }
 
@@ -328,6 +335,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     pityLegendShort: d.pityLegendShort ?? 0,
     normalForgeProgress: d.normalForgeProgress ?? 0,
     fineForgesUsed: d.fineForgesUsed ?? 0,
+    autoCast: !!d.autoCast,
     partMaterials: { ...base.partMaterials, ...(d.partMaterials ?? {}) },
     eliteMaterials: d.eliteMaterials ?? 0,
     maxBossKilled: d.maxBossKilled ?? 0,

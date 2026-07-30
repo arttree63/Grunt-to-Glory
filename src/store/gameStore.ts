@@ -57,6 +57,7 @@ interface Store {
   prestige: (heirloomIds?: string[]) => void
   inscribeHeirloom: (id: string) => void
   setActiveMerc: (id: MercId | null) => void
+  toggleAutoCast: () => void
   dismissOffline: () => void
   dismissRunSummary: () => void
   reset: () => Promise<void>
@@ -201,6 +202,10 @@ export const useGame = create<Store>((set, get) => ({
     bump(set, get)
   },
 
+  toggleAutoCast() {
+    G.toggleAutoCast(get().s)
+    bump(set, get)
+  },
   setActiveMerc(id) {
     if (G.setActiveMerc(get().s, id)) bump(set, get)
   },

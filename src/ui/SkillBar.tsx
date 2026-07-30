@@ -35,6 +35,7 @@ export default function SkillBar() {
   const s = useGameState()
   const cast = useGame((st) => st.castSkill)
   const toggleCharge = useGame((st) => st.toggleCharge)
+  const toggleAutoCast = useGame((st) => st.toggleAutoCast)
   const owned = availableSkills(s)
   const preview = nextUnlock(s)
   const slots: Array<SkillId | null> = [...owned]
@@ -59,6 +60,26 @@ export default function SkillBar() {
 
   return (
     <div className={`skills${s.commandReady ? ' command-ready' : ''}${allReady ? ' all-ready' : ''}`}>
+      {owned.length > 0 && (
+        <button
+          className="skill"
+          onClick={toggleAutoCast}
+          title={
+            s.autoCast
+              ? '自動施放:開。冷卻好就放,消耗印記型等滿層'
+              : '自動施放:關。技能要自己按'
+          }
+          style={{
+            color: s.autoCast ? 'var(--gold)' : undefined,
+            borderColor: s.autoCast ? 'var(--gold)' : undefined,
+          }}
+        >
+          {s.autoCast ? '🔁' : '✋'}
+          <span style={{ fontSize: 9, display: 'block', marginTop: -2 }}>
+            {s.autoCast ? '自動' : '手動'}
+          </span>
+        </button>
+      )}
       {hasNode(s, 'tactician_1b') && (
         <button
           className="skill"

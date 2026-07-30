@@ -41,6 +41,7 @@ import {
   sigilCap,
   sigilName,
   comboMult,
+  toggleAutoCast,
   toggleCharge,
   valiantMult,
   devourWeapon,
@@ -2385,5 +2386,66 @@ describe('GDD v3 封版三項(2026-07-30)', () => {
     const e = fineForge(s, {}, () => 0.99)!
     expect(e.setTag).toBeDefined()
     expect(s.pityLegendary).toBe(0)
+  })
+})
+
+describe('自動施放開關(GDD v3 § 2.4 最小版)', () => {
+  const hero = () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.highestFloor = B.AWAKEN_FLOOR
+    chooseDestiny(s, 'tactician')
+    s.destinyNodes.push('tactician_1a')
+    s.enemyMaxHp = D(1e12)
+    s.enemyHp = D(1e12)
+    return s
+  }
+
+  it('預設關:掛機玩家的基準完全不變(不會自己放技能)', () => {
+    const s = hero()
+    expect(s.autoCast).toBe(false)
+    applyTick(s, 2000)
+    expect(s.buffs).toHaveLength(0)
+    expect(Object.keys(s.skillCd)).toHaveLength(0)
+  })
+
+  it('開啟後冷卻好就自動放', () => {
+    const s = hero()
+    toggleAutoCast(s)
+    expect(s.autoCast).toBe(true)
+    const ev = applyTick(s, 100)
+    expect(ev.some((e) => e.type === 'skill' && e.skillId === 'shieldRush')).toBe(true)
+    expect(s.buffs.some((b) => b.skillId === 'shieldRush')).toBe(true)
+  })
+
+  it('消耗印記型等滿層才放(保留「攢滿再引爆」的價值)', () => {
+    const s = hero()
+    toggleAutoCast(s)
+    s.sigils = 3 // 未滿
+    applyTick(s, 100)
+    expect(s.sigils).toBe(3) // 沒被自動引爆
+
+    s.sigils = sigilCap(s)
+    applyTick(s, 100)
+    expect(s.sigils).toBeLessThan(sigilCap(s)) // 滿層才放
+  })
+
+  it('蓄勢期間不自動放(那是刻意停手)', () => {
+    const s = hero()
+    s.destinyNodes.push('tactician_1b')
+    toggleAutoCast(s)
+    toggleCharge(s)
+    expect(s.charging).toBe(true)
+    applyTick(s, 100)
+    expect(s.buffs).toHaveLength(0)
+  })
+
+  it('v20 存檔遷移到 v21:舊存檔預設關,不替玩家改行為模式', () => {
+    const s = createInitialState()
+    const v20 = JSON.parse(JSON.stringify(serialize(s))) as Record<string, unknown>
+    v20.version = 20
+    delete v20.autoCast
+    expect(deserialize(v20 as never).autoCast).toBe(false)
   })
 })

@@ -109,6 +109,10 @@ const destinyAgent: DestinyPathId = (globalThis as { process?: { env: Record<str
   .process?.env?.DESTINY as DestinyPathId ?? 'tactician'
 
 /** 神匠是否採「忍住等爐火」策略。兩種策略互有勝場,平衡要看較強的那一邊 */
+/** 量「完全不放技能」的基準用(驗證自動施放預設關時掛機曲線不變) */
+const NO_SKILLS =
+  ((globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env?.NO_SKILLS ?? '0') === '1'
+
 const PATIENT =
   ((globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env?.PATIENT ?? '1') !== '0'
 
@@ -166,7 +170,8 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
       for (const j of availableJobs(s.jobId, s.lv)) {
         if (j.id === 'infantry' || j.id === 'paladin') promote(s, j.id)
       }
-      // 技能一好就放(含職業覺醒後的第二技能;印記滿了才引爆,模擬「挑時機」)
+      // 技能一好就放(= 玩家開了自動施放)。NO_SKILLS=1 可量「完全不放技能」的真・純掛機基準
+      if (!NO_SKILLS)
       for (const id of availableSkills(s)) {
         const sk = SKILLS[id]
         if (sk.consumesSigils && s.sigils < sigilCap(s)) continue

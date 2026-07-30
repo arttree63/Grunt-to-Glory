@@ -104,6 +104,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     destinyNodes: [],
     destinyPoints: 0,
     destinyEarned: 0,
+    autoCast: false, // 預設關:掛機玩家的基準不因新系統改變
     skillCd: {},
     buffs: [],
     zealStacks: 0,
@@ -170,7 +171,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 20
+export const SAVE_VERSION = 21
 
 // ---------- 數值查詢 ----------
 
@@ -501,6 +502,7 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   }
 
   tickSkills(s, dt, raw)
+  tickAutoCast(s, raw)
   tickTactician(s, dt)
   tickMerc(s, dt, raw, rng)
   tickCombatStatus(s, dt, raw, rng)
@@ -1217,6 +1219,27 @@ function trackCastOrder(s: GameState, id: SkillId, events: GameEvent[]) {
   }
   s.castOrder = []
   s.hourglassLock = B.HOURGLASS_LOCK
+}
+
+/**
+ * 自動施放。⚠️ 這是「政策」不是「手速」:玩家設定一次長期有效,
+ * 掛機玩家關著就完全不受影響(GDD v3 § 2.4.4 護欄一)。
+ * 消耗印記型等滿層才放,保留「攢滿再引爆」的價值;蓄勢期間不放(那是刻意停手)。
+ */
+function tickAutoCast(s: GameState, raw: GameEvent[]) {
+  if (!s.autoCast || s.charging) return
+  for (const id of availableSkills(s)) {
+    const sk = SKILLS[id]
+    if (sk.consumesSigils && s.sigils < sigilCap(s)) continue
+    if (!skillReady(s, id)) continue
+    raw.push(...castSkill(s, id))
+  }
+}
+
+/** 開關自動施放 */
+export function toggleAutoCast(s: GameState): boolean {
+  s.autoCast = !s.autoCast
+  return s.autoCast
 }
 
 /** 換一隻出戰傭兵(英雄頁第五區)。null = 收起 */
