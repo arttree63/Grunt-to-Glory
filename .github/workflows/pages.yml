@@ -1,0 +1,54 @@
+name: 部署到 GitHub Pages
+
+# 每次推上 main 就自動重建並發佈到
+# https://arttree63.github.io/Grunt-to-Glory/
+on:
+  push:
+    branches:
+      - main
+      - claude/external-network-url-launch-h5nj18
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時只跑一個部署,後推的蓋掉前一個
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      # Pages 預設會跑 Jekyll,會吃掉 assets 底下的檔案
+      - run: touch dist/client/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/client
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
