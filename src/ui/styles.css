@@ -1298,3 +1298,32 @@ button {
 .btn.danger {
   color: var(--boss-b, #ff7a5c);
 }
+
+/* 施放模式扁平開關:戰鬥設定不與技能格同權重(UX 回饋 P1-6) */
+.skill-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 44px;
+  min-height: 44px;
+  padding: 4px 2px;
+  border-radius: 10px;
+  background: #1d1728;
+  border: 1px solid var(--border, #2c2438);
+  color: var(--dim2, #9a8fb0);
+}
+.skill-mode .opt {
+  font-size: 9px;
+  line-height: 1.2;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+.skill-mode .opt.on {
+  background: var(--bg-card, #241d31);
+  color: var(--text, #e8dcc8);
+}
+.skill-mode.is-on .opt.on {
+  color: var(--gold);
+}

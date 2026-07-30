@@ -296,9 +296,10 @@ export default function ForgePanel() {
         </>
       ) : (
         <>
+          {/* 精工三步驟:選擇 → 提高品質 → 預覽開錘(UX 回饋 P1-7,首用密度太高) */}
           <div className="row">
-            <span className="k">鎖定部位</span>
-            <span className="v affix">投入部位素材</span>
+            <span className="k">① 想打造哪個部位?</span>
+            <span className="v affix">不選=隨機;投入部位素材鎖定</span>
           </div>
           <div className="grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 8 }}>
             {SLOTS.map((sl) => {
@@ -319,6 +320,9 @@ export default function ForgePanel() {
             })}
           </div>
 
+          <div className="row">
+            <span className="k">② 是否提高品質?</span>
+          </div>
           <button
             className={`btn${useElite ? ' primary' : ''}`}
             style={{ width: '100%', opacity: s.eliteMaterials > 0 ? 1 : 0.35 }}
@@ -353,7 +357,11 @@ export default function ForgePanel() {
             </>
           )}
 
-          <div className="card" style={{ marginTop: 10 }}>
+          <div className="row" style={{ marginTop: 8 }}>
+            <span className="k">③ 本次結果預覽</span>
+            <span className="v affix">本輪剩 {fineForgesLeft(s)} / {B.FINE_FORGE_PER_RUN} 次</span>
+          </div>
+          <div className="card">
             <b style={{ color: useElite ? 'var(--q-purple)' : 'var(--text-strong)' }}>{preview}</b>
             <div className="affix" style={{ marginTop: 4 }}>
               消耗:怪物素材 ×{B.FINE_FORGE_COST}
@@ -362,37 +370,35 @@ export default function ForgePanel() {
             </div>
           </div>
 
-          <div className="row">
-            <span className="k">本輪精工</span>
-            <span className="v">
-              剩 {fineForgesLeft(s)} 次<small className="affix"> / {B.FINE_FORGE_PER_RUN}(每輪重置)</small>
-            </span>
-          </div>
-          <div className="row">
-            <span className="k">傳說保底</span>
-            <span className="v">
-              {pityShortLeft(s) === 0 ? (
-                <b style={{ color: 'var(--q-gold)' }}>下次必出傳說特性</b>
-              ) : (
-                <>
-                  還差 {pityShortLeft(s)} 次
-                  <small className="affix"> / {B.PITY_LEGEND_SHORT}・普通鍛造每 10 次也推進</small>
-                </>
-              )}
-            </span>
-          </div>
-          <div className="row">
-            <span className="k">套裝保底</span>
-            <span className="v">
-              {pityLegendaryLeft(s) === 0 ? (
-                <b style={{ color: 'var(--q-blue)' }}>下次必附套裝標籤</b>
-              ) : (
-                <>
-                  還差 {pityLegendaryLeft(s)} 次<small className="affix"> / {B.PITY_LEGENDARY}</small>
-                </>
-              )}
-            </span>
-          </div>
+          {/* 保底細節首用不必讀,收摺;快觸發時自動亮出來(快到手的期待要看得到) */}
+          <details className="tier3" open={pityShortLeft(s) <= 3 || pityLegendaryLeft(s) <= 3}>
+            <summary>保底進度 ▾</summary>
+            <div className="row">
+              <span className="k">傳說保底</span>
+              <span className="v">
+                {pityShortLeft(s) === 0 ? (
+                  <b style={{ color: 'var(--q-gold)' }}>下次必出傳說特性</b>
+                ) : (
+                  <>
+                    還差 {pityShortLeft(s)} 次
+                    <small className="affix"> / {B.PITY_LEGEND_SHORT}・普通鍛造每 10 次也推進</small>
+                  </>
+                )}
+              </span>
+            </div>
+            <div className="row">
+              <span className="k">套裝保底</span>
+              <span className="v">
+                {pityLegendaryLeft(s) === 0 ? (
+                  <b style={{ color: 'var(--q-blue)' }}>下次必附套裝標籤</b>
+                ) : (
+                  <>
+                    還差 {pityLegendaryLeft(s)} 次<small className="affix"> / {B.PITY_LEGENDARY}</small>
+                  </>
+                )}
+              </span>
+            </div>
+          </details>
 
           <div className="btn-row">
             <button className="btn primary" disabled={!canFine} onClick={() => run(1, true)}>

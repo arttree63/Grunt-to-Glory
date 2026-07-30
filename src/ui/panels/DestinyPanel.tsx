@@ -10,8 +10,12 @@ import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 import { BadgeIcon, GameIcon, QualityMark } from '../GameIcon'
 
-/** 轉生 = 開始新的命運,所以入口放在命運頁 */
-function PrestigeSection() {
+/**
+ * 退役/轉生入口。2026-07-31 移到傳承頁頂部(UX 回饋方案 A):
+ * 命運=本輪構築,傳承=結束本輪與永久成長,分類才對得上玩家直覺。
+ * 元件留在這檔(相依 heirloomCandidates 等 import),由 LegacyPanel import。
+ */
+export function PrestigeSection() {
   const s = useGameState()
   const prestige = useGame((st) => st.prestige)
   const [confirm, setConfirm] = useState(false)
@@ -218,7 +222,10 @@ export default function DestinyPanel() {
         )
       })}
 
-      <PrestigeSection />
+      {/* 退役入口已移到傳承頁(方案 A);這裡留一行指路,不留第二個入口 */}
+      <div className="affix" style={{ marginTop: 16 }}>
+        想結束這一輪?退役入口在「傳承」分頁。
+      </div>
     </div>
   )
 }

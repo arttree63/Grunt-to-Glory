@@ -76,25 +76,17 @@ export default function SkillBar() {
           )}
         </div>
       )}
+      {/* 施放模式是戰鬥設定,不是技能:改扁平開關,不與技能格同視覺權重(UX 回饋 P1-6) */}
       {owned.length > 0 && (
         <button
-          className={`skill skill-auto${s.autoCast ? ' is-on' : ''}`}
+          className={`skill-mode${s.autoCast ? ' is-on' : ''}`}
           onClick={toggleAutoCast}
           aria-label={s.autoCast ? '關閉自動施放' : '開啟自動施放'}
-          title={
-            s.autoCast
-              ? '自動施放:開。冷卻好就放,消耗印記型等滿層'
-              : '自動施放:關。技能要自己按'
-          }
-          style={{
-            color: s.autoCast ? 'var(--gold)' : undefined,
-            borderColor: s.autoCast ? 'var(--gold)' : undefined,
-          }}
+          title={s.autoCast ? '自動施放:開。冷卻好就放,消耗印記型等滿層' : '自動施放:關。技能要自己按'}
         >
-          <GameIcon name={s.autoCast ? 'autoCast' : 'manualCast'} />
-          <span style={{ fontSize: 9, display: 'block', marginTop: -2 }}>
-            {s.autoCast ? '自動' : '手動'}
-          </span>
+          <GameIcon name={s.autoCast ? 'autoCast' : 'manualCast'} size={13} />
+          <span className={`opt${!s.autoCast ? ' on' : ''}`}>手動</span>
+          <span className={`opt${s.autoCast ? ' on' : ''}`}>自動</span>
         </button>
       )}
       {hasNode(s, 'tactician_1b') && (
@@ -184,6 +176,22 @@ export default function SkillBar() {
                 </span>
               </>
             )}
+            {/* 長按查說明的可發現性:右下角一顆小 i(手機沒有 hover,title 不算載體) */}
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                right: 3,
+                bottom: 1,
+                fontSize: 9,
+                fontStyle: 'italic',
+                fontFamily: 'serif',
+                color: 'var(--dim2, #9a8fb0)',
+                pointerEvents: 'none',
+              }}
+            >
+              i
+            </span>
             {/* ⚠️ 不能加 ready:一般技能的持續時間短於冷卻,加了等於 buff 期間永遠不亮 */}
             {s.buffs.some((b) => b.skillId === id) && (
               <span

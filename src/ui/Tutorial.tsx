@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import * as B from '../core/balance'
-import { sigilName } from '../core/game'
+import { availableSkills, sigilName } from '../core/game'
 import { useGame } from '../store/gameStore'
 import { useGameState } from './useGameState'
 import { GameIcon } from './GameIcon'
@@ -25,6 +25,12 @@ const STEPS = [
 /** 情境提示:條件成立時出現一次,看過就不再出現 */
 const TIPS: Array<{ id: string; when: (s: ReturnType<typeof useGameState>) => boolean; text: string }> = [
   // 'boss' 提示改走聚光燈教學(SpotlightTeach 的 boss30),不再用角落文字講規則
+  {
+    // 長按查說明是操作可發現性,不是遊戲規則,用一次性 tip(規則類走聚光燈)
+    id: 'skillhold',
+    when: (s) => availableSkills(s).length > 0,
+    text: '技能點一下施放;長按可以查看完整說明(格子角落的 i)。',
+  },
   {
     id: 'forge',
     when: (s) => s.materials >= B.FORGE_COST,

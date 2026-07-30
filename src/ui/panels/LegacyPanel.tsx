@@ -14,6 +14,7 @@ import {
   SAVE_VERSION,
 } from '../../core/game'
 import { DESTINY_PATHS } from '../../core/destiny'
+import { PrestigeSection } from './DestinyPanel'
 import { ALL_LEGENDS } from '../../core/legends'
 import { KEYWORD_NAME } from '../../core/keywords'
 import { BASE_NAME } from '../../core/equipment'
@@ -214,7 +215,10 @@ export default function LegacyPanel() {
 
   return (
     <div>
-      <h3>傳 承</h3>
+      {/* 退役入口在最上方(方案 A):傳承=結束本輪與永久成長 */}
+      <PrestigeSection />
+
+      <h3 style={{ marginTop: 16 }}>傳 承</h3>
       <div className="row">
         <span className="k">現在是第幾代</span>
         <span className="v">第 {s.runs + 1} 代</span>
