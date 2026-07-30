@@ -62,8 +62,9 @@ export default function SkillBar() {
     <div className={`skills${s.commandReady ? ' command-ready' : ''}${allReady ? ' all-ready' : ''}`}>
       {owned.length > 0 && (
         <button
-          className="skill"
+          className={`skill skill-auto${s.autoCast ? ' is-on' : ''}`}
           onClick={toggleAutoCast}
+          aria-label={s.autoCast ? '關閉自動施放' : '開啟自動施放'}
           title={
             s.autoCast
               ? '自動施放:開。冷卻好就放,消耗印記型等滿層'
@@ -74,7 +75,7 @@ export default function SkillBar() {
             borderColor: s.autoCast ? 'var(--gold)' : undefined,
           }}
         >
-          {s.autoCast ? '🔁' : '✋'}
+          <GameIcon name={s.autoCast ? 'autoCast' : 'manualCast'} />
           <span style={{ fontSize: 9, display: 'block', marginTop: -2 }}>
             {s.autoCast ? '自動' : '手動'}
           </span>

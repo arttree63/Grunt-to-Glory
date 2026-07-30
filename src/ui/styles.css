@@ -288,6 +288,18 @@ button {
 .skill.locked {
   opacity: 0.35;
 }
+.skill-auto .game-icon {
+  transform-origin: center;
+}
+.skill-auto.is-on .game-icon {
+  filter: drop-shadow(0 0 4px #e8b94a99);
+  animation: auto-cast-turn 3.2s linear infinite;
+}
+@keyframes auto-cast-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .skill.cooldown-advanced {
   animation: cooldown-advance-flash 0.36s ease-out;
 }

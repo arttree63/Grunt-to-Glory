@@ -9,6 +9,7 @@ import {
   critWindowActive,
   heirloomRepairLeft,
   ironwallActive,
+  setCount,
   shellProgress,
   sigilCap,
 } from '../core/game'
@@ -53,6 +54,9 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         totemRatio: s.totemMaxHp.gt(0) ? s.totemHp.div(s.totemMaxHp).toNumber() : 0,
         valiantStacks: s.valiantStacks,
         hourglassSteps: new Set(s.castOrder).size,
+        commanderTracking: setCount(s, 'commander') >= 2,
+        perfectWindowLeft: s.perfectWindowLeft,
+        zealStacks: s.zealStacks,
         encounterWaiting: s.encounters.length > 0,
         activeMerc: s.activeMerc,
         cloneActive: critWindowActive(s) && activeLegends(s).includes('twinblade'),
@@ -86,14 +90,25 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         const shown = crit ? base.mul(B.CRIT_MULT) : base
         scene.swing((crit ? '暴擊 ' : '') + fmt(shown), crit, e.source ?? 'hero')
       } else if (e.type === 'moraleBurst') {
-        scene.swing('戰意爆發 ' + fmt(e.damage!), true)
+        scene.swing(`${e.via === 'lostbanner' ? '失落軍旗' : '戰意爆發'} ${fmt(e.damage!)}`, true)
       } else if (e.type === 'skill') {
         // 技能直傷原本完全沒有演出:血條瞬空但畫面什麼都沒發生
         const name = SKILLS[e.skillId!].name
         // count = 消耗掉的印記層數,演出可以據此畫 N 道射線
-        scene.skillHit(e.damage ? `${name} ${fmt(e.damage)}` : name, e.skillId!, e.count ?? 0)
+        scene.skillHit(e.damage ? `${name} ${fmt(e.damage)}` : name, e.skillId!, e.count ?? 0, e.via === 'ironwall')
+        if (e.burnDamage) scene.onEmberConvert(fmt(e.burnDamage))
       } else if (e.type === 'cooldownAdvance') {
-        scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0)
+        scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0, e.via)
+      } else if (e.type === 'sigilGain') {
+        scene.onSigilGain(e.count ?? 0, e.via)
+      } else if (e.type === 'resonanceGain') {
+        scene.onResonanceGain(e.count ?? 0)
+      } else if (e.type === 'shellGain') {
+        scene.onShellGain(e.count ?? 0, e.shellSource)
+      } else if (e.type === 'freezeCapped') {
+        scene.notice('凍結上限・本場已用盡')
+      } else if (e.type === 'relicPrimed') {
+        scene.onRelicPrimed()
       } else if (e.type === 'shellBreak') {
         scene.skillHit('破 盾 !')
       } else if (e.type === 'channelStart') {
@@ -121,8 +136,7 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       } else if (e.type === 'perfectBurst') {
         scene.skillHit('完 美 引 爆 !')
       } else if (e.type === 'burnMax') {
-        // F18 爆燃圓の暫代演出：Codex 會換成圓形擴散 + 震屏
-        scene.notice('燃燒滿層・爆燃！')
+        scene.onBurnMax()
       } else if (e.type === 'bannerStore') {
         scene.onBannerStore()
       } else if (e.type === 'heirloomRestored') {

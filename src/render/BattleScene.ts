@@ -133,6 +133,12 @@ export interface BattleSnapshot {
   valiantStacks: number
   /** 倒轉沙漏已記錄的不同技能數 */
   hourglassSteps: number
+  /** 戰術指揮官 2 件:共用三段施放順序提示 */
+  commanderTracking: boolean
+  /** 印記滿層後的完美引爆窗口 */
+  perfectWindowLeft: number
+  /** 戰意昂揚層數(輪內常駐加成,主角紅金光環隨層數加深) */
+  zealStacks: number
   /** 有留存事件等待處理:路邊常駐路標 */
   encounterWaiting: boolean
 
@@ -270,6 +276,16 @@ export class BattleScene {
   private fieldFx = new Graphics()
   private enemyStateFx = new Graphics()
   private overlayFx = new Graphics()
+  private formationLabel = new Text({
+    text: '',
+    style: {
+      fontFamily: 'Arial Black, PingFang TC, sans-serif',
+      fontSize: 12,
+      fontWeight: '900',
+      fill: 0xffdf83,
+      stroke: { color: 0x24180c, width: 3 },
+    },
+  })
   private heroBody = new Container()
   private heroSprite: AnimatedSprite
   private afterimages: AnimatedSprite[] = []
@@ -350,7 +366,9 @@ export class BattleScene {
     )
     this.fieldLayer.addChild(this.fieldFx, this.turretSprite)
     this.overlayLayer.addChild(this.overlayFx)
-    this.hero.addChild(this.heroAura, this.formationFx, this.heroStateFx)
+    this.formationLabel.anchor.set(0.5)
+    this.formationLabel.position.set(0, 27)
+    this.hero.addChild(this.heroAura, this.formationFx, this.heroStateFx, this.formationLabel)
 
     for (let i = 0; i < 2; i++) {
       const ghost = new AnimatedSprite(this.assets.heroes.rookie)
@@ -415,7 +433,7 @@ export class BattleScene {
    * ⚠️ 目前三招共用同一組演出 —— 技能身分要靠 `skillId` 分流(視覺缺口清單 § 一)。
    * `sigilsSpent` 是這一發吃掉的印記層數,可用來畫 N 道射線。
    */
-  skillHit(text: string, skillId?: SkillId, sigilsSpent = 0) {
+  skillHit(text: string, skillId?: SkillId, sigilsSpent = 0, autoDetonate = false) {
     if (this.destroyed) return
     const target = this.targetPoint()
     const sigilSkills: SkillId[] = ['rally', 'windMark', 'edict']
@@ -443,7 +461,13 @@ export class BattleScene {
     if (skillId === 'edict' && this.getSnap().legends.includes('codexpage')) {
       this.spawnReturningSigils(Math.min(4, Math.ceil(sigilsSpent / 3)))
     }
-    this.damageNum(target.x, target.y - 45, text, true, skillId === 'judgement' || skillId === 'edict')
+    this.damageNum(
+      target.x,
+      target.y - 45,
+      autoDetonate ? `自動・${text}` : text,
+      true,
+      skillId === 'judgement' || skillId === 'edict',
+    )
   }
 
   /**
@@ -472,12 +496,50 @@ export class BattleScene {
    * 冷卻被推進(追風者之靴的暴擊、倒轉沙漏的順序)。
    * ⚠️ 目前只有一行提示 —— 應該做成技能格冷卻條跳一格 + 腳下風紋(清單 F9 / F10)。
    */
-  onCooldownAdvance(skillId: SkillId, seconds: number) {
+  onCooldownAdvance(skillId: SkillId, seconds: number, via?: string) {
     if (this.destroyed) return
-    const snap = this.getSnap()
-    if (snap.legends.includes('hourglass')) this.spawnHourglass(skillId)
+    if (via === 'hourglass') this.spawnHourglass(skillId)
     else this.spawnWindGlyph()
-    this.notice(`冷卻 −${seconds.toFixed(1)}s`)
+    const source = via === 'hourglass' ? '倒轉沙漏' : via === 'windboots' ? '追風者之靴' : '技能回轉'
+    this.notice(`${source}・冷卻 −${seconds.toFixed(1)}s`)
+  }
+
+  onSigilGain(count: number, via?: string) {
+    if (this.destroyed) return
+    const source: Record<string, string> = {
+      window: '視窗擊殺',
+      chance: '不退之壁',
+      combo: '連斬',
+      hunter: '尋寶獵人',
+      edict: '法令',
+      rogue: '盜賊背刺',
+    }
+    this.spawnHeroBurst(0x86e8ff)
+    this.notice(`${source[via ?? ''] ?? '印記'}・印記 +${count}`)
+  }
+
+  onResonanceGain(count: number) {
+    if (this.destroyed) return
+    this.spawnHeroBurst(0xb995ff)
+    this.notice(`命運共鳴 +${count}`)
+  }
+
+  onShellGain(count: number, source?: string) {
+    if (this.destroyed) return
+    const target = this.targetPoint()
+    const label = source === 'banner' ? '軍旗' : source === 'burn' ? '燃燒' : source === 'skill' ? '技能' : '命中'
+    this.damageNum(target.x + 54, target.y + 18, `${label}・破盾 +${count}`, false)
+  }
+
+  onEmberConvert(damage: string) {
+    if (this.destroyed) return
+    this.notice(`裁決餘燼・${damage} 轉為燃燒`)
+  }
+
+  onRelicPrimed() {
+    if (this.destroyed) return
+    this.spawnHeroBurst(0xffcf45)
+    this.notice('貪婪之眼・下場 Boss 帶弱點')
   }
 
   onFreezeStart() {
@@ -488,6 +550,13 @@ export class BattleScene {
   onFreezeBurst(text: string) {
     if (this.destroyed) return
     const target = this.targetPoint()
+    for (const child of this.dmgLayer.children) {
+      const number = child as FloatText
+      if (!number._frozen) continue
+      number._frozen = false
+      number._life = 1
+      number._vy = -3.8 - Math.random() * 1.8
+    }
     this.spawnIceBurst(target, true)
     this.damageNum(target.x, target.y - 50, text, true, true)
     this.shake = 13
@@ -496,8 +565,27 @@ export class BattleScene {
   onBurnTick(text: string) {
     if (this.destroyed || this.hitNumCooldown > 0) return
     const target = this.targetPoint()
-    this.damageNum(target.x + 34, target.y - 35, text, false)
+    this.damageNum(target.x + 34, target.y - 35, text, false, false, 1, this.getSnap().freezeLeft > 0)
     this.hitNumCooldown = 160
+  }
+
+  onBurnMax() {
+    if (this.destroyed) return
+    const target = this.targetPoint()
+    const fx = new Container() as TimedFx
+    const ring = new Graphics()
+    ring.circle(0, 0, 42).fill({ color: 0xff5a27, alpha: 0.28 })
+    ring.circle(0, 0, 38).stroke({ width: 12, color: 0xffb33b, alpha: 0.9 })
+    ring.circle(0, 0, 22).stroke({ width: 5, color: 0xfff0a0, alpha: 0.9 })
+    fx.addChild(ring)
+    fx.position.set(target.x, target.y + 12)
+    this.addTimedFx(fx, 520, (node, p) => {
+      node.scale.set(0.35 + p * 3.2)
+      node.alpha = 1 - p
+    })
+    this.shake = 15
+    this.zoom = 2
+    this.damageNum(target.x, target.y - 55, '燃燒滿層・爆燃！', true)
   }
 
   onEncounter() {
@@ -690,16 +778,18 @@ export class BattleScene {
   }
 
   private sourceHitNum(x: number, y: number, txt: string, crit: boolean, source: AttackSource) {
+    const frozen = this.getSnap().freezeLeft > 0
     if (source === 'hero') {
-      this.hitNum(x, y, txt, crit)
+      if (frozen) this.damageNum(x, y, txt, crit, false, 0.82, true)
+      else this.hitNum(x, y, txt, crit)
       return
     }
     const label = source === 'clone' ? '分身' : source === 'zone' ? '場地' : '傭兵'
     const offset = source === 'clone' ? -42 : source === 'zone' ? 42 : 0
-    this.damageNum(x + offset, y + 16, `${label} ${txt}`, false)
+    this.damageNum(x + offset, y + 16, `${label} ${txt}`, false, false, 1, frozen)
   }
 
-  private damageNum(x: number, y: number, txt: string, crit: boolean, holy = false, fontScale = 1) {
+  private damageNum(x: number, y: number, txt: string, crit: boolean, holy = false, fontScale = 1, frozen = false) {
     // 同屏跳字上限,超過先移除最舊的
     while (this.dmgLayer.children.length >= 12) this.dmgLayer.children[0].destroy()
     const t = new Text({
@@ -716,6 +806,11 @@ export class BattleScene {
     t.position.set(x + (Math.random() - 0.5) * 30, y)
     ;(t as FloatText)._vy = -2.4
     ;(t as FloatText)._life = 1
+    ;(t as FloatText)._frozen = frozen
+    if (frozen) {
+      t.tint = 0xb9edff
+      t.alpha = 0.78
+    }
     this.dmgLayer.addChild(t)
   }
 
@@ -809,10 +904,14 @@ export class BattleScene {
     // 傷害跳字
     for (let i = this.dmgLayer.children.length - 1; i >= 0; i--) {
       const t = this.dmgLayer.children[i] as FloatText
-      t.y += t._vy
-      t._vy += 0.06
-      t._life -= ms / 900
-      t.alpha = t._life
+      if (!t._frozen) {
+        t.y += t._vy
+        t._vy += 0.06
+        t._life -= ms / 900
+        t.alpha = t._life
+      } else {
+        t.alpha = 0.7 + Math.sin(this.elapsed * 0.012 + i) * 0.12
+      }
       if (t._life <= 0) t.destroy()
     }
 
@@ -1379,6 +1478,9 @@ export class BattleScene {
   private drawFormation(active: boolean, buffSkill: SkillId | null, permanent: boolean) {
     this.formationFx.clear()
     const shieldActive = buffSkill === 'shieldRush' || buffSkill === 'bulwark' || permanent
+    this.formationLabel.visible = active || shieldActive
+    this.formationLabel.text = permanent ? '不退軍陣' : active ? '帝國軍陣' : '盾牆軍陣'
+    this.formationLabel.alpha = permanent ? 0.95 : 0.72
     if (!active && !shieldActive) return
     const pulse = 1 + Math.sin(this.elapsed * 0.004) * 0.03
     if (active) {
@@ -1389,9 +1491,16 @@ export class BattleScene {
     }
     if (shieldActive) {
       const turn = this.elapsed * 0.00035
+      if (permanent) {
+        this.formationFx.ellipse(0, 8, 116 * pulse, 43 * pulse)
+          .fill({ color: 0x263038, alpha: 0.28 })
+        this.formationFx.poly([-15, -4, 15, -4, 18, 9, 0, 23, -18, 9])
+          .fill({ color: 0x727e86, alpha: 0.34 })
+          .stroke({ width: 3, color: 0xd0d7db, alpha: 0.72 })
+      }
       this.formationFx
         .ellipse(0, 8, 112 * pulse, 41 * pulse)
-        .stroke({ width: permanent ? 5 : 3, color: permanent ? 0x5b646c : 0x929da4, alpha: permanent ? 0.68 : 0.52 })
+        .stroke({ width: permanent ? 7 : 3, color: permanent ? 0x56636c : 0x929da4, alpha: permanent ? 0.82 : 0.52 })
       for (let i = 0; i < 6; i++) {
         const a = turn + (i / 6) * Math.PI * 2
         const x = Math.cos(a) * 92
@@ -1443,23 +1552,51 @@ export class BattleScene {
       this.heroStateFx.ellipse(0, -70, 74, 102).stroke({ width: 4, color: 0xffd45d, alpha: pulse })
     }
 
-    if (snap.legends.includes('hourglass')) {
+    if (snap.legends.includes('hourglass') || snap.commanderTracking) {
       const x = 92
       const y = -96
-      this.heroStateFx.poly([x - 12, y - 16, x + 12, y - 16, x - 8, y, x + 12, y + 16, x - 12, y + 16, x + 8, y])
-        .stroke({ width: 2, color: 0xf2c14e, alpha: 0.72 })
+      if (snap.legends.includes('hourglass')) {
+        this.heroStateFx.poly([x - 12, y - 16, x + 12, y - 16, x - 8, y, x + 12, y + 16, x - 12, y + 16, x + 8, y])
+          .stroke({ width: 2, color: 0xf2c14e, alpha: 0.72 })
+      } else {
+        this.heroStateFx.poly([x - 14, y - 12, x + 14, y - 12, x + 14, y + 12, x - 14, y + 12])
+          .stroke({ width: 2, color: 0x8fe5ff, alpha: 0.78 })
+        this.heroStateFx.moveTo(x - 7, y - 5).lineTo(x + 7, y - 5)
+          .moveTo(x - 7, y + 1).lineTo(x + 7, y + 1)
+          .moveTo(x - 7, y + 7).lineTo(x + 3, y + 7)
+          .stroke({ width: 2, color: 0xc8f6ff, alpha: 0.78 })
+      }
       for (let i = 0; i < 3; i++) {
         this.heroStateFx.circle(x - 10 + i * 10, y + 25, 3.5)
-          .fill({ color: i < snap.hourglassSteps ? 0xffd45d : 0x31343a, alpha: 0.85 })
+          .fill({ color: i < snap.hourglassSteps ? (snap.commanderTracking ? 0x8fe5ff : 0xffd45d) : 0x31343a, alpha: 0.85 })
       }
     }
 
-    if (this.bossIntroLeft > 0 && snap.valiantStacks > 0) {
-      const p = this.bossIntroLeft / 850
-      this.heroStateFx.ellipse(0, -66, 64 + p * 28, 94 + p * 30)
-        .fill({ color: 0xe64335, alpha: p * 0.18 })
-      this.heroStateFx.ellipse(0, -66, 70 + p * 30, 100 + p * 34)
-        .stroke({ width: 4, color: 0xff6554, alpha: p * 0.6 })
+    if (snap.isBoss && snap.valiantStacks > 0) {
+      const p = 0.7 + Math.sin(this.elapsed * 0.004) * 0.12
+      this.heroStateFx.ellipse(0, -66, 70 + p * 10, 100 + p * 12)
+        .fill({ color: 0xe64335, alpha: 0.08 + Math.min(0.12, snap.valiantStacks * 0.012) })
+      this.heroStateFx.ellipse(0, -66, 74 + p * 12, 104 + p * 14)
+        .stroke({ width: 3, color: 0xff6554, alpha: 0.3 + Math.min(0.25, snap.valiantStacks * 0.02) })
+    }
+
+    if (snap.zealStacks > 0) {
+      const zealPulse = 0.7 + Math.sin(this.elapsed * 0.009) * 0.16
+      this.heroStateFx.ellipse(0, -67, 58 + snap.zealStacks * 3, 88 + snap.zealStacks * 4)
+        .stroke({ width: 3 + snap.zealStacks * 0.35, color: 0xff8b45, alpha: 0.28 + zealPulse * 0.26 })
+      for (let i = 0; i < 5; i++) {
+        this.heroStateFx.circle(-20 + i * 10, -158, i < snap.zealStacks ? 4.5 : 3)
+          .fill({ color: i < snap.zealStacks ? 0xffa246 : 0x3b2924, alpha: 0.9 })
+      }
+    }
+
+    if (snap.perfectWindowLeft > 0) {
+      const ratio = Math.min(1, snap.perfectWindowLeft / 1.5)
+      const radius = 42 + ratio * 54
+      this.heroStateFx.circle(0, -72, radius)
+        .stroke({ width: 5, color: 0xffdb58, alpha: 0.42 + (1 - ratio) * 0.45 })
+      this.heroStateFx.arc(0, -72, radius - 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio)
+        .stroke({ width: 3, color: 0xfff2aa, alpha: 0.9 })
     }
 
     const galeActive = snap.buffSkill === 'gale' || snap.buffSkill === 'shadowClone'
@@ -1481,10 +1618,15 @@ export class BattleScene {
     if (snap.bannerLeft > 0) {
       const x = this.W * 0.72
       const y = this.H * 0.75
+      const life = Math.min(1, snap.bannerLeft / 5)
+      const lean = (1 - life) * 20
       this.fieldFx.ellipse(x, y + 7, 42, 13).fill({ color: 0x130b08, alpha: 0.4 })
-      this.fieldFx.rect(x - 3, y - 90, 6, 94).fill(0x3c2b22)
-      this.fieldFx.poly([x, y - 86, x + 55, y - 70, x, y - 48]).fill({ color: 0xc94b32, alpha: 0.9 })
-      this.fieldFx.circle(x, y - 56, 32 * pulse).fill({ color: 0xff7a32, alpha: 0.08 })
+      this.fieldFx.moveTo(x, y + 4).lineTo(x + lean, y - 90)
+        .stroke({ width: 6, color: 0x3c2b22, alpha: 0.45 + life * 0.55 })
+      this.fieldFx.poly([x + lean, y - 86, x + lean + 55, y - 70, x + lean + 2, y - 48])
+        .fill({ color: 0xc94b32, alpha: 0.35 + life * 0.55 })
+      this.fieldFx.circle(x + lean, y - 56, 32 * pulse * (0.65 + life * 0.35))
+        .fill({ color: 0xff7a32, alpha: 0.03 + life * 0.08 })
     }
     if (snap.zoneLeft > 0) {
       const x = this.W * 0.72
@@ -1514,15 +1656,22 @@ export class BattleScene {
     }
 
     if (snap.burnLeft > 0) {
+      const fireLife = Math.min(1, snap.burnLeft / 5)
       for (let i = 0; i < 7; i++) {
         const phase = (this.elapsed * 0.0015 + i / 7) % 1
-        const x = target.x + Math.sin(i * 2.37) * 34 * (1 - phase * 0.35)
-        const y = target.y + 34 - phase * 82
-        const r = 4 + (1 - phase) * 8
-        this.enemyStateFx.circle(x, y, r).fill({ color: i % 2 ? 0xffb23d : 0xff532b, alpha: (1 - phase) * 0.76 })
+        const x = target.x + Math.sin(i * 2.37) * 34 * (1 - phase * 0.35) * (0.55 + fireLife * 0.45)
+        const y = target.y + 34 - phase * (34 + fireLife * 48)
+        const r = (3 + (1 - phase) * 8) * (0.45 + fireLife * 0.55)
+        this.enemyStateFx.circle(x, y, r)
+          .fill({ color: i % 2 ? 0xffb23d : 0xff532b, alpha: (1 - phase) * (0.25 + fireLife * 0.51) })
       }
-      this.enemyStateFx.circle(target.x, target.y + 20, 44 * pulse)
-        .stroke({ width: 3, color: 0xff682f, alpha: 0.45 })
+      this.enemyStateFx.circle(target.x, target.y + 20, 44 * pulse * (0.7 + fireLife * 0.3))
+        .stroke({ width: 3, color: 0xff682f, alpha: 0.18 + fireLife * 0.27 })
+      for (let i = 0; i < 5; i++) {
+        this.enemyStateFx.circle(target.x - 20 + i * 10, target.y - 68, i < snap.burnStacks ? 4.5 : 3.5)
+          .fill({ color: i < snap.burnStacks ? 0xff7a32 : 0x3c2822, alpha: 0.9 })
+          .stroke({ width: 1, color: i < snap.burnStacks ? 0xffd36c : 0x795043, alpha: 0.9 })
+      }
     }
 
     if (snap.relicLeft > 0 && snap.isBoss) {
@@ -1534,6 +1683,8 @@ export class BattleScene {
     }
 
     if (snap.freezeLeft > 0) {
+      const freezeRatio = Math.min(1, snap.freezeLeft / 2)
+      const crack = 1 - freezeRatio
       this.overlayFx.rect(0, 0, this.W, this.H).fill({ color: 0xa9e9ff, alpha: 0.12 })
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2
@@ -1541,7 +1692,52 @@ export class BattleScene {
         const y = target.y + Math.sin(a) * 48
         this.enemyStateFx.poly([x, y - 18, x + 7, y + 12, x - 7, y + 12])
           .fill({ color: 0xc8f5ff, alpha: 0.55 })
+        if (crack > i / 10) {
+          this.enemyStateFx.moveTo(target.x, target.y)
+            .lineTo(target.x + Math.cos(a) * (24 + crack * 42), target.y + Math.sin(a) * (18 + crack * 32))
+            .stroke({ width: 2, color: 0xeffcff, alpha: 0.42 + crack * 0.42 })
+        }
       }
+      this.enemyStateFx.arc(target.x, target.y + 4, 72, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * freezeRatio)
+        .stroke({ width: 4, color: 0x9beaff, alpha: 0.84 })
+    }
+
+    if (snap.isBoss && snap.shellLeft > 0) {
+      const shellX = target.x
+      const shellY = target.y + 12
+      for (let i = 0; i < Math.min(6, snap.shellLeft); i++) {
+        const a = -2.65 + i * (2.15 / Math.max(1, Math.min(6, snap.shellLeft) - 1))
+        this.enemyStateFx.arc(shellX, shellY, 76 + i % 2 * 7, a - 0.15, a + 0.15)
+          .stroke({ width: 9, color: 0x96a7b4, alpha: 0.78 })
+      }
+      this.enemyStateFx.arc(shellX, shellY, 91, Math.PI * 0.08, Math.PI * (0.08 + 0.84 * snap.shellProgress))
+        .stroke({ width: 6, color: snap.shellProgress > 0.72 ? 0xffb45c : 0xe1edf3, alpha: 0.9 })
+    }
+
+    if (snap.isBoss && snap.channelLeft > 0) {
+      const barW = Math.min(260, this.W * 0.52)
+      const x = (this.W - barW) / 2
+      const y = this.H * 0.43
+      this.enemyStateFx.roundRect(x, y, barW, 14, 7).fill({ color: 0x170c0c, alpha: 0.82 })
+      this.enemyStateFx.roundRect(x + 2, y + 2, (barW - 4) * snap.channelProgress, 10, 5)
+        .fill({ color: snap.channelProgress > 0.72 ? 0x6de3a2 : 0xffb34d, alpha: 0.95 })
+      for (let i = 1; i < 4; i++) {
+        this.enemyStateFx.rect(x + (barW * i) / 4, y, 2, 14).fill({ color: 0xffffff, alpha: 0.24 })
+      }
+    }
+
+    if (snap.totemRatio > 0) {
+      const x = this.W * 0.2
+      const y = this.H * 0.58
+      const barW = 78
+      this.fieldFx.ellipse(x, y + 12, 34, 10).fill({ color: 0x080508, alpha: 0.42 })
+      this.fieldFx.poly([x, y - 72, x + 20, y - 48, x + 12, y + 8, x - 12, y + 8, x - 20, y - 48])
+        .fill({ color: 0x63334f, alpha: 0.92 })
+        .stroke({ width: 3, color: 0xe08cba, alpha: 0.72 })
+      this.fieldFx.circle(x, y - 45, 12 * pulse).fill({ color: 0xff70b6, alpha: 0.28 })
+      this.fieldFx.roundRect(x - barW / 2, y + 20, barW, 9, 4).fill({ color: 0x1d1118, alpha: 0.9 })
+      this.fieldFx.roundRect(x - barW / 2 + 2, y + 22, (barW - 4) * snap.totemRatio, 5, 2)
+        .fill({ color: snap.totemRatio < 0.3 ? 0xff725f : 0xff82bd, alpha: 0.96 })
     }
 
     if (this.bossIntroLeft > 0) {
@@ -1574,6 +1770,7 @@ interface TimedFx extends Container {
 interface FloatText extends Text {
   _vy: number
   _life: number
+  _frozen: boolean
 }
 
 function frameSpeed(frameMs: number): number {

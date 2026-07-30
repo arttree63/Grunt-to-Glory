@@ -9,6 +9,8 @@ type IconName =
   | 'legacy'
   | 'charge'
   | 'pause'
+  | 'autoCast'
+  | 'manualCast'
   | 'shieldRush'
   | 'gale'
   | 'judgement'
@@ -70,6 +72,25 @@ export function GameIcon({ name, size = 22 }: { name: IconName; size?: number })
   }
   if (name === 'pause') {
     return <svg {...common}><path d="M8 5v14M16 5v14" /></svg>
+  }
+  if (name === 'autoCast') {
+    return (
+      <svg {...common}>
+        <path d="M19.2 7.2A8 8 0 0 0 5.5 5.6L3 8" />
+        <path d="M3 4v4h4" />
+        <path d="M4.8 16.8a8 8 0 0 0 13.7 1.6L21 16" />
+        <path d="M21 20v-4h-4" />
+        <path d="m12 7 1.2 3.1L16.5 12l-3.3 1.9L12 17l-1.2-3.1L7.5 12l3.3-1.9L12 7Z" />
+      </svg>
+    )
+  }
+  if (name === 'manualCast') {
+    return (
+      <svg {...common}>
+        <path d="M8.5 11.5V6.8a1.5 1.5 0 0 1 3 0v3.7-5a1.5 1.5 0 0 1 3 0v5-3a1.5 1.5 0 0 1 3 0v4-2a1.5 1.5 0 0 1 3 0v4.2c0 4.6-3 7.3-7.4 7.3h-.8c-2 0-3.7-.9-4.9-2.4L3.8 14a1.7 1.7 0 0 1 2.5-2.3l2.2 2.1v-2.3Z" />
+        <path d="M5 4.5 3.5 3M5 8H2.5M8 4V1.5" />
+      </svg>
+    )
   }
   if (name === 'hound') {
     return <svg {...common}><path d="M5 9 3 5l5 2h8l5-2-2 5v8H7V10M8 18l-2 4M16 18l2 4" /><circle cx="9" cy="12" r=".8" fill="currentColor" /><circle cx="15" cy="12" r=".8" fill="currentColor" /></svg>

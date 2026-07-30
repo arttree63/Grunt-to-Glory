@@ -568,7 +568,7 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
     const pick = live ?? windows[0]
     const sk = SKILLS[pick.skillId]
     const n = windows.some((b) => evolved(s, b.skillId)) ? B.EVOLVE_SIGIL_MULT : 1
-    if (live || rng() < (sk.duration ?? 0) / sk.cd) gainSigil(s, n)
+    if (live || rng() < (sk.duration ?? 0) / sk.cd) gainSigil(s, n, events, live ? 'window' : 'chance')
   }
   // 連斬:每次擊殺 +1 層並重置衰減視窗
   if (hasNode(s, 'tactician_start')) {
@@ -577,8 +577,8 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
     s.comboIdle = 0
     // 戰術家:連斬每跨過 N 層就給一枚印記,把連斬與印記串起來
     if (Math.floor(s.combo / B.TACTICIAN_COMBO_PER_SIGIL) > Math.floor(before / B.TACTICIAN_COMBO_PER_SIGIL)) {
-      gainSigil(s)
-      addResonance(s, 'combo')
+      gainSigil(s, 1, events, 'combo')
+      addResonance(s, 'combo', events)
     }
   }
   const routeGold = s.routeBuff?.kind === 'gold' ? B.ROUTE_BUFF_MULT : 1
@@ -789,7 +789,7 @@ function tickWindBoots(s: GameState, rng: Rng, events: GameEvent[]) {
   const left = cdLeft - B.WINDBOOTS_CD_SEC
   if (left <= 0) delete s.skillCd[target]
   else s.skillCd[target] = left
-  events.push({ type: 'cooldownAdvance', skillId: target, seconds: B.WINDBOOTS_CD_SEC })
+  events.push({ type: 'cooldownAdvance', skillId: target, seconds: B.WINDBOOTS_CD_SEC, via: 'windboots' })
 }
 
 /**
@@ -952,6 +952,8 @@ function addShieldValue(s: GameState, value: number, source: string, raw: GameEv
   if (applied <= 0) return
   s.shellValueThisSec += applied
   s.shellValue += applied
+  // 投點可見化:命中 4 / 狀態 1 / 軍旗回音 2 的差異要能在畫面上跳出來
+  raw.push({ type: 'shellGain', count: applied, shellSource: source })
 
   if (s.bossStats) {
     s.bossStats.shieldValue += applied
@@ -1100,10 +1102,10 @@ function rewardEvent(s: GameState, kind: EventKind, events: GameEvent[], rng: Rn
   if (elite) s.eliteMaterials++
 
   // 尋寶獵人:把事件拉進戰鬥循環,而不只是經濟收益
-  if (s.destinyPath === 'hunter') gainSigil(s, B.HUNTER_SIGIL_ON_EVENT)
+  if (s.destinyPath === 'hunter') gainSigil(s, B.HUNTER_SIGIL_ON_EVENT, events, 'hunter')
 
   markEventKind(s, kind)
-  addResonance(s, 'event')
+  addResonance(s, 'event', events)
   events.push({ type: 'eventKill', kind, gold: g, count: elite ? 1 : 0 })
 }
 
@@ -1190,9 +1192,15 @@ const RESONANCE_PATH: Record<keyof typeof B.RESONANCE, DestinyPathId> = {
 }
 
 /** 行為累積共鳴。選過命運後仍繼續累積(顯示用),但禮物只在選擇當下發一次 */
-export function addResonance(s: GameState, src: keyof typeof B.RESONANCE) {
+export function addResonance(s: GameState, src: keyof typeof B.RESONANCE, events?: GameEvent[]) {
   s.resonanceSrc[src]++
   s.resonance[RESONANCE_PATH[src]] += B.RESONANCE[src]
+  if (events) events.push(resonanceEvent(src))
+}
+
+/** 共鳴累積事件(鍛造/分解等面板動作沒有事件陣列,由 store 層用這個 emit) */
+export function resonanceEvent(src: keyof typeof B.RESONANCE): GameEvent {
+  return { type: 'resonanceGain', count: B.RESONANCE[src] }
 }
 
 /** 共鳴最強的命運(全 0 回 null)。措辭是「產生了較強共鳴」,不是「推薦」 */
@@ -1325,10 +1333,12 @@ export function sigilCap(s: GameState): number {
 }
 
 /** 累積印記。既有技能建立累積,第二技能挑時機消耗 */
-function gainSigil(s: GameState, n = 1) {
+function gainSigil(s: GameState, n = 1, events?: GameEvent[], via?: GameEvent['via']) {
   if (!JOBS[s.jobId].awakenSkill) return
   const before = s.sigils
   s.sigils = Math.min(sigilCap(s), s.sigils + n)
+  // 疊層瞬間發事件:玩家要看得到「這隻為什麼給」(視窗擊殺/擲骰/連斬…)
+  if (events && s.sigils > before) events.push({ type: 'sigilGain', count: s.sigils - before, via })
   // 疊滿的瞬間開金色窗口:窗口內「手動」引爆=完美引爆(掛機正常引爆,無完美獎勵)
   if (before < sigilCap(s) && s.sigils >= sigilCap(s)) s.perfectWindowLeft = B.PERFECT_WINDOW_SEC
 }
@@ -1371,11 +1381,13 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
   const sk = SKILLS[id]
   s.skillCd[id] = skillCooldown(s, id)
   s.runStats.skillCasts++
-  addResonance(s, 'skill')
   const events: GameEvent[] = []
+  addResonance(s, 'skill', events)
   // 這一招實際打出多少,最後回填給 skill 事件——
   // 全遊戲最大的一擊(印記引爆 / 隕石術)原本是完全沒有演出的
   let skillDamage = D(0)
+  // 裁決餘燼:轉入燃燒的份額,回填給 skill 事件(玩家要知道傷害沒少,是慢燒)
+  let emberBurn: Decimal | undefined
 
   const bonus = equipBonuses(s.equipped)
   // 演出要知道「這一發吃了幾層」,才畫得出 N 道射線
@@ -1395,7 +1407,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
     if (s.event) s.event.hp = s.event.hp.sub(stored)
     else dealSkillToBoss(s, stored, events)
     s.bannerStored = 0
-    events.push({ type: 'moraleBurst', damage: stored })
+    events.push({ type: 'moraleBurst', damage: stored, via: 'lostbanner' })
   }
 
   if (sk.consumesSigils) {
@@ -1425,7 +1437,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
       const next = left - advance
       if (next <= 0) delete s.skillCd[other]
       else s.skillCd[other] = next
-      events.push({ type: 'cooldownAdvance', skillId: other, seconds: advance })
+      events.push({ type: 'cooldownAdvance', skillId: other, seconds: advance, via: 'reload' })
     }
     // 戰意昂揚(輪內疊乘):滿層引爆才算——保留「現在引爆還是再疊」的決策
     if (wasFull && s.zealStacks < B.ZEAL_MAX_STACKS) {
@@ -1449,7 +1461,8 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
     skillDamage = skillDamage.add(dmg)
     // 裁決餘燼:七成立即、三成化為燃燒(總量不變——差別是敵人會持續冒火)
     if (hasLegend(s, 'ember')) {
-      applyBurn(s, dmg.mul(1 - B.EMBER_IMMEDIATE), B.EMBER_BURN_DURATION, events)
+      emberBurn = dmg.mul(1 - B.EMBER_IMMEDIATE)
+      applyBurn(s, emberBurn, B.EMBER_BURN_DURATION, events)
       dmg = dmg.mul(B.EMBER_IMMEDIATE)
     }
     registerBossHits(s, 1, events, 'skill')
@@ -1459,7 +1472,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
       dealSkillToBoss(s, dmg, events)
     }
     // 立即傷害型(聖光審判)每次施放留下法令;連判(二轉進化)留三枚
-    gainSigil(s, evolved(s, id) ? B.EVOLVE_EDICT_SIGILS : 1)
+    gainSigil(s, evolved(s, id) ? B.EVOLVE_EDICT_SIGILS : 1, events, 'edict')
   } else if (sk.duration) {
     // 熔火軍旗:盾牆突擊系(dmgMult buff)施放時插旗,軍旗與視窗同壽命
     if (sk.dmgMult && hasLegend(s, 'bannerflag')) s.bannerLeft = sk.duration
@@ -1484,6 +1497,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
     skillId: id,
     damage: skillDamage.gt(0) ? skillDamage : undefined,
     count: spent || undefined,
+    burnDamage: emberBurn,
   })
   return events
 }
@@ -1528,7 +1542,7 @@ function trackCastOrder(s: GameState, id: SkillId, events: GameEvent[]) {
     const left = (s.skillCd[longest] ?? 0) - advance
     if (left <= 0) delete s.skillCd[longest]
     else s.skillCd[longest] = left
-    events.push({ type: 'cooldownAdvance', skillId: longest, seconds: advance })
+    events.push({ type: 'cooldownAdvance', skillId: longest, seconds: advance, via: 'hourglass' })
   }
   s.castOrder = []
   s.hourglassLock = B.HOURGLASS_LOCK
@@ -1599,14 +1613,21 @@ function tickMerc(s: GameState, dt: number, events: GameEvent[], rng: Rng) {
       registerBossHits(s, 1, events, 'merc')
       // 背刺無視圖騰:位移的構築價值——盜賊繞到後面直接捅本體
       dealDamage(s, dmg, events, rng, { pierceTotem: true, source: 'merc' })
-      gainSigil(s)
+      gainSigil(s, 1, events, 'rogue')
       break
     }
     case 'icemage': {
       // 凍結:Boss 每場上限、正在凍結中跳過。
       // ⚠️ 限時事件中也跳過:事件逾時逃走時,池裡打事件的傷害會誤導到一般敵人,獎勵直接蒸發
       if (s.freezeLeft > 0 || s.event) break
-      if (s.isBoss && s.freezeUsedThisBoss >= B.FREEZE_BOSS_CAP) break
+      if (s.isBoss && s.freezeUsedThisBoss >= B.FREEZE_BOSS_CAP) {
+        // 上限已滿的第一次嘗試發事件(之後靜默):否則玩家只覺得冰法師突然罷工
+        if (s.freezeUsedThisBoss === B.FREEZE_BOSS_CAP) {
+          s.freezeUsedThisBoss++
+          events.push({ type: 'freezeCapped' })
+        }
+        break
+      }
       if (s.isBoss) s.freezeUsedThisBoss++
       s.freezeLeft = B.FREEZE_DURATION
       s.frozenPool = D(0)
@@ -1714,7 +1735,7 @@ function autoDetonate(s: GameState, events: GameEvent[]) {
   else dealSkillToBoss(s, dmg, events)
   s.sigils = 0
   s.perfectWindowLeft = 0 // 套裝自動引爆同樣不算完美(不是玩家挑的時機)
-  events.push({ type: 'skill', skillId: id, damage: dmg, count: spent })
+  events.push({ type: 'skill', skillId: id, damage: dmg, count: spent, via: 'ironwall' })
 }
 
 function tickSkills(s: GameState, dt: number, events: GameEvent[]) {

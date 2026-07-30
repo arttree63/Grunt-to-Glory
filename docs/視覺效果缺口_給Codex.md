@@ -28,13 +28,67 @@
 
 | # | 項目 | 依賴 |
 |---|---|---|
-| 1 | **Boss goal-gradient render 版**:打斷進度條(Boss 血條下方)、護盾層碎裂進度、圖騰血條 | 等 Claude 補 `snapshot.channelProgress` / `shellValue`(`totemRatio` 已有) |
-| 2 | **F18 爆燃圓**:燃燒滿層一次釋放 | 等 Claude 的 core 鉤子(燃燒層數 + 滿層事件) |
-| 3 | `encounter`(路標/營火剪影)與 `eventSpawn`(限時圈)——僅剩的兩個無演出事件 | 無依賴,可先做 |
+| 1 | **Boss goal-gradient render 版**:打斷進度條(Boss 血條下方)、護盾層碎裂進度、圖騰血條 | ✅ 2026-07-30 完成 |
+| 2 | **F18 爆燃圓**:燃燒滿層一次釋放 | ✅ 2026-07-30 完成 |
+| 3 | `encounter`(路標/營火剪影)與 `eventSpawn`(限時圈)——僅剩的兩個無演出事件 | ✅ 2026-07-30 完成 |
 | 4 | **音效基礎層**(GDD § 10.5 優先序表;`tone` + 短樣本;三軌音量 + 全靜音;重要資訊必有視覺冗餘) | 無依賴 |
 | 5 | 人格稱號/代表事件的結算頁排版(一句敘事文字) | 等 Claude 的稱號資料 |
 
 設計依據:docs/handoff.md 籃 B(Boss 內 goal-gradient 的心理學理由與原話出處)。
+
+Codex 第二批驗收:
+
+- C1～C9 已接入 BattleScene；凍結傷害數字會暫存在敵人身上並於 `freezeBurst` 一起釋放。
+- `npm run typecheck` 通過；core 單一測試檔 209 項通過。
+- 本機瀏覽器實際渲染通過，console 無 warning / error。
+
+## 2026-07-30 模糊回饋總盤點(玩家實測回饋:「很多事情很模糊」)
+
+> 全面對照 core 邏輯 vs 畫面回饋後的缺口清單。A=完全隱形(玩家不可能知道),B=有露出但不明確。
+> 分兩籃:**Codex 可直接做**(資料已在 snapshot/事件裡)與**等 Claude 補 core 鉤子**。
+
+### 籃一:Codex 可直接做(不需改 core)
+
+| # | 缺口 | 現況 | 要做什麼 | 資料來源 |
+|---|---|---|---|---|
+| C1 | **四個死欄位**:BattleCanvas 每幀算好、BattleScene 從沒讀 | `burnStacks`(151)、`shellLeft`(158)、`shellProgress`(160)、`totemRatio`(166) 宣告了但零讀取 | 燃燒層數 pips(滿 5 層前的接近提示,接 F18)、Boss 身上盾殼進度、圖騰血量條(scene 版) | snapshot 已有 |
+| C2 | 燃燒火焰不隨 burnLeft 收斂 | 粒子恆定 | 火勢隨剩餘秒數變小,快熄滅時明顯轉弱 | `snapshot.burnLeft` |
+| C3 | 凍結無倒數、frozenPool 無表達 | 只有藍 overlay + 靜態冰晶 | 冰晶隨時間裂紋加深;凍結期間傷害數字「凍在敵人身上」堆積,解凍時一起炸出(因果連上 freezeBurst) | `snapshot.freezeLeft` + `freezeBurst` |
+| C4 | 熔火軍旗無倒數 | 有旗無時間 | 旗幟隨 bannerLeft 傾斜/褪色 | `snapshot.bannerLeft` |
+| C5 | 越戰越勇紅光只在開場 850ms | bossIntroLeft 內才畫 | 改為整場 Boss 戰常駐淡紅光環 | snapshot 已有 |
+| C6 | ~~完美引爆窗口無倒數~~ **已存在**:`snapshot.perfectWindowLeft` 已接且 BattleScene:1552 有收縮圈演出,免做 | — | — | — |
+| C7 | 沙漏進度只給 hourglass 玩家 | BattleScene:1447 的三球綁 `legends.includes('hourglass')`;`hourglassSteps` 其實已在 snapshot | 戰術指揮官 2 件(sets.ts:41 宣告「顯示還差幾個不同技能」但從未實作)也要看到進度 → BattleCanvas 用 `setCount(s,'commander')>=2` 補一個 snapshot 布林,gate 改為兩者任一 | BattleCanvas 補欄位 |
+| C8 | 帝國鐵壁軍陣圈無標籤 | 金色橢圓無說明 | 軍陣圈加短文字/圖示標籤;3 件自動引爆的跳字加「自動」前綴樣式 | 事件已有 |
+| C9 | 不退之壁常駐軍陣辨識度 | 只差 2px 線寬 | 常駐版加盾紋/更明顯的沉色差異 | `buffPermanent` 已有 |
+
+### 籃二:core 鉤子(✅ 2026-07-30 Claude 已補完，Codex 已接演出)
+
+契約(`src/core/types.ts`):新增事件 `sigilGain` / `resonanceGain` / `freezeCapped` / `relicPrimed` / `shellGain`;
+新增欄位 `via`(觸發歸因,union 見 types.ts 註解)、`burnDamage`(skill 事件)、`shellSource`(shellGain 事件)。
+
+K1～K9 與帝國鐵壁自動引爆已完成；K10 仍等待設計決策。
+
+| # | 缺口 | 鉤子(已就緒) | 建議演出 |
+|---|---|---|---|
+| K1 | 印記疊層瞬間無回饋(最痛) | `sigilGain` 事件,`count`=實得層數(封頂後不發),`via`= window(視窗擊殺)/ chance(不退之壁擲骰)/ combo / hunter / edict / rogue | pip 亮起+小跳字「+1」;via=window 時可標「視窗擊殺」教玩家規則 |
+| K2 | 命運共鳴累積無回饋 | `resonanceGain` 事件(`count`);戰鬥內來源走 tick/castSkill 事件流,鍛造/分解/際遇由 store 層 emit | 一行小 notice 或角落 +N 飄字 |
+| K3 | 貪婪之眼觸發歸因 | 鍛出紫裝當下 `relicPrimed` 事件;Boss 開場兌現看 `snapshot.relicLeft` 由 0 轉正 | 鍛造結果頁+戰鬥 notice「下場 Boss 帶遺物弱點」 |
+| K4 | 破盾投點差異不可見 | `shellGain` 事件:`count`=實投點數(已扣每秒上限),`shellSource`= hero/skill/merc/burn 等 | 盾殼上小字 +N,不同來源不同色 |
+| K5 | 凍結第 3 次靜默失效 | `freezeCapped` 事件(每場 Boss 只發一次) | notice「Boss 已對凍結免疫(每場上限 2 次)」 |
+| K6 | 裁決餘燼 70/30 拆分不可見 | `skill` 事件新欄位 `burnDamage`(轉入燃燒的量) | 跳字拆兩段:立即傷害+「引燃 N」 |
+| K7 | 失落軍旗釋放跳字寫「戰意爆發」 | `moraleBurst` 帶 `via:'lostbanner'` | 跳字改「失落軍旗・釋放」+ 軍旗光柱(F12) |
+| K8 | 冷卻推進分不出誰觸發 | `cooldownAdvance` 帶 `via`: windboots / hourglass / reload(引爆回轉) | 風紋(F9)/ 沙漏翻轉(F10)/ 連跳各自分流 |
+| K9 | 戰意昂揚無常駐顯示 | `snapshot.zealStacks` 已接 | 主角紅金光環隨層數加深 |
+| — | 帝國鐵壁自動引爆與手動同款跳字 | `skill` 事件帶 `via:'ironwall'` | 跳字加「自動」樣式,弱化處理 |
+| K10 | goal-gradient 戰鬥畫面無露出 | 設計決策未定,仍留給 Claude | — |
+
+### B 組其餘(教學/文字類,Claude 處理,不進 Codex 批)
+
+- Boss 30 秒規則只教一次(Tutorial 看過永久不再出);失敗診斷只在失敗後短暫可見。
+- 「燃燒/背刺穿透圖騰」規則散在三處文字,事前無教學。
+- 關鍵字(儲存/軍陣/轉化…)只有 chip 無定義說明 → 需 tooltip/長按說明。
+- 圖騰在場時破盾投點被鎖死,但盾條看起來還在動(誤導)。
+- 套裝生效狀態戰鬥畫面無總覽。
 
 ---
 

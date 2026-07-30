@@ -523,6 +523,11 @@ export interface GameEvent {
     | 'channelFailed'
     | 'totemSpawn'
     | 'totemDown'
+    | 'sigilGain'
+    | 'resonanceGain'
+    | 'freezeCapped'
+    | 'relicPrimed'
+    | 'shellGain'
   floor?: number
   gold?: Decimal
   /** attack 事件:這一擊實際造成的傷害 */
@@ -539,4 +544,28 @@ export interface GameEvent {
   mercId?: MercId
   /** attack 事件:這一擊來自誰(分帳演出用)。省略 = 主角 */
   source?: 'hero' | 'clone' | 'zone' | 'merc'
+  /**
+   * 觸發歸因(演出用):
+   * sigilGain — window(視窗內擊殺)/ chance(不退之壁擲骰)/ combo(戰術家連斬)/
+   *             hunter(尋寶獵人事件)/ edict(聖光施放留印)/ rogue(盜賊背刺破綻)
+   * cooldownAdvance — windboots / hourglass / reload(引爆回轉)
+   * moraleBurst — lostbanner(失落軍旗釋放,跳字別再寫成普通戰意爆發)
+   * skill — ironwall(帝國鐵壁 3 件自動引爆,非玩家手動)
+   */
+  via?:
+    | 'window'
+    | 'chance'
+    | 'combo'
+    | 'hunter'
+    | 'edict'
+    | 'rogue'
+    | 'windboots'
+    | 'hourglass'
+    | 'reload'
+    | 'lostbanner'
+    | 'ironwall'
+  /** skill 事件(裁決餘燼):damage 中有多少轉入燃燒(七成立即、這一份慢燒) */
+  burnDamage?: Decimal
+  /** shellGain 事件:這次投入的破盾值來源(hero/skill/merc/burn/banner…) */
+  shellSource?: string
 }

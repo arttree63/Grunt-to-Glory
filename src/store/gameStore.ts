@@ -134,8 +134,15 @@ export const useGame = create<Store>((set, get) => ({
   },
 
   forge(opts) {
-    const e = G.forge(get().s, Math.random, opts)
-    if (e) gameEvents.emit({ type: 'forge', equipment: e })
+    const s = get().s
+    const relicBefore = s.relicPending
+    const e = G.forge(s, Math.random, opts)
+    if (e) {
+      gameEvents.emit({ type: 'forge', equipment: e })
+      gameEvents.emit(G.resonanceEvent('forge'))
+      // 貪婪之眼:鍛出紫裝當下就要說「下場 Boss 帶弱點」,不能等玩家自己回鐵匠鋪發現
+      if (!relicBefore && s.relicPending) gameEvents.emit({ type: 'relicPrimed' })
+    }
     bump(set, get)
     return e
   },
@@ -146,14 +153,20 @@ export const useGame = create<Store>((set, get) => ({
   },
 
   fineForge(opts) {
-    const e = G.fineForge(get().s, opts)
-    if (e) gameEvents.emit({ type: 'forge', equipment: e })
+    const s = get().s
+    const relicBefore = s.relicPending
+    const e = G.fineForge(s, opts)
+    if (e) {
+      gameEvents.emit({ type: 'forge', equipment: e })
+      gameEvents.emit(G.resonanceEvent('forge'))
+      if (!relicBefore && s.relicPending) gameEvents.emit({ type: 'relicPrimed' })
+    }
     bump(set, get)
     return e
   },
 
   resolveEncounter(id, choiceId) {
-    G.resolveEncounter(get().s, id, choiceId)
+    if (G.resolveEncounter(get().s, id, choiceId)) gameEvents.emit(G.resonanceEvent('encounter'))
     bump(set, get)
   },
 
@@ -183,7 +196,7 @@ export const useGame = create<Store>((set, get) => ({
   },
 
   salvage(id) {
-    G.salvage(get().s, id)
+    if (G.salvage(get().s, id) > 0) gameEvents.emit(G.resonanceEvent('salvage'))
     bump(set, get)
   },
 
