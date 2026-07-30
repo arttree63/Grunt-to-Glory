@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - main
-      - claude/external-network-url-launch-h5nj18
   workflow_dispatch:
 
 permissions:
