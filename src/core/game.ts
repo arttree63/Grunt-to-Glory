@@ -1,5 +1,6 @@
 import * as B from './balance'
 import { ACHIEVEMENTS, newAchievements } from './achievements'
+import { zoneIndex } from './zones'
 import { D, Decimal } from './decimal'
 import {
   baseMods,
@@ -651,6 +652,8 @@ export function claimDailyElite(s: GameState, today: string): boolean {
 }
 
 function nextEnemy(s: GameState, events: GameEvent[]) {
+  // 地帶跨越判定放在這裡一次做完:下面有三個推進樓層的分支,逐一判定一定會漏
+  const zoneBefore = zoneIndex(s.floor)
   if (s.isBoss) {
     // Boss 被擊破 → 進下一層。戰術修正只活一場,不論勝敗都清掉
     s.bossTactic = null
@@ -679,6 +682,7 @@ function nextEnemy(s: GameState, events: GameEvent[]) {
       }
     }
   }
+  if (zoneIndex(s.floor) !== zoneBefore) events.push({ type: 'zoneEnter', floor: s.floor })
   s.highestFloor = Math.max(s.highestFloor, s.floor)
   if (s.routeBuff) {
     s.routeBuff.floorsLeft--

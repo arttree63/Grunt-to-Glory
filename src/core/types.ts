@@ -538,6 +538,7 @@ export interface GameEvent {
     | 'totemSpawn'
     | 'totemDown'
     | 'achievement'
+    | 'zoneEnter'
     | 'sigilGain'
     | 'resonanceGain'
     | 'freezeCapped'

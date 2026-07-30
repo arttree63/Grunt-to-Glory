@@ -24,7 +24,9 @@ export interface Goal {
 export function nearGoal(s: GameState): Goal | null {
   if (availableJobs(s.jobId, s.lv, s.destinyPath).length > 0)
     return { text: '可以轉職了', tab: 'hero' }
-  if (!s.destinyPath) return { text: '選一條命運', tab: 'destiny' }
+  // ⚠️ 第 3 層前不推命運:開場教學正在教「點擊 + 升級」,這時再指一條「去選命運」
+  // 等於同時給兩個不同指令,新手第一分鐘會被兩邊拉扯(R3 新手實測發現)
+  if (!s.destinyPath && s.floor >= 3) return { text: '選一條命運', tab: 'destiny' }
   if (s.destinyPoints > 0) return { text: '有命運點待使用', tab: 'destiny' }
   if (s.encounters.length > 0) return { text: '路上有際遇等著處理', tab: 'journal' }
   if (s.materials >= B.FORGE_COST) return { text: '素材夠打造一次', tab: 'forge' }

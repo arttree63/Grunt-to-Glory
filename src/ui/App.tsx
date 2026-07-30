@@ -29,6 +29,7 @@ import { SKILLS } from '../core/skills'
 import { SETS } from '../core/sets'
 import { JOBS } from '../core/jobs'
 import { nearGoal } from '../core/goals'
+import { zoneOf, zoneProgress } from '../core/zones'
 import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
 import { FloorDots, FloorToast } from './FloorProgress'
@@ -55,8 +56,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'legacy', label: '傳承' },
 ]
 
-const MAPS = ['森林邊境', '地底城', '古堡', '神殿']
-const mapName = (floor: number) => MAPS[Math.floor((floor - 1) / 100) % MAPS.length]
+
 
 export default function App() {
   const init = useGame((st) => st.init)
@@ -254,6 +254,8 @@ function Game() {
   const hpRatio = s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0
   // 紅點三層收斂:同時只亮一顆,由近期目標的優先序決定(core/goals.ts)
   const near = nearGoal(s)
+  const zone = zoneOf(s.floor)
+  const zp = zoneProgress(s.floor)
   const activeSets = setProgress(s).filter((set) => set.count >= 2)
   const [chipsOpen, setChipsOpen] = useState(false)
 
@@ -337,7 +339,10 @@ function Game() {
       <BattleCanvas>
         <div className="topbar">
           <div className="stage-label">
-            <small>戰場・{mapName(s.floor)}</small>
+            <small>
+              戰場・{zone.name}
+              <b className="zone-at"> {zp.at}/{zp.span}</b>
+            </small>
             <b>第 {s.floor} 層</b>
             <FloorDots />
           </div>

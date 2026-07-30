@@ -169,6 +169,10 @@ export interface BattleSnapshot {
   channelLeft: number
   /** 打斷進度 0~1(畫 Boss 血條下的打斷條;越接近 1 越該催促) */
   channelProgress: number
+  /** 地帶底圖色調(乘算)。同一張場景圖靠色溫變成不同區域,成本是零張新圖 */
+  zoneTint: number
+  /** 地帶霧氣濃度 0~1(越深越濃) */
+  zoneFog: number
   /** 圖騰血量比例(>0 畫圖騰實體) */
   totemRatio: number
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ACHIEVEMENTS } from '../core/achievements'
+import { zoneOf } from '../core/zones'
 import { fmt, fmtCombat } from '../core/format'
 import * as B from '../core/balance'
 import { critMultiplier } from '../core/formulas'
@@ -56,6 +57,7 @@ const EVENT_SFX: Partial<Record<GameEvent['type'], sfx.SfxName>> = {
   eliteDrop: 'gold',
   clickMaterial: 'tap',
   floorUp: 'levelUp',
+  zoneEnter: 'bossKill',
 }
 
 /** 三系技能的音色。第二技能(引爆)另走 burst,因為那是機制成功層不是身分層 */
@@ -105,6 +107,9 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         shellProgress: shellProgress(s),
         channelLeft: s.channelLeft,
         channelProgress: channelProgress(s),
+        // 地帶:render 用 tint/fog 對同一張底圖做色調重繪(見 Codex 文件「地帶染色」)
+        zoneTint: zoneOf(s.floor).tint,
+        zoneFog: zoneOf(s.floor).fog,
         totemRatio: s.totemMaxHp.gt(0) ? s.totemHp.div(s.totemMaxHp).toNumber() : 0,
         valiantStacks: s.valiantStacks,
         hourglassSteps: new Set(s.castOrder).size,
@@ -175,6 +180,9 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         if (e.burnDamage) scene.onEmberConvert(fmtCombat(e.burnDamage))
       } else if (e.type === 'cooldownAdvance') {
         scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0, e.via)
+      } else if (e.type === 'zoneEnter') {
+        // 進新地帶:一句地帶描述,讓推進有敘事而不只是數字往上跳
+        scene.notice(`進入 ${zoneOf(e.floor!).name}`)
       } else if (e.type === 'achievement') {
         const a = ACHIEVEMENTS.find((x) => x.id === e.achievementId)
         if (a) scene.notice(`軍功記錄・${a.name}`)

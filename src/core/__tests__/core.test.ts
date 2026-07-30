@@ -21,6 +21,7 @@ import { SKILLS } from '../skills'
 import { pendingChoice } from '../destiny'
 import { emptyTechs, heirloomSlots, techFineForges, techOfflineHours } from '../techs'
 import { ACHIEVEMENTS } from '../achievements'
+import { ZONE_SPAN, zoneOf, zoneProgress } from '../zones'
 import {
   applyTick,
   attackInterval,
@@ -1477,6 +1478,18 @@ describe('存檔', () => {
     expect(back.floor).toBe(33)
     expect(back.forgeCount).toBe(0)
     expect(back.pityCount).toBe(0)
+  })
+
+  it('地帶:每 20 層換一次、跨界發事件、深層不重複用同一個名字', () => {
+    expect(zoneOf(1).name).toBe('森林邊境')
+    expect(zoneOf(20).name).toBe('森林邊境')
+    expect(zoneOf(21).name).toBe('荊棘林道')
+    expect(zoneProgress(21)).toEqual({ at: 1, span: ZONE_SPAN })
+    expect(zoneProgress(40)).toEqual({ at: 20, span: ZONE_SPAN })
+    // ⚠️ 超出設計表之後不可以讓「森林邊境」原名再出現一次——那會直接拆穿內容量
+    const deep = zoneOf(1 + ZONE_SPAN * 8)
+    expect(deep.name).not.toBe('森林邊境')
+    expect(deep.name).toContain('深淵')
   })
 
   it('軍功記錄:達成即發事件、不重複發、跨轉生保留', () => {
