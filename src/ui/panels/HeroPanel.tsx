@@ -303,6 +303,7 @@ export default function HeroPanel() {
   const maxN = affordableLevels(s.lv, s.gold)
   const hold1 = useHold(() => buy(1))
   const nextJobs = nextTierJobs(s.jobId)
+  const canPromoteNow = availableJobs(s.jobId, s.lv, s.destinyPath).length > 0
 
   return (
     <div>
@@ -320,6 +321,10 @@ export default function HeroPanel() {
           <span>{job.desc}</span>
         </div>
       </div>
+      {/* ⚠️ 可轉職時置頂:曾經被四區能力+傭兵區推到兩屏之下,
+          玩家到 Lv.20 開英雄頁看不到轉職,回報成「20 級不能轉職」 */}
+      {canPromoteNow && <PromotionSection />}
+
       <div className="row">
         <span className="k">等級</span>
         <span className="v">Lv.{s.lv}</span>
@@ -377,7 +382,8 @@ export default function HeroPanel() {
 
       <AbilitySections />
 
-      {nextJobs.length > 0 && <PromotionSection />}
+      {/* 沒有可轉職時,轉職預覽留在底部(逐步揭露用) */}
+      {nextJobs.length > 0 && !canPromoteNow && <PromotionSection />}
     </div>
   )
 }

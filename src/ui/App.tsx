@@ -6,6 +6,7 @@ import { bossGap, chargeMult, comboMult, pendingMedals, sigilCap, sigilName } fr
 import { hasNode } from '../core/destiny'
 import { SKILLS } from '../core/skills'
 import { canBuyTech, TECHS } from '../core/techs'
+import { availableJobs, JOBS } from '../core/jobs'
 import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
 import { FloorDots, FloorToast } from './FloorProgress'
@@ -163,6 +164,8 @@ function Game() {
 
   const hpRatio = s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0
   const canUpgrade = s.gold.gte(upCost(s.lv))
+  // 轉職是 Lv.20/100 的關鍵時刻,紅點要亮——「不能轉職」的另一半原因是玩家不知道可以了
+  const canPromote = availableJobs(s.jobId, s.lv, s.destinyPath).length > 0
   // 傳承頁其實就是商店(勳章科技 + 兌換),但沒有紅點玩家不會自己去翻
   const canBuyAnything =
     TECHS.some((t) => canBuyTech(s.techs, s.medals, t.id)) || s.medals >= B.ELITE_MEDAL_COST
@@ -262,7 +265,7 @@ function Game() {
         )}
 
         {/* 印記層數:核心循環(疊→挑時機引爆)原本只在技能格角落 11px,戰鬥中看不到 */}
-        {s.sigils > 0 && (
+        {s.sigils > 0 && JOBS[s.jobId].awakenSkill && (
           <div
             className="retry"
             style={{ top: 'auto', bottom: 186, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
@@ -319,7 +322,7 @@ function Game() {
             >
               <span><GameIcon name={t.id} size={19} /></span>
               {t.label}
-              {t.id === 'hero' && canUpgrade && <i className="dot" />}
+              {t.id === 'hero' && (canUpgrade || canPromote) && <i className="dot" />}
               {t.id === 'forge' && s.materials >= B.FORGE_COST && <i className="dot" />}
               {t.id === 'destiny' && (s.destinyPoints > 0 || !s.destinyPath) && <i className="dot" />}
               {t.id === 'journal' && s.encounters.length > 0 && <i className="dot" />}
