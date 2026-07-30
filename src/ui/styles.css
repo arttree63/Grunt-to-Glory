@@ -1387,3 +1387,11 @@ button {
   color: var(--text, #e8dcc8);
   border-color: var(--border-card, #3a2f4d);
 }
+
+/* 地帶進度。⚠️ 不可用 <b>:.stage-label b 是樓層數字的 display:block/20px,會把這段擠成獨立一行 */
+.stage-label .zone-at {
+  font-style: normal;
+  margin-left: 6px;
+  color: var(--dim2, #9a8fb0);
+  font-variant-numeric: tabular-nums;
+}

@@ -269,6 +269,10 @@ export class BattleScene {
   private app = new Application()
   private world = new Container()
   private bg: Sprite
+  /** 地帶霧層:疊在底圖上的同色薄霧,越深的地帶越濃 */
+  private zoneFog: Graphics
+  /** 目前實際套用的地帶色/霧(往目標值補間,切地帶時不瞬變) */
+  private zoneCur = { r: 1, g: 1, b: 1, fog: 0 }
   private mobLayer = new Container()
   private fieldLayer = new Container()
   private impactLayer = new Container()
@@ -348,6 +352,7 @@ export class BattleScene {
     private assets: VisualAssets,
   ) {
     this.bg = new Sprite(assets.background)
+    this.zoneFog = new Graphics()
     this.heroSprite = new AnimatedSprite(assets.heroes.rookie)
     this.cloneSprite = new AnimatedSprite(assets.heroes.rookie)
     this.slashFx = new AnimatedSprite(assets.slash)
@@ -370,6 +375,7 @@ export class BattleScene {
     this.mobLayer.sortableChildren = true
     world.addChild(
       this.bg,
+      this.zoneFog,
       this.groundLayer,
       this.fieldLayer,
       this.mobLayer,
@@ -916,6 +922,7 @@ export class BattleScene {
 
     // 背景微幅浮動:靜止的底圖會讓所有前進感被「背景完全不動」抵銷
     this.bg.y = this.H / 2 + Math.sin(this.elapsed * 0.0016) * 2 + this.marchBoost * this.H * 0.045
+    this.applyZone(snap, ms)
     this.drawAura(snap.morale)
     this.drawFormation(snap.formation, snap.buffSkill, snap.buffPermanent)
     this.drawHeroStates(snap)
@@ -1838,6 +1845,36 @@ export class BattleScene {
     this.mercSprite.scale.set(mercScale)
     this.turretSprite.position.set(this.W * 0.72, this.H * 0.75)
     this.turretSprite.scale.set(ds)
+  }
+
+  /**
+   * 地帶色調:同一張底圖靠色溫與霧氣變成不同區域(成本是零張新圖)。
+   * ⚠️ 一定要補間——瞬間變色會像 bug,慢慢滲透才像「走進另一個地方」。
+   * 怪物只吃一半的 tint:全套會讓怪看起來像貼在別的世界上。
+   */
+  private applyZone(snap: BattleSnapshot, ms: number) {
+    const t = snap.zoneTint
+    const target = { r: ((t >> 16) & 255) / 255, g: ((t >> 8) & 255) / 255, b: (t & 255) / 255, fog: snap.zoneFog }
+    // 時間常數 500ms → 約 1.2 秒走完九成。太快像閃爍,太慢玩家不會發現自己換了地方
+    const k = Math.min(1, ms / 500)
+    this.zoneCur.r += (target.r - this.zoneCur.r) * k
+    this.zoneCur.g += (target.g - this.zoneCur.g) * k
+    this.zoneCur.b += (target.b - this.zoneCur.b) * k
+    this.zoneCur.fog += (target.fog - this.zoneCur.fog) * k
+
+    const { r, g, b, fog } = this.zoneCur
+    const pack = (rr: number, gg: number, bb: number) =>
+      (Math.round(rr * 255) << 16) | (Math.round(gg * 255) << 8) | Math.round(bb * 255)
+    this.bg.tint = pack(r, g, b)
+    // 怪物只染一半:保留原本的辨識度
+    const half = (v: number) => 1 + (v - 1) * 0.5
+    const mobTint = pack(half(r), half(g), half(b))
+    for (const m of this.mobLayer.children) (m as Sprite).tint = mobTint
+
+    this.zoneFog.clear()
+    if (fog > 0.01) {
+      this.zoneFog.rect(0, 0, this.W, this.H).fill({ color: pack(r * 0.55, g * 0.55, b * 0.62), alpha: fog })
+    }
   }
 
   private drawAura(morale: number) {

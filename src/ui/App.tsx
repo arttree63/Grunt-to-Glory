@@ -341,7 +341,7 @@ function Game() {
           <div className="stage-label">
             <small>
               戰場・{zone.name}
-              <b className="zone-at"> {zp.at}/{zp.span}</b>
+              <i className="zone-at">{zp.at}/{zp.span}</i>
             </small>
             <b>第 {s.floor} 層</b>
             <FloorDots />

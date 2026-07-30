@@ -143,11 +143,15 @@ K1～K9 與帝國鐵壁自動引爆已完成；K10 仍等待設計決策。
 - **snapshot 已帶** `zoneTint`(乘算色)與 `zoneFog`(0~1 霧氣濃度)——目前 BattleScene **尚未讀取**。
 - 新事件 `zoneEnter`(帶 `floor`),目前只有暫代 notice「進入 X」+ bossKill 音效。
 
-**Codex 要做的**:
-1. 底圖套 `zoneTint` 乘算 + 疊一層同色薄霧(alpha = `zoneFog`),切換時 0.6~1s 補間,不要瞬變。
-2. 怪物 sprite 也吃同一組 tint(弱一點,約 50%),否則怪會像貼在別的世界上。
-3. `zoneEnter` 專屬進場演出:地帶名橫幅 + 一句 `flavor`(core 的 `zoneOf(floor).flavor` 有)。
+**1、2 項 Claude 已於 2026-07-31 實作**(`BattleScene.applyZone`):底圖乘算 tint + 疊霧,
+500ms 時間常數補間;怪物吃一半 tint。已驗五個樓層產生正確色值。
+
+**仍留給 Codex**:
+3. `zoneEnter` 專屬進場演出:地帶名橫幅 + 一句 `flavor`(core 的 `zoneOf(floor).flavor` 有);
+   目前只有暫代 notice「進入 X」。
 4. 落葉粒子依地帶換色/換型(森林=葉、地底=塵、古堡=灰燼)——`zoneFog` 可當強度。
+5. **怪物種類只有兩種小怪**(forest-goblin / thorn-imp):可用 tint + 尺寸 + 輪廓變化
+   程式化衍生出「不同種族」的體感,不新增逐幀素材。這是目前最大的內容量瓶頸。
 
 ⚠️ 地帶**不帶任何數值**,純空間感。不要在 render 端反推任何戰鬥邏輯。
 
