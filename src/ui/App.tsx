@@ -5,6 +5,7 @@ import { upCost } from '../core/formulas'
 import {
   BOSS_KIND_HINT,
   BOSS_KIND_NAME,
+  availableSkills,
   bossGap,
   bossKindFor,
   channelProgress,
@@ -273,9 +274,10 @@ function Game() {
               color: '#f0b44c',
             }
           : null
+  const hasSkills = availableSkills(s).length > 0
 
   return (
-    <div className="wrap">
+    <div className={`wrap${hasSkills ? ' has-skills' : ' no-skills'}${tab ? ' panel-open' : ''}`}>
       <BattleCanvas>
         <div className="topbar">
           <div className="stage-label">

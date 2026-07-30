@@ -185,7 +185,7 @@ export default function EquipPanel() {
   }, [confirmDevour, confirmSalvage, setUiLock])
 
   return (
-    <div>
+    <div className="panel-page equip-page">
       <h3>裝 備</h3>
       <BuildSummary />
       <div className="row">
@@ -195,10 +195,11 @@ export default function EquipPanel() {
           <small className="affix"> 相當於 +{Math.round(equivLv)} 級</small>
         </span>
       </div>
-      {SLOTS.map((slot) => {
-        const e = s.equipped[slot]
-        return (
-          <div key={slot}>
+      <div className="equipment-slot-list">
+        {SLOTS.map((slot) => {
+          const e = s.equipped[slot]
+          return (
+          <div className={`equip-slot${e ? ' filled' : ''}`} key={slot}>
             <div className="row">
               <span className="k">{SLOT_NAME[slot]}</span>
               {e ? (
@@ -220,7 +221,7 @@ export default function EquipPanel() {
                   </button>
                 </span>
               ) : (
-                <span className="v affix">空</span>
+                <span className="v affix">尚未裝備</span>
               )}
             </div>
             {e && selectedSlot === slot && (
@@ -268,8 +269,9 @@ export default function EquipPanel() {
               </div>
             )}
           </div>
-        )
-      })}
+          )
+        })}
+      </div>
 
       <h3 style={{ marginTop: 16 }}>背 包({s.inventory.length})</h3>
       {s.inventory.length > 3 && (

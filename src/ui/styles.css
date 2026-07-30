@@ -56,10 +56,13 @@ button {
   position: relative;
   margin: 0 auto;
   height: 100%;
-  max-width: 480px;
+  max-width: 440px;
   background: var(--bg-stage);
   display: flex;
   flex-direction: column;
+}
+.wrap.no-skills {
+  --bottom-h: 78px;
 }
 
 .stage {
@@ -243,11 +246,14 @@ button {
 
 /* 底部操作區 */
 .bottom {
-  background: var(--bg-panel);
+  background: linear-gradient(180deg, #1b1524, #15101d);
   border-top: 1px solid var(--border);
   padding: 10px 12px 14px;
   height: var(--bottom-h);
   z-index: 10;
+}
+.wrap.no-skills .bottom {
+  padding: 8px 12px 10px;
 }
 .skills {
   display: flex;
@@ -619,15 +625,18 @@ button {
   flex: 1;
   padding: 9px 0 7px;
   text-align: center;
-  color: var(--dim);
+  min-height: 58px;
+  color: #9488a9;
   font-size: 12px;
   letter-spacing: 1px;
   border-radius: 10px;
   position: relative;
 }
 .tab.active {
-  background: #2a2138;
-  color: var(--text-strong);
+  background: linear-gradient(180deg, #4a306d, #2d2041);
+  color: #fff1df;
+  border: 1px solid #8f62be66;
+  box-shadow: 0 0 16px #9c59de30, inset 0 1px 0 #ffffff1c;
 }
 .tab span {
   display: block;
@@ -654,15 +663,18 @@ button {
   position: absolute;
   left: 0;
   right: 0;
+  top: 25%;
   bottom: var(--bottom-h);
-  max-height: 60%;
   z-index: 12;
-  background: var(--bg-panel);
+  background:
+    radial-gradient(circle at 50% 0, #34224455, transparent 180px),
+    linear-gradient(180deg, #191321, #141019);
   border-top: 1px solid var(--border-card);
   border-radius: 16px 16px 0 0;
-  padding: 14px 14px 18px;
+  padding: 0 14px 22px;
   overflow-y: auto;
   animation: slideUp 0.18s ease-out;
+  box-shadow: 0 -12px 32px #09070db8;
 }
 @keyframes slideUp {
   from {
@@ -677,6 +689,18 @@ button {
   letter-spacing: 2px;
   margin-bottom: 10px;
   color: var(--text-strong);
+}
+.panel > .panel-page > h3:first-child {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  margin: 0 -14px 14px;
+  padding: 15px 48px 13px;
+  text-align: center;
+  font-size: 17px;
+  background: #17111ed9;
+  border-bottom: 1px solid #ffffff12;
+  backdrop-filter: blur(8px);
 }
 .row {
   display: flex;
@@ -707,12 +731,15 @@ button {
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 88px;
-  padding: 10px 12px;
-  margin-bottom: 6px;
-  background: linear-gradient(135deg, #2b2338, #1e1829);
-  border: 1px solid var(--border-card);
-  border-radius: 12px;
+  min-height: 126px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background:
+    radial-gradient(circle at 12% 18%, #7b4ba22b, transparent 90px),
+    linear-gradient(135deg, #2b2139, #1d1728);
+  border: 1px solid #55436d;
+  border-radius: 13px;
+  box-shadow: inset 0 1px 0 #ffffff0c;
 }
 .hero-identity > div {
   display: flex;
@@ -727,16 +754,107 @@ button {
 }
 .hero-identity b {
   color: var(--text-strong);
-  font-size: 15px;
+  font-size: 18px;
   letter-spacing: 2px;
 }
 .hero-weapon {
-  width: 62px;
-  height: 72px;
-  flex: 0 0 62px;
+  width: 82px;
+  height: 98px;
+  flex: 0 0 82px;
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 5px 8px #0008);
+}
+.hero-copy {
+  min-width: 0;
+  flex: 1;
+}
+.hero-name-line,
+.hero-level-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hero-name-line {
+  flex-wrap: wrap;
+}
+.role-chip {
+  display: inline-flex;
+  width: fit-content;
+  padding: 2px 8px;
+  border: 1px solid #765698;
+  border-radius: 999px;
+  color: #cbb2e8 !important;
+  background: #352445;
+  font-size: 10px !important;
+}
+.hero-level-line {
+  margin: 3px 0 2px;
+}
+.hero-level-line strong {
+  color: #f4e6cf;
+  font-size: 14px;
+}
+.hero-level-line span {
+  color: var(--gold);
+}
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 6px;
+  overflow: hidden;
+  background: #21192c;
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+}
+.hero-stats > div {
+  min-width: 0;
+  padding: 12px 8px;
+  text-align: center;
+  border-right: 1px solid #ffffff0c;
+}
+.hero-stats > div:last-child {
+  border-right: 0;
+}
+.hero-stats small {
+  display: block;
+  color: var(--dim2);
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.hero-stats b {
+  display: block;
+  color: #f5e5ce;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.medal-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  border: 1px solid #4c3a61;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #251c31, #1d1726);
+  color: var(--dim2);
+  font-size: 11px;
+}
+.medal-card > span:first-child {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+.medal-card small {
+  color: var(--dim2);
+}
+.medal-card b {
+  color: var(--gold);
+  font-size: 15px;
+}
+.upgrade-row .btn {
+  min-height: 64px;
 }
 .btn {
   background: var(--bg-card);
@@ -766,11 +884,70 @@ button {
   flex: 1;
 }
 .card {
-  background: var(--bg-card);
+  background: linear-gradient(135deg, #251d31, #1d1727);
   border: 1px solid var(--border-card);
   border-radius: 10px;
   padding: 10px;
   margin-bottom: 8px;
+}
+.equipment-slot-list {
+  display: grid;
+  gap: 7px;
+  margin: 8px 0 12px;
+}
+.equip-slot {
+  position: relative;
+  padding: 3px 11px;
+  background: linear-gradient(135deg, #201927, #19141f);
+  border: 1px solid #332a40;
+  border-radius: 10px;
+}
+.equip-slot::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 2px;
+  background: #6f5a8570;
+}
+.equip-slot.filled {
+  border-color: #5b476f;
+  background: linear-gradient(135deg, #2a2035, #1d1726);
+}
+.equip-slot .row {
+  min-height: 42px;
+  border-bottom: 0;
+}
+.equip-slot .row .k {
+  color: #d9c9b7;
+  font-weight: 600;
+}
+.destiny-card {
+  padding: 13px;
+  border-color: #4b3a60;
+  box-shadow: inset 0 1px 0 #ffffff0b;
+}
+.destiny-card .head {
+  gap: 10px;
+  align-items: center;
+}
+.destiny-title {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  color: #d9b8ff;
+}
+.destiny-title b {
+  display: block;
+  color: var(--text-strong);
+  font-size: 14px;
+}
+.destiny-title small {
+  display: block;
+  margin-top: 2px;
 }
 .card .head {
   display: flex;
