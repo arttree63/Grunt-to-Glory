@@ -15,7 +15,6 @@ import type { MechanicTag, MercId } from './types'
 export interface Merc {
   id: MercId
   name: string
-  icon: string
   /** 行為類型(對應 v1.5 四原型 + 老獵犬) */
   archetype: '位移' | '控制' | '場地' | '狀態' | '巡守'
   /** 招牌行為的一句描述(玩家要能說出「剛剛牠做了什麼」) */
@@ -31,7 +30,6 @@ export const MERCS: Record<MercId, Merc> = {
   hound: {
     id: 'hound',
     name: '老獵犬',
-    icon: '🐕',
     archetype: '巡守',
     signature: '定期叼回一份怪物素材',
     unlockFloor: 1,
@@ -41,7 +39,6 @@ export const MERCS: Record<MercId, Merc> = {
   rogue: {
     id: 'rogue',
     name: '盜賊',
-    icon: '🗡️',
     archetype: '位移',
     signature: '消失、繞到敵人背後補上一刀,留下一道破綻(化為印記)',
     unlockFloor: 30,
@@ -51,7 +48,6 @@ export const MERCS: Record<MercId, Merc> = {
   icemage: {
     id: 'icemage',
     name: '冰法師',
-    icon: '❄️',
     archetype: '控制',
     signature: '凍結戰場數秒——期間傷害累積不結算,解凍時一次引爆',
     unlockFloor: 60,
@@ -61,7 +57,6 @@ export const MERCS: Record<MercId, Merc> = {
   sapper: {
     id: 'sapper',
     name: '工兵',
-    icon: '🧨',
     archetype: '場地',
     signature: '架起砲台,存在期間依固定節奏開火',
     unlockFloor: 90,
@@ -71,7 +66,6 @@ export const MERCS: Record<MercId, Merc> = {
   pyro: {
     id: 'pyro',
     name: '火術士',
-    icon: '🔥',
     archetype: '狀態',
     signature: '點燃敵人,燃燒持續造成傷害',
     unlockFloor: 120,

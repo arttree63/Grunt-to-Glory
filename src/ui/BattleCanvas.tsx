@@ -2,7 +2,16 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { fmt } from '../core/format'
 import * as B from '../core/balance'
 import { critMultiplier } from '../core/formulas'
-import { activeLegends, critRate, critWindowActive, heirloomRepairLeft, ironwallActive, sigilCap } from '../core/game'
+import {
+  activeLegends,
+  channelProgress,
+  critRate,
+  critWindowActive,
+  heirloomRepairLeft,
+  ironwallActive,
+  shellProgress,
+  sigilCap,
+} from '../core/game'
 import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
 import { SKILLS } from '../core/skills'
@@ -38,7 +47,9 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         bossTimeLeft: s.isBoss ? s.bossTimeLeft : null,
         bossKind: s.bossKind,
         shellLeft: s.shellLeft,
+        shellProgress: shellProgress(s),
         channelLeft: s.channelLeft,
+        channelProgress: channelProgress(s),
         totemRatio: s.totemMaxHp.gt(0) ? s.totemHp.div(s.totemMaxHp).toNumber() : 0,
         valiantStacks: s.valiantStacks,
         hourglassSteps: new Set(s.castOrder).size,
@@ -48,6 +59,7 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         bannerLeft: s.bannerLeft,
         zoneLeft: s.zoneLeft,
         burnLeft: s.burnLeft,
+        burnStacks: s.burnStacks,
         freezeLeft: s.freezeLeft,
       }
     }
@@ -104,6 +116,11 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.onFreezeBurst(`冰裂 ${fmt(e.damage!)}`)
       } else if (e.type === 'burnTick') {
         scene.onBurnTick(`燃燒 ${fmt(e.damage!)}`)
+      } else if (e.type === 'perfectBurst') {
+        scene.skillHit('完 美 引 爆 !')
+      } else if (e.type === 'burnMax') {
+        // F18 爆燃圓の暫代演出：Codex 會換成圓形擴散 + 震屏
+        scene.notice('燃燒滿層・爆燃！')
       } else if (e.type === 'bannerStore') {
         scene.onBannerStore()
       } else if (e.type === 'heirloomRestored') {

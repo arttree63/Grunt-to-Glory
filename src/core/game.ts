@@ -29,7 +29,7 @@ import { MERCS, unlockedMercs } from './mercs'
 import { SETS } from './sets'
 import { SKILLS } from './skills'
 import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, hasNode, pendingChoice } from './destiny'
-import { makeChronicleEntry } from './chronicle'
+import { makeChronicleEntry, soldierName } from './chronicle'
 import { ENCOUNTER_ORDER } from './encounters'
 import {
   canBuyTech,
@@ -44,6 +44,7 @@ import {
 import type {
   BaseType,
   BossKind,
+  BossStats,
   DestinyNodeId,
   DestinyPathId,
   EncounterId,
@@ -57,6 +58,7 @@ import type {
   SetTagId,
   SkillId,
   Slot,
+  TacticId,
   TechId,
   Techs,
 } from './types'
@@ -97,6 +99,19 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     nextTotemAt: 0,
     bossStats: null,
     lastBossStats: null,
+    runStats: { kills: 0, mercKills: 0, skillCasts: 0, lateBossKills: 0 },
+    runHighlight: null,
+    bossLore: {
+      shell: { seen: 0, handled: 0 },
+      channel: { seen: 0, handled: 0 },
+      totem: { seen: 0, handled: 0 },
+    },
+    bossTactic: null,
+    tacticDelayLeft: 0,
+    tacticKeepSigils: false,
+    perfectWindowLeft: 0,
+    resonance: { artisan: 0, hunter: 0, tactician: 0 },
+    resonanceSrc: { salvage: 0, forge: 0, event: 0, encounter: 0, combo: 0, skill: 0 },
     morale: 0,
     forgeHeatMaterials: 0,
     codex: [],
@@ -129,6 +144,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     freezeLeft: 0,
     frozenPool: D(0),
     burnLeft: 0,
+    burnStacks: 0,
     burnDps: D(0),
     bannerLeft: 0,
     zoneLeft: 0,
@@ -175,7 +191,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 21
+export const SAVE_VERSION = 24
 
 // ---------- 數值查詢 ----------
 
@@ -338,6 +354,11 @@ export function spawnEnemy(s: GameState) {
     // Boss 行為原型(v1.7):X10 拆盾 / X20 蓄力 / X30 圖騰,循環。
     // 敵人對構築提出不同的問題——「這一場跟上一場不一樣」從這裡開始
     s.bossKind = bossKindFor(s.floor)
+    s.bossLore[s.bossKind].seen++
+    // 戰術修正:只對這一次挑戰生效(緩兵之計把第一個手段延後幾秒)
+    s.tacticDelayLeft = s.bossTactic === 'delay' ? B.TACTIC_DELAY_SEC : 0
+    s.tacticKeepSigils = s.bossTactic === 'keepSigils'
+    if (s.bossTactic === 'mercFirst' && s.activeMerc) s.mercTimer = 0.01
     s.shellLeft = s.bossKind === 'shell' ? B.SHELL_HITS : 0
     s.shellValue = 0
     s.shellValueThisSec = 0
@@ -392,10 +413,145 @@ export const BOSS_KIND_NAME: Record<BossKind, string> = {
   totem: '圖騰型',
 }
 
+/**
+ * 蓄力打斷進度 0~1(goal-gradient):讓玩家在窗口內就知道「再多做一件事就會不同」,
+ * 而不是等到硬化了才發現差一點。非蓄力中回 0。
+ */
+export function channelProgress(s: GameState): number {
+  if (s.channelLeft <= 0 || s.enemyMaxHp.lte(0)) return 0
+  const need = s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK)
+  return Math.min(1, s.channelDamage.div(need).toNumber())
+}
+
+/** 破下一層護盾還差幾點破盾值(盾已破回 0) */
+export function shellToNext(s: GameState): number {
+  if (s.shellLeft <= 0) return 0
+  return Math.max(0, B.SHIELD_VALUE_PER_LAYER - s.shellValue)
+}
+
+/** 當前這一層護盾的累積比例 0~1(給演出畫碎裂進度) */
+export function shellProgress(s: GameState): number {
+  if (s.shellLeft <= 0) return 0
+  return Math.min(1, s.shellValue / B.SHIELD_VALUE_PER_LAYER)
+}
+
 export const BOSS_KIND_HINT: Record<BossKind, string> = {
   shell: '護盾要吃多次命中才破——攻速、分身、傭兵、點擊都算一次',
   channel: '蓄力時打出爆發即可打斷——儲存的傷害挑這時放',
   totem: '圖騰會加速倒數,優先處理——燃燒與背刺可以無視它直打 Boss',
+}
+
+// ---------- 敵情熟悉度(籃 C 第一階段:前代學會的敵情成為下代知識) ----------
+
+export type LoreStage = 'unseen' | 'glimpse' | 'known' | 'mastered'
+
+/**
+ * 三階段:初見(只看得到模糊描述)→ 識破(成功處理一次:名稱與效果)→
+ * 精通(累積處理多次:精確時點與反制)。跨轉生保留,只給資訊不給數值。
+ */
+export function loreStage(s: GameState, kind: BossKind): LoreStage {
+  const lore = s.bossLore[kind]
+  if (lore.handled >= B.LORE_MASTER_HANDLED) return 'mastered'
+  if (lore.handled >= 1) return 'known'
+  if (lore.seen >= 1) return 'glimpse'
+  return 'unseen'
+}
+
+/** 初見/未見:模糊描述——顯示動作,不顯示精確效果 */
+export const BOSS_LORE_GLIMPSE: Record<BossKind, string> = {
+  shell: '它被某種護殼包覆,尋常刀劍似乎難以撼動',
+  channel: '它會蓄積某種力量——前代未能看清那是什麼',
+  totem: '它似乎倚仗著某種外物,戰場上的時間流逝異常',
+}
+
+/** 精通:精確時點與反制(資訊,不是加成) */
+export const BOSS_LORE_MASTERY: Record<BossKind, string> = {
+  shell: `護盾共 ${B.SHELL_HITS} 層:每次命中 ${B.SHIELD_HIT_VALUE} 點、狀態 tick ${B.SHIELD_TICK_VALUE} 點,每 ${B.SHIELD_VALUE_PER_LAYER} 點破一層(每秒上限 ${B.SHIELD_VALUE_PER_SEC_CAP} 點)——破盾後有易傷窗口`,
+  channel: `蓄力出現在倒數 ${B.CHANNEL_TIMES.join(' 秒與 ')} 秒,${B.CHANNEL_DURATION} 秒內打進 ${Math.round(B.CHANNEL_HP_TO_BREAK * 100)}% 血量即可打斷——打斷給易傷,漏掉則硬化`,
+  totem: `圖騰在倒數 ${B.TOTEM_FIRST_AT} 秒首度出現,之後每 ${B.TOTEM_INTERVAL} 秒一根——存活期間倒數加速,燃燒與背刺可穿透直打本體`,
+}
+
+// ---------- 戰術修正(在線三選一;離線無修正自動重試) ----------
+
+export const TACTICS: Array<{ id: TacticId; name: string; desc: string }> = [
+  { id: 'delay', name: '緩兵之計', desc: `守關者的第一個手段延後 ${B.TACTIC_DELAY_SEC} 秒` },
+  { id: 'keepSigils', name: '蓄勢而來', desc: `本場第一次引爆後保留 ${B.TACTIC_KEEP_SIGILS} 層印記` },
+  { id: 'mercFirst', name: '傭兵先行', desc: '傭兵開場立即行動' },
+]
+
+/**
+ * 選擇/取消戰術修正。只在失敗待重戰時可選;只對下一次挑戰生效。
+ * ⚠️ 預設 null=無修正——掛機自動重試永遠不套用,系統也不代選(企劃裁決)。
+ */
+export function setTactic(s: GameState, id: TacticId | null): boolean {
+  if (!s.bossFailed || s.bossRetryFloor === null) return false
+  if (id === 'keepSigils' && !JOBS[s.jobId].awakenSkill) return false // 沒有印記體系就沒得保留
+  if (id === 'mercFirst' && !s.activeMerc) return false
+  s.bossTactic = id
+  return true
+}
+
+/**
+ * 失敗診斷三分類(2026-07-30,回饋:「只有數值不足的遊戲,會把玩家訓練成不停刷資源」)。
+ * 每次失敗先判「類」再給一句話——玩家要知道的是「該改打法還是該刷資源」:
+ * - timing 時機錯誤:傷害其實夠,但沒打在對的窗口(蓄力沒斷)
+ * - combo 組合未完成:缺一種來源(多段命中 / 穿透),刷等級解決不了
+ * - stat 數值不足:真的就是打不動,升級換裝最實際
+ * 規則刻意粗:一句話就好,玩家要的是方向不是報表。
+ */
+export type BossDiagnosis = {
+  category: 'timing' | 'combo' | 'stat'
+  text: string
+}
+
+export const DIAGNOSIS_NAME: Record<BossDiagnosis['category'], string> = {
+  timing: '時機錯誤',
+  combo: '組合未完成',
+  stat: '數值不足',
+}
+
+export function diagnoseBoss(st: BossStats | null): BossDiagnosis | null {
+  if (!st || st.win) return null
+  if (st.kind === 'channel' && st.channels > 0 && st.interrupts < st.channels) {
+    return {
+      category: 'timing',
+      text: `${st.channels} 次蓄力只打斷 ${st.interrupts} 次——蓄力時留一手爆發(引爆/凍結/軍旗儲存)`,
+    }
+  }
+  if (st.kind === 'shell' && st.shellTime > B.BOSS_TIME * 0.4) {
+    // 破盾值只有一種來源=構築裡缺多段命中,不是等級問題
+    if (Object.keys(st.shieldBySource).length <= 1) {
+      return {
+        category: 'combo',
+        text: `護盾佔了 ${st.shellTime.toFixed(0)} 秒——缺多段命中來源:分身、傭兵、燃燒或多點幾下都算`,
+      }
+    }
+    return {
+      category: 'stat',
+      text: `護盾佔了 ${st.shellTime.toFixed(0)} 秒,破盾來源夠了但輸出跟不上——升級或換裝最實際`,
+    }
+  }
+  if (st.kind === 'totem' && st.totemTime > 8) {
+    // 沒有任何穿透來源(燃燒/背刺)打進本體=組合缺件
+    const pierce = (st.bySource.burn ?? 0) + (st.bySource.merc ?? 0)
+    if (pierce === 0) {
+      return {
+        category: 'combo',
+        text: `圖騰存活了 ${st.totemTime.toFixed(0)} 秒,一直在偷時間——缺穿透來源:燃燒與盜賊背刺可無視圖騰直打本體`,
+      }
+    }
+    return {
+      category: 'stat',
+      text: `圖騰存活了 ${st.totemTime.toFixed(0)} 秒——穿透有了但整體輸出不足,升級或換裝最實際`,
+    }
+  }
+  if (st.dealtRatio < 1) {
+    return {
+      category: 'stat',
+      text: `只打掉 ${Math.round(st.dealtRatio * 100)}% 血量——純輸出不足,升級或換裝最實際`,
+    }
+  }
+  return null
 }
 
 function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Math.random) {
@@ -420,6 +576,7 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
     // 戰術家:連斬每跨過 N 層就給一枚印記,把連斬與印記串起來
     if (Math.floor(s.combo / B.TACTICIAN_COMBO_PER_SIGIL) > Math.floor(before / B.TACTICIAN_COMBO_PER_SIGIL)) {
       gainSigil(s)
+      addResonance(s, 'combo')
     }
   }
   const routeGold = s.routeBuff?.kind === 'gold' ? B.ROUTE_BUFF_MULT : 1
@@ -435,6 +592,13 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
 
   if (!boss) return
   s.bossKills++
+  // 代表事件(關聯感串接):挑本輪最戲劇性的一句留給列傳。最後一刻擊破 > 多次打斷
+  if (s.bossTimeLeft < 5) {
+    s.runStats.lateBossKills++
+    s.runHighlight = `在最後 ${Math.max(1, Math.ceil(s.bossTimeLeft))} 秒擊破第 ${s.floor} 層守關者`
+  } else if (s.bossStats && s.bossStats.interrupts >= 2 && !s.runHighlight) {
+    s.runHighlight = `${s.bossStats.interrupts} 度打斷第 ${s.floor} 層守關者的蓄力`
+  }
   if (s.bossStats) {
     s.bossStats.win = true
     s.lastBossStats = { ...s.bossStats, bySource: { ...s.bossStats.bySource } }
@@ -463,7 +627,10 @@ export function claimDailyElite(s: GameState, today: string): boolean {
 
 function nextEnemy(s: GameState, events: GameEvent[]) {
   if (s.isBoss) {
-    // Boss 被擊破 → 進下一層
+    // Boss 被擊破 → 進下一層。戰術修正只活一場,不論勝敗都清掉
+    s.bossTactic = null
+    s.tacticDelayLeft = 0
+    s.tacticKeepSigils = false
     s.floor++
     s.killsInFloor = 0
     s.bossFailed = false
@@ -520,6 +687,7 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   tickCombatStatus(s, dt, raw, rng)
   // 點擊傷害預算回充:每秒 CLICK_BUDGET_PER_SEC 秒份,存量上限同值(不可囤)
   s.clickBudget = Math.min(B.CLICK_BUDGET_PER_SEC, s.clickBudget + dt * B.CLICK_BUDGET_PER_SEC)
+  if (s.perfectWindowLeft > 0) s.perfectWindowLeft = Math.max(0, s.perfectWindowLeft - dt)
   grantDestinyPoints(s, raw)
   if (s.charging) return mergeKills(raw) // 蓄勢期間停止輸出
 
@@ -651,12 +819,14 @@ function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng, o
       }
       dmg = dmg.sub(s.totemHp)
       s.totemHp = D(0)
+      s.bossLore.totem.handled++ // 敵情:成功毀掉一根圖騰
       raw.push({ type: 'totemDown' })
       if (dmg.lte(0)) return
     }
     // 減傷/易傷相乘:盾上衰減、蓄力失敗的硬化、打斷成功與破盾的易傷
     let mult = 1
-    if (s.shellLeft > 0) mult *= B.SHELL_DR
+    // 緩兵之計期間護盾尚未成形(戰術修正:改變條件,不改數值)
+    if (s.shellLeft > 0 && s.tacticDelayLeft <= 0) mult *= B.SHELL_DR
     if (s.hardenLeft > 0) mult *= B.CHANNEL_HARDEN_DR
     if (s.vulnLeft > 0) mult *= B.INTERRUPT_VULN
     if (s.shellVulnLeft > 0) mult *= B.SHELL_BREAK_MULT
@@ -668,6 +838,7 @@ function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng, o
         s.channelLeft = 0
         s.vulnLeft = B.INTERRUPT_VULN_SEC
         if (s.bossStats) s.bossStats.interrupts++
+        s.bossLore.channel.handled++ // 敵情:成功打斷一次
         raw.push({ type: 'interrupted' })
       }
     }
@@ -689,6 +860,9 @@ function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng, o
     }
     dmg = dmg.sub(s.enemyHp)
     s.enemyHp = D(0)
+    // 行為計數(人格稱號用):誰補的最後一擊
+    s.runStats.kills++
+    if (opts.source === 'merc') s.runStats.mercKills++
     reward(s, s.isBoss, raw, rng)
     nextEnemy(s, raw)
     if (dmg.lte(0)) return
@@ -707,8 +881,14 @@ function tickBossMechanics(s: GameState, dt: number, raw: GameEvent[]) {
   if (s.vulnLeft > 0) s.vulnLeft = Math.max(0, s.vulnLeft - dt)
   if (s.hardenLeft > 0) s.hardenLeft = Math.max(0, s.hardenLeft - dt)
   if (s.bossStats) {
-    if (s.shellLeft > 0) s.bossStats.shellTime += dt
+    if (s.shellLeft > 0 && s.tacticDelayLeft <= 0) s.bossStats.shellTime += dt
     if (s.totemHp.gt(0)) s.bossStats.totemTime += dt
+  }
+
+  // 緩兵之計:延遲期間第一個手段(護盾成形/首次蓄力/首根圖騰)不啟動
+  if (s.tacticDelayLeft > 0) {
+    s.tacticDelayLeft = Math.max(0, s.tacticDelayLeft - dt)
+    return
   }
 
   if (s.bossKind === 'channel') {
@@ -755,7 +935,7 @@ function dealSkillToBoss(s: GameState, dmg: Decimal, events: GameEvent[]) {
  * 技能內部多次呼叫仍是一擊。每秒上限防高頻構築直接把盾抹平。
  */
 function addShieldValue(s: GameState, value: number, source: string, raw: GameEvent[]) {
-  if (!s.isBoss || s.shellLeft <= 0 || s.totemHp.gt(0)) return
+  if (!s.isBoss || s.shellLeft <= 0 || s.totemHp.gt(0) || s.tacticDelayLeft > 0) return
   const room = Math.max(0, B.SHIELD_VALUE_PER_SEC_CAP - s.shellValueThisSec)
   const applied = Math.min(value, room)
   if (applied <= 0) return
@@ -775,6 +955,7 @@ function addShieldValue(s: GameState, value: number, source: string, raw: GameEv
   if (s.shellLeft === 0) {
     s.shellValue = 0
     s.shellVulnLeft = B.SHELL_BREAK_SEC
+    s.bossLore.shell.handled++ // 敵情:成功破盾一次
     raw.push({ type: 'shellBreak' })
   }
 }
@@ -809,6 +990,10 @@ function checkBossTimeout(s: GameState, raw: GameEvent[], rng: Rng) {
     s.frozenPool = D(0)
   }
   // DPS check 失敗 → 退回前一層 farm(玩家心智模型:打不過就退一層)
+  // 戰術修正一場一次:再敗要重新選(企劃裁決:不永久疊加、不越敗越簡單)
+  s.bossTactic = null
+  s.tacticDelayLeft = 0
+  s.tacticKeepSigils = false
   s.bossFailed = true
   if (s.bossStats) {
     // 失敗的統計要留下來:診斷「差在哪、該改什麼」全靠它
@@ -902,6 +1087,7 @@ function rewardEvent(s: GameState, kind: EventKind, events: GameEvent[], rng: Rn
   if (s.destinyPath === 'hunter') gainSigil(s, B.HUNTER_SIGIL_ON_EVENT)
 
   markEventKind(s, kind)
+  addResonance(s, 'event')
   events.push({ type: 'eventKill', kind, gold: g, count: elite ? 1 : 0 })
 }
 
@@ -976,6 +1162,40 @@ export function retryBoss(s: GameState): boolean {
   return true
 }
 
+// ---------- 命運共鳴(顯示傾向,不替玩家推薦答案) ----------
+
+const RESONANCE_PATH: Record<keyof typeof B.RESONANCE, DestinyPathId> = {
+  salvage: 'artisan',
+  forge: 'artisan',
+  event: 'hunter',
+  encounter: 'hunter',
+  combo: 'tactician',
+  skill: 'tactician',
+}
+
+/** 行為累積共鳴。選過命運後仍繼續累積(顯示用),但禮物只在選擇當下發一次 */
+export function addResonance(s: GameState, src: keyof typeof B.RESONANCE) {
+  s.resonanceSrc[src]++
+  s.resonance[RESONANCE_PATH[src]] += B.RESONANCE[src]
+}
+
+/** 共鳴最強的命運(全 0 回 null)。措辭是「產生了較強共鳴」,不是「推薦」 */
+export function strongestResonance(s: GameState): DestinyPathId | null {
+  const entries = Object.entries(s.resonance) as Array<[DestinyPathId, number]>
+  const best = entries.sort((a, b) => b[1] - a[1])[0]
+  return best && best[1] > 0 ? best[0] : null
+}
+
+/** 共鳴來源明細(公開:玩家要知道是哪些行為在累積,不是系統在背後貼標籤) */
+export const RESONANCE_SRC_NAME: Record<keyof typeof B.RESONANCE, string> = {
+  salvage: '拆解裝備',
+  forge: '進行鍛造',
+  event: '擊破限時事件',
+  encounter: '處理留存事件',
+  combo: '連斬跨檔',
+  skill: '施放技能',
+}
+
 // ---------- 命運樹 ----------
 
 /** 選擇本輪的命運路徑,同時獲得起始能力。一輪只能選一次 */
@@ -983,6 +1203,13 @@ export function chooseDestiny(s: GameState, path: DestinyPathId): boolean {
   if (s.destinyPath !== null) return false
   s.destinyPath = path
   s.destinyNodes = [DESTINY_PATHS[path].start]
+  // 共鳴開場禮物:選了「共鳴最強」的那條才發,一次性、小型、不成長期強弱差。
+  // 三條照選——共鳴只是傾向的呈現,不是標準答案
+  if (strongestResonance(s) === path) {
+    if (path === 'artisan') s.materials += B.FORGE_COST // 等值一次免費鍛造
+    if (path === 'hunter') s.eventCooldown = Math.min(s.eventCooldown, 1) // 下一個事件立刻接近
+    if (path === 'tactician') s.combo = Math.max(s.combo, B.RESONANCE_GIFT_COMBO) // 連斬起步
+  }
   return true
 }
 
@@ -1084,7 +1311,10 @@ export function sigilCap(s: GameState): number {
 /** 累積印記。既有技能建立累積,第二技能挑時機消耗 */
 function gainSigil(s: GameState, n = 1) {
   if (!JOBS[s.jobId].awakenSkill) return
+  const before = s.sigils
   s.sigils = Math.min(sigilCap(s), s.sigils + n)
+  // 疊滿的瞬間開金色窗口:窗口內「手動」引爆=完美引爆(掛機正常引爆,無完美獎勵)
+  if (before < sigilCap(s) && s.sigils >= sigilCap(s)) s.perfectWindowLeft = B.PERFECT_WINDOW_SEC
 }
 
 /** 命運對印記的改造說明,UI 直接顯示 */
@@ -1120,10 +1350,12 @@ export function skillReady(s: GameState, id: SkillId): boolean {
  * 施放技能。buff 型覆蓋當前 buff;立即傷害型直接扣目標血量
  * (吃智力的技能傷害加成,是突破 Boss 檢定的主要工具)
  */
-export function castSkill(s: GameState, id: SkillId): GameEvent[] {
+export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] {
   if (!skillReady(s, id)) return []
   const sk = SKILLS[id]
   s.skillCd[id] = skillCooldown(s, id)
+  s.runStats.skillCasts++
+  addResonance(s, 'skill')
   const events: GameEvent[] = []
   // 這一招實際打出多少,最後回填給 skill 事件——
   // 全遊戲最大的一擊(印記引爆 / 隕石術)原本是完全沒有演出的
@@ -1162,6 +1394,11 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
     if (s.event) s.event.hp = s.event.hp.sub(dmg)
     else dealSkillToBoss(s, dmg, events)
     s.sigils = codex ? Math.floor(s.sigils * B.CODEX_KEEP) : 0
+    // 蓄勢而來:本場第一次引爆後保留幾層(傷害照算,層數留著續疊)
+    if (s.isBoss && s.tacticKeepSigils) {
+      s.sigils = Math.max(s.sigils, Math.min(B.TACTIC_KEEP_SIGILS, spentNow))
+      s.tacticKeepSigils = false
+    }
 
     // 引爆回轉(Reload 式):依消耗層數推進其他技能的冷卻,把循環閉合成 loop
     for (const other of availableSkills(s)) {
@@ -1179,12 +1416,24 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
       s.zealStacks++
       events.push({ type: 'zealGain', count: s.zealStacks })
     }
+    // 完美引爆:滿層後 1.5 秒金色窗口內「手動」引爆。獎勵放操作感不放傷害
+    // (士氣/傭兵推進/昂揚再 +1);掛機自動引爆走不進這裡=沒有完美獎勵
+    if (wasFull && !auto && s.perfectWindowLeft > 0) {
+      s.morale = Math.min(100, s.morale + B.PERFECT_MORALE)
+      if (s.activeMerc) s.mercTimer = Math.max(0, s.mercTimer - B.PERFECT_MERC_ADVANCE)
+      if (s.zealStacks < B.ZEAL_MAX_STACKS) {
+        s.zealStacks++
+        events.push({ type: 'zealGain', count: s.zealStacks })
+      }
+      events.push({ type: 'perfectBurst' })
+    }
+    s.perfectWindowLeft = 0
   } else if (sk.burstSeconds) {
     let dmg = currentDPS(s).mul(sk.burstSeconds * skillDmg)
     skillDamage = skillDamage.add(dmg)
     // 裁決餘燼:七成立即、三成化為燃燒(總量不變——差別是敵人會持續冒火)
     if (hasLegend(s, 'ember')) {
-      applyBurn(s, dmg.mul(1 - B.EMBER_IMMEDIATE), B.EMBER_BURN_DURATION)
+      applyBurn(s, dmg.mul(1 - B.EMBER_IMMEDIATE), B.EMBER_BURN_DURATION, events)
       dmg = dmg.mul(B.EMBER_IMMEDIATE)
     }
     registerBossHits(s, 1, events, 'skill')
@@ -1280,7 +1529,7 @@ function tickAutoCast(s: GameState, raw: GameEvent[]) {
     const sk = SKILLS[id]
     if (sk.consumesSigils && s.sigils < sigilCap(s)) continue
     if (!skillReady(s, id)) continue
-    raw.push(...castSkill(s, id))
+    raw.push(...castSkill(s, id, true)) // auto=true:自動引爆拿不到完美獎勵
   }
 }
 
@@ -1355,16 +1604,25 @@ function tickMerc(s: GameState, dt: number, events: GameEvent[], rng: Rng) {
       break
     case 'pyro':
       // 燃燒:狀態原型,短時間內燒完(30 秒 Boss 檢定內必定結算)
-      applyBurn(s, currentDPS(s).mul(B.MERC_PYRO_SEC), B.MERC_PYRO_BURN_SEC)
+      applyBurn(s, currentDPS(s).mul(B.MERC_PYRO_SEC), B.MERC_PYRO_BURN_SEC, events)
       break
   }
 }
 
-/** 施加/疊加燃燒:剩餘的燒量與新的合併,重算每秒傷害 */
-function applyBurn(s: GameState, total: Decimal, duration: number) {
+/**
+ * 施加/疊加燃燒:剩餘的燒量與新的合併,重算每秒傷害。
+ * 層數是 F18 爆燃的演出鉤子(純視覺,不改傷害——傷害仍由燒量決定):
+ * 每次施加 +1 層,滿層發 burnMax 事件並歸零(視覺上「一次釋放」)。
+ */
+function applyBurn(s: GameState, total: Decimal, duration: number, events: GameEvent[]) {
   const remaining = s.burnDps.mul(Math.max(0, s.burnLeft))
   s.burnLeft = duration
   s.burnDps = remaining.add(total).div(duration)
+  s.burnStacks++
+  if (s.burnStacks >= B.BURN_MAX_STACKS) {
+    s.burnStacks = 0
+    events.push({ type: 'burnMax' })
+  }
 }
 
 /** 凍結解凍、燃燒滴傷、砲台開火(行為原型的時間驅動部分) */
@@ -1399,6 +1657,7 @@ function tickCombatStatus(s: GameState, dt: number, events: GameEvent[], rng: Rn
     if (s.burnLeft <= 0) {
       s.burnLeft = 0
       s.burnDps = D(0)
+      s.burnStacks = 0 // 火熄了,層數跟著清
     }
   }
   if (s.bannerLeft > 0) s.bannerLeft = Math.max(0, s.bannerLeft - dt)
@@ -1438,6 +1697,7 @@ function autoDetonate(s: GameState, events: GameEvent[]) {
   if (s.event) s.event.hp = s.event.hp.sub(dmg)
   else dealSkillToBoss(s, dmg, events)
   s.sigils = 0
+  s.perfectWindowLeft = 0 // 套裝自動引爆同樣不算完美(不是玩家挑的時機)
   events.push({ type: 'skill', skillId: id, damage: dmg, count: spent })
 }
 
@@ -1615,6 +1875,7 @@ export function resolveEncounter(s: GameState, id: EncounterId, choiceId: string
   }
 
   s.encounters.splice(idx, 1)
+  addResonance(s, 'encounter')
   markEventKind(s, id)
   return true
 }
@@ -1711,6 +1972,7 @@ export function forge(s: GameState, rng: Rng = Math.random, opts: ForgeOptions =
   })
 
   s.forgeCount++
+  addResonance(s, 'forge')
   // 保底計數:出紫以上就歸零
   s.pityCount = QUALITIES.indexOf(e.quality) >= QUALITIES.indexOf('purple') ? 0 : s.pityCount + 1
   // 普通鍛造每 10 次推進 1 點精工短保底——掛機玩家也持續接近「必出傳說特性」
@@ -1806,6 +2068,7 @@ export function fineForge(s: GameState, opts: FineForgeOptions, rng: Rng = Math.
   }
 
   s.forgeCount++
+  addResonance(s, 'forge')
   const qi = QUALITIES.indexOf(e.quality)
   s.pityCount = qi >= QUALITIES.indexOf('purple') ? 0 : s.pityCount + 1
   // 短保底看「傳說特性」,長保底看「套裝標籤」——兩個計數各自歸零
@@ -1869,6 +2132,7 @@ export function salvage(s: GameState, id: string): number {
   s.inventory.splice(idx, 1)
   const back = SALVAGE_RETURN[e.quality]
   s.materials += back
+  addResonance(s, 'salvage')
   return back
 }
 
@@ -1946,6 +2210,12 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
   next.activeMerc = s.activeMerc
   next.mercBestFloor = Math.max(s.mercBestFloor, s.highestFloor)
   next.legendsSeen = [...s.legendsSeen]
+  // 敵情熟悉度跨轉生:前代學會的敵情成為下代知識
+  next.bossLore = {
+    shell: { ...s.bossLore.shell },
+    channel: { ...s.bossLore.channel },
+    totem: { ...s.bossLore.totem },
+  }
   if (hasNode(s, 'artisan_3a')) {
     const best = heirloomCandidates(s)[0]
     if (best && !next.codex.some((c) => c.id === best.id)) next.codex.push({ ...best })
@@ -1970,6 +2240,8 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
       affixes: inscribed.affixes.slice(0, keepAffix),
       growth: 1,
       livingSteps: 0,
+      // 關聯感串接:傳家之器記得前任持有者是誰
+      bearer: soldierName(s),
     }
     next.inventory.push(relic)
     next.inscribedId = relic.id

@@ -75,7 +75,16 @@ import {
   salvage,
   salvageBelow,
   spawnEnemy,
+  diagnoseBoss,
+  loreStage,
+  setTactic,
+  strongestResonance,
+  channelProgress,
+  shellProgress,
+  shellToNext,
 } from '../game'
+import { legacyGoal, nearGoal, runGoal } from '../goals'
+import { titleFor } from '../chronicle'
 import { deserialize, serialize } from '../save'
 
 describe('formulas', () => {
@@ -2500,6 +2509,49 @@ describe('破盾值系統(GDD v3 § 5.4)', () => {
     expect((s.bossStats!.shieldBySource.burn ?? 0)).toBeGreaterThan(before)
   })
 
+  it('目標梯度:破盾「還差幾點」與層內比例互補,盾破後歸零', () => {
+    const s = shellBoss()
+    expect(shellToNext(s)).toBe(B.SHIELD_VALUE_PER_LAYER)
+    expect(shellProgress(s)).toBe(0)
+
+    // 一點狀態 tick(1 點)後,還差 3 點、層內進度 1/4
+    s.mercBestFloor = 200
+    setActiveMerc(s, 'pyro')
+    s.mercTimer = 0.01
+    applyTick(s, 100)
+    applyTick(s, 200)
+    expect(shellToNext(s)).toBe(B.SHIELD_VALUE_PER_LAYER - s.shellValue)
+    expect(shellProgress(s)).toBeCloseTo(s.shellValue / B.SHIELD_VALUE_PER_LAYER, 5)
+
+    s.shellLeft = 0
+    expect(shellToNext(s)).toBe(0)
+    expect(shellProgress(s)).toBe(0)
+  })
+
+  it('目標梯度:打斷進度隨傷害推進,達標即 100% 且蓄力結束後歸零', () => {
+    const s = createInitialState()
+    s.lv = 1
+    s.floor = 20
+    spawnEnemy(s)
+    s.bossTimeLeft = B.CHANNEL_TIMES[0] + 0.05
+    applyTick(s, 100)
+    expect(s.channelLeft).toBeGreaterThan(0)
+    expect(channelProgress(s)).toBe(0)
+
+    const need = s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK)
+    s.freezeLeft = 0.01
+    s.frozenPool = need.div(2)
+    applyTick(s, 100)
+    expect(channelProgress(s)).toBeGreaterThan(0.3)
+    expect(channelProgress(s)).toBeLessThan(1)
+
+    s.freezeLeft = 0.01
+    s.frozenPool = need
+    applyTick(s, 100)
+    expect(s.channelLeft).toBe(0) // 已打斷
+    expect(channelProgress(s)).toBe(0) // 沒在蓄力就不顯示
+  })
+
   it('Boss 開場壓縮傭兵倒數:否則整場輪不到牠出手', () => {
     const s = createInitialState()
     s.mercBestFloor = 200
@@ -2508,5 +2560,381 @@ describe('破盾值系統(GDD v3 § 5.4)', () => {
     s.floor = 10
     spawnEnemy(s)
     expect(s.mercTimer).toBeLessThanOrEqual(B.MERC_BOSS_OPENING_SEC)
+  })
+})
+
+describe('三層目標收斂(近期/本輪/跨輪各一個)', () => {
+  it('近期:同時滿足多個條件只回優先序最高的一個(轉職 > 命運 > 際遇 > 打造)', () => {
+    const s = createInitialState()
+    s.lv = 20 // 可轉職
+    s.destinyPoints = 1
+    s.materials = B.FORGE_COST
+    expect(nearGoal(s)!.tab).toBe('hero')
+    promote(s, 'infantry')
+    // 轉職完了 → 下一個是命運(尚未選路)
+    expect(nearGoal(s)!.tab).toBe('destiny')
+  })
+
+  it('近期:什麼都不能做時回 null(紅點全滅,不製造假期待)', () => {
+    const s = createInitialState()
+    s.gold = D(0)
+    s.destinyPath = 'warrior_path' as never
+    // 選過路、沒點、沒際遇、沒素材、沒勳章、沒金幣
+    const g = nearGoal(s)
+    expect(g).toBe(null)
+  })
+
+  it('本輪:Boss 失敗優先於里程碑;里程碑用 destinyEarned 對下一個門檻', () => {
+    const s = createInitialState()
+    s.bossFailed = true
+    s.bossRetryFloor = 10
+    expect(runGoal(s).text).toContain('第 10 層')
+    s.bossFailed = false
+    s.bossRetryFloor = null
+    s.floor = 5
+    expect(runGoal(s).text).toContain(`第 ${B.DESTINY_MILESTONES[0]} 層`)
+  })
+
+  it('跨輪:指向差最少勳章的科技;科技全買得起就指傭兵解鎖層', () => {
+    const s = createInitialState()
+    s.medals = 0
+    const cheapest = Math.min(B.TECH_COST_DMG, B.TECH_COST_GOLD)
+    expect(legacyGoal(s).text).toContain(`${cheapest}`)
+    s.medals = 999
+    expect(legacyGoal(s).text).toContain('傭兵')
+  })
+})
+
+describe('失敗診斷三分類(數值不足/時機錯誤/組合未完成)', () => {
+  const base = (over: Partial<import('../types').BossStats>): import('../types').BossStats => ({
+    floor: 10, kind: 'shell', win: false, bySource: {}, shellTime: 0, shieldValue: 0,
+    shieldBySource: {}, shieldPeakPerSec: 0, interrupts: 0, channels: 0, totemTime: 0,
+    dealtRatio: 0.5, ...over,
+  })
+
+  it('蓄力沒斷=時機錯誤,不是叫玩家刷資源', () => {
+    const d = diagnoseBoss(base({ kind: 'channel', channels: 2, interrupts: 0 }))
+    expect(d!.category).toBe('timing')
+  })
+
+  it('護盾佔時長+破盾來源只有一種=組合未完成;來源多但仍慢=數值不足', () => {
+    const slow = { kind: 'shell' as const, shellTime: B.BOSS_TIME * 0.5 }
+    expect(diagnoseBoss(base({ ...slow, shieldBySource: { hero: 20 } }))!.category).toBe('combo')
+    expect(
+      diagnoseBoss(base({ ...slow, shieldBySource: { hero: 20, burn: 5 } }))!.category,
+    ).toBe('stat')
+  })
+
+  it('圖騰活太久+沒有穿透來源=組合未完成;有穿透仍失敗=數值不足', () => {
+    const slow = { kind: 'totem' as const, totemTime: 12 }
+    expect(diagnoseBoss(base({ ...slow }))!.category).toBe('combo')
+    expect(diagnoseBoss(base({ ...slow, bySource: { burn: 0.2 } }))!.category).toBe('stat')
+  })
+
+  it('沒有行為型線索時退回數值不足;贏了或沒統計回 null', () => {
+    expect(diagnoseBoss(base({ kind: 'channel', channels: 0 }))!.category).toBe('stat')
+    expect(diagnoseBoss(base({ win: true }))).toBe(null)
+    expect(diagnoseBoss(null)).toBe(null)
+  })
+})
+
+describe('關聯感串接(稱號/代表事件/傳家之器前任持有者)', () => {
+  it('最後 5 秒擊破 Boss:計數 + 代表事件覆寫', () => {
+    const s = createInitialState()
+    s.lv = 40
+    s.floor = 10
+    spawnEnemy(s)
+    s.bossTimeLeft = 3
+    s.enemyHp = D(1)
+    click(s)
+    expect(s.runStats.lateBossKills).toBe(1)
+    expect(s.runHighlight).toContain('最後')
+    expect(s.runHighlight).toContain('第 10 層')
+  })
+
+  it('稱號:遲來的勝者 > 沉默的守望者 > 眾人簇擁者,沒有鮮明行為就 null', () => {
+    const s = createInitialState()
+    expect(titleFor(s)).toBe(null) // rookie 沒技能,不算沉默
+    s.runStats.lateBossKills = 2
+    expect(titleFor(s)).toBe('遲來的勝者')
+    s.runStats.lateBossKills = 0
+    s.lv = 20
+    promote(s, 'infantry')
+    expect(titleFor(s)).toBe('沉默的守望者') // 轉職了卻一招沒放
+    s.runStats.skillCasts = 5
+    s.runStats.kills = 200
+    s.runStats.mercKills = 60
+    expect(titleFor(s)).toBe('眾人簇擁者')
+  })
+
+  it('轉生:列傳寫入稱號與代表事件,傳家之器帶前任持有者名', () => {
+    const s = createInitialState()
+    s.highestFloor = 30
+    s.runStats.lateBossKills = 2
+    s.runHighlight = '在最後 2 秒擊破第 20 層守關者'
+    const item: import('../types').Equipment = {
+      id: 'x1', slot: 'weapon', quality: 'gold', affixes: [],
+    }
+    s.inventory.push(item)
+    inscribeHeirloom(s, 'x1')
+    const next = prestige(s)!
+    expect(next).not.toBe(null)
+    const entry = next.chronicle[0]
+    expect(entry.title).toBe('遲來的勝者')
+    expect(entry.highlight).toContain('第 20 層')
+    const relic = next.inventory.find((e) => e.heirloom)!
+    expect(relic.bearer).toBe(entry.name) // 器物記得上一代的名字
+    // 新一輪計數歸零
+    expect(next.runStats.kills).toBe(0)
+    expect(next.runHighlight).toBe(null)
+  })
+
+  it('v21 存檔遷移到 v22:補行為計數預設值', () => {
+    const s = createInitialState()
+    const v21 = JSON.parse(JSON.stringify(serialize(s))) as Record<string, unknown>
+    v21.version = 21
+    delete v21.runStats
+    delete v21.runHighlight
+    const out = deserialize(v21 as never)
+    expect(out.runStats).toEqual({ kills: 0, mercKills: 0, skillCasts: 0, lateBossKills: 0 })
+    expect(out.runHighlight).toBe(null)
+  })
+})
+
+describe('F18 爆燃 core 鉤子(燃燒層數/滿層事件)', () => {
+  it('每次施加燃燒 +1 層,滿層發 burnMax 並歸零;火熄了層數清空', () => {
+    const s = createInitialState()
+    s.mercBestFloor = 200
+    setActiveMerc(s, 'pyro')
+    let maxEvents = 0
+    for (let i = 0; i < B.BURN_MAX_STACKS; i++) {
+      s.mercTimer = 0.01
+      const ev = applyTick(s, 100)
+      maxEvents += ev.filter((e) => e.type === 'burnMax').length
+    }
+    expect(maxEvents).toBe(1)
+    expect(s.burnStacks).toBe(0) // 滿層歸零=視覺上一次釋放
+    // 讓火燒完
+    applyTick(s, (B.MERC_PYRO_BURN_SEC + 1) * 1000)
+    s.mercTimer = 0.01
+    applyTick(s, 100)
+    expect(s.burnStacks).toBe(1) // 重新開始疊
+    applyTick(s, (B.MERC_PYRO_BURN_SEC + 1) * 1000)
+    expect(s.burnStacks).toBe(0)
+  })
+})
+
+describe('敵情熟悉度(籃 C 第一階段:初見/識破/精通,跨轉生)', () => {
+  it('三階段門檻:遭遇=初見、處理一次=識破、累積達標=精通', () => {
+    const s = createInitialState()
+    expect(loreStage(s, 'shell')).toBe('unseen')
+    s.floor = 10
+    spawnEnemy(s)
+    expect(s.bossLore.shell.seen).toBe(1)
+    expect(loreStage(s, 'shell')).toBe('glimpse')
+    s.bossLore.shell.handled = 1
+    expect(loreStage(s, 'shell')).toBe('known')
+    s.bossLore.shell.handled = B.LORE_MASTER_HANDLED
+    expect(loreStage(s, 'shell')).toBe('mastered')
+  })
+
+  it('成功打斷會累積蓄力型熟悉度', () => {
+    const s = createInitialState()
+    s.floor = 20
+    spawnEnemy(s)
+    s.bossTimeLeft = B.CHANNEL_TIMES[0] + 0.05
+    applyTick(s, 100)
+    expect(s.channelLeft).toBeGreaterThan(0)
+    s.freezeLeft = 0.01
+    s.frozenPool = s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK).mul(1.01)
+    applyTick(s, 100)
+    expect(s.bossLore.channel.handled).toBe(1)
+  })
+
+  it('轉生保留敵情(前代學會的敵情成為下代知識)', () => {
+    const s = createInitialState()
+    s.highestFloor = 30
+    s.bossLore.shell.handled = 3
+    s.bossLore.shell.seen = 4
+    const next = prestige(s)!
+    expect(next.bossLore.shell).toEqual({ seen: 4, handled: 3 })
+  })
+
+  it('v22 存檔遷移:seen 用最高層回填,handled 從零開始掙', () => {
+    const s = createInitialState()
+    s.highestFloor = 25
+    const v22 = JSON.parse(JSON.stringify(serialize(s))) as Record<string, unknown>
+    v22.version = 22
+    delete v22.bossLore
+    delete v22.bossTactic
+    const out = deserialize(v22 as never)
+    expect(out.bossLore.shell).toEqual({ seen: 1, handled: 0 })
+    expect(out.bossLore.channel).toEqual({ seen: 1, handled: 0 })
+    expect(out.bossLore.totem).toEqual({ seen: 0, handled: 0 })
+    expect(out.bossTactic).toBe(null)
+  })
+})
+
+describe('戰術修正(在線三選一,離線無修正)', () => {
+  const failedAt = (floor: number) => {
+    const s = createInitialState()
+    s.lv = 1
+    s.floor = floor
+    spawnEnemy(s)
+    s.bossTimeLeft = 0.01
+    applyTick(s, 100) // 失敗退回
+    return s
+  }
+
+  it('只能在失敗待重戰時選;預設 null=掛機自動重試無修正', () => {
+    const s = createInitialState()
+    expect(setTactic(s, 'delay')).toBe(false) // 沒失敗不能選
+    const f = failedAt(10)
+    expect(f.bossTactic).toBe(null) // 失敗後預設無修正
+    expect(setTactic(f, 'delay')).toBe(true)
+    expect(f.bossTactic).toBe('delay')
+  })
+
+  it('緩兵之計:延遲期間護盾不生效(不減傷、不吃破盾值),到時後才成形', () => {
+    const f = failedAt(10)
+    setTactic(f, 'delay')
+    retryBoss(f)
+    expect(f.tacticDelayLeft).toBe(B.TACTIC_DELAY_SEC)
+    // 延遲期間打一下:傷害不打折
+    const before = f.enemyHp
+    f.lv = 20
+    click(f)
+    const dealt = before.sub(f.enemyHp)
+    expect(dealt.div(currentDPS(f).mul(B.CLICK_DMG_SEC)).toNumber()).toBeCloseTo(1, 2)
+    expect(f.shellLeft).toBe(B.SHELL_HITS) // 破盾值也沒被吃
+    // 過了延遲,護盾成形
+    applyTick(f, (B.TACTIC_DELAY_SEC + 0.2) * 1000)
+    expect(f.tacticDelayLeft).toBe(0)
+  })
+
+  it('戰術只活一場:失敗後清空,要重新選', () => {
+    const f = failedAt(10)
+    setTactic(f, 'delay')
+    retryBoss(f)
+    f.bossTimeLeft = 0.01
+    applyTick(f, 100) // 再敗
+    expect(f.bossTactic).toBe(null)
+    expect(f.tacticDelayLeft).toBe(0)
+  })
+
+  it('蓄勢而來:本場第一次引爆後保留 3 層,只有一次', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    // 先解鎖第二技能與印記
+    s.highestFloor = B.AWAKEN_FLOOR
+    s.destinyPath = 'tactician'
+    s.destinyNodes = ['tactician_1a'] // 覺醒需要 tier>0 節點
+    s.floor = 9
+    spawnEnemy(s)
+    s.bossFailed = true
+    s.bossRetryFloor = 10
+    expect(setTactic(s, 'keepSigils')).toBe(true)
+    retryBoss(s)
+    s.sigils = 8
+    castSkill(s, 'rally')
+    expect(s.sigils).toBe(B.TACTIC_KEEP_SIGILS) // 引爆後留 3 層
+    s.sigils = 8
+    s.skillCd = {} // 清冷卻讓第二發能放
+    castSkill(s, 'rally')
+    expect(s.sigils).toBe(0) // 第二次不再保留
+  })
+})
+
+describe('完美引爆窗口(過載引爆的簡化版,籃 C 第二階段)', () => {
+  const awakened = () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.highestFloor = B.AWAKEN_FLOOR
+    s.destinyPath = 'tactician'
+    s.destinyNodes = ['tactician_1a']
+    return s
+  }
+
+  it('疊滿印記開 1.5 秒窗口;窗口內手動引爆=士氣+傭兵推進+昂揚再一層', () => {
+    const s = awakened()
+    s.mercBestFloor = 200
+    setActiveMerc(s, 'rogue')
+    s.mercTimer = 10
+    // 引爆傷害會連殺推層,踩到 Boss 開場的傭兵倒數壓縮——用打不死的怪隔離
+    s.enemyMaxHp = D(1e15)
+    s.enemyHp = D(1e15)
+    // 直接觸發 gainSigil 走到滿層:用連斬節點會太繞,castSkill 內部路徑即可——
+    // 這裡以最小侵入直接模擬:窗口由滿層瞬間開啟
+    s.sigils = sigilCap(s) - 1
+    s.buffs = [{ skillId: 'shieldRush', timeLeft: 10 }]
+    // 視窗內擊殺會擲骰給印記;改直接呼叫私有路徑不可行,設滿層+手動開窗等價
+    s.sigils = sigilCap(s)
+    s.perfectWindowLeft = B.PERFECT_WINDOW_SEC
+    const morale0 = s.morale
+    const zeal0 = s.zealStacks
+    const ev = castSkill(s, 'rally')
+    expect(ev.some((e) => e.type === 'perfectBurst')).toBe(true)
+    expect(s.morale).toBe(Math.min(100, morale0 + B.PERFECT_MORALE))
+    expect(s.mercTimer).toBeCloseTo(10 - B.PERFECT_MERC_ADVANCE, 5)
+    expect(s.zealStacks).toBe(zeal0 + 2) // 滿層昂揚 +1、完美再 +1
+    expect(s.perfectWindowLeft).toBe(0)
+  })
+
+  it('窗口過期或自動施放引爆:無完美獎勵', () => {
+    const s = awakened()
+    s.sigils = sigilCap(s)
+    s.perfectWindowLeft = 0.2
+    applyTick(s, 500) // 窗口過期
+    expect(s.perfectWindowLeft).toBe(0)
+    const ev = castSkill(s, 'rally')
+    expect(ev.some((e) => e.type === 'perfectBurst')).toBe(false)
+
+    // 自動施放:即使窗口開著也不算完美
+    const s2 = awakened()
+    s2.sigils = sigilCap(s2)
+    s2.perfectWindowLeft = B.PERFECT_WINDOW_SEC
+    const ev2 = castSkill(s2, 'rally', true)
+    expect(ev2.some((e) => e.type === 'perfectBurst')).toBe(false)
+    expect(ev2.length).toBeGreaterThan(0) // 有正常引爆
+  })
+})
+
+describe('命運共鳴(顯示傾向與公開來源,不替玩家推薦)', () => {
+  it('行為累積共鳴:拆解/鍛造 → 神匠;施放技能 → 戰術家;來源計數公開', () => {
+    const s = createInitialState()
+    s.inventory.push({ id: 'w1', slot: 'weapon', quality: 'white', affixes: [] })
+    salvage(s, 'w1')
+    expect(s.resonance.artisan).toBe(B.RESONANCE.salvage)
+    expect(s.resonanceSrc.salvage).toBe(1)
+    s.lv = 20
+    promote(s, 'infantry')
+    castSkill(s, 'shieldRush')
+    expect(s.resonance.tactician).toBe(B.RESONANCE.skill)
+    expect(strongestResonance(s)).toBe('artisan') // 2 > 1
+  })
+
+  it('選中共鳴最強的命運=一次性開場禮物;選別條沒有(但照樣能選)', () => {
+    const s = createInitialState()
+    s.resonance.artisan = 10
+    const m0 = s.materials
+    chooseDestiny(s, 'artisan')
+    expect(s.materials).toBe(m0 + B.FORGE_COST)
+
+    const s2 = createInitialState()
+    s2.resonance.artisan = 10
+    const m2 = s2.materials
+    expect(chooseDestiny(s2, 'hunter')).toBe(true) // 照選
+    expect(s2.materials).toBe(m2) // 沒禮物
+  })
+
+  it('全 0 共鳴回 null;轉生歸零', () => {
+    const s = createInitialState()
+    expect(strongestResonance(s)).toBe(null)
+    s.highestFloor = 30
+    s.resonance.hunter = 9
+    const next = prestige(s)!
+    expect(next.resonance).toEqual({ artisan: 0, hunter: 0, tactician: 0 })
   })
 })

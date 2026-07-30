@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, nextMilestone, pendingChoice } from '../../core/destiny'
 import { QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
 import * as B from '../../core/balance'
-import { heirloomCandidates, pendingMedals } from '../../core/game'
+import { heirloomCandidates, pendingMedals, RESONANCE_SRC_NAME, strongestResonance } from '../../core/game'
 import { LEGENDS } from '../../core/legends'
 import { SETS } from '../../core/sets'
 import { heirloomSlots, TECHS } from '../../core/techs'
@@ -118,6 +118,10 @@ export default function DestinyPanel() {
 
   // 還沒選路徑:這一輪要怎麼玩
   if (!s.destinyPath) {
+    const strongest = strongestResonance(s)
+    const srcLines = (Object.keys(s.resonanceSrc) as Array<keyof typeof s.resonanceSrc>)
+      .filter((k) => s.resonanceSrc[k] > 0)
+      .map((k) => `${RESONANCE_SRC_NAME[k]} ×${s.resonanceSrc[k]}`)
     return (
       <div>
         <h3>命 運</h3>
@@ -129,6 +133,15 @@ export default function DestinyPanel() {
             <div className="head">
               <b>
                 {p.name} <small className="affix">{p.tagline}</small>
+                {/* 共鳴是傾向的呈現,不是推薦——三條照選 */}
+                {strongest === p.id && (
+                  <small style={{ marginLeft: 6, color: 'var(--gold)' }}>
+                    共鳴 {s.resonance[p.id]}・較強共鳴,選它有開場禮物
+                  </small>
+                )}
+                {strongest !== p.id && s.resonance[p.id] > 0 && (
+                  <small className="affix" style={{ marginLeft: 6 }}>共鳴 {s.resonance[p.id]}</small>
+                )}
               </b>
               <button className="btn primary" onClick={() => chooseDestiny(p.id)}>
                 選擇
@@ -140,6 +153,14 @@ export default function DestinyPanel() {
             </div>
           </div>
         ))}
+        {strongest && (
+          <div className="affix" style={{ lineHeight: 1.7 }}>
+            你在本次旅途中,與{DESTINY_PATHS[strongest].name}命運產生了較強共鳴。
+            {srcLines.length > 0 && <>來源:{srcLines.join('、')}</>}
+            <br />
+            開場禮物(一次性):神匠=足夠鍛造一次的素材/尋寶=下一個事件立刻接近/戰術家=連斬起步 {B.RESONANCE_GIFT_COMBO} 層
+          </div>
+        )}
       </div>
     )
   }

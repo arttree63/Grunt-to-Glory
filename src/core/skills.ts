@@ -3,7 +3,6 @@ import type { SkillId } from './types'
 export interface Skill {
   id: SkillId
   name: string
-  icon: string
   desc: string
   /** 冷卻秒數(未計智力縮減) */
   cd: number
@@ -30,7 +29,6 @@ export const SKILLS: Record<SkillId, Skill> = {
   shieldRush: {
     id: 'shieldRush',
     name: '盾牆突擊',
-    icon: '🛡️',
     desc: '10 秒內傷害 ×2.5',
     cd: 75,
     duration: 10,
@@ -39,7 +37,6 @@ export const SKILLS: Record<SkillId, Skill> = {
   gale: {
     id: 'gale',
     name: '疾風連刺',
-    icon: '🗡️',
     desc: '10 秒內暴擊率 +60%',
     cd: 75,
     duration: 10,
@@ -48,7 +45,6 @@ export const SKILLS: Record<SkillId, Skill> = {
   judgement: {
     id: 'judgement',
     name: '聖光審判',
-    icon: '✨',
     desc: '立即造成 25 秒份的傷害',
     cd: 90,
     burstSeconds: 25,
@@ -56,7 +52,6 @@ export const SKILLS: Record<SkillId, Skill> = {
   bulwark: {
     id: 'bulwark',
     name: '不動如山',
-    icon: '🏰',
     desc: '15 秒內傷害 ×3',
     cd: 70,
     duration: 15,
@@ -65,7 +60,6 @@ export const SKILLS: Record<SkillId, Skill> = {
   shadowClone: {
     id: 'shadowClone',
     name: '影分身',
-    icon: '🌑',
     desc: '15 秒內暴擊率 +100%',
     cd: 70,
     duration: 15,
@@ -74,7 +68,6 @@ export const SKILLS: Record<SkillId, Skill> = {
   rally: {
     id: 'rally',
     name: '軍陣號令',
-    icon: '🚩',
     desc: '消耗全部軍勢,依層數造成爆發傷害',
     cd: 20,
     consumesSigils: true,
@@ -83,7 +76,6 @@ export const SKILLS: Record<SkillId, Skill> = {
   windMark: {
     id: 'windMark',
     name: '追風印記',
-    icon: '🌀',
     desc: '消耗全部追風印記,依層數發動追擊',
     cd: 20,
     consumesSigils: true,
@@ -92,7 +84,6 @@ export const SKILLS: Record<SkillId, Skill> = {
   edict: {
     id: 'edict',
     name: '律令標記',
-    icon: '📜',
     desc: '引爆全部法令,依層數造成裁決傷害',
     cd: 20,
     consumesSigils: true,
@@ -101,7 +92,6 @@ export const SKILLS: Record<SkillId, Skill> = {
   meteor: {
     id: 'meteor',
     name: '隕石術',
-    icon: '☄️',
     desc: '立即造成 40 秒份的傷害',
     cd: 80,
     burstSeconds: 40,

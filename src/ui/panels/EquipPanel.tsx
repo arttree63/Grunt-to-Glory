@@ -88,7 +88,7 @@ function Affixes({
       )}
       {e.heirloom && (
         <div className="affix" style={{ color: 'var(--gold)' }}>
-          <BadgeIcon kind="heirloom" /> <b>傳家之器</b>
+          <BadgeIcon kind="heirloom" /> <b>{e.bearer ? `${e.bearer}的傳家之器` : '傳家之器'}</b>
           {e.broken ? `・殘缺版,再擊破 ${repairLeft} 個 Boss 修復` : '・轉生後必定回來'}
         </div>
       )}

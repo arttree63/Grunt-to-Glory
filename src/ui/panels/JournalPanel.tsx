@@ -1,6 +1,7 @@
 import * as B from '../../core/balance'
 import { hasNode } from '../../core/destiny'
 import { ENCOUNTERS } from '../../core/encounters'
+import { legacyGoal, nearGoal, runGoal } from '../../core/goals'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 
@@ -19,9 +20,26 @@ export default function JournalPanel() {
     s.eventKindsDone.length > 0 &&
     s.destinyPoints < B.DESTINY_POINT_CAP
 
+  const near = nearGoal(s)
+
   return (
     <div>
-      <h3>旅 途 紀 錄</h3>
+      <h3>目 標</h3>
+      {/* 「差一點」三層收斂:近期/本輪/跨輪各一個,其餘的「還差 N」留在各自面板裡 */}
+      <div className="row">
+        <span className="k">現在</span>
+        <span className="v">{near ? near.text : '繼續推進,守關者見真章'}</span>
+      </div>
+      <div className="row">
+        <span className="k">本輪</span>
+        <span className="v">{runGoal(s).text}</span>
+      </div>
+      <div className="row">
+        <span className="k">世代</span>
+        <span className="v">{legacyGoal(s).text}</span>
+      </div>
+
+      <h3 style={{ marginTop: 16 }}>旅 途 紀 錄</h3>
 
       {s.routeBuff && (
         <div className="row">

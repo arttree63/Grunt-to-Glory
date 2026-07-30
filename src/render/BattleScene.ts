@@ -147,6 +147,8 @@ export interface BattleSnapshot {
   zoneLeft: number
   /** 燃燒剩餘秒數(敵人身上的火) */
   burnLeft: number
+  /** 燃燒層數(F18 爆燃圓:滿層前的接近提示) */
+  burnStacks: number
   /** 凍結剩餘秒數(畫面褪色、敵人停格) */
   freezeLeft: number
 
@@ -154,8 +156,12 @@ export interface BattleSnapshot {
   bossKind: BossKind | null
   /** 拆盾:剩餘命中數(>0 畫盾殼) */
   shellLeft: number
+  /** 當前這層護盾的累積比例 0~1(畫層碎裂進度) */
+  shellProgress: number
   /** 蓄力:剩餘秒數(>0 畫蓄力條與警示) */
   channelLeft: number
+  /** 打斷進度 0~1(畫 Boss 血條下的打斷條;越接近 1 越該催促) */
+  channelProgress: number
   /** 圖騰血量比例(>0 畫圖騰實體) */
   totemRatio: number
 }

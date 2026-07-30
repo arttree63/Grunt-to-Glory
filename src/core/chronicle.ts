@@ -31,6 +31,25 @@ function jobPathOf(s: GameState): string {
 
 const itemName = (e: Equipment) => `${QUALITY_NAME[e.quality]}${SLOT_NAME[e.slot]}`
 
+/** 這一代小兵的名字(轉生時列傳與傳家之器都要用同一個) */
+export function soldierName(s: GameState): string {
+  return NAMES[(s.runs + 1) % NAMES.length]
+}
+
+/**
+ * 人格稱號輕量版(關聯感串接):行為計數 → 稱號。
+ * 沒有鮮明行為就 null——稱號要稀罕才有意義,不硬發。
+ */
+export function titleFor(s: GameState): string | null {
+  const r = s.runStats
+  if (r.lateBossKills >= 2) return '遲來的勝者'
+  // 技能已解鎖(轉職後)卻整輪一次都沒放
+  if (r.skillCasts === 0 && JOBS[s.jobId].tier >= 1) return '沉默的守望者'
+  // 四分之一以上的最後一擊由傭兵補刀
+  if (r.kills >= 100 && r.mercKills / r.kills >= 0.25) return '眾人簇擁者'
+  return null
+}
+
 /** 為這一代生成列傳。在 prestige 當下呼叫 */
 export function makeChronicleEntry(
   s: GameState,
@@ -39,7 +58,7 @@ export function makeChronicleEntry(
 ): ChronicleEntry {
   return {
     gen: s.runs + 1,
-    name: NAMES[(s.runs + 1) % NAMES.length],
+    name: soldierName(s),
     jobPath: jobPathOf(s),
     destiny: s.destinyPath ? DESTINY_PATHS[s.destinyPath].name : null,
     floor: s.highestFloor,
@@ -48,5 +67,7 @@ export function makeChronicleEntry(
     medalsGained,
     forgeGained: s.forgeCount - s.runStart.forgeCount,
     codexGained: s.codex.length - s.runStart.codexCount,
+    title: titleFor(s),
+    highlight: s.runHighlight,
   }
 }

@@ -379,6 +379,8 @@ export const BANNER_ZONE_SHARE = 0.15
 /** 裁決餘燼:聖光審判 70% 立即、30% 轉為燃燒(短時間內燒完,Boss 30 秒檢定內必定結算完) */
 export const EMBER_IMMEDIATE = 0.7
 export const EMBER_BURN_DURATION = 4
+/** F18 爆燃:燃燒疊到滿層發 burnMax 事件(純演出鉤子,不改傷害) */
+export const BURN_MAX_STACKS = 5
 
 // ── Boss 行為原型(v1.7:敵人不再是木樁)──
 // ⚠️ 全部活在 Boss 30 秒沙盒內,不碰 farm 曲線。
@@ -423,6 +425,35 @@ export const CHANNEL_HARDEN_SEC = 5
 /** 圖騰:剩 24s 出第一根,之後每 10s;存活期間倒數加速;血量為 Boss 的比例 */
 export const TOTEM_FIRST_AT = 24
 export const TOTEM_INTERVAL = 10
+
+// ── 敵情熟悉度 + 戰術修正(籃 C 第一階段,2026-07-30 裁決)──
+/** 精通門檻:累積成功處理(破盾/打斷/毀圖騰)次數 */
+export const LORE_MASTER_HANDLED = 5
+/** 戰術「緩兵之計」:守關者的第一個手段延後秒數 */
+export const TACTIC_DELAY_SEC = 5
+/** 戰術「蓄勢而來」:本場第一次引爆後保留的印記層數 */
+export const TACTIC_KEEP_SIGILS = 3
+
+// ── 完美引爆窗口(籃 C 第二階段,2026-07-30 裁決:過載引爆的簡化版)──
+/** 印記疊滿後的金色窗口秒數;窗口內手動引爆=完美 */
+export const PERFECT_WINDOW_SEC = 1.5
+/** 完美引爆獎勵:士氣(獎勵放操作感,不放傷害) */
+export const PERFECT_MORALE = 15
+/** 完美引爆獎勵:傭兵行動提早秒數 */
+export const PERFECT_MERC_ADVANCE = 1
+
+// ── 命運共鳴(顯示傾向,不推薦答案;來源公開)──
+/** 共鳴累積:拆解 → 神匠 / 鍛造 → 神匠 / 限時事件 → 尋寶 / 留存事件 → 尋寶 / 連斬跨檔 → 戰術家 / 施放技能 → 戰術家 */
+export const RESONANCE = {
+  salvage: 2, // 神匠:每拆解一件
+  forge: 3, // 神匠:每鍛造一次
+  event: 3, // 尋寶:每擊破一次限時事件
+  encounter: 2, // 尋寶:每處理一次留存事件
+  combo: 2, // 戰術家:連斬每跨 10 層
+  skill: 1, // 戰術家:每施放一次技能
+} as const
+/** 開場禮物:神匠共鳴=送一次鍛造的素材;尋寶=下一個事件立刻接近;戰術家=連斬起步層數 */
+export const RESONANCE_GIFT_COMBO = 10
 export const TOTEM_HP_RATIO = 0.03
 export const TOTEM_TIMER_MULT = 1.5
 

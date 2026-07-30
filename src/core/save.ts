@@ -55,6 +55,12 @@ export interface SaveData {
   normalForgeProgress: number
   fineForgesUsed: number
   autoCast: boolean
+  runStats: GameState['runStats']
+  runHighlight: string | null
+  bossLore: GameState['bossLore']
+  bossTactic: GameState['bossTactic']
+  resonance: GameState['resonance']
+  resonanceSrc: GameState['resonanceSrc']
   partMaterials: GameState['partMaterials']
   eliteMaterials: number
   maxBossKilled: number
@@ -119,6 +125,12 @@ export function serialize(s: GameState): SaveData {
     normalForgeProgress: s.normalForgeProgress,
     fineForgesUsed: s.fineForgesUsed,
     autoCast: s.autoCast,
+    runStats: s.runStats,
+    runHighlight: s.runHighlight,
+    bossLore: s.bossLore,
+    bossTactic: s.bossTactic,
+    resonance: s.resonance,
+    resonanceSrc: s.resonanceSrc,
     partMaterials: s.partMaterials,
     eliteMaterials: s.eliteMaterials,
     maxBossKilled: s.maxBossKilled,
@@ -278,6 +290,31 @@ function migrate(raw: SaveData): SaveData {
     d.autoCast = d.autoCast ?? false
     d.version = 21
   }
+  // v21 → v22:關聯感串接——本輪行為計數與代表事件。舊存檔從讀檔那一刻開始累積
+  if (d.version < 22) {
+    d.runStats = d.runStats ?? { kills: 0, mercKills: 0, skillCasts: 0, lateBossKills: 0 }
+    d.runHighlight = d.runHighlight ?? null
+    d.version = 22
+  }
+  // v22 → v23:敵情熟悉度(跨轉生)+ 戰術修正。舊玩家從零開始認識敵人——
+  // 用 highestFloor 回填 seen(打過的原型至少是初見),handled 不回填(識破要自己掙)
+  if (d.version < 23) {
+    const hf = d.highestFloor ?? 1
+    d.bossLore = d.bossLore ?? {
+      shell: { seen: hf >= 10 ? 1 : 0, handled: 0 },
+      channel: { seen: hf >= 20 ? 1 : 0, handled: 0 },
+      totem: { seen: hf >= 30 ? 1 : 0, handled: 0 },
+    }
+    d.bossTactic = d.bossTactic ?? null
+    d.version = 23
+  }
+  // v23 → v24:命運共鳴(本輪累積,顯示傾向與公開來源)。舊存檔從讀檔開始累積
+  if (d.version < 24) {
+    d.resonance = d.resonance ?? { artisan: 0, hunter: 0, tactician: 0 }
+    d.resonanceSrc =
+      d.resonanceSrc ?? { salvage: 0, forge: 0, event: 0, encounter: 0, combo: 0, skill: 0 }
+    d.version = 24
+  }
   return d
 }
 
@@ -336,6 +373,13 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     normalForgeProgress: d.normalForgeProgress ?? 0,
     fineForgesUsed: d.fineForgesUsed ?? 0,
     autoCast: !!d.autoCast,
+    runStats: d.runStats ?? { kills: 0, mercKills: 0, skillCasts: 0, lateBossKills: 0 },
+    runHighlight: d.runHighlight ?? null,
+    bossLore: d.bossLore ?? base.bossLore,
+    bossTactic: d.bossTactic ?? null,
+    resonance: d.resonance ?? { artisan: 0, hunter: 0, tactician: 0 },
+    resonanceSrc:
+      d.resonanceSrc ?? { salvage: 0, forge: 0, event: 0, encounter: 0, combo: 0, skill: 0 },
     partMaterials: { ...base.partMaterials, ...(d.partMaterials ?? {}) },
     eliteMaterials: d.eliteMaterials ?? 0,
     maxBossKilled: d.maxBossKilled ?? 0,

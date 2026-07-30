@@ -53,6 +53,7 @@ interface Store {
   /** 最近一次一鍵分解的結果(給 UI 回饋用) */
   lastSalvage: { count: number; materials: number; protectedCount: number } | null
   retryBoss: () => void
+  setTactic: (id: import('../core/types').TacticId | null) => void
   buyTech: (id: TechId) => void
   prestige: (heirloomIds?: string[]) => void
   inscribeHeirloom: (id: string) => void
@@ -194,6 +195,11 @@ export const useGame = create<Store>((set, get) => ({
 
   retryBoss() {
     G.retryBoss(get().s)
+    bump(set, get)
+  },
+
+  setTactic(id) {
+    G.setTactic(get().s, id)
     bump(set, get)
   },
 

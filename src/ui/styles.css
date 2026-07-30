@@ -224,6 +224,23 @@ button {
   letter-spacing: 1px;
 }
 
+/* 目標梯度細條(Boss 打斷 / 破盾 / 圖騰):文字給數字,條給「還剩多少」的手感 */
+.goal-bar {
+  height: 3px;
+  margin: 4px 0 2px;
+  background: #00000055;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.goal-bar .fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--boss-a), var(--boss-b));
+  transition: width 0.12s linear;
+}
+.goal-bar .fill.gold {
+  background: linear-gradient(90deg, #b8862c, var(--gold));
+}
+
 /* 底部操作區 */
 .bottom {
   background: var(--bg-panel);
@@ -702,13 +719,21 @@ button {
 }
 
 /* Boss 挑戰按鈕:失敗退回前一層後常駐,讓玩家自己決定何時再上 */
-.boss-challenge {
+/* 外框接手定位,挑戰按鈕與戰術列直排 */
+.boss-challenge-wrap {
   position: absolute;
   z-index: 6;
   left: 50%;
   transform: translateX(-50%);
   top: 92px;
   max-width: 92%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.boss-challenge {
+  max-width: 100%;
   padding: 8px 18px;
   border-radius: 12px;
   background: #241d31ee;
@@ -734,6 +759,48 @@ button {
   font-size: 11px;
   color: var(--dim2);
   margin-top: 2px;
+}
+
+/* 戰術修正三選一(在線才看得到=在線才選得到;44px 觸控目標) */
+.tactic-row {
+  display: flex;
+  gap: 6px;
+  max-width: 100%;
+}
+.tactic {
+  flex: 1;
+  min-height: 44px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: #241d31dd;
+  border: 1px solid var(--border-card);
+  text-align: center;
+  line-height: 1.4;
+}
+.tactic.on {
+  border-color: var(--gold);
+  box-shadow: 0 0 10px #f2c14e44;
+}
+.tactic b {
+  display: block;
+  font-size: 12px;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+.tactic.on b {
+  color: var(--gold);
+}
+.tactic small {
+  display: block;
+  font-size: 11px;
+  color: var(--dim2);
+}
+.tactic-note {
+  font-size: 11px;
+  color: var(--gold);
+  background: #241d31dd;
+  border-radius: 8px;
+  padding: 2px 10px;
 }
 
 

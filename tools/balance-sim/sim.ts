@@ -175,7 +175,7 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
       for (const id of availableSkills(s)) {
         const sk = SKILLS[id]
         if (sk.consumesSigils && s.sigils < sigilCap(s)) continue
-        if (skillReady(s, id)) castSkill(s, id)
+        if (skillReady(s, id)) castSkill(s, id, true) // auto:代理=掛機基準,不吃完美引爆獎勵
       }
 
       // 命運限定二轉:命運相符時優先走限定分支

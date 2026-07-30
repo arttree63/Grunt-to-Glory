@@ -7,16 +7,24 @@ import {
   BOSS_KIND_NAME,
   bossGap,
   bossKindFor,
+  channelProgress,
   chargeMult,
   comboMult,
+  diagnoseBoss,
+  DIAGNOSIS_NAME,
+  loreStage,
+  BOSS_LORE_GLIMPSE,
+  BOSS_LORE_MASTERY,
+  TACTICS,
   pendingMedals,
+  shellToNext,
   sigilCap,
   sigilName,
 } from '../core/game'
 import { hasNode } from '../core/destiny'
 import { SKILLS } from '../core/skills'
-import { canBuyTech, TECHS } from '../core/techs'
-import { availableJobs, JOBS } from '../core/jobs'
+import { JOBS } from '../core/jobs'
+import { nearGoal } from '../core/goals'
 import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
 import { FloorDots, FloorToast } from './FloorProgress'
@@ -56,31 +64,11 @@ export default function App() {
   return <Game />
 }
 
-/**
- * 失敗診斷(v1.7):看上一場統計,講出「差在哪、該改什麼」。
- * 規則刻意粗:一句話就好,玩家要的是方向不是報表。
- */
-function diagnose(st: import('../core/types').BossStats | null): string | null {
-  if (!st || st.win) return null
-  if (st.kind === 'shell' && st.shellTime > B.BOSS_TIME * 0.4) {
-    return `上一場:護盾佔了 ${st.shellTime.toFixed(0)} 秒——多段命中不足,分身、攻速、傭兵或多點幾下都有幫助`
-  }
-  if (st.kind === 'channel' && st.channels > 0 && st.interrupts < st.channels) {
-    return `上一場:${st.channels} 次蓄力只打斷 ${st.interrupts} 次——蓄力時留一手爆發(引爆/凍結/軍旗儲存)`
-  }
-  if (st.kind === 'totem' && st.totemTime > 8) {
-    return `上一場:圖騰存活了 ${st.totemTime.toFixed(0)} 秒,一直在偷時間——燃燒與盜賊背刺可以無視圖騰直打本體`
-  }
-  if (st.dealtRatio < 1) {
-    return `上一場只打掉 ${Math.round(st.dealtRatio * 100)}% 血量——純輸出不足,升級或換裝最實際`
-  }
-  return null
-}
-
 /** Boss 失敗後常駐的挑戰按鈕:說清楚差多少、該做什麼、要挑戰第幾層 */
 function BossHint() {
   const s = useGameState()
   const retryBoss = useGame((st) => st.retryBoss)
+  const setTactic = useGame((st) => st.setTactic)
   const target = s.bossRetryFloor
   if (target === null) return null
 
@@ -88,7 +76,21 @@ function BossHint() {
   const gap = bossGap(s, target)
   const ready = gap < 1
   const kind = bossKindFor(target)
-  const diag = diagnose(s.lastBossStats)
+  const stage = loreStage(s, kind)
+  const diag = diagnoseBoss(s.lastBossStats)
+  // 敵情熟悉度決定戰前預告的精度:初見只有模糊描述,識破給打法,精通給精確時點
+  const kindLabel = stage === 'unseen' || stage === 'glimpse' ? '未知的守關者' : BOSS_KIND_NAME[kind]
+  const kindHint =
+    stage === 'unseen' || stage === 'glimpse'
+      ? BOSS_LORE_GLIMPSE[kind]
+      : stage === 'mastered'
+        ? BOSS_LORE_MASTERY[kind]
+        : BOSS_KIND_HINT[kind]
+  // 戰術修正只在玩家在線盯著這面板時可選;掛機自動重試永遠無修正
+  const tactics = TACTICS.filter(
+    (t) =>
+      (t.id !== 'keepSigils' || JOBS[s.jobId].awakenSkill) && (t.id !== 'mercFirst' || s.activeMerc),
+  )
   const advice = ready
     ? '現在打得過了'
     : s.materials >= B.FORGE_COST
@@ -100,28 +102,51 @@ function BossHint() {
           : '在這層多打幾輪'
 
   return (
-    <button
-      className={`boss-challenge${ready ? ' ready' : ''}`}
-      onPointerDown={(e) => {
-        e.stopPropagation()
-        retryBoss()
-      }}
-    >
-      <b>
-        挑戰第 {target} 層 Boss
-        <small style={{ marginLeft: 6, opacity: 0.85 }}>{BOSS_KIND_NAME[kind]}</small>
-      </b>
-      <small>{ready ? advice : `還差 ${gap.toFixed(1)} 倍 DPS・${advice}`}</small>
-      <small style={{ opacity: 0.85 }}>{BOSS_KIND_HINT[kind]}</small>
-      {/* 失敗診斷:把「再掛久一點」變成「我知道要改什麼」 */}
-      {diag && <small style={{ color: 'var(--gold)' }}>{diag}</small>}
-      {/* 失敗補償看不見就補償不到心情 */}
-      {s.valiantStacks > 0 && (
-        <small style={{ color: 'var(--gold)' }}>
-          越戰越勇 ×{s.valiantStacks}・Boss 戰傷害 +{Math.round(s.valiantStacks * B.VALIANT_DMG * 100)}%
-        </small>
-      )}
-    </button>
+    <div className="boss-challenge-wrap">
+      <button
+        className={`boss-challenge${ready ? ' ready' : ''}`}
+        onPointerDown={(e) => {
+          e.stopPropagation()
+          retryBoss()
+        }}
+      >
+        <b>
+          挑戰第 {target} 層 Boss
+          <small style={{ marginLeft: 6, opacity: 0.85 }}>{kindLabel}</small>
+        </b>
+        <small>{ready ? advice : `還差 ${gap.toFixed(1)} 倍 DPS・${advice}`}</small>
+        <small style={{ opacity: 0.85 }}>{kindHint}</small>
+        {/* 失敗診斷三分類:先講「該改打法還是刷資源」,再講一句怎麼做 */}
+        {diag && (
+          <small style={{ color: 'var(--gold)' }}>
+            上一場・{DIAGNOSIS_NAME[diag.category]}:{diag.text}
+          </small>
+        )}
+        {/* 失敗補償看不見就補償不到心情 */}
+        {s.valiantStacks > 0 && (
+          <small style={{ color: 'var(--gold)' }}>
+            越戰越勇 ×{s.valiantStacks}・Boss 戰傷害 +{Math.round(s.valiantStacks * B.VALIANT_DMG * 100)}%
+          </small>
+        )}
+      </button>
+      {/* 戰術修正:在線三選一,只對下一次挑戰生效;不選=無修正(掛機自動重試走這條) */}
+      <div className="tactic-row" onPointerDown={(e) => e.stopPropagation()}>
+        {tactics.map((t) => (
+          <button
+            key={t.id}
+            className={`tactic${s.bossTactic === t.id ? ' on' : ''}`}
+            onPointerDown={(e) => {
+              e.stopPropagation()
+              setTactic(s.bossTactic === t.id ? null : t.id)
+            }}
+          >
+            <b>{t.name}</b>
+            <small>{t.desc}</small>
+          </button>
+        ))}
+      </div>
+      {s.bossTactic && <small className="tactic-note">只對下一次挑戰生效・再敗要重新選</small>}
+    </div>
   )
 }
 
@@ -202,12 +227,8 @@ function Game() {
   const dismissOffline = useGame((st) => st.dismissOffline)
 
   const hpRatio = s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0
-  const canUpgrade = s.gold.gte(upCost(s.lv))
-  // 轉職是 Lv.20/100 的關鍵時刻,紅點要亮——「不能轉職」的另一半原因是玩家不知道可以了
-  const canPromote = availableJobs(s.jobId, s.lv, s.destinyPath).length > 0
-  // 傳承頁其實就是商店(勳章科技 + 兌換),但沒有紅點玩家不會自己去翻
-  const canBuyAnything =
-    TECHS.some((t) => canBuyTech(s.techs, s.medals, t.id)) || s.medals >= B.ELITE_MEDAL_COST
+  // 紅點三層收斂:同時只亮一顆,由近期目標的優先序決定(core/goals.ts)
+  const near = nearGoal(s)
 
   return (
     <div className="wrap">
@@ -310,17 +331,27 @@ function Game() {
             style={{ top: 'auto', bottom: 186, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
           >
             {sigilName(s)} {s.sigils}/{sigilCap(s)}
-            <small className="affix"> 用第二技能引爆</small>
+            {/* 完美引爆窗口:滿層 1.5 秒內手動引爆給操作獎勵(掛機正常引爆不受影響) */}
+            {s.perfectWindowLeft > 0 ? (
+              <small style={{ color: 'var(--gold)', fontWeight: 700 }}> 金色窗口——現在引爆=完美!</small>
+            ) : (
+              <small className="affix"> 用第二技能引爆</small>
+            )}
           </div>
         )}
 
+        {/* Boss 目標梯度(goal-gradient):過程中就讓玩家看到「再多做一件事就會不同」,
+            而不是失敗診斷才告訴他差多少。三種原型互斥,共用同一個槽位 */}
         {s.isBoss && s.shellLeft > 0 && (
           <div
             className="retry"
             style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
           >
-            護盾 ×{s.shellLeft}
-            <small className="affix"> 每次命中 −1・盾上傷害大減</small>
+            護盾 ×{s.shellLeft}・還差 {shellToNext(s)} 點破下一層
+            <div className="goal-bar">
+              <div className="fill" style={{ width: `${(1 - shellToNext(s) / B.SHIELD_VALUE_PER_LAYER) * 100}%` }} />
+            </div>
+            <small className="affix">一次命中 {B.SHIELD_HIT_VALUE} 點・燃燒等狀態 {B.SHIELD_TICK_VALUE} 點</small>
           </div>
         )}
         {s.isBoss && s.channelLeft > 0 && (
@@ -328,7 +359,17 @@ function Game() {
             className="retry"
             style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--gold)', fontSize: 14 }}
           >
-            蓄力中 {s.channelLeft.toFixed(1)}s——打出爆發打斷它!
+            {channelProgress(s) >= 0.75 ? '就差一點——現在放!' : '蓄力中'} {s.channelLeft.toFixed(1)}s・打斷{' '}
+            {Math.floor(channelProgress(s) * 100)}%
+            <div className="goal-bar">
+              <div
+                className="fill gold"
+                style={{ width: `${channelProgress(s) * 100}%` }}
+              />
+            </div>
+            <small className="affix">
+              還差 {fmt(s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK).sub(s.channelDamage))} 傷害即可打斷
+            </small>
           </div>
         )}
         {s.isBoss && s.totemHp.gt(0) && (
@@ -336,8 +377,11 @@ function Game() {
             className="retry"
             style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
           >
-            圖騰吸住攻擊・倒數加速中
-            <small className="affix"> 燃燒/背刺可直打本體</small>
+            圖騰 {Math.ceil(s.totemHp.div(s.totemMaxHp).toNumber() * 100)}%・倒數加速中
+            <div className="goal-bar">
+              <div className="fill" style={{ width: `${s.totemHp.div(s.totemMaxHp).toNumber() * 100}%` }} />
+            </div>
+            <small className="affix">燃燒/背刺可直打本體</small>
           </div>
         )}
 
@@ -388,11 +432,7 @@ function Game() {
             >
               <span><GameIcon name={t.id} size={19} /></span>
               {t.label}
-              {t.id === 'hero' && (canUpgrade || canPromote) && <i className="dot" />}
-              {t.id === 'forge' && s.materials >= B.FORGE_COST && <i className="dot" />}
-              {t.id === 'destiny' && (s.destinyPoints > 0 || !s.destinyPath) && <i className="dot" />}
-              {t.id === 'journal' && s.encounters.length > 0 && <i className="dot" />}
-              {t.id === 'legacy' && canBuyAnything && <i className="dot" />}
+              {near?.tab === t.id && <i className="dot" />}
             </button>
           ))}
         </div>

@@ -2,7 +2,17 @@ import { useState } from 'react'
 import * as B from '../../core/balance'
 import { forgeLevel, QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
 import { fmt } from '../../core/format'
-import { matrixKey, matrixOutcome, pityLegendaryLeft, SAVE_VERSION } from '../../core/game'
+import {
+  BOSS_KIND_HINT,
+  BOSS_KIND_NAME,
+  BOSS_LORE_GLIMPSE,
+  BOSS_LORE_MASTERY,
+  loreStage,
+  matrixKey,
+  matrixOutcome,
+  pityLegendaryLeft,
+  SAVE_VERSION,
+} from '../../core/game'
 import { DESTINY_PATHS } from '../../core/destiny'
 import { ALL_LEGENDS } from '../../core/legends'
 import { KEYWORD_NAME } from '../../core/keywords'
@@ -307,6 +317,8 @@ export default function LegacyPanel() {
             <div className="head">
               <b>
                 第 {c.gen} 代・{c.name}
+                {/* 人格稱號:行為長出來的身分,不是成就徽章 */}
+                {c.title && <small style={{ marginLeft: 6, color: 'var(--gold)' }}>「{c.title}」</small>}
               </b>
               <small className="affix">{c.floor} 層</small>
             </div>
@@ -314,6 +326,12 @@ export default function LegacyPanel() {
               {c.jobPath}
               {c.destiny && ` ・ ${c.destiny}命運`}
               <br />
+              {c.highlight && (
+                <>
+                  {c.highlight}
+                  <br />
+                </>
+              )}
               {c.heirloom && (
                 <>
                   以「{c.heirloom}」留下傳家之器
@@ -325,6 +343,40 @@ export default function LegacyPanel() {
           </div>
         ))
       )}
+      <h3 style={{ marginTop: 16 }}>敵 情 錄</h3>
+      <div className="affix" style={{ marginBottom: 8 }}>
+        前代學會的敵情,成為下一代的知識。成功處理(破盾/打斷/毀圖騰)可加深熟悉度。
+      </div>
+      {(['shell', 'channel', 'totem'] as const).map((kind) => {
+        const stage = loreStage(s, kind)
+        const lore = s.bossLore[kind]
+        return (
+          <div className="row" key={kind}>
+            <span className="k">
+              {stage === 'unseen' || stage === 'glimpse' ? '未知的守關者' : BOSS_KIND_NAME[kind]}
+              <small className="affix" style={{ marginLeft: 6 }}>
+                {stage === 'unseen'
+                  ? '尚未遭遇'
+                  : stage === 'glimpse'
+                    ? '初見'
+                    : stage === 'known'
+                      ? `識破・熟練 ${lore.handled}/${B.LORE_MASTER_HANDLED}`
+                      : '精通'}
+              </small>
+            </span>
+            <span className="v affix" style={{ textAlign: 'right', maxWidth: '60%' }}>
+              {stage === 'unseen'
+                ? '前代尚未留下任何記錄'
+                : stage === 'glimpse'
+                  ? BOSS_LORE_GLIMPSE[kind]
+                  : stage === 'mastered'
+                    ? BOSS_LORE_MASTERY[kind]
+                    : BOSS_KIND_HINT[kind]}
+            </span>
+          </div>
+        )
+      })}
+
       <h3 style={{ marginTop: 16 }}>傳 說 圖 鑑</h3>
       <LegendCodex />
 

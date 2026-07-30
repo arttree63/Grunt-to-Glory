@@ -105,6 +105,8 @@ export type TechId = 'valor' | 'supply' | 'legacy' | 'camp' | 'heirloom'
 export type EventKind = 'chest' | 'goblin'
 /** Boss 行為原型(v1.7):敵人對玩家的構築提出不同的問題 */
 export type BossKind = 'shell' | 'channel' | 'totem'
+/** 戰術修正(在線三選一,只對下一次挑戰生效;離線無修正) */
+export type TacticId = 'delay' | 'keepSigils' | 'mercFirst'
 /** 留存事件:不限時,保留在「旅途紀錄」等玩家回來處理,不會因掛機錯過 */
 export type EncounterId = 'blacksmith' | 'merchant' | 'crossroad'
 
@@ -129,6 +131,10 @@ export interface ChronicleEntry {
   medalsGained: number
   forgeGained: number
   codexGained: number
+  /** 人格稱號(行為計數推出;沒有鮮明行為就 null)。舊列傳沒有此欄位 */
+  title?: string | null
+  /** 代表事件一句話(bossStats 餵)。舊列傳沒有此欄位 */
+  highlight?: string | null
 }
 
 export interface RouteBuff {
@@ -207,6 +213,8 @@ export interface Equipment {
   broken?: boolean
   /** 殘缺版修復後要回到的品質 */
   fullQuality?: Quality
+  /** 前任持有者名(傳家之器跨輪時寫入,關聯感串接) */
+  bearer?: string
 }
 
 export interface GameState {
@@ -262,6 +270,38 @@ export interface GameState {
   bossStats: BossStats | null
   /** 上一場 Boss 的統計(給失敗診斷 UI;不進存檔) */
   lastBossStats: BossStats | null
+
+  // ── 本輪行為計數(人格稱號 / 代表事件用;進存檔,轉生歸零)──
+  runStats: {
+    /** 本輪總擊殺(相對比例的分母) */
+    kills: number
+    /** 傭兵造成的最後一擊 */
+    mercKills: number
+    /** 本輪施放技能次數 */
+    skillCasts: number
+    /** 最後 5 秒內擊破 Boss 的次數 */
+    lateBossKills: number
+  }
+  /** 本輪代表事件一句話(最戲劇性的那個,轉生時寫進列傳) */
+  runHighlight: string | null
+
+  // ── 敵情熟悉度(跨轉生保留——前代學會的敵情成為下代知識)──
+  /** 各行為原型:遭遇次數 / 成功處理次數(破盾、打斷、毀圖騰) */
+  bossLore: Record<BossKind, { seen: number; handled: number }>
+  /** 選好的戰術修正(下一次挑戰生效,打完即清;預設 null=無修正) */
+  bossTactic: TacticId | null
+  /** 緩兵之計剩餘秒數(暫態) */
+  tacticDelayLeft: number
+  /** 蓄勢而來:本場首次引爆保留印記(暫態,一場一次) */
+  tacticKeepSigils: boolean
+  /** 完美引爆金色窗口剩餘秒數(印記疊滿時開啟,暫態) */
+  perfectWindowLeft: number
+
+  // ── 命運共鳴(本輪累積,轉生歸零;顯示傾向不替玩家推薦)──
+  /** 各命運的共鳴值(行為累積) */
+  resonance: Record<DestinyPathId, number>
+  /** 共鳴來源計數(公開給玩家看:「拆解 ×3、鍛造 ×1」) */
+  resonanceSrc: Record<'salvage' | 'forge' | 'event' | 'encounter' | 'combo' | 'skill', number>
 
   morale: number
   /** 爐火層數的素材基準:距上次打造累積了多少素材(神匠起始節點) */
@@ -336,6 +376,8 @@ export interface GameState {
   frozenPool: Decimal
   /** 燃燒剩餘秒數 */
   burnLeft: number
+  /** 燃燒層數(F18 爆燃演出用;滿層歸零並發 burnMax,暫態) */
+  burnStacks: number
   /** 燃燒每秒傷害 */
   burnDps: Decimal
   /** 熔火軍旗:軍旗剩餘秒數(攻擊分一份由軍旗打出) */
@@ -455,6 +497,8 @@ export interface GameEvent {
     | 'freezeStart'
     | 'freezeBurst'
     | 'burnTick'
+    | 'burnMax'
+    | 'perfectBurst'
     | 'zealGain'
     | 'shellBreak'
     | 'channelStart'
