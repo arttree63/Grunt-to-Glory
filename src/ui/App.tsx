@@ -17,12 +17,15 @@ import {
   BOSS_LORE_MASTERY,
   TACTICS,
   pendingMedals,
+  ironwallActive,
+  setProgress,
   shellToNext,
   sigilCap,
   sigilName,
 } from '../core/game'
 import { hasNode } from '../core/destiny'
 import { SKILLS } from '../core/skills'
+import { SETS } from '../core/sets'
 import { JOBS } from '../core/jobs'
 import { nearGoal } from '../core/goals'
 import { useGame } from '../store/gameStore'
@@ -37,7 +40,7 @@ import DestinyPanel from './panels/DestinyPanel'
 import JournalPanel from './panels/JournalPanel'
 import LegacyPanel from './panels/LegacyPanel'
 import { useGameState } from './useGameState'
-import { GameIcon } from './GameIcon'
+import { BadgeIcon, GameIcon } from './GameIcon'
 
 type Tab = 'hero' | 'equip' | 'forge' | 'destiny' | 'journal' | 'legacy'
 
@@ -237,6 +240,7 @@ function Game() {
   const hpRatio = s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0
   // 紅點三層收斂:同時只亮一顆,由近期目標的優先序決定(core/goals.ts)
   const near = nearGoal(s)
+  const activeSets = setProgress(s).filter((set) => set.count >= 2)
 
   return (
     <div className="wrap">
@@ -287,6 +291,24 @@ function Game() {
         )}
 
         <FloorToast />
+
+        {activeSets.length > 0 && (
+          <div className="set-overview">
+            {activeSets.map((set) => {
+              const state =
+                set.tag === 'ironwall'
+                  ? ironwallActive(s) ? '軍陣中' : set.count >= 3 ? '自動引爆待命' : '已啟動'
+                  : s.commandReady ? '指揮就緒' : `${new Set(s.castOrder).size}/3 指令`
+              return (
+                <div className="set-status" key={set.tag}>
+                  <BadgeIcon kind="set" />
+                  <b>{SETS[set.tag].name}</b>
+                  <span>{set.count}/3・{state}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {hasNode(s, 'hunter_start') && !s.event && s.eventCooldown < B.OMEN_LEAD_SEC && (
           <div className="retry" style={{ top: 92, pointerEvents: 'none', color: 'var(--gold)' }}>

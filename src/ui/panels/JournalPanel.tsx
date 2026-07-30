@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import * as B from '../../core/balance'
 import { hasNode } from '../../core/destiny'
 import { ENCOUNTERS } from '../../core/encounters'
 import { legacyGoal, nearGoal, runGoal } from '../../core/goals'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
+import ResultReveal from '../ResultReveal'
 
 /**
  * 旅途紀錄。留存事件不限時,掛機也不會錯過,回來再處理。
@@ -13,6 +15,7 @@ export default function JournalPanel() {
   const s = useGameState()
   const resolve = useGame((st) => st.resolveEncounter)
   const barter = useGame((st) => st.barterForDestiny)
+  const [reveal, setReveal] = useState<string | null>(null)
 
   const canBarter =
     hasNode(s, 'hunter_2b') &&
@@ -68,7 +71,13 @@ export default function JournalPanel() {
             </div>
             <div className="btn-row">
               {enc.choices.map((c) => (
-                <button key={c.id} className="btn primary" onClick={() => resolve(e.id, c.id)}>
+                <button
+                  key={c.id}
+                  className="btn primary"
+                  onClick={() => {
+                    if (resolve(e.id, c.id)) setReveal(c.desc)
+                  }}
+                >
                   {c.label}
                   <br />
                   <small className="affix">{c.desc}</small>
@@ -105,6 +114,15 @@ export default function JournalPanel() {
             </div>
           </div>
         </>
+      )}
+
+      {reveal && (
+        <ResultReveal
+          items={['金幣', '怪物素材', '菁英素材', '路線增益']}
+          result={reveal}
+          tone="gold"
+          onDone={() => setReveal(null)}
+        />
       )}
     </div>
   )

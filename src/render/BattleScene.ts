@@ -639,7 +639,8 @@ export class BattleScene {
   /** 一行提示(拿到命運點、素材、傳家之器復原…),不搶戰鬥焦點 */
   notice(text: string) {
     if (this.destroyed) return
-    this.damageNum(this.W / 2, this.H * 0.24, text, false)
+    const slot = Math.min(2, this.dmgLayer.children.filter((child) => (child as FloatText)._notice).length)
+    this.damageNum(this.W / 2, this.H * 0.2 + slot * 34, text, false, false, 0.82, false, true)
   }
 
   /** 事件中點擊換素材。⚠️ 不可複用金幣模板,會拼出「+素材 +1 金」 */
@@ -801,7 +802,16 @@ export class BattleScene {
     this.damageNum(x + offset, y + 16, `${label} ${txt}`, false, false, 1, frozen)
   }
 
-  private damageNum(x: number, y: number, txt: string, crit: boolean, holy = false, fontScale = 1, frozen = false) {
+  private damageNum(
+    x: number,
+    y: number,
+    txt: string,
+    crit: boolean,
+    holy = false,
+    fontScale = 1,
+    frozen = false,
+    notice = false,
+  ) {
     // 同屏跳字上限,超過先移除最舊的
     while (this.dmgLayer.children.length >= 12) this.dmgLayer.children[0].destroy()
     const t = new Text({
@@ -815,10 +825,11 @@ export class BattleScene {
       },
     })
     t.anchor.set(0.5)
-    t.position.set(x + (Math.random() - 0.5) * 30, y)
-    ;(t as FloatText)._vy = -2.4
+    t.position.set(x + (notice ? 0 : (Math.random() - 0.5) * 30), y)
+    ;(t as FloatText)._vy = notice ? -0.45 : -2.4
     ;(t as FloatText)._life = 1
     ;(t as FloatText)._frozen = frozen
+    ;(t as FloatText)._notice = notice
     if (frozen) {
       t.tint = 0xb9edff
       t.alpha = 0.78
@@ -2128,6 +2139,7 @@ interface FloatText extends Text {
   _vy: number
   _life: number
   _frozen: boolean
+  _notice: boolean
 }
 
 function frameSpeed(frameMs: number): number {

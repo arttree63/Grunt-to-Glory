@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { fmt } from '../core/format'
 import * as B from '../core/balance'
 import { critMultiplier } from '../core/formulas'
@@ -17,10 +17,14 @@ import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
 import { SKILLS } from '../core/skills'
 import { useGame } from '../store/gameStore'
+import ResultReveal from './ResultReveal'
+
+const EVENT_REVEAL_ITEMS = ['金幣', '怪物素材', '菁英素材', '部位素材']
 
 export default function BattleCanvas({ children }: { children?: ReactNode }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<BattleScene | null>(null)
+  const [eventReveal, setEventReveal] = useState<{ text: string; tone: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -165,7 +169,15 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.onBossKill(hasBrokenHeirloom ? heirloomRepairLeft(s) : undefined)
       }
       else if (e.type === 'bossFail') scene.onBossFail()
-      else if (e.type === 'eventKill') scene.onEventKill(fmt(e.gold!), !!e.count)
+      else if (e.type === 'eventKill') {
+        const elite = !!e.count
+        const gold = fmt(e.gold!)
+        setEventReveal({
+          text: elite ? `菁英素材 +1・${gold} 金` : `${gold} 金`,
+          tone: elite ? 'q-purple' : 'gold',
+        })
+        scene.onEventKill(gold, elite)
+      }
       else if (e.type === 'eventEscape') scene.onEventEscape()
     })
 
@@ -185,6 +197,14 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
   return (
     <div className="stage" onPointerDown={onPointerDown}>
       <div className="canvas-host" ref={hostRef} />
+      {eventReveal && (
+        <ResultReveal
+          items={EVENT_REVEAL_ITEMS}
+          result={eventReveal.text}
+          tone={eventReveal.tone}
+          onDone={() => setEventReveal(null)}
+        />
+      )}
       {children}
     </div>
   )

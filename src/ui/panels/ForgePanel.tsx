@@ -36,6 +36,7 @@ import type { BaseType, Equipment, Slot } from '../../core/types'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 import { BadgeIcon, MechanicChips, QualityMark } from '../GameIcon'
+import ResultReveal from '../ResultReveal'
 
 /**
  * 鍛造結果:先講這件會怎麼改變玩法,戰力百分比放最後。
@@ -145,6 +146,8 @@ export default function ForgePanel() {
   const fineForge = useGame((st) => st.fineForge)
   const equip = useGame((st) => st.equip)
   const [results, setResults] = useState<Equipment[]>([])
+  const [pendingResults, setPendingResults] = useState<Equipment[]>([])
+  const [revealQuality, setRevealQuality] = useState<Equipment['quality'] | null>(null)
   const [mode, setModeState] = useState<'normal' | 'fine'>(sticky.mode)
   const [slot, setSlotState] = useState<Slot | null>(sticky.slot)
   const [useElite, setUseEliteState] = useState(sticky.useElite)
@@ -167,7 +170,11 @@ export default function ForgePanel() {
       out.push(e)
     }
     // 帶傳說特性者置頂,其餘依品質。玩家要先看到「會改變玩法的那一件」
-    setResults(out.sort((a, b) => Number(!!b.legend) - Number(!!a.legend) || score(b) - score(a)))
+    const sorted = out.sort((a, b) => Number(!!b.legend) - Number(!!a.legend) || score(b) - score(a))
+    if (sorted.length === 0) return
+    setResults([])
+    setPendingResults(sorted)
+    setRevealQuality(sorted[0].quality)
   }
 
   // 所見即所得預覽
@@ -420,6 +427,19 @@ export default function ForgePanel() {
             <ForgeResult key={e.id} e={e} equipped={s.equipped} onEquip={() => equip(e.id)} />
           ))}
         </>
+      )}
+
+      {revealQuality && (
+        <ResultReveal
+          items={Object.values(QUALITY_NAME)}
+          result={QUALITY_NAME[revealQuality]}
+          tone={`q-${revealQuality}`}
+          onDone={() => {
+            setResults(pendingResults)
+            setPendingResults([])
+            setRevealQuality(null)
+          }}
+        />
       )}
     </div>
   )

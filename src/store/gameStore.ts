@@ -43,7 +43,7 @@ interface Store {
   devourWeapon: (foodId: string) => void
   fineForge: (opts: G.FineForgeOptions) => Equipment | null
   buyElite: () => void
-  resolveEncounter: (id: EncounterId, choiceId: string) => void
+  resolveEncounter: (id: EncounterId, choiceId: string) => boolean
   barterForDestiny: () => void
   toggleCharge: () => void
   equip: (id: string) => void
@@ -182,8 +182,10 @@ export const useGame = create<Store>((set, get) => ({
   },
 
   resolveEncounter(id, choiceId) {
-    if (G.resolveEncounter(get().s, id, choiceId)) gameEvents.emit(G.resonanceEvent('encounter'))
+    const resolved = G.resolveEncounter(get().s, id, choiceId)
+    if (resolved) gameEvents.emit(G.resonanceEvent('encounter'))
     bump(set, get)
+    return resolved
   },
 
   toggleCharge() {
