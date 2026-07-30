@@ -33,6 +33,7 @@ import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
 import { FloorDots, FloorToast } from './FloorProgress'
 import SkillBar from './SkillBar'
+import LevelBar from './LevelBar'
 import Tutorial, { SpotlightTeach } from './Tutorial'
 import EquipPanel from './panels/EquipPanel'
 import ForgePanel from './panels/ForgePanel'
@@ -499,6 +500,8 @@ function Game() {
       </BattleCanvas>
 
       <div className="bottom">
+        {/* 核心成長迴圈要在主畫面上按得到:金幣漲→亮起→按(對照點擊泰坦的商店即主畫面) */}
+        <LevelBar />
         {/* 下一步行動提示:紅點只說「有事」,這條直接說「做什麼」,點了開正確分頁 */}
         {near && near.tab && tab !== near.tab && (
           <button className="next-step" onClick={() => setTab(near.tab as Tab)}>

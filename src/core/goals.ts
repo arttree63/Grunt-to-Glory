@@ -2,7 +2,6 @@ import * as B from './balance'
 import { availableJobs, JOBS } from './jobs'
 import { MERCS } from './mercs'
 import { canBuyTech, TECHS } from './techs'
-import { upCost } from './formulas'
 import { bestFloorEver, isAwakened } from './game'
 import type { GameState } from './types'
 
@@ -31,7 +30,8 @@ export function nearGoal(s: GameState): Goal | null {
   if (s.materials >= B.FORGE_COST) return { text: '素材夠打造一次', tab: 'forge' }
   if (TECHS.some((t) => canBuyTech(s.techs, s.medals, t.id)) || s.medals >= B.ELITE_MEDAL_COST)
     return { text: '勳章夠買永久強化', tab: 'legacy' }
-  if (s.gold.gte(upCost(s.lv))) return { text: '金幣夠升級', tab: 'hero' }
+  // ⚠️「金幣夠升級」不再是 near 目標:主畫面已有常駐升級條,直接按就好,
+  // 再指路去英雄頁反而多繞一圈(LevelBar,2026-07-31)
   return null
 }
 

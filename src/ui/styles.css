@@ -22,8 +22,10 @@
   --q-gold: #f2c14e;
   --q-crimson: #c8384a;
 
-  /* 底部操作區高度:面板要停在它上方,tab 才能一鍵切換 */
-  --bottom-h: 132px;
+  /* 底部操作區高度:面板要停在它上方,tab 才能一鍵切換。
+     ⚠️ 每加一條常駐橫條就要同步加高,否則 tab 會被擠出畫面
+     (升級條 44 + 8 margin = 52;下一步條 30 + 8 = 38) */
+  --bottom-h: 184px;
 }
 
 * {
@@ -62,14 +64,14 @@ button {
   flex-direction: column;
 }
 .wrap.no-skills {
-  --bottom-h: 78px;
+  --bottom-h: 130px;
 }
 /* 下一步提示條出現時,底部整體長高,面板/遮罩跟著 var 對齊 */
 .wrap.has-next {
-  --bottom-h: 170px;
+  --bottom-h: 222px;
 }
 .wrap.no-skills.has-next {
-  --bottom-h: 116px;
+  --bottom-h: 168px;
 }
 
 .stage {
@@ -1326,4 +1328,62 @@ button {
 }
 .skill-mode.is-on .opt.on {
   color: var(--gold);
+}
+
+/* 主畫面常駐升級條:放置型的核心迴圈要在主畫面按得到(對照組:點擊泰坦的商店即主畫面) */
+.level-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.lvl-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: #1d1728;
+  border: 1px solid var(--border, #2c2438);
+  color: var(--dim2, #9a8fb0);
+  font-size: 12px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.lvl-main .txt b {
+  color: var(--text, #e8dcc8);
+  font-weight: 700;
+}
+.lvl-main .cost {
+  font-variant-numeric: tabular-nums;
+}
+.lvl-main .cost small {
+  color: var(--dim, #8d80a6);
+}
+/* 買得起就亮起來——這一下亮燈是整個放置迴圈的回饋點 */
+.lvl-main.can {
+  background: #2a2138;
+  border-color: var(--gold);
+  color: var(--text, #e8dcc8);
+}
+.lvl-main.can .cost {
+  color: var(--gold);
+  font-weight: 700;
+}
+.lvl-main.can:active {
+  transform: translateY(1px);
+}
+.lvl-max {
+  min-width: 52px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: #1d1728;
+  border: 1px solid var(--border, #2c2438);
+  color: var(--dim2, #9a8fb0);
+  font-size: 12px;
+}
+.lvl-max.can {
+  color: var(--text, #e8dcc8);
+  border-color: var(--border-card, #3a2f4d);
 }
