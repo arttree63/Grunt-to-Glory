@@ -1,4 +1,5 @@
 import * as B from './balance'
+import { ACHIEVEMENTS, newAchievements } from './achievements'
 import { D, Decimal } from './decimal'
 import {
   baseMods,
@@ -155,6 +156,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     zoneFireAcc: 0,
     mercBestFloor: 0,
     legendsSeen: [],
+    achieved: [],
     attackAcc: 0,
     clickBudget: B.CLICK_BUDGET_PER_SEC,
     eventClickMats: 0,
@@ -693,6 +695,19 @@ const MAX_KILLS_PER_TICK = 500
 
 /** 固定 tick;dtMs 由外部 game loop 提供。rng 可注入以便模擬可重現 */
 export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): GameEvent[] {
+  const events = tickBattle(s, dtMs, rng)
+  // 軍功記錄:tickBattle 有三個 return 點,所以判定放在外層一次做完。
+  // 只掃還沒拿到的,全拿完就整段跳過
+  if (s.achieved.length < ACHIEVEMENTS.length) {
+    for (const id of newAchievements(s)) {
+      s.achieved.push(id)
+      events.push({ type: 'achievement', achievementId: id })
+    }
+  }
+  return events
+}
+
+function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
   const raw: GameEvent[] = []
   const dt = dtMs / 1000
 
@@ -2276,6 +2291,7 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
   next.activeMerc = s.activeMerc
   next.mercBestFloor = Math.max(s.mercBestFloor, s.highestFloor)
   next.legendsSeen = [...s.legendsSeen]
+  next.achieved = [...s.achieved] // 軍功記錄跨轉生保留
   // 敵情熟悉度跨轉生:前代學會的敵情成為下代知識
   next.bossLore = {
     shell: { ...s.bossLore.shell },

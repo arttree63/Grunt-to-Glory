@@ -20,6 +20,7 @@ import { availableJobs, destinyJobs, JOBS } from '../jobs'
 import { SKILLS } from '../skills'
 import { pendingChoice } from '../destiny'
 import { emptyTechs, heirloomSlots, techFineForges, techOfflineHours } from '../techs'
+import { ACHIEVEMENTS } from '../achievements'
 import {
   applyTick,
   attackInterval,
@@ -1476,6 +1477,32 @@ describe('存檔', () => {
     expect(back.floor).toBe(33)
     expect(back.forgeCount).toBe(0)
     expect(back.pityCount).toBe(0)
+  })
+
+  it('軍功記錄:達成即發事件、不重複發、跨轉生保留', () => {
+    const s = createInitialState()
+    s.highestFloor = 5
+    const first = applyTick(s, 100)
+    expect(first.some((e) => e.type === 'achievement' && e.achievementId === 'floor5')).toBe(true)
+    expect(s.achieved).toContain('floor5')
+    // 同一個成就不可以再發一次
+    expect(applyTick(s, 100).some((e) => e.type === 'achievement' && e.achievementId === 'floor5')).toBe(false)
+
+    // 單輪條件(連斬)達成後轉生歸零,但記錄不收回
+    s.combo = 30
+    applyTick(s, 100)
+    expect(s.achieved).toContain('combo30')
+    s.highestFloor = 30
+    const next = prestige(s, [])!
+    expect(next.combo).toBe(0)
+    expect(next.achieved).toContain('combo30')
+  })
+
+  it('軍功記錄的條件全部可判定(不會因缺欄位而丟例外)', () => {
+    const s = createInitialState()
+    expect(() => ACHIEVEMENTS.forEach((a) => a.done(s))).not.toThrow()
+    // id 不可重複——重複會讓 achieved 的比對出錯
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length)
   })
 
   it('準備型科技在開局兌現:命運點/部位素材/精工次數', () => {

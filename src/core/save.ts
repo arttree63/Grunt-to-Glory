@@ -41,6 +41,7 @@ export interface SaveData {
   activeMerc: GameState['activeMerc']
   mercBestFloor: number
   legendsSeen: GameState['legendsSeen']
+  achieved: GameState['achieved']
   zealStacks: number
   combo: number
   valiantStacks: number
@@ -113,6 +114,7 @@ export function serialize(s: GameState): SaveData {
     activeMerc: s.activeMerc,
     mercBestFloor: s.mercBestFloor,
     legendsSeen: s.legendsSeen,
+    achieved: s.achieved,
     zealStacks: s.zealStacks,
     combo: s.combo,
     valiantStacks: s.valiantStacks,
@@ -375,6 +377,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     activeMerc: d.activeMerc ?? 'hound',
     mercBestFloor: d.mercBestFloor ?? 1,
     legendsSeen: d.legendsSeen ?? [],
+    achieved: d.achieved ?? [],
     zealStacks: d.zealStacks ?? 0,
     combo: d.combo ?? 0,
     valiantStacks: d.valiantStacks ?? 0,

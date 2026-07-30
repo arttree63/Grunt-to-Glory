@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { ACHIEVEMENTS } from '../core/achievements'
 import { fmt, fmtCombat } from '../core/format'
 import * as B from '../core/balance'
 import { critMultiplier } from '../core/formulas'
@@ -112,6 +113,9 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         if (e.burnDamage) scene.onEmberConvert(fmtCombat(e.burnDamage))
       } else if (e.type === 'cooldownAdvance') {
         scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0, e.via)
+      } else if (e.type === 'achievement') {
+        const a = ACHIEVEMENTS.find((x) => x.id === e.achievementId)
+        if (a) scene.notice(`軍功記錄・${a.name}`)
       } else if (e.type === 'sigilGain') {
         scene.onSigilGain(e.count ?? 0, e.via)
       } else if (e.type === 'resonanceGain') {

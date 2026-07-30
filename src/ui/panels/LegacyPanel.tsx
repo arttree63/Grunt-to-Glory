@@ -14,6 +14,7 @@ import {
   SAVE_VERSION,
 } from '../../core/game'
 import { DESTINY_PATHS } from '../../core/destiny'
+import { ACHIEVEMENTS, ACHIEVEMENT_GROUPS } from '../../core/achievements'
 import { PrestigeSection } from './DestinyPanel'
 import { ALL_LEGENDS } from '../../core/legends'
 import { KEYWORD_NAME } from '../../core/keywords'
@@ -206,6 +207,56 @@ function SettingsSection() {
   )
 }
 
+/**
+ * 軍功記錄。⚠️ **未達成的條目照樣顯示**——這份清單同時是「這遊戲裡有什麼」的目錄:
+ * 玩家掃一眼就看到套裝、傳說、宿敵、五名傭兵的存在。藏起來就失去一半價值。
+ */
+function AchievementSection() {
+  const s = useGameState()
+  const [open, setOpen] = useState<string | null>(null)
+  const total = ACHIEVEMENTS.length
+  const got = s.achieved.length
+
+  return (
+    <>
+      <h3 style={{ marginTop: 16 }}>軍 功 記 錄</h3>
+      <div className="row">
+        <span className="k">已達成</span>
+        <span className="v" style={{ color: got === total ? 'var(--gold)' : undefined }}>
+          {got} / {total}
+        </span>
+      </div>
+      <div className="goal-bar" style={{ marginBottom: 8 }}>
+        <div className="fill gold" style={{ width: `${(got / total) * 100}%` }} />
+      </div>
+      {ACHIEVEMENT_GROUPS.map((g) => {
+        const list = ACHIEVEMENTS.filter((a) => a.group === g)
+        const done = list.filter((a) => s.achieved.includes(a.id)).length
+        return (
+          <details key={g} open={open === g} onToggle={(e) => e.currentTarget.open && setOpen(g)}>
+            <summary className="tier3">
+              {g} {done}/{list.length}
+            </summary>
+            {list.map((a) => {
+              const ok = s.achieved.includes(a.id)
+              return (
+                <div className="row" key={a.id} style={{ opacity: ok ? 1 : 0.5 }}>
+                  <span className="k" style={{ color: ok ? 'var(--gold)' : undefined }}>
+                    {ok ? '★' : '☆'} {a.name}
+                  </span>
+                  <span className="v affix" style={{ textAlign: 'right' }}>
+                    {a.desc}
+                  </span>
+                </div>
+              )
+            })}
+          </details>
+        )
+      })}
+    </>
+  )
+}
+
 export default function LegacyPanel() {
   const s = useGameState()
   const buyTech = useGame((st) => st.buyTech)
@@ -311,6 +362,8 @@ export default function LegacyPanel() {
           ))}
         </div>
       )}
+
+      <AchievementSection />
 
       <h3 style={{ marginTop: 16 }}>歷 代 列 傳</h3>
       {s.chronicle.length === 0 ? (

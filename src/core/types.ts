@@ -418,6 +418,8 @@ export interface GameState {
   mercBestFloor: number
   /** 傳說圖鑑:歷代鍛出過哪些傳說(跨轉生保留) */
   legendsSeen: LegendId[]
+  /** 已達成的軍功記錄 id(跨轉生保留;單輪條件達成過就不收回) */
+  achieved: string[]
   /** 本輪銘刻為傳家之器的裝備 id(同時只能有一件) */
   inscribedId: string | null
   /**
@@ -535,6 +537,7 @@ export interface GameEvent {
     | 'channelFailed'
     | 'totemSpawn'
     | 'totemDown'
+    | 'achievement'
     | 'sigilGain'
     | 'resonanceGain'
     | 'freezeCapped'
@@ -553,6 +556,8 @@ export interface GameEvent {
   kind?: EventKind
   skillId?: SkillId
   encounterId?: EncounterId
+  /** achievement 事件:達成的軍功記錄 id */
+  achievementId?: string
   mercId?: MercId
   /** attack 事件:這一擊來自誰(分帳演出用)。省略 = 主角 */
   source?: 'hero' | 'click' | 'clone' | 'zone' | 'merc'
