@@ -314,6 +314,17 @@ export class BattleScene {
   private groundLayer = new Container()
   private streaks: Array<Graphics & { _t: number; _x: number; _len: number }> = []
   private streakTimer = 0
+  private leaves: Array<Graphics & {
+    _t: number
+    _lifeMs: number
+    _startX: number
+    _startY: number
+    _drift: number
+    _spin: number
+    _depth: number
+    _phase: number
+  }> = []
+  private leafTimer = 0
   private critNumCooldown = 0
   private dust: Array<Graphics & { _t: number; _x: number }> = []
   private dustTimer = 0
@@ -422,6 +433,7 @@ export class BattleScene {
     this.destroyed = true
     this.streaks = []
     this.dust = []
+    this.leaves = []
     this.timedFx = []
     this.app.destroy(true, { children: true })
   }
@@ -440,7 +452,7 @@ export class BattleScene {
     if (skillId && sigilSkills.includes(skillId)) this.spawnSigilRays(Math.min(10, sigilsSpent), target)
 
     if (skillId === 'shieldRush' || skillId === 'bulwark') {
-      this.spawnShieldWave()
+      this.spawnShieldWave(target)
       this.shake = 15
       this.zoom = 1.8
       this.spawnImpact(target.x, target.y, 1.05)
@@ -485,10 +497,10 @@ export class BattleScene {
     }
     const target = this.targetPoint()
     if (mercId === 'rogue') this.spawnRogueDash(target)
-    else if (mercId === 'icemage') this.spawnIceBurst(target)
-    else if (mercId === 'sapper') this.spawnDeployPulse(this.W * 0.72, this.H * 0.75, 0xe5a64b)
-    else if (mercId === 'pyro') this.spawnDeployPulse(target.x, target.y, 0xff6b2d)
-    else this.spawnDeployPulse(this.mercSprite.x, this.mercSprite.y - 20, 0xd8bc78)
+    else if (mercId === 'icemage') this.spawnIceSeal(target)
+    else if (mercId === 'sapper') this.spawnSapperDeploy()
+    else if (mercId === 'pyro') this.spawnPyroIgnite(target)
+    else this.spawnHoundFetch(target)
     this.notice(names[mercId])
   }
 
@@ -879,6 +891,7 @@ export class BattleScene {
     // 這樣血條每一格的下降都對得上一次揮砍(BattleCanvas 轉發)
 
     this.tickMarch(ms)
+    this.tickLeaves(ms)
     this.tickDust(ms, !this.boss && !this.eventView)
 
     this.mercSprite.y = this.H * 0.895 + Math.sin(this.elapsed * 0.013 + 1) * 1.8
@@ -1006,6 +1019,54 @@ export class BattleScene {
     }
   }
 
+  /** 森林環境落葉:低密度、低對比，提供背景生命感但不搶戰鬥焦點。 */
+  private tickLeaves(ms: number) {
+    const { W, H } = this
+    const quietScene = !!this.boss || !!this.eventView
+    this.leafTimer -= ms
+    if (this.leafTimer <= 0 && this.leaves.length < 9) {
+      this.leafTimer = (quietScene ? 1050 : 680) + Math.random() * 620
+      const leaf = new Graphics() as (typeof this.leaves)[number]
+      const palette = [0xc58a3d, 0xa96032, 0xd1a454, 0x7f7738]
+      const color = palette[Math.floor(Math.random() * palette.length)]
+      leaf.poly([-7, 0, -1, -4, 7, -1, 1, 4])
+        .fill({ color, alpha: 0.9 })
+        .stroke({ width: 1, color: 0xf1c879, alpha: 0.38 })
+      leaf.moveTo(-5, 0).lineTo(5, -1).stroke({ width: 1, color: 0x5b3b23, alpha: 0.45 })
+      leaf._t = 0
+      leaf._lifeMs = 4300 + Math.random() * 3400
+      leaf._startX = W * (0.05 + Math.random() * 0.9)
+      leaf._startY = H * (0.06 + Math.random() * 0.42)
+      leaf._drift = (Math.random() < 0.5 ? -1 : 1) * (0.05 + Math.random() * 0.14)
+      leaf._spin = (Math.random() < 0.5 ? -1 : 1) * (2.2 + Math.random() * 4.2)
+      leaf._depth = 0.35 + Math.random() * 0.65
+      leaf._phase = Math.random() * Math.PI * 2
+      leaf.scale.set(0.35 + leaf._depth * 0.55)
+      this.leaves.push(leaf)
+      this.groundLayer.addChild(leaf)
+    }
+
+    for (let i = this.leaves.length - 1; i >= 0; i--) {
+      const leaf = this.leaves[i]
+      leaf._t += ms / leaf._lifeMs
+      if (leaf._t >= 1) {
+        leaf.destroy()
+        this.leaves.splice(i, 1)
+        continue
+      }
+      const sway = Math.sin(leaf._phase + leaf._t * Math.PI * 5)
+      const travel = leaf._t * leaf._t
+      leaf.position.set(
+        leaf._startX + W * leaf._drift * leaf._t + sway * (8 + leaf._depth * 12),
+        leaf._startY + H * (0.2 + leaf._depth * 0.48) * travel,
+      )
+      leaf.rotation = leaf._phase + leaf._t * leaf._spin
+      leaf.skew.x = sway * 0.28
+      const envelope = Math.min(1, leaf._t * 7) * Math.min(1, (1 - leaf._t) * 6)
+      leaf.alpha = envelope * (0.16 + leaf._depth * 0.22) * (quietScene ? 0.58 : 1)
+    }
+  }
+
   /** 進到下一層:地面加速掠過 + 一點鏡頭推進,讓「往前」看得見 */
   onFloorUp() {
     if (this.destroyed) return
@@ -1051,75 +1112,185 @@ export class BattleScene {
     }
   }
 
-  private spawnShieldWave() {
+  private spawnShieldWave(target: { x: number; y: number }) {
+    const brace = new Container() as TimedFx
+    const braceRing = new Graphics()
+    braceRing.ellipse(0, 0, 92, 31).stroke({ width: 7, color: 0x9ca8af, alpha: 0.62 })
+    braceRing.ellipse(0, 0, 66, 22).stroke({ width: 2, color: 0xe7edf0, alpha: 0.82 })
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2
+      braceRing.poly([
+        Math.cos(a) * 68,
+        Math.sin(a) * 23,
+        Math.cos(a - 0.12) * 82,
+        Math.sin(a - 0.12) * 28,
+        Math.cos(a + 0.12) * 82,
+        Math.sin(a + 0.12) * 28,
+      ]).fill({ color: 0xcbd3d7, alpha: 0.48 })
+    }
+    brace.addChild(braceRing)
+    brace.position.set(this.W / 2, this.H * 0.85)
+    this.addTimedFx(brace, 360, (node, p) => {
+      const windup = Math.min(1, p / 0.48)
+      node.scale.set(1.35 - windup * 0.6)
+      node.alpha = p < 0.5 ? 0.35 + windup * 0.65 : (1 - p) / 0.5
+      node.rotation = p * 0.18
+    }, this.fieldLayer)
+
     const fx = new Container() as TimedFx
     const g = new Graphics()
-    g.arc(0, 0, 58, -2.55, -0.58).stroke({ width: 14, color: 0xd6dde0, alpha: 0.58 })
-    g.arc(0, 0, 45, -2.55, -0.58).stroke({ width: 3, color: 0xffffff, alpha: 0.75 })
+    g.arc(0, 0, 64, -2.55, -0.58).stroke({ width: 18, color: 0x78868f, alpha: 0.34 })
+    g.arc(0, 0, 58, -2.55, -0.58).stroke({ width: 11, color: 0xd6dde0, alpha: 0.72 })
+    g.arc(0, 0, 48, -2.55, -0.58).stroke({ width: 3, color: 0xffffff, alpha: 0.92 })
+    g.poly([-20, -43, 20, -43, 28, -13, 0, 15, -28, -13])
+      .fill({ color: 0xaeb9bf, alpha: 0.26 })
+      .stroke({ width: 3, color: 0xf2f6f7, alpha: 0.7 })
     fx.addChild(g)
     fx.position.set(this.W / 2, this.H * 0.75)
     fx.rotation = Math.PI / 2
-    this.addTimedFx(fx, 180, (node, p) => {
-      node.scale.set(0.45 + p * 2.15)
-      node.alpha = 1 - p
-      node.y -= 0.35
+    const start = { x: this.W / 2, y: this.H * 0.75 }
+    this.addTimedFx(fx, 430, (node, p) => {
+      const travel = 1 - (1 - p) ** 3
+      node.position.set(
+        start.x + (target.x - start.x) * travel,
+        start.y + (target.y - start.y) * travel,
+      )
+      node.scale.set(0.5 + travel * 1.55, 0.7 + travel * 0.55)
+      node.alpha = p < 0.72 ? 1 : (1 - p) / 0.28
+    })
+
+    const shock = new Container() as TimedFx
+    const shockRing = new Graphics()
+    for (let i = 0; i < 3; i++) {
+      shockRing.arc(0, 0, 34 + i * 13, -2.9, -0.25)
+        .stroke({ width: 7 - i * 1.5, color: i === 0 ? 0xffffff : 0xaebac0, alpha: 0.78 - i * 0.16 })
+    }
+    shock.addChild(shockRing)
+    shock.position.set(target.x, target.y + 16)
+    this.addTimedFx(shock, 520, (node, p) => {
+      const delayed = Math.max(0, (p - 0.38) / 0.62)
+      node.scale.set(0.3 + delayed * 2.1)
+      node.alpha = delayed > 0 ? 1 - delayed : 0
     })
   }
 
   private spawnGaleCuts(target: { x: number; y: number }) {
+    const wind = new Container() as TimedFx
+    const windRing = new Graphics()
     for (let i = 0; i < 4; i++) {
+      windRing.arc(0, 0, 34 + i * 10, -2.75 + i * 0.12, 0.25 + i * 0.16)
+        .stroke({ width: 4 - i * 0.55, color: 0x9beeff, alpha: 0.72 - i * 0.12 })
+    }
+    wind.addChild(windRing)
+    wind.position.set(target.x, target.y + 8)
+    this.addTimedFx(wind, 620, (node, p) => {
+      node.rotation = -0.35 + p * 1.2
+      node.scale.set(0.45 + p * 1.65)
+      node.alpha = Math.sin(p * Math.PI)
+    })
+
+    for (let i = 0; i < 7; i++) {
       const fx = new Container() as TimedFx
       const g = new Graphics()
-      g.roundRect(-42, -2, 84, 4, 2).fill({ color: 0xb9f5ff, alpha: 0.9 })
+      const length = 68 + (i % 3) * 22
+      g.poly([-length / 2, 0, length / 2, -5, length / 2 - 14, 4, -length / 2, 2])
+        .fill({ color: i % 2 ? 0x75dff3 : 0xd8fbff, alpha: 0.58 })
+      g.moveTo(-length / 2 + 8, 0).lineTo(length / 2 - 8, -2)
+        .stroke({ width: 2, color: 0xffffff, alpha: 0.94 })
       fx.addChild(g)
-      fx.position.set(target.x + (i - 1.5) * 22, target.y + (i % 2) * 24)
-      fx.rotation = -0.7 + i * 0.38
-      fx.scale.set(0.3)
-      this.addTimedFx(fx, 260 + i * 45, (node, p) => {
-        node.scale.x = 0.3 + Math.sin(Math.min(1, p * 2) * Math.PI / 2) * 1.25
-        node.alpha = 1 - p
+      const side = i % 2 === 0 ? -1 : 1
+      const delay = i * 0.075
+      const startX = target.x - side * 46
+      const startY = target.y - 58 + i * 18
+      fx.position.set(startX, startY)
+      fx.rotation = -0.82 + i * 0.27
+      this.addTimedFx(fx, 620, (node, p) => {
+        const local = Math.max(0, Math.min(1, (p - delay) / (0.46 - delay * 0.25)))
+        const snap = 1 - (1 - local) ** 4
+        node.x = startX + side * snap * 92
+        node.scale.set(0.25 + snap * 1.1, 0.6 + snap * 0.4)
+        node.alpha = local > 0 ? Math.sin(local * Math.PI) : 0
       })
     }
   }
 
   private spawnJudgement(target: { x: number; y: number }) {
     const rune = new Container() as TimedFx
-    const circle = new Graphics()
-    circle.circle(0, 0, 44).stroke({ width: 4, color: 0xffdf76, alpha: 0.85 })
-    circle.circle(0, 0, 30).stroke({ width: 2, color: 0xffffff, alpha: 0.7 })
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2
-      circle.rect(Math.cos(a) * 35 - 3, Math.sin(a) * 35 - 3, 6, 6).fill({ color: 0xffdf76, alpha: 0.9 })
+    const outer = new Graphics()
+    const inner = new Graphics()
+    outer.circle(0, 0, 50).stroke({ width: 4, color: 0xffdf76, alpha: 0.9 })
+    outer.circle(0, 0, 42).stroke({ width: 1, color: 0xfff3b0, alpha: 0.66 })
+    inner.circle(0, 0, 28).stroke({ width: 3, color: 0xffffff, alpha: 0.76 })
+    inner.moveTo(-22, 0).lineTo(22, 0).moveTo(0, -22).lineTo(0, 22)
+      .stroke({ width: 2, color: 0xffe488, alpha: 0.78 })
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2
+      outer.poly([
+        Math.cos(a) * 39,
+        Math.sin(a) * 39,
+        Math.cos(a - 0.1) * 51,
+        Math.sin(a - 0.1) * 51,
+        Math.cos(a + 0.1) * 51,
+        Math.sin(a + 0.1) * 51,
+      ]).fill({ color: 0xffdf76, alpha: 0.88 })
     }
-    rune.addChild(circle)
+    rune.addChild(outer, inner)
     rune.position.set(target.x, target.y + 38)
     rune.scale.set(0.2)
-    this.addTimedFx(rune, 720, (node, p) => {
-      const intro = Math.min(1, p / 0.22)
-      node.scale.set(0.2 + intro * 1.15)
-      node.rotation += 0.035
-      node.alpha = p < 0.68 ? 1 : (1 - p) / 0.32
+    this.addTimedFx(rune, 920, (node, p) => {
+      const intro = 1 - (1 - Math.min(1, p / 0.2)) ** 3
+      node.scale.set(0.2 + intro * 1.22)
+      outer.rotation = p * 2.2
+      inner.rotation = -p * 3.1
+      node.alpha = p < 0.72 ? 1 : (1 - p) / 0.28
     }, this.fieldLayer)
 
     const beam = new Container() as TimedFx
     const light = new Graphics()
-    light.rect(-34, -this.H * 0.52, 68, this.H * 0.56).fill({ color: 0xfff6c8, alpha: 0.62 })
-    light.rect(-12, -this.H * 0.55, 24, this.H * 0.6).fill({ color: 0xffffff, alpha: 0.9 })
+    light.poly([-48, 0, -18, -this.H * 0.58, 18, -this.H * 0.58, 48, 0])
+      .fill({ color: 0xffdf76, alpha: 0.3 })
+    light.rect(-27, -this.H * 0.6, 54, this.H * 0.64).fill({ color: 0xfff0a8, alpha: 0.5 })
+    light.rect(-9, -this.H * 0.62, 18, this.H * 0.67).fill({ color: 0xffffff, alpha: 0.96 })
+    for (let i = 0; i < 5; i++) {
+      light.circle(-36 + i * 18, -18 - (i % 2) * 13, 5 + (i % 3) * 2)
+        .fill({ color: 0xffef9c, alpha: 0.78 })
+    }
     beam.addChild(light)
     beam.position.set(target.x, target.y + 30)
     beam.scale.x = 0.1
-    this.addTimedFx(beam, 360, (node, p) => {
-      node.scale.x = Math.min(1, p * 7)
-      node.alpha = p < 0.52 ? 1 : (1 - p) / 0.48
+    this.addTimedFx(beam, 680, (node, p) => {
+      const local = Math.max(0, Math.min(1, (p - 0.13) / 0.87))
+      const strike = Math.min(1, local * 7)
+      node.scale.x = 0.08 + strike * 0.92
+      node.scale.y = 0.92 + Math.sin(local * Math.PI) * 0.08
+      node.alpha = local < 0.62 ? (local > 0 ? 1 : 0) : (1 - local) / 0.38
     })
 
     const flash = new Container() as TimedFx
     const white = new Graphics()
-    white.rect(0, 0, this.W, this.H).fill({ color: 0xffffff, alpha: 0.34 })
+    white.rect(0, 0, this.W, this.H).fill({ color: 0xfff8df, alpha: 0.3 })
     flash.addChild(white)
-    this.addTimedFx(flash, 90, (node, p) => {
-      node.alpha = 1 - p
+    this.addTimedFx(flash, 360, (node, p) => {
+      const local = Math.max(0, (p - 0.2) / 0.8)
+      node.alpha = local > 0 ? (1 - local) * 0.9 : 0
     }, this.overlayLayer)
+
+    const seal = new Container() as TimedFx
+    const sealFx = new Graphics()
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2
+      sealFx.moveTo(Math.cos(a) * 22, Math.sin(a) * 12)
+        .lineTo(Math.cos(a) * 82, Math.sin(a) * 38)
+        .stroke({ width: 3, color: i % 2 ? 0xffffff : 0xffcf55, alpha: 0.7 })
+    }
+    seal.addChild(sealFx)
+    seal.position.set(target.x, target.y + 40)
+    this.addTimedFx(seal, 820, (node, p) => {
+      const local = Math.max(0, (p - 0.16) / 0.84)
+      node.scale.set(0.3 + local * 1.7)
+      node.rotation = local * 0.45
+      node.alpha = local > 0 ? 1 - local : 0
+    }, this.fieldLayer)
   }
 
   private spawnSigilRays(count: number, target: { x: number; y: number }) {
@@ -1127,14 +1298,37 @@ export class BattleScene {
       const fx = new Container() as TimedFx
       const ray = new Graphics()
       const spread = (i - (count - 1) / 2) * 9
-      ray.moveTo(0, 0).lineTo(target.x - this.W / 2 + spread, target.y - this.H * 0.82)
-        .stroke({ width: 3, color: 0xffd45a, alpha: 0.85 })
+      const dx = target.x - this.W / 2 + spread
+      const dy = target.y - this.H * 0.82
+      ray.circle(0, 0, 7).fill({ color: 0xffe074, alpha: 0.82 })
+      ray.moveTo(0, 0).lineTo(dx, dy)
+        .stroke({ width: 7, color: 0xffb938, alpha: 0.22 })
+      ray.moveTo(0, 0).lineTo(dx, dy)
+        .stroke({ width: 2.5, color: 0xfff0a3, alpha: 0.96 })
+      ray.circle(dx, dy, 8).fill({ color: 0xffffff, alpha: 0.82 })
       fx.addChild(ray)
       fx.position.set(this.W / 2, this.H * 0.82)
       fx.alpha = 0
-      this.addTimedFx(fx, 260 + i * 35, (node, p) => {
-        const local = Math.max(0, p * 1.45 - i * 0.045)
-        node.alpha = Math.sin(Math.min(1, local) * Math.PI)
+      const delay = i * 0.045
+      this.addTimedFx(fx, 620, (node, p) => {
+        const local = Math.max(0, Math.min(1, (p - delay) / 0.48))
+        const travel = 1 - (1 - local) ** 3
+        node.scale.set(0.12 + travel * 0.88)
+        node.alpha = local > 0 ? Math.sin(local * Math.PI) : 0
+      })
+    }
+
+    if (count > 0) {
+      const focus = new Container() as TimedFx
+      const ring = new Graphics()
+      ring.circle(0, 0, 20).stroke({ width: 6, color: 0xffd45a, alpha: 0.78 })
+      ring.circle(0, 0, 8).fill({ color: 0xffffff, alpha: 0.85 })
+      focus.addChild(ring)
+      focus.position.set(target.x, target.y)
+      this.addTimedFx(focus, 720, (node, p) => {
+        const local = Math.max(0, (p - 0.32) / 0.68)
+        node.scale.set(0.2 + local * 2.2)
+        node.alpha = local > 0 ? 1 - local : 0
       })
     }
   }
@@ -1199,22 +1393,185 @@ export class BattleScene {
     })
   }
 
+  private spawnHoundFetch(target: { x: number; y: number }) {
+    const start = { x: this.mercSprite.x, y: this.mercSprite.y - 28 }
+    const fetch = new Container() as TimedFx
+    const trail = new Graphics()
+    trail.moveTo(0, 0).bezierCurveTo(
+      (target.x - start.x) * 0.35,
+      -70,
+      (target.x - start.x) * 0.72,
+      target.y - start.y - 45,
+      target.x - start.x,
+      target.y - start.y,
+    ).stroke({ width: 5, color: 0xe8c477, alpha: 0.34 })
+    for (let i = 0; i < 5; i++) {
+      const x = i * 22
+      trail.circle(x - 4, -2 - (i % 2) * 5, 4).fill({ color: 0xf4d999, alpha: 0.62 })
+      trail.circle(x + 3, -7 - (i % 2) * 5, 2.5).fill({ color: 0xf4d999, alpha: 0.5 })
+    }
+    fetch.addChild(trail)
+    fetch.position.set(start.x, start.y)
+    this.addTimedFx(fetch, 760, (node, p) => {
+      node.alpha = Math.sin(p * Math.PI)
+      node.scale.set(0.7 + p * 0.5)
+    }, this.fieldLayer)
+
+    const loot = new Container() as TimedFx
+    const token = new Graphics()
+    token.circle(0, 0, 11).fill({ color: 0xc59243, alpha: 0.95 })
+    token.circle(0, 0, 7).stroke({ width: 2, color: 0xffe5a1, alpha: 0.9 })
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2
+      token.moveTo(Math.cos(a) * 14, Math.sin(a) * 14)
+        .lineTo(Math.cos(a) * 25, Math.sin(a) * 25)
+        .stroke({ width: 2, color: 0xffefad, alpha: 0.7 })
+    }
+    loot.addChild(token)
+    loot.position.set(target.x, target.y)
+    this.addTimedFx(loot, 880, (node, p) => {
+      const local = Math.max(0, (p - 0.2) / 0.8)
+      const arc = Math.sin(local * Math.PI) * 58
+      node.position.set(
+        target.x + (start.x - target.x) * local,
+        target.y + (start.y - target.y) * local - arc,
+      )
+      node.rotation = local * Math.PI * 3
+      node.alpha = local > 0 ? Math.sin(local * Math.PI) : 0
+      node.scale.set(0.45 + Math.sin(local * Math.PI) * 0.75)
+    })
+  }
+
   private spawnRogueDash(target: { x: number; y: number }) {
     const start = { x: this.W * 0.25, y: this.H * 0.72 }
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       const fx = new Container() as TimedFx
       const body = new Graphics()
-      body.ellipse(0, -18, 10, 20).fill({ color: 0x7153a6, alpha: 0.6 - i * 0.12 })
-      body.roundRect(-3, -42, 6, 28, 3).fill({ color: 0xc3a9ff, alpha: 0.7 })
+      body.ellipse(0, -18, 11, 22).fill({ color: 0x4d326e, alpha: 0.66 - i * 0.1 })
+      body.roundRect(-3, -44, 6, 30, 3).fill({ color: 0xd2b5ff, alpha: 0.76 - i * 0.08 })
+      body.moveTo(-15, -7).lineTo(16, -35).stroke({ width: 3, color: 0xf2e7ff, alpha: 0.74 })
       fx.addChild(body)
       fx.position.set(start.x, start.y)
-      this.addTimedFx(fx, 640 + i * 60, (node, p) => {
-        const q = p < 0.5 ? p * 2 : (1 - p) * 2
+      const delay = i * 0.04
+      this.addTimedFx(fx, 760, (node, p) => {
+        const local = Math.max(0, Math.min(1, (p - delay) / (1 - delay)))
+        const q = local < 0.5 ? local * 2 : (1 - local) * 2
         node.position.set(start.x + (target.x + 55 - start.x) * q, start.y + (target.y - start.y) * q - Math.sin(p * Math.PI) * 32)
-        node.alpha = Math.sin(p * Math.PI)
-        node.scale.x = 0.6 + Math.abs(0.5 - p) * 1.2
+        node.alpha = local > 0 ? Math.sin(local * Math.PI) * (1 - i * 0.12) : 0
+        node.scale.x = 0.55 + Math.abs(0.5 - local) * 1.35
       })
     }
+
+    const slash = new Container() as TimedFx
+    const blades = new Graphics()
+    blades.moveTo(-52, -34).lineTo(52, 34).stroke({ width: 11, color: 0x6e3ea0, alpha: 0.3 })
+    blades.moveTo(-52, -34).lineTo(52, 34).stroke({ width: 3, color: 0xf0ddff, alpha: 0.96 })
+    blades.moveTo(46, -39).lineTo(-46, 39).stroke({ width: 9, color: 0x6e3ea0, alpha: 0.26 })
+    blades.moveTo(46, -39).lineTo(-46, 39).stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 })
+    slash.addChild(blades)
+    slash.position.set(target.x + 42, target.y - 4)
+    this.addTimedFx(slash, 760, (node, p) => {
+      const local = Math.max(0, (p - 0.34) / 0.66)
+      const snap = 1 - (1 - local) ** 4
+      node.scale.set(0.2 + snap * 1.3)
+      node.alpha = local > 0 ? 1 - local : 0
+    })
+  }
+
+  private spawnIceSeal(target: { x: number; y: number }) {
+    const seal = new Container() as TimedFx
+    const ice = new Graphics()
+    ice.circle(0, 0, 50).stroke({ width: 4, color: 0x9feaff, alpha: 0.8 })
+    ice.circle(0, 0, 34).stroke({ width: 2, color: 0xe8fbff, alpha: 0.72 })
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2
+      ice.moveTo(0, 0).lineTo(Math.cos(a) * 45, Math.sin(a) * 45)
+        .stroke({ width: 3, color: 0xcaf6ff, alpha: 0.72 })
+      ice.poly([
+        Math.cos(a) * 26,
+        Math.sin(a) * 26,
+        Math.cos(a - 0.16) * 38,
+        Math.sin(a - 0.16) * 38,
+        Math.cos(a + 0.16) * 38,
+        Math.sin(a + 0.16) * 38,
+      ]).fill({ color: 0x8be4f7, alpha: 0.38 })
+    }
+    seal.addChild(ice)
+    seal.position.set(target.x, target.y + 18)
+    this.addTimedFx(seal, 860, (node, p) => {
+      const lock = 1 - (1 - Math.min(1, p * 3.2)) ** 3
+      node.scale.set(1.65 - lock * 0.65)
+      node.rotation = -0.45 + p * 0.9
+      node.alpha = p < 0.62 ? lock : (1 - p) / 0.38
+    })
+  }
+
+  private spawnSapperDeploy() {
+    const x = this.W * 0.72
+    const y = this.H * 0.75
+    this.spawnDeployPulse(x, y, 0xe5a64b)
+    const rig = new Container() as TimedFx
+    const gear = new Graphics()
+    gear.circle(0, 0, 28).stroke({ width: 7, color: 0x7e6950, alpha: 0.8 })
+    gear.circle(0, 0, 11).stroke({ width: 4, color: 0xf0c36d, alpha: 0.9 })
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2
+      gear.roundRect(Math.cos(a) * 31 - 5, Math.sin(a) * 31 - 4, 10, 8, 2)
+        .fill({ color: 0xc69243, alpha: 0.86 })
+    }
+    for (let i = 0; i < 7; i++) {
+      const a = -2.7 + i * 0.42
+      gear.moveTo(Math.cos(a) * 20, Math.sin(a) * 20)
+        .lineTo(Math.cos(a) * (42 + (i % 2) * 14), Math.sin(a) * (42 + (i % 2) * 14))
+        .stroke({ width: 3, color: 0xffdd82, alpha: 0.78 })
+    }
+    rig.addChild(gear)
+    rig.position.set(x, y - 24)
+    this.addTimedFx(rig, 820, (node, p) => {
+      node.rotation = p * Math.PI * 2.5
+      node.scale.set(1.5 - Math.min(1, p * 3) * 0.55)
+      node.alpha = p < 0.68 ? 1 : (1 - p) / 0.32
+    })
+  }
+
+  private spawnPyroIgnite(target: { x: number; y: number }) {
+    const spiral = new Container() as TimedFx
+    const flame = new Graphics()
+    for (let i = 0; i < 14; i++) {
+      const a = i * 0.72
+      const r = 8 + i * 4.2
+      const x = Math.cos(a) * r
+      const y = Math.sin(a) * r * 0.68
+      flame.circle(x, y, 4 + (i % 3) * 1.8)
+        .fill({ color: i % 3 === 0 ? 0xfff09a : i % 2 ? 0xffa238 : 0xff5428, alpha: 0.82 })
+    }
+    flame.circle(0, 0, 22).fill({ color: 0xff632f, alpha: 0.24 })
+    spiral.addChild(flame)
+    spiral.position.set(target.x, target.y + 14)
+    this.addTimedFx(spiral, 900, (node, p) => {
+      const ignite = 1 - (1 - Math.min(1, p * 2.4)) ** 3
+      node.rotation = -0.8 + p * 3.8
+      node.scale.set(0.25 + ignite * 1.25)
+      node.alpha = p < 0.68 ? 1 : (1 - p) / 0.32
+      node.y = target.y + 14 - Math.sin(p * Math.PI) * 22
+    })
+
+    const scorch = new Container() as TimedFx
+    const mark = new Graphics()
+    mark.circle(0, 0, 42).stroke({ width: 5, color: 0xb43724, alpha: 0.58 })
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2
+      mark.moveTo(Math.cos(a) * 18, Math.sin(a) * 12)
+        .lineTo(Math.cos(a) * 44, Math.sin(a) * 28)
+        .stroke({ width: 3, color: 0xff7b32, alpha: 0.62 })
+    }
+    scorch.addChild(mark)
+    scorch.position.set(target.x, target.y + 42)
+    this.addTimedFx(scorch, 1100, (node, p) => {
+      node.scale.set(0.45 + p * 1.2)
+      node.rotation = p * 0.35
+      node.alpha = (1 - p) * 0.8
+    }, this.fieldLayer)
   }
 
   private spawnIceBurst(target: { x: number; y: number }, shatter = false) {
@@ -1231,7 +1588,7 @@ export class BattleScene {
     fx.position.set(target.x, target.y)
     this.addTimedFx(fx, shatter ? 620 : 480, (node, p) => {
       node.scale.set(0.2 + p * (shatter ? 1.8 : 1))
-      node.rotation += shatter ? 0.045 : 0.015
+      node.rotation = p * (shatter ? 2.4 : 0.8)
       node.alpha = 1 - p
     })
   }
