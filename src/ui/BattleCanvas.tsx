@@ -116,6 +116,8 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.onFreezeBurst(`冰裂 ${fmt(e.damage!)}`)
       } else if (e.type === 'burnTick') {
         scene.onBurnTick(`燃燒 ${fmt(e.damage!)}`)
+      } else if (e.type === 'nemesisResolved') {
+        scene.skillHit('宿 怨 終 結 !')
       } else if (e.type === 'perfectBurst') {
         scene.skillHit('完 美 引 爆 !')
       } else if (e.type === 'burnMax') {

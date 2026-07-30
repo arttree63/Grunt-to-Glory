@@ -78,6 +78,7 @@ function BossHint() {
   const kind = bossKindFor(target)
   const stage = loreStage(s, kind)
   const diag = diagnoseBoss(s.lastBossStats)
+  const nemesis = s.nemesis && !s.nemesis.resolved && s.nemesis.floor === target ? s.nemesis : null
   // 敵情熟悉度決定戰前預告的精度:初見只有模糊描述,識破給打法,精通給精確時點
   const kindLabel = stage === 'unseen' || stage === 'glimpse' ? '未知的守關者' : BOSS_KIND_NAME[kind]
   const kindHint =
@@ -112,8 +113,14 @@ function BossHint() {
       >
         <b>
           挑戰第 {target} 層 Boss
-          <small style={{ marginLeft: 6, opacity: 0.85 }}>{kindLabel}</small>
+          <small style={{ marginLeft: 6, opacity: 0.85 }}>{nemesis ? '家族宿敵' : kindLabel}</small>
         </b>
+        {/* 宿敵:前代戰績是最好的開場台詞——這是家族的事,不只是這一代的 */}
+        {nemesis && (
+          <small style={{ color: 'var(--boss-b)' }}>
+            第 {nemesis.gen} 代曾 {nemesis.failures} 次敗於此,最佳戰績打掉 {Math.round(nemesis.bestDealt * 100)}% 血量——替家族終結這段宿怨
+          </small>
+        )}
         <small>{ready ? advice : `還差 ${gap.toFixed(1)} 倍 DPS・${advice}`}</small>
         <small style={{ opacity: 0.85 }}>{kindHint}</small>
         {/* 失敗診斷三分類:先講「該改打法還是刷資源」,再講一句怎麼做 */}
@@ -263,7 +270,10 @@ function Game() {
           </div>
         ) : s.isBoss ? (
           <div className="bossbar">
-            <div className="name">第 {s.floor} 層 守關者</div>
+            <div className="name">
+              第 {s.floor} 層 守關者
+              {s.nemesis && !s.nemesis.resolved && s.nemesis.floor === s.floor && '・家 族 宿 敵'}
+            </div>
             <div className="bar">
               <div className="fill" style={{ width: `${Math.max(0, hpRatio) * 100}%` }} />
             </div>

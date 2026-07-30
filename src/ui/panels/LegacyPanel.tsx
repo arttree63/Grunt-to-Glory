@@ -377,6 +377,24 @@ export default function LegacyPanel() {
         )
       })}
 
+      {s.nemesis && (
+        <div className="card" style={{ marginTop: 8 }}>
+          <div className="head">
+            <b style={{ color: s.nemesis.resolved ? 'var(--morale-b)' : 'var(--boss-b)' }}>
+              家族宿敵:第 {s.nemesis.floor} 層守關者
+            </b>
+            <small className="affix">{BOSS_KIND_NAME[s.nemesis.kind]}</small>
+          </div>
+          <div className="affix" style={{ lineHeight: 1.7 }}>
+            第 {s.nemesis.gen} 代曾 {s.nemesis.failures} 次敗於此,最佳戰績打掉{' '}
+            {Math.round(s.nemesis.bestDealt * 100)}% 血量。
+            {s.nemesis.resolved
+              ? `第 ${s.nemesis.resolvedGen} 代終結了這段宿怨。`
+              : '這段宿怨仍未了結——替家族討回來。'}
+          </div>
+        </div>
+      )}
+
       <h3 style={{ marginTop: 16 }}>傳 說 圖 鑑</h3>
       <LegendCodex />
 

@@ -303,6 +303,22 @@ export interface GameState {
   /** 共鳴來源計數(公開給玩家看:「拆解 ×3、鍛造 ×1」) */
   resonanceSrc: Record<'salvage' | 'forge' | 'event' | 'encounter' | 'combo' | 'skill', number>
 
+  // ── 家族宿敵(籃 C 第三階段第一版:只做宿敵,跨轉生)──
+  /** 本輪各層 Boss 的失敗紀錄(次數與最佳戰績),轉生時據此結宿敵 */
+  runBossFails: Record<number, { count: number; bestDealt: number }>
+  /** 家族宿敵(第一版同時只有一個)。resolved 後保留當紀念 */
+  nemesis: {
+    floor: number
+    kind: BossKind
+    /** 結下宿怨的世代 */
+    gen: number
+    failures: number
+    /** 前代最佳戰績:打掉的血量比例(0~1) */
+    bestDealt: number
+    resolved: boolean
+    resolvedGen?: number
+  } | null
+
   morale: number
   /** 爐火層數的素材基準:距上次打造累積了多少素材(神匠起始節點) */
   forgeHeatMaterials: number
@@ -499,6 +515,7 @@ export interface GameEvent {
     | 'burnTick'
     | 'burnMax'
     | 'perfectBurst'
+    | 'nemesisResolved'
     | 'zealGain'
     | 'shellBreak'
     | 'channelStart'

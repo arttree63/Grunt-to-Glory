@@ -61,6 +61,8 @@ export interface SaveData {
   bossTactic: GameState['bossTactic']
   resonance: GameState['resonance']
   resonanceSrc: GameState['resonanceSrc']
+  runBossFails: GameState['runBossFails']
+  nemesis: GameState['nemesis']
   partMaterials: GameState['partMaterials']
   eliteMaterials: number
   maxBossKilled: number
@@ -131,6 +133,8 @@ export function serialize(s: GameState): SaveData {
     bossTactic: s.bossTactic,
     resonance: s.resonance,
     resonanceSrc: s.resonanceSrc,
+    runBossFails: s.runBossFails,
+    nemesis: s.nemesis,
     partMaterials: s.partMaterials,
     eliteMaterials: s.eliteMaterials,
     maxBossKilled: s.maxBossKilled,
@@ -315,6 +319,12 @@ function migrate(raw: SaveData): SaveData {
       d.resonanceSrc ?? { salvage: 0, forge: 0, event: 0, encounter: 0, combo: 0, skill: 0 }
     d.version = 24
   }
+  // v24 → v25:家族宿敵(第一版只做宿敵)。舊存檔從這一輪開始記失敗
+  if (d.version < 25) {
+    d.runBossFails = d.runBossFails ?? {}
+    d.nemesis = d.nemesis ?? null
+    d.version = 25
+  }
   return d
 }
 
@@ -377,6 +387,8 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     runHighlight: d.runHighlight ?? null,
     bossLore: d.bossLore ?? base.bossLore,
     bossTactic: d.bossTactic ?? null,
+    runBossFails: d.runBossFails ?? {},
+    nemesis: d.nemesis ?? null,
     resonance: d.resonance ?? { artisan: 0, hunter: 0, tactician: 0 },
     resonanceSrc:
       d.resonanceSrc ?? { salvage: 0, forge: 0, event: 0, encounter: 0, combo: 0, skill: 0 },

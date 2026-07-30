@@ -454,6 +454,9 @@ export const RESONANCE = {
 } as const
 /** 開場禮物:神匠共鳴=送一次鍛造的素材;尋寶=下一個事件立刻接近;戰術家=連斬起步層數 */
 export const RESONANCE_GIFT_COMBO = 10
+
+/** 家族宿敵:本輪對同一層 Boss 失敗達此次數,退役時結為宿敵 */
+export const NEMESIS_FAILURES = 3
 export const TOTEM_HP_RATIO = 0.03
 export const TOTEM_TIMER_MULT = 1.5
 

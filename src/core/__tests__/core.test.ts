@@ -2938,3 +2938,60 @@ describe('命運共鳴(顯示傾向與公開來源,不替玩家推薦)', () => {
     expect(next.resonance).toEqual({ artisan: 0, hunter: 0, tactician: 0 })
   })
 })
+
+describe('家族宿敵(籃 C 第三階段第一版)', () => {
+  it('本輪失敗紀錄:同層多次失敗累積次數與最佳戰績', () => {
+    const s = createInitialState()
+    s.lv = 1
+    s.floor = 10
+    spawnEnemy(s)
+    s.bossStats!.dealtRatio = 0.4
+    s.bossTimeLeft = 0.01
+    applyTick(s, 100)
+    expect(s.runBossFails[10]).toEqual({ count: 1, bestDealt: 0.4 })
+    retryBoss(s)
+    s.bossStats!.dealtRatio = 0.7
+    s.bossTimeLeft = 0.01
+    applyTick(s, 100)
+    expect(s.runBossFails[10]).toEqual({ count: 2, bestDealt: 0.7 })
+  })
+
+  it('轉生:失敗達 3 次的層結為宿敵;已有未解決宿敵就不結新怨', () => {
+    const s = createInitialState()
+    s.highestFloor = 30
+    s.runBossFails = { 20: { count: 3, bestDealt: 0.92 } }
+    const next = prestige(s)!
+    expect(next.nemesis).toEqual({
+      floor: 20, kind: 'channel', gen: 1, failures: 3, bestDealt: 0.92, resolved: false,
+    })
+    // 下一輪又敗更多次,但宿敵未解決 → 不換
+    next.highestFloor = 40
+    next.runBossFails = { 30: { count: 5, bestDealt: 0.5 } }
+    const third = prestige(next)!
+    expect(third.nemesis!.floor).toBe(20)
+  })
+
+  it('擊敗宿敵:resolved + 寫進代表事件,列傳留下宿怨終結', () => {
+    const s = createInitialState()
+    s.lv = 40
+    s.nemesis = { floor: 10, kind: 'shell', gen: 2, failures: 4, bestDealt: 0.9, resolved: false }
+    s.floor = 10
+    spawnEnemy(s)
+    s.enemyHp = D(1)
+    const ev = click(s)
+    expect(ev.some((e) => e.type === 'nemesisResolved')).toBe(true)
+    expect(s.nemesis.resolved).toBe(true)
+    expect(s.runHighlight).toContain('宿怨')
+  })
+
+  it('v24 存檔遷移:補宿敵預設值', () => {
+    const s = createInitialState()
+    const v24 = JSON.parse(JSON.stringify(serialize(s))) as Record<string, unknown>
+    v24.version = 24
+    delete v24.runBossFails
+    delete v24.nemesis
+    const out = deserialize(v24 as never)
+    expect(out.runBossFails).toEqual({})
+    expect(out.nemesis).toBe(null)
+  })
+})

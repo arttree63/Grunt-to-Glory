@@ -112,6 +112,8 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     perfectWindowLeft: 0,
     resonance: { artisan: 0, hunter: 0, tactician: 0 },
     resonanceSrc: { salvage: 0, forge: 0, event: 0, encounter: 0, combo: 0, skill: 0 },
+    runBossFails: {},
+    nemesis: null,
     morale: 0,
     forgeHeatMaterials: 0,
     codex: [],
@@ -191,7 +193,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 24
+export const SAVE_VERSION = 25
 
 // ---------- 數值查詢 ----------
 
@@ -592,6 +594,13 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
 
   if (!boss) return
   s.bossKills++
+  // 家族宿敵:擊敗宿敵=宿怨終結,寫進列傳(蓋過其他代表事件)
+  if (s.nemesis && !s.nemesis.resolved && s.nemesis.floor === s.floor) {
+    s.nemesis.resolved = true
+    s.nemesis.resolvedGen = s.runs + 1
+    s.runHighlight = `終結了第 ${s.nemesis.gen} 代結下的宿怨——擊破第 ${s.floor} 層守關者`
+    events.push({ type: 'nemesisResolved', floor: s.floor })
+  }
   // 代表事件(關聯感串接):挑本輪最戲劇性的一句留給列傳。最後一刻擊破 > 多次打斷
   if (s.bossTimeLeft < 5) {
     s.runStats.lateBossKills++
@@ -998,6 +1007,11 @@ function checkBossTimeout(s: GameState, raw: GameEvent[], rng: Rng) {
   if (s.bossStats) {
     // 失敗的統計要留下來:診斷「差在哪、該改什麼」全靠它
     s.lastBossStats = { ...s.bossStats, bySource: { ...s.bossStats.bySource } }
+    // 家族宿敵:記下本輪對這層 Boss 的失敗次數與最佳戰績
+    const rec = s.runBossFails[s.floor] ?? { count: 0, bestDealt: 0 }
+    rec.count++
+    rec.bestDealt = Math.max(rec.bestDealt, Math.min(1, s.lastBossStats.dealtRatio))
+    s.runBossFails[s.floor] = rec
     s.bossStats = null
   }
   if (hasNode(s, 'tactician_2a')) s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
@@ -2215,6 +2229,24 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
     shell: { ...s.bossLore.shell },
     channel: { ...s.bossLore.channel },
     totem: { ...s.bossLore.totem },
+  }
+  // 家族宿敵跨轉生。第一版同時只有一個:已有未解決的宿敵就不結新怨
+  next.nemesis = s.nemesis ? { ...s.nemesis } : null
+  if (!next.nemesis || next.nemesis.resolved) {
+    const worst = Object.entries(s.runBossFails)
+      .map(([floor, r]) => ({ floor: Number(floor), ...r }))
+      .filter((r) => r.count >= B.NEMESIS_FAILURES)
+      .sort((a, b) => b.count - a.count || b.floor - a.floor)[0]
+    if (worst) {
+      next.nemesis = {
+        floor: worst.floor,
+        kind: bossKindFor(worst.floor),
+        gen: s.runs + 1,
+        failures: worst.count,
+        bestDealt: worst.bestDealt,
+        resolved: false,
+      }
+    }
   }
   if (hasNode(s, 'artisan_3a')) {
     const best = heirloomCandidates(s)[0]
