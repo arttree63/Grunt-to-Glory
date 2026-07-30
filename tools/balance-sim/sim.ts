@@ -69,7 +69,16 @@ function spendMedals(s: ReturnType<typeof createInitialState>) {
   // 主力先買兩個乘區;傳家寶/開局金/離線只用「有餘裕」時的零頭買,
   // 一開始就砸 8 枚買傳家寶會排擠乘區,實測會讓前幾輪不進反退。
   const core: Array<'valor' | 'supply'> = ['valor', 'supply']
-  const extras: Array<'heirloom' | 'legacy' | 'camp'> = ['heirloom', 'legacy', 'camp']
+  // ⚠️ 準備型科技(2026-07-31)也要納入,否則模擬永遠驗不到它們的目的:
+  // 「鍛造熟練」多的精工次數正是用來收斂裝備乘區變異的(§ 七的最大待決問題)。
+  // 排在 heirloom 之前,因為它直接作用在變異來源上
+  const extras: Array<'mastery' | 'heirloom' | 'legacy' | 'camp' | 'quarter'> = [
+    'mastery',
+    'quarter',
+    'heirloom',
+    'legacy',
+    'camp',
+  ]
   let bought = true
   while (bought) {
     bought = false
