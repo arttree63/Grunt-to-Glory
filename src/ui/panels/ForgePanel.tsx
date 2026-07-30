@@ -19,7 +19,15 @@ import {
   SLOTS,
 } from '../../core/equipment'
 import { hasNode } from '../../core/destiny'
-import { canFineForge, forgeHeat, forgeHeatBonus, pityLeft, pityLegendaryLeft } from '../../core/game'
+import {
+  canFineForge,
+  fineForgesLeft,
+  forgeHeat,
+  forgeHeatBonus,
+  pityLeft,
+  pityLegendaryLeft,
+  pityShortLeft,
+} from '../../core/game'
 import { LEGENDS } from '../../core/legends'
 import { SETS } from '../../core/sets'
 import { SetTagBlock } from './EquipPanel'
@@ -349,10 +357,29 @@ export default function ForgePanel() {
           </div>
 
           <div className="row">
-            <span className="k">傳奇保底</span>
+            <span className="k">本輪精工</span>
+            <span className="v">
+              剩 {fineForgesLeft(s)} 次<small className="affix"> / {B.FINE_FORGE_PER_RUN}(每輪重置)</small>
+            </span>
+          </div>
+          <div className="row">
+            <span className="k">傳說保底</span>
+            <span className="v">
+              {pityShortLeft(s) === 0 ? (
+                <b style={{ color: 'var(--q-gold)' }}>下次必出傳說特性</b>
+              ) : (
+                <>
+                  還差 {pityShortLeft(s)} 次
+                  <small className="affix"> / {B.PITY_LEGEND_SHORT}・普通鍛造每 10 次也推進</small>
+                </>
+              )}
+            </span>
+          </div>
+          <div className="row">
+            <span className="k">套裝保底</span>
             <span className="v">
               {pityLegendaryLeft(s) === 0 ? (
-                <b style={{ color: 'var(--q-gold)' }}>下次必出傳奇以上</b>
+                <b style={{ color: 'var(--q-blue)' }}>下次必附套裝標籤</b>
               ) : (
                 <>
                   還差 {pityLegendaryLeft(s)} 次<small className="affix"> / {B.PITY_LEGENDARY}</small>
@@ -375,7 +402,9 @@ export default function ForgePanel() {
           </div>
           {!canFine && (
             <div className="empty">
-              {s.materials < B.FINE_FORGE_COST
+              {fineForgesLeft(s) === 0
+                ? '本輪精工次數已用完,下一輪重置'
+                : s.materials < B.FINE_FORGE_COST
                 ? `還差怪物素材 ${B.FINE_FORGE_COST - s.materials}(打怪就會掉)`
                 : slot && s.partMaterials[slot] < 1
                   ? `需要 1 個${SLOT_NAME[slot]}素材(每 10 層 Boss 掉落)`

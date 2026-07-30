@@ -1908,7 +1908,7 @@ describe('傭兵(v1.5:低頻高辨識度的事件源)', () => {
     expect(s.enemyHp.lt(D(1e9))).toBe(true)
   })
 
-  it('冰法師凍結:期間傷害進池不結算,解凍一次引爆;Boss 倒數照走', () => {
+  it('冰法師凍結 = 表現延遲:傷害邏輯上即時結算,解凍只給彙總大數字;倒數照走', () => {
     const s = withMerc('icemage')
     s.floor = 10
     spawnEnemy(s)
@@ -1916,17 +1916,17 @@ describe('傭兵(v1.5:低頻高辨識度的事件源)', () => {
     applyTick(s, 100) // 觸發凍結
     expect(s.freezeLeft).toBeGreaterThan(0)
 
-    const hpAtFreeze = s.enemyHp
+    const floorAtFreeze = s.floor
     applyTick(s, 1000)
-    expect(s.enemyHp.toString()).toBe(hpAtFreeze.toString()) // 凍結中血量不動
-    expect(s.frozenPool.gt(0)).toBe(true)
-    expect(s.bossTimeLeft).toBeLessThan(t0) // ⚠️ 倒數不停:凍結不偷時間
+    // ⚠️ GDD v3 § 4.3(封版):凍結期間傷害「立即結算」——擊殺照發生,禁止 deferred buffer
+    expect(s.floor).toBeGreaterThan(floorAtFreeze)
+    expect(s.frozenPool.gt(0)).toBe(true) // 池只是演出彙總
+    // (倒數照走由「凍結中逾時」測試覆蓋——這裡已推層,計時器被重置,比較無意義)
+    void t0
 
-    const before = s.floor
     const ev = applyTick(s, 1500) // 解凍
     expect(s.freezeLeft).toBe(0)
-    expect(ev.some((e) => e.type === 'freezeBurst')).toBe(true)
-    expect(s.floor).toBeGreaterThan(before) // 引爆的傷害真的結算了(直接推層)
+    expect(ev.some((e) => e.type === 'freezeBurst')).toBe(true) // 彙總數字事件
   })
 
   it('冰法師:每場 Boss 凍結上限(護欄)', () => {
@@ -2018,41 +2018,35 @@ describe('行為型傳說(v1.5:分帳不加量)', () => {
 })
 
 describe('遊戲性掃描修復(2026-07-30)', () => {
-  it('凍結不吃 Boss 擊殺:倒數歸零時先結算凍結池,池夠殺就算你贏', () => {
+  it('凍結中傷害足以擊殺 → 立即判定擊破(表現延遲讓「池吞擊殺」在結構上不存在)', () => {
     const s = createInitialState()
     s.lv = 150
     s.mercBestFloor = 200
     setActiveMerc(s, 'icemage')
     s.floor = 10
     spawnEnemy(s)
-    // 手動進入凍結,池裡塞遠超 Boss 血量的傷害,然後把倒數歸零
-    s.freezeLeft = 5
-    // 第 10 層是拆盾型:盾未破時傷害 ×SHELL_DR,池要大到減傷後仍足以擊殺
-    s.frozenPool = s.enemyMaxHp.mul(3 / B.SHELL_DR)
-    s.bossTimeLeft = 0.01
+    s.freezeLeft = 5 // 凍結中
+    s.bossTimeLeft = 3
 
     const before = s.floor
-    const ev = applyTick(s, 100)
-    // 池先結算 → Boss 被擊破 → 不是 bossFail
-    expect(ev.some((e) => e.type === 'bossFail')).toBe(false)
-    expect(ev.some((e) => e.type === 'bossKill')).toBe(true)
-    expect(s.floor).toBeGreaterThan(before)
+    applyTick(s, 1000) // Lv.150 一擊遠超 Boss 血量,凍結中照樣即時結算
+    expect(s.floor).toBeGreaterThan(before) // 直接擊破,不會等解凍
+    expect(s.bossFailed).toBe(false)
   })
 
-  it('凍結池不夠殺:照樣判失敗,但池有先結算(血量有掉)', () => {
+  it('凍結中逾時:演出狀態清掉、正常判失敗(傷害早已結算,無殘留)', () => {
     const s = createInitialState()
     s.lv = 1
     s.floor = 10
     spawnEnemy(s)
     s.freezeLeft = 5
-    s.frozenPool = s.enemyMaxHp.div(2)
+    s.frozenPool = s.enemyMaxHp // 純演出彙總,不是待結算傷害
     s.bossTimeLeft = 0.01
 
-    const maxHp = s.enemyMaxHp
     const ev = applyTick(s, 100)
     expect(ev.some((e) => e.type === 'bossFail')).toBe(true)
-    expect(s.freezeLeft).toBe(0) // 池已清
-    void maxHp
+    expect(s.freezeLeft).toBe(0)
+    expect(s.frozenPool.lte(0)).toBe(true)
   })
 
   it('吞噬不得吃掉銘刻的傳家之器', () => {
@@ -2209,8 +2203,13 @@ describe('Boss 行為原型(v1.7:敵人不再是木樁)', () => {
     expect(dealt.div(currentDPS(s).mul(B.CLICK_DMG_SEC)).toNumber()).toBeCloseTo(B.SHELL_DR, 2)
     expect(s.shellLeft).toBe(B.SHELL_HITS - 1) // 點一下 = 一次命中
 
-    // 點到破盾 → 易傷窗口
-    for (let i = 0; i < B.SHELL_HITS; i++) click(s)
+    // 點到破盾 → 易傷窗口。⚠️ 點擊傷害有每秒預算(GDD v3 § 1.4),
+    // 預算盡的點擊不算命中——所以點擊之間要過 tick 回充預算
+    for (let i = 0; i < B.SHELL_HITS; i++) {
+      applyTick(s, 400)
+      s.attackAcc = 0 // 隔離自動攻擊的命中,只算點擊
+      click(s)
+    }
     expect(s.shellLeft).toBe(0)
     expect(s.shellVulnLeft).toBeGreaterThan(0)
   })
@@ -2309,5 +2308,82 @@ describe('讀檔與 Boss 行為原型', () => {
     expect(back.shellLeft).toBe(B.SHELL_HITS)
     expect(back.enemyHp.toString()).toBe(back.enemyMaxHp.toString()) // 重開:滿血
     expect(back.bossTimeLeft).toBe(B.BOSS_TIME) // 計時重來
+  })
+})
+
+describe('GDD v3 封版三項(2026-07-30)', () => {
+  it('點擊預算制:每秒 0.2 秒份 DPS,預算盡的點擊只給戰意不給傷害', () => {
+    const s = createInitialState()
+    s.enemyMaxHp = D(1e12)
+    s.enemyHp = D(1e12)
+    // 預算 0.2 秒份:連點 10 下,只有預算內的點擊有傷害事件,預算歸零
+    let hits = 0
+    for (let i = 0; i < 10; i++) {
+      if (click(s).some((e) => e.type === 'attack')) hits++
+    }
+    // 4 次整額 + 浮點殘值可能多一次微量命中
+    expect(hits).toBeGreaterThanOrEqual(4)
+    expect(hits).toBeLessThanOrEqual(5)
+    expect(s.clickBudget).toBeLessThan(1e-6) // 預算耗盡
+    expect(s.morale).toBeGreaterThan(0) // 戰意照給
+
+    // 過一秒回充,又能打
+    applyTick(s, 1000)
+    expect(click(s).some((e) => e.type === 'attack')).toBe(true)
+  })
+
+  it('clickDmg 詞綴只加戰意,不加點擊傷害(禁止點擊傷害成長軸)', () => {
+    const plain = createInitialState()
+    // ⚠️ 對照組同品質(品質乘區 ×1.5 會污染比值,ember 測試踩過同一坑)
+    plain.equipped.trinket = { id: 'p', slot: 'trinket', quality: 'gold', affixes: [] }
+    plain.enemyMaxHp = D(1e12)
+    plain.enemyHp = D(1e12)
+    const withAffix = createInitialState()
+    withAffix.equipped.trinket = {
+      id: 'c', slot: 'trinket', quality: 'gold',
+      affixes: [{ type: 'clickDmg', value: 0.5 }],
+    }
+    withAffix.enemyMaxHp = D(1e12)
+    withAffix.enemyHp = D(1e12)
+
+    const d1 = click(plain).find((e) => e.type === 'attack')!.damage!
+    const d2 = click(withAffix).find((e) => e.type === 'attack')!.damage!
+    // 用「傷害 ÷ 當下 DPS = 消耗秒份」比——戰意會墊高 DPS,直接比傷害會被污染
+    expect(d1.div(currentDPS(plain)).toNumber()).toBeCloseTo(B.CLICK_DMG_SEC, 4)
+    expect(d2.div(currentDPS(withAffix)).toNumber()).toBeCloseTo(B.CLICK_DMG_SEC, 4) // 同樣 0.05,詞綴沒放大
+    expect(withAffix.morale).toBeGreaterThan(plain.morale) // 戰意較多
+  })
+
+  it('精工每輪 3 次;轉生重置', () => {
+    const s = createInitialState()
+    s.materials = 999
+    for (let i = 0; i < 3; i++) expect(fineForge(s, {}, () => 0.9)).not.toBe(null)
+    expect(fineForge(s, {}, () => 0.9)).toBe(null) // 第 4 次擋掉
+
+    s.highestFloor = 50
+    const next = prestige(s)!
+    expect(next.fineForgesUsed).toBe(0)
+  })
+
+  it('雙保底:短 12 次必出傳說特性;普通鍛造每 10 次推進短保底', () => {
+    const s = createInitialState()
+    s.materials = 9999
+    s.pityLegendShort = B.PITY_LEGEND_SHORT
+    const e = fineForge(s, {}, () => 0.99)! // rng 極差也必出
+    expect(e.legend).toBeDefined()
+    expect(s.pityLegendShort).toBe(0) // 出了就歸零
+
+    const before = s.pityLegendShort
+    for (let i = 0; i < B.NORMAL_FORGE_PER_PITY; i++) forge(s, () => 0.99)
+    expect(s.pityLegendShort).toBe(before + 1)
+  })
+
+  it('長保底 50 次:必附套裝標籤', () => {
+    const s = createInitialState()
+    s.materials = 999
+    s.pityLegendary = B.PITY_LEGENDARY
+    const e = fineForge(s, {}, () => 0.99)!
+    expect(e.setTag).toBeDefined()
+    expect(s.pityLegendary).toBe(0)
   })
 })

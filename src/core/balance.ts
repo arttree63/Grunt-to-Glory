@@ -48,12 +48,19 @@ export const MORALE_DMG_PER_POINT = 0.004 // 滿層 +40% DPS
  */
 export const MORALE_CHECK_BOOST = 2
 /**
- * 點擊直接造成的傷害,折算成幾秒份 DPS。
- * ⚠️ 玩家要的是「點了有打到」,所以點擊必須自己出一次手、自己扣一次血,
- * 而不是只餵戰意等爆發。但它同時是個常數乘區,必然被 1.16^層 貶值,
- * 所以數字不能大到讓「不點就過不了」——調校目標是積極玩家比掛機領先兩成上下。
+ * 點擊直接造成的傷害,折算成幾秒份 DPS(受每秒預算約束,見 CLICK_BUDGET_PER_SEC)。
+ * 玩家要的是「點了有打到」,所以點擊必須自己出一次手、自己扣一次血。
+ * ⚠️ GDD v3 § 1.4:禁止任何點擊傷害相關的升級/詞綴/天賦——避免第二條成長軸。
+ * clickDmg 詞綴(點擊戰意)只加**戰意獲取**,不加傷害。
  */
-export const CLICK_DMG_SEC = 0.3
+export const CLICK_DMG_SEC = 0.05
+/**
+ * 每秒點擊傷害預算(GDD v3 § 1.4,封版):budget = DPS × 0.2/秒,單次 0.05 秒份。
+ * 用「每秒預算」而非次數上限——防高刷新率、自動連點與巨集突破。
+ * 預算用盡的點擊仍給戰意與素材回饋,只是不追加直接傷害。
+ * ⚠️ 歷史錯誤:單次 0.3 無上限時,4 點/秒 = +120% DPS,手速會變成最強成長軸。
+ */
+export const CLICK_BUDGET_PER_SEC = 0.2
 export const MORALE_BURST_SEC = 4
 /** 每個事件最多能用點擊換到幾個素材 */
 export const EVENT_CLICK_MAT_CAP = 12
@@ -255,8 +262,20 @@ export const ELITE_MEDAL_COST = 20 // 轉生商店兌換價
 
 // 精工鍛造:怪物素材 ×10 +(可選)部位素材 +(可選)菁英素材
 export const FINE_FORGE_COST = 10
-// 精工保底:累計 N 次未出傳奇 → 必出傳奇以上(跨轉生保留)
+/**
+ * 精工每輪次數上限(GDD v3 § 3.9,封版):決策感集中在高價值鍛造。
+ * 次數之後可用勳章擴充(P1)。
+ */
+export const FINE_FORGE_PER_RUN = 3
+/**
+ * 雙保底(GDD v3 § 3.9):單一 50 次保底在每輪 3 次下最差要 17 輪,無感。
+ *   短保底:精工累計 12 次未出**傳說特性** → 必出(玩家等的是玩法改變,不是品質)
+ *   長保底:精工累計 50 次 → 必出帶**套裝標籤**的傳奇
+ * 普通鍛造每 10 次推進 1 點短保底計數——掛機玩家也持續接近目標。
+ */
+export const PITY_LEGEND_SHORT = 12
 export const PITY_LEGENDARY = 50
+export const NORMAL_FORGE_PER_PITY = 10
 
 // 鐵匠鋪等級:每 N 次鍛造升 1 級,每級給品質升階機率
 export const FORGE_PER_LEVEL = 25

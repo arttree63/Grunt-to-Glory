@@ -26,6 +26,7 @@ import {
   pickDestinyNode,
   resolveEncounter,
   skillReady,
+  pityShortLeft,
   prestige,
   salvage,
 } from '../../src/core/game'
@@ -132,12 +133,14 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
       const patient = hasNode(s, 'artisan_start') && PATIENT
       const forgeFloor = patient ? B.FORGE_COST * (B.HEAT_MAX_LAYERS + 1) : B.FORGE_COST
 
-      // 玩家行為:有部位素材就精工鍛(鎖最爛的部位),否則普通開錘;比身上好就換,否則分解
+      // 玩家行為:精工每輪只有 3 次(GDD v3),省著用——
+      // 只在「有菁英素材可保紫」或「短保底就緒」時才花,其餘普通開錘
       while (s.materials >= forgeFloor) {
         const worst = SLOTS.filter((sl) => s.partMaterials[sl] > 0).sort(
           (a, b) => (s.equipped[a] ? score(s.equipped[a]!) : 0) - (s.equipped[b] ? score(s.equipped[b]!) : 0),
         )[0]
-        const e = worst
+        const fineWorth = worst && (s.eliteMaterials > 0 || pityShortLeft(s) === 0)
+        const e = fineWorth
           ? fineForge(s, { slot: worst, useElite: s.eliteMaterials > 0 }, rng)
           : forge(s, rng)
         if (!e) break

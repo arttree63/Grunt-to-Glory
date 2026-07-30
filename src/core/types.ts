@@ -326,6 +326,8 @@ export interface GameState {
   jobMatrix: Record<string, number>
   /** 距上次攻擊累積的秒數(暫態,不進存檔) */
   attackAcc: number
+  /** 點擊傷害的每秒預算餘額(秒份 DPS,暫態)。GDD v3 § 1.4 */
+  clickBudget: number
   /** 本次事件已用點擊換到幾個素材(暫態) */
   eventClickMats: number
   /** 突發事件(寶箱怪 / 黃金哥布林),出現時取代當前目標 */
@@ -365,8 +367,14 @@ export interface GameState {
   forgeCount: number
   /** 連續未出紫以上的次數 → 普通鍛造保底 */
   pityCount: number
-  /** 連續未出金以上的次數 → 精工鍛造保底(跨轉生保留) */
+  /** 連續未出金以上的次數 → 精工長保底(跨轉生保留,50 次必出帶套裝標籤的傳奇) */
   pityLegendary: number
+  /** 短保底:精工累計未出傳說特性的次數(跨轉生保留;普通鍛造每 10 次 +1) */
+  pityLegendShort: number
+  /** 普通鍛造次數 mod 10 的進度(推短保底用) */
+  normalForgeProgress: number
+  /** 本輪已用掉幾次精工(每輪上限 FINE_FORGE_PER_RUN) */
+  fineForgesUsed: number
   /** 各部位素材存量 */
   partMaterials: Record<Slot, number>
   /** 菁英素材(品質下限保證券) */

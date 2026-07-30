@@ -51,6 +51,9 @@ export interface SaveData {
   forgeCount: number
   pityCount: number
   pityLegendary: number
+  pityLegendShort: number
+  normalForgeProgress: number
+  fineForgesUsed: number
   partMaterials: GameState['partMaterials']
   eliteMaterials: number
   maxBossKilled: number
@@ -111,6 +114,9 @@ export function serialize(s: GameState): SaveData {
     forgeCount: s.forgeCount,
     pityCount: s.pityCount,
     pityLegendary: s.pityLegendary,
+    pityLegendShort: s.pityLegendShort,
+    normalForgeProgress: s.normalForgeProgress,
+    fineForgesUsed: s.fineForgesUsed,
     partMaterials: s.partMaterials,
     eliteMaterials: s.eliteMaterials,
     maxBossKilled: s.maxBossKilled,
@@ -258,6 +264,13 @@ function migrate(raw: SaveData): SaveData {
     d.zealStacks = d.zealStacks ?? 0
     d.version = 19
   }
+  // v19 → v20:GDD v3 封版三項——雙保底 + 精工每輪 3 次(舊長保底計數直接沿用)
+  if (d.version < 20) {
+    d.pityLegendShort = d.pityLegendShort ?? Math.min(d.pityLegendary ?? 0, 11) // 舊進度不浪費也不立即觸發
+    d.normalForgeProgress = d.normalForgeProgress ?? 0
+    d.fineForgesUsed = d.fineForgesUsed ?? 0
+    d.version = 20
+  }
   return d
 }
 
@@ -312,6 +325,9 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     forgeCount: d.forgeCount ?? 0,
     pityCount: d.pityCount ?? 0,
     pityLegendary: d.pityLegendary ?? 0,
+    pityLegendShort: d.pityLegendShort ?? 0,
+    normalForgeProgress: d.normalForgeProgress ?? 0,
+    fineForgesUsed: d.fineForgesUsed ?? 0,
     partMaterials: { ...base.partMaterials, ...(d.partMaterials ?? {}) },
     eliteMaterials: d.eliteMaterials ?? 0,
     maxBossKilled: d.maxBossKilled ?? 0,

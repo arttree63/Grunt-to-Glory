@@ -132,6 +132,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     mercBestFloor: 0,
     legendsSeen: [],
     attackAcc: 0,
+    clickBudget: B.CLICK_BUDGET_PER_SEC,
     eventClickMats: 0,
     event: null,
     eventCooldown: B.EVENT_INTERVAL_AVG,
@@ -151,6 +152,9 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     forgeCount: 0,
     pityCount: 0,
     pityLegendary: 0,
+    pityLegendShort: 0,
+    normalForgeProgress: 0,
+    fineForgesUsed: 0,
     partMaterials: { weapon: 0, head: 0, body: 0, boots: 0, trinket: 0 },
     eliteMaterials: 0,
     maxBossKilled: 0,
@@ -166,7 +170,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 19
+export const SAVE_VERSION = 20
 
 // ---------- 數值查詢 ----------
 
@@ -500,6 +504,8 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   tickTactician(s, dt)
   tickMerc(s, dt, raw, rng)
   tickCombatStatus(s, dt, raw, rng)
+  // 點擊傷害預算回充:每秒 CLICK_BUDGET_PER_SEC 秒份,存量上限同值(不可囤)
+  s.clickBudget = Math.min(B.CLICK_BUDGET_PER_SEC, s.clickBudget + dt * B.CLICK_BUDGET_PER_SEC)
   grantDestinyPoints(s, raw)
   if (s.charging) return mergeKills(raw) // 蓄勢期間停止輸出
 
@@ -602,12 +608,11 @@ interface DealOpts {
 
 function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng, opts: DealOpts = {}) {
   let dmg = damage
-  // 凍結(DeferDamageWindow):期間所有傷害累積,解凍時一次引爆。
-  // 倒數與冷卻照常進行——凍結不偷時間,只改結算節奏(power-neutral 的關鍵)
-  if (s.freezeLeft > 0) {
-    s.frozenPool = s.frozenPool.add(dmg)
-    return
-  }
+  // 凍結 = 表現延遲(GDD v3 § 4.3,封版):傷害在邏輯層**立即結算**,
+  // frozenPool 只是演出彙總——解凍時給一個大數字,不是延後扣血。
+  // ⚠️ 禁止 deferred damage buffer:機制延遲曾造成「倒數前明明打夠了卻判失敗」,
+  // 表現延遲讓那個 bug 在結構上不存在。
+  if (s.freezeLeft > 0) s.frozenPool = s.frozenPool.add(dmg)
   if (s.event) {
     s.event.hp = s.event.hp.sub(dmg)
     if (s.event.hp.lte(0)) {
@@ -744,25 +749,15 @@ function escapeEvent(s: GameState, raw: GameEvent[], rng: Rng) {
 }
 
 /** Boss 逾時判定。倒數本身在 tick 開頭就扣過了,這裡只負責結算 */
-/** 強制結算凍結池(倒數歸零、事件逾時等「要判定勝負」的時刻呼叫) */
-function settleFrozen(s: GameState, raw: GameEvent[], rng: Rng) {
-  if (s.freezeLeft <= 0 && s.frozenPool.lte(0)) return
-  s.freezeLeft = 0
-  const pool = s.frozenPool
-  s.frozenPool = D(0)
-  if (pool.gt(0)) {
-    raw.push({ type: 'freezeBurst', damage: pool })
-    dealDamage(s, pool, raw, rng)
-  }
-}
-
 function checkBossTimeout(s: GameState, raw: GameEvent[], rng: Rng) {
+  void rng
   if (!s.isBoss || s.enemyHp.lte(0) || s.bossTimeLeft > 0) return
-  // ⚠️ 判失敗之前先結算凍結池:池裡的傷害可能早就足以擊殺。
-  // 不結算就判定,冰法師在 Boss 尾端凍結會把玩家已經打出的傷害吞掉、反而害你輸
-  //(v1.5 § 七:延遲類效果在 Boss 戰內必須結算完才有資格談勝負)
-  settleFrozen(s, raw, rng)
-  if (s.enemyHp.lte(0) || !s.isBoss) return // 池結算後擊破了(nextEnemy 已在 dealDamage 裡走完)
+  // 凍結是表現延遲:傷害早已即時結算,這裡只需把演出狀態清掉,不存在「池吞擊殺」問題
+  if (s.freezeLeft > 0) {
+    raw.push({ type: 'freezeBurst', damage: s.frozenPool })
+    s.freezeLeft = 0
+    s.frozenPool = D(0)
+  }
   // DPS check 失敗 → 退回前一層 farm(玩家心智模型:打不過就退一層)
   s.bossFailed = true
   if (s.bossStats) {
@@ -889,14 +884,19 @@ export function click(s: GameState, rng: Rng = Math.random): GameEvent[] {
     events.push({ type: 'clickMaterial' })
   }
 
+  // clickDmg 詞綴只加戰意獲取——點擊「傷害」禁止有任何升級軸(GDD v3 § 1.4)
   const clickBonus = equipBonuses(s.equipped).clickDmg
   s.morale = Math.min(B.MORALE_MAX, s.morale + B.MORALE_PER_CLICK * (1 + clickBonus))
 
-  // 點擊自己的一擊:折算成 B.CLICK_DMG_SEC 秒份 DPS,吃「點擊戰意」詞綴
-  const dmg = currentDPS(s).mul(B.CLICK_DMG_SEC * (1 + clickBonus))
-  events.push({ type: 'attack', damage: dmg })
-  registerBossHits(s, 1, events)
-  dealDamage(s, dmg, events, rng, { source: 'hero' })
+  // 點擊直接傷害:受每秒預算約束。預算盡了仍給戰意/素材,只是這一下不追加傷害
+  const spend = Math.min(B.CLICK_DMG_SEC, s.clickBudget)
+  if (spend > 0) {
+    s.clickBudget -= spend
+    const dmg = currentDPS(s).mul(spend)
+    events.push({ type: 'attack', damage: dmg })
+    registerBossHits(s, 1, events)
+    dealDamage(s, dmg, events, rng, { source: 'hero' })
+  }
 
   // 戰意滿檔爆發:填補 10~30 秒的期待層(「快滿了」)
   if (s.morale >= B.MORALE_MAX) {
@@ -1629,8 +1629,14 @@ export function forge(s: GameState, rng: Rng = Math.random, opts: ForgeOptions =
   })
 
   s.forgeCount++
-  // 保底計數:出紫以上就歸零(傳奇保底只由精工累計,普通鍛造不推進)
+  // 保底計數:出紫以上就歸零
   s.pityCount = QUALITIES.indexOf(e.quality) >= QUALITIES.indexOf('purple') ? 0 : s.pityCount + 1
+  // 普通鍛造每 10 次推進 1 點精工短保底——掛機玩家也持續接近「必出傳說特性」
+  s.normalForgeProgress++
+  if (s.normalForgeProgress >= B.NORMAL_FORGE_PER_PITY) {
+    s.normalForgeProgress = 0
+    s.pityLegendShort++
+  }
 
   afterForge(s, e, cost)
   s.inventory.push(e)
@@ -1657,20 +1663,34 @@ export interface FineForgeOptions {
 }
 
 export function canFineForge(s: GameState, opts: FineForgeOptions): boolean {
+  if (s.fineForgesUsed >= B.FINE_FORGE_PER_RUN) return false // 每輪上限:決策感集中在高價值鍛造
   if (s.materials < B.FINE_FORGE_COST) return false
   if (opts.slot && s.partMaterials[opts.slot] < 1) return false
   if (opts.useElite && s.eliteMaterials < 1) return false
   return true
 }
 
+/** 本輪剩幾次精工 */
+export function fineForgesLeft(s: GameState): number {
+  return Math.max(0, B.FINE_FORGE_PER_RUN - s.fineForgesUsed)
+}
+
+/** 短保底(12 次必出傳說特性)還差幾次 */
+export function pityShortLeft(s: GameState): number {
+  return Math.max(0, B.PITY_LEGEND_SHORT - s.pityLegendShort)
+}
+
 /** 精工鍛造:素材決定鎖部位與品質下限,所見即所得 */
 export function fineForge(s: GameState, opts: FineForgeOptions, rng: Rng = Math.random): Equipment | null {
   if (!canFineForge(s, opts)) return null
+  s.fineForgesUsed++
   s.materials -= B.FINE_FORGE_COST
   if (opts.slot) s.partMaterials[opts.slot]--
   if (opts.useElite) s.eliteMaterials--
 
   const inscribe = hasNode(s, 'artisan_2b')
+  // 雙保底:短(12)必出傳說特性;長(50)必出帶套裝標籤的傳奇
+  const shortHit = s.pityLegendShort >= B.PITY_LEGEND_SHORT
   const pityHit = s.pityLegendary >= B.PITY_LEGENDARY
   const e = rollEquipment(rng, {
     forgeCount: s.forgeCount,
@@ -1678,22 +1698,22 @@ export function fineForge(s: GameState, opts: FineForgeOptions, rng: Rng = Math.
     qualityBonus: equipBonuses(s.equipped).forgeQuality,
     extraAffix: inscribe && rng() < B.INSCRIBE_AFFIX_CHANCE ? 1 : 0,
     guaranteePurple: opts.useElite || s.pityCount >= B.PITY_FORGE,
-    guaranteeGold: pityHit,
+    guaranteeGold: pityHit || shortHit,
     lockSlot: opts.slot,
     forceBase: opts.useElite ? opts.base : undefined,
   })
 
   // 傳說特性:傳奇以上才可能帶,且部位與基底要對得上某件傳說。
-  // 保底那一次必定帶——否則保底只給了品質,給不到「會改變玩法的東西」。
+  // 短保底那一次必定帶——玩家等的是「會改變玩法的東西」,不是品質階級
   if (QUALITIES.indexOf(e.quality) >= QUALITIES.indexOf('gold')) {
     const l = legendFor(e.slot, e.base)
-    if (l && (pityHit || rng() < B.LEGEND_CHANCE)) {
+    if (l && (shortHit || pityHit || rng() < B.LEGEND_CHANCE)) {
       e.legend = l.id
       if (!s.legendsSeen.includes(l.id)) s.legendsSeen.push(l.id) // 傳說圖鑑(跨輪)
     }
   }
-  // 套裝標籤:標籤制,任何品質都可能帶。投入部位素材 + 菁英素材時才有機會
-  if (opts.slot && opts.useElite && rng() < B.SET_TAG_CHANCE) {
+  // 套裝標籤:投入部位+菁英素材時有機率;長保底(50)那一次必定附
+  if ((opts.slot && opts.useElite && rng() < B.SET_TAG_CHANCE) || pityHit) {
     const tags = Object.keys(SETS) as SetTagId[]
     e.setTag = tags[Math.floor(rng() * tags.length)]
   }
@@ -1706,7 +1726,9 @@ export function fineForge(s: GameState, opts: FineForgeOptions, rng: Rng = Math.
   s.forgeCount++
   const qi = QUALITIES.indexOf(e.quality)
   s.pityCount = qi >= QUALITIES.indexOf('purple') ? 0 : s.pityCount + 1
-  s.pityLegendary = qi >= QUALITIES.indexOf('gold') ? 0 : s.pityLegendary + 1
+  // 短保底看「傳說特性」,長保底看「套裝標籤」——兩個計數各自歸零
+  s.pityLegendShort = e.legend ? 0 : s.pityLegendShort + 1
+  s.pityLegendary = e.setTag ? 0 : s.pityLegendary + 1
 
   afterForge(s, e, B.FINE_FORGE_COST)
   s.inventory.push(e)
@@ -1878,6 +1900,9 @@ export function prestige(s: GameState, heirloomIds: string[] = []): GameState | 
   next.forgeCount = s.forgeCount // 鐵匠鋪等級不隨轉生歸零
   next.pityCount = s.pityCount // 保底計數跨轉生保留
   next.pityLegendary = s.pityLegendary
+  next.pityLegendShort = s.pityLegendShort
+  next.normalForgeProgress = s.normalForgeProgress
+  next.fineForgesUsed = 0 // 精工次數每輪重置
   next.maxBossKilled = 0 // 層數歸零,首殺重新計算
 
   // 歷代小兵列傳:每代留下一段歷史,這就是「小兵的故事」
