@@ -17,10 +17,59 @@ import {
 import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
 import { SKILLS } from '../core/skills'
+import type { GameEvent, SkillId } from '../core/types'
+import * as sfx from '../audio/sfx'
 import { useGame } from '../store/gameStore'
 import ResultReveal from './ResultReveal'
 
 const EVENT_REVEAL_ITEMS = ['金幣', '怪物素材', '菁英素材', '部位素材']
+
+/**
+ * 事件 → 音效對照(GDD § 10.5 六層優先序)。
+ * attack / skill 需要額外資訊(暴擊、哪一招),在各自分支裡另外播。
+ */
+const EVENT_SFX: Partial<Record<GameEvent['type'], sfx.SfxName>> = {
+  kill: 'kill',
+  eventKill: 'gold',
+  bossKill: 'bossKill',
+  nemesisResolved: 'bossKill',
+  bossFail: 'fail',
+  channelFailed: 'fail',
+  eventEscape: 'fail',
+  levelUp: 'levelUp',
+  shellBreak: 'shellBreak',
+  interrupted: 'interrupt',
+  channelStart: 'channel',
+  totemSpawn: 'channel',
+  eventSpawn: 'channel',
+  achievement: 'achievement',
+  destinyPoint: 'achievement',
+  perfectBurst: 'perfect',
+  burnMax: 'burst',
+  moraleBurst: 'burst',
+  freezeStart: 'freeze',
+  freezeBurst: 'shellBreak',
+  forge: 'forge',
+  weaponEvolve: 'legendForge',
+  heirloomRestored: 'legendForge',
+  partDrop: 'gold',
+  eliteDrop: 'gold',
+  clickMaterial: 'tap',
+  floorUp: 'levelUp',
+}
+
+/** 三系技能的音色。第二技能(引爆)另走 burst,因為那是機制成功層不是身分層 */
+const SKILL_SFX: Partial<Record<SkillId, sfx.SfxName>> = {
+  shieldRush: 'skillShield',
+  bulwark: 'skillShield',
+  rally: 'skillShield',
+  gale: 'skillGale',
+  windMark: 'skillGale',
+  shadowClone: 'skillGale',
+  judgement: 'skillHoly',
+  edict: 'skillHoly',
+  meteor: 'skillHoly',
+}
 
 export default function BattleCanvas({ children }: { children?: ReactNode }) {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -82,9 +131,19 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       if (import.meta.env.DEV) (window as unknown as { __scene: BattleScene }).__scene = scene
     })
 
+    // 第一次手勢解鎖 AudioContext(瀏覽器擋自動播放),解鎖完就把自己拆掉
+    const onFirstGesture = () => {
+      sfx.unlock()
+      window.removeEventListener('pointerdown', onFirstGesture)
+    }
+    window.addEventListener('pointerdown', onFirstGesture)
+
     const off = gameEvents.on((e) => {
       const scene = sceneRef.current
       if (!scene) return
+      // 音效走對照表統一派送,不散進下面三十個分支(漏一個就少一個音,對不出來)
+      const named = EVENT_SFX[e.type]
+      if (named) sfx.play(named)
       if (e.type === 'attack') {
         // 暴擊是以期望值內建在 DPS 裡的,個別攻擊不會真的暴擊。
         // 這裡把它拆回來只為了顯示:暴擊顯示大數字、普通顯示小數字,平均值不變。
@@ -93,6 +152,7 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         const crit = Math.random() < rate
         const base = e.damage!.div(critMultiplier(rate))
         const shown = crit ? base.mul(B.CRIT_MULT) : base
+        sfx.play(crit ? 'crit' : 'hit')
         const click = e.source === 'click'
         const morale = click && (e.count ?? 0) > 0 ? `・戰意 +${Math.round(e.count!)}` : ''
         scene.swing(
@@ -108,6 +168,8 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       } else if (e.type === 'skill') {
         // 技能直傷原本完全沒有演出:血條瞬空但畫面什麼都沒發生
         const name = SKILLS[e.skillId!].name
+        // 三系各有自己的音色:關掉技能名稱也要聽得出剛剛放的是哪一招(GDD § 10.5 身分層)
+        sfx.play((e.count ?? 0) > 0 ? 'burst' : SKILL_SFX[e.skillId!] ?? 'skillShield')
         // count = 消耗掉的印記層數,演出可以據此畫 N 道射線
         scene.skillHit(e.damage ? `${name} ${fmtCombat(e.damage)}` : name, e.skillId!, e.count ?? 0, e.via === 'ironwall')
         if (e.burnDamage) scene.onEmberConvert(fmtCombat(e.burnDamage))

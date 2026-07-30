@@ -15,6 +15,7 @@ import {
 } from '../../core/game'
 import { DESTINY_PATHS } from '../../core/destiny'
 import { ACHIEVEMENTS, ACHIEVEMENT_GROUPS } from '../../core/achievements'
+import * as sfx from '../../audio/sfx'
 import { PrestigeSection } from './DestinyPanel'
 import { ALL_LEGENDS } from '../../core/legends'
 import { KEYWORD_NAME } from '../../core/keywords'
@@ -144,6 +145,62 @@ function JobMatrix() {
  * 設定。放在傳承頁而不是新開分頁——底部已經六格,再加會把觸控目標壓更小。
  * 重置是不可逆的破壞性操作,所以要二次確認並寫清楚會失去什麼。
  */
+/**
+ * 音量三軌 + 全靜音(GDD § 10.5 明訂)。
+ * 掛機遊戲常被靜音,所以靜音要好按;拉動滑桿時順便試播該軌的代表音,才知道調到哪。
+ */
+function AudioSettings() {
+  const [p, setP] = useState(() => sfx.audioPrefs())
+  const PREVIEW: Record<sfx.Track, sfx.SfxName> = { battle: 'crit', event: 'bossKill', ui: 'levelUp' }
+
+  return (
+    <>
+      <div className="row">
+        <span className="k">音效</span>
+        <button
+          className={`btn${p.muted ? '' : ' primary'}`}
+          style={{ minHeight: 36, padding: '6px 14px' }}
+          onClick={() => {
+            sfx.unlock()
+            sfx.setMuted(!p.muted)
+            setP(sfx.audioPrefs())
+            if (p.muted) sfx.play('levelUp') // 剛開啟:立刻讓玩家聽到一聲
+          }}
+        >
+          {p.muted ? '已靜音' : '開啟中'}
+        </button>
+      </div>
+      {sfx.TRACKS.map((t) => (
+        <div className="row" key={t.id} style={{ opacity: p.muted ? 0.4 : 1 }}>
+          <span className="k">{t.name}音量</span>
+          <span className="v" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(p.vol[t.id] * 100)}
+              disabled={p.muted}
+              onChange={(e) => {
+                sfx.unlock()
+                sfx.setVolume(t.id, Number(e.target.value) / 100)
+                setP(sfx.audioPrefs())
+              }}
+              onPointerUp={() => sfx.play(PREVIEW[t.id])}
+              style={{ width: 120 }}
+            />
+            <small className="affix" style={{ minWidth: 32, textAlign: 'right' }}>
+              {Math.round(p.vol[t.id] * 100)}
+            </small>
+          </span>
+        </div>
+      ))}
+      <div className="tier3" style={{ marginBottom: 8 }}>
+        音效全部是程式合成的短音,不下載任何音檔。重要資訊畫面上一定也看得到,靜音不影響可玩性。
+      </div>
+    </>
+  )
+}
+
 function SettingsSection() {
   const reset = useGame((st) => st.reset)
   const [confirm, setConfirm] = useState(false)
@@ -151,6 +208,7 @@ function SettingsSection() {
 
   return (
     <>
+      <AudioSettings />
       <div className="btn-row">
         <button
           className="btn"
@@ -158,6 +216,7 @@ function SettingsSection() {
           onClick={() => {
             localStorage.removeItem('little-soldier-tutorial')
             localStorage.removeItem('little-soldier-tips')
+            localStorage.removeItem('little-soldier-spotlights')
             setTutorialReset(true)
           }}
         >
