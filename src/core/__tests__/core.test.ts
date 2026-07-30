@@ -14,7 +14,7 @@ import { LEGENDS } from '../legends'
 import { SETS } from '../sets'
 import { MERCS, unlockedMercs } from '../mercs'
 import { KEYWORD_NAME, keywordSupported } from '../keywords'
-import { fmt, fmtTime } from '../format'
+import { fmt, fmtCombat, fmtTime } from '../format'
 import { bossHP, critMultiplier, goldDrop, heroDPS, isBossFloor, medalsFromFloor, mobHP, upCost } from '../formulas'
 import { availableJobs, destinyJobs, JOBS } from '../jobs'
 import { SKILLS } from '../skills'
@@ -73,6 +73,7 @@ import {
   matrixOutcome,
   setActiveMerc,
   salvage,
+  salvageEquipped,
   salvageBelow,
   spawnEnemy,
   diagnoseBoss,
@@ -89,9 +90,9 @@ import { deserialize, serialize } from '../save'
 
 describe('formulas', () => {
   it('新手斜坡:前 30 層走 1.13,之後回 1.16', () => {
-    expect(mobHP(1).toNumber()).toBeCloseTo(10)
-    expect(mobHP(30).toNumber()).toBeCloseTo(10 * 1.13 ** 29, 5)
-    expect(mobHP(31).toNumber()).toBeCloseTo(10 * 1.13 ** 29 * 1.16, 5)
+    expect(mobHP(1).toNumber()).toBeCloseTo(10 * B.COMBAT_NUMBER_SCALE)
+    expect(mobHP(30).toNumber()).toBeCloseTo(10 * B.COMBAT_NUMBER_SCALE * 1.13 ** 29, 5)
+    expect(mobHP(31).toNumber()).toBeCloseTo(10 * B.COMBAT_NUMBER_SCALE * 1.13 ** 29 * 1.16, 5)
   })
 
   it('金幣成長低於 HP 成長 → 自然撞牆', () => {
@@ -127,7 +128,7 @@ describe('formulas', () => {
 describe('format', () => {
   it('數值縮寫階梯', () => {
     expect(fmt(0)).toBe('0')
-    expect(fmt(0.25)).toBe('1') // 點擊預算/分帳會產生 <1 的傷害,不可顯示 0
+    expect(fmt(0.25)).toBe('1') // 極小分帳值不可顯示成 0
     expect(fmt(5)).toBe('5')
     expect(fmt(32.3)).toBe('32') // 金幣不出現小數點
     expect(fmt(999)).toBe('999')
@@ -137,6 +138,13 @@ describe('format', () => {
     expect(fmt(7.8e12)).toBe('7.8T')
     expect(fmt(D('1e15'))).toBe('1.0aa')
     expect(fmt(D('1e18'))).toBe('1.0ab')
+  })
+
+  it('戰鬥數字一律顯示整數', () => {
+    expect(fmtCombat(999.8)).toBe('999')
+    expect(fmtCombat(1234.8)).toBe('1,234')
+    expect(fmtCombat(999999.9)).toBe('999,999')
+    expect(fmtCombat(1.8e6)).toBe('1M')
   })
   it('時間格式', () => {
     expect(fmtTime(65)).toBe('1:05')
@@ -269,6 +277,16 @@ describe('養成與經濟', () => {
     expect(back).toBeGreaterThan(0)
     expect(s.materials).toBe(back)
     expect(s.inventory).toHaveLength(0)
+  })
+
+  it('已穿裝備可直接分解,不必先卸下', () => {
+    const s = createInitialState()
+    s.equipped.weapon = { id: 'equipped-weapon', slot: 'weapon', quality: 'blue', affixes: [] }
+    const before = s.materials
+    const back = salvageEquipped(s, 'weapon')
+    expect(back).toBeGreaterThan(0)
+    expect(s.materials).toBe(before + back)
+    expect(s.equipped.weapon).toBe(null)
   })
 
   it('每件裝備是獨立乘區,全金 5 件約 +29 級等效', () => {
@@ -775,24 +793,40 @@ describe('職業覺醒與第二技能(印記體系)', () => {
   it('聖光審判每次施放留下一枚法令', () => {
     const s = awakened('marshal')
     castSkill(s, 'judgement')
-    expect(s.sigils).toBe(1)
+    expect(s.sigils).toBe(B.EVOLVE_EDICT_SIGILS)
   })
 
-  it('第二技能消耗全部印記造成傷害;沒有印記就不能放', () => {
+  it('第二技能零印記也能造成基礎傷害,印記再追加爆發', () => {
     const s = awakened('infantry')
     s.floor = 5
     spawnEnemy(s)
-    expect(skillReady(s, 'rally')).toBe(false) // 沒印記
-
-    s.sigils = 5
     expect(skillReady(s, 'rally')).toBe(true)
     s.enemyMaxHp = D(1e12)
     s.enemyHp = D(1e12)
-    const before = s.enemyHp
+    const zeroBefore = s.enemyHp
     castSkill(s, 'rally')
-    const dealt = before.sub(s.enemyHp)
-    expect(dealt.div(currentDPS(s)).toNumber()).toBeCloseTo(5 * B.SIGIL_BURST_SEC, 0)
-    expect(s.sigils).toBe(0)
+    expect(zeroBefore.sub(s.enemyHp).div(currentDPS(s)).toNumber()).toBeCloseTo(B.SIGIL_BASE_BURST_SEC, 0)
+
+    const withSigils = awakened('infantry')
+    withSigils.sigils = 5
+    withSigils.enemyMaxHp = D(1e12)
+    withSigils.enemyHp = D(1e12)
+    const before = withSigils.enemyHp
+    castSkill(withSigils, 'rally')
+    const dealt = before.sub(withSigils.enemyHp)
+    expect(dealt.div(currentDPS(withSigils)).toNumber()).toBeCloseTo(
+      B.SIGIL_BASE_BURST_SEC + 5 * B.SIGIL_BURST_SEC,
+      0,
+    )
+    expect(withSigils.sigils).toBe(0)
+  })
+
+  it('覺醒後每十次擊殺自然獲得一枚印記', () => {
+    const s = awakened('infantry')
+    s.runStats.kills = B.PASSIVE_KILLS_PER_SIGIL - 1
+    s.enemyHp = D(1)
+    click(s)
+    expect(s.sigils).toBe(1)
   })
 
   it('印記有上限', () => {
@@ -2142,6 +2176,8 @@ describe('總攻 loop(v1.6:buff 併存 / 引爆回轉 / 戰意昂揚 / 乘勝推
     s.highestFloor = B.AWAKEN_FLOOR
     chooseDestiny(s, 'tactician')
     s.destinyNodes.push('tactician_1a')
+    s.enemyMaxHp = D('1e30')
+    s.enemyHp = D('1e30')
 
     s.sigils = 3 // 未滿
     castSkill(s, 'rally')
@@ -2859,7 +2895,7 @@ describe('完美引爆窗口(過載引爆的簡化版,籃 C 第二階段)', () =
     return s
   }
 
-  it('疊滿印記開 1.5 秒窗口;窗口內手動引爆=士氣+傭兵推進+昂揚再一層', () => {
+  it('疊滿印記開限時窗口;窗口內手動引爆=士氣+傭兵推進+昂揚再一層', () => {
     const s = awakened()
     s.mercBestFloor = 200
     setActiveMerc(s, 'rogue')
@@ -2995,6 +3031,18 @@ describe('家族宿敵(籃 C 第三階段第一版)', () => {
     const out = deserialize(v24 as never)
     expect(out.runBossFails).toEqual({})
     expect(out.nemesis).toBe(null)
+  })
+
+  it('v25 存檔遷移:當前敵人血量同步放大 100 倍', () => {
+    const s = createInitialState()
+    const current = serialize(s)
+    const v25 = JSON.parse(JSON.stringify(current)) as Record<string, unknown>
+    v25.version = 25
+    v25.enemyHp = D(current.enemyHp).div(B.COMBAT_NUMBER_SCALE).toString()
+    v25.enemyMaxHp = D(current.enemyMaxHp).div(B.COMBAT_NUMBER_SCALE).toString()
+    const out = deserialize(v25 as never)
+    expect(out.enemyHp.toString()).toBe(s.enemyHp.toString())
+    expect(out.enemyMaxHp.toString()).toBe(s.enemyMaxHp.toString())
   })
 
   it('敗多次但當代打贏:失敗紀錄清除,不結宿敵', () => {

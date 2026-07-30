@@ -263,5 +263,5 @@ console.log(
   '\n新手斜坡:30 層 HP =',
   mobHP(30).toFixed(0),
   '/ 無斜坡則為',
-  D(10).mul(Decimal.pow(1.16, 29)).toFixed(0),
+  D(B.BASE_MOB_HP).mul(Decimal.pow(1.16, 29)).toFixed(0),
 )

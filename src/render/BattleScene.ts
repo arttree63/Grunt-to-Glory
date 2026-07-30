@@ -1,4 +1,5 @@
 import { AnimatedSprite, Application, Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js'
+import * as B from '../core/balance'
 import hit1Url from '../../assets/visual/fx/hit-impact/impact-1.png'
 import hit2Url from '../../assets/visual/fx/hit-impact/impact-2.png'
 import hit3Url from '../../assets/visual/fx/hit-impact/impact-3.png'
@@ -525,6 +526,7 @@ export class BattleScene {
       hunter: '尋寶獵人',
       edict: '法令',
       rogue: '盜賊背刺',
+      battle: '戰鬥累積',
     }
     this.spawnHeroBurst(0x86e8ff)
     this.notice(`${source[via ?? ''] ?? '印記'}・印記 +${count}`)
@@ -656,7 +658,7 @@ export class BattleScene {
   swing(dmgText: string, crit = false, source: AttackSource = 'hero') {
     if (this.destroyed) return
     const snap = this.getSnap()
-    if (source === 'hero') {
+    if (source === 'hero' || source === 'click') {
       this.heroSwingDuration =
         snap.buffSkill === 'shieldRush' ? 320 : snap.buffSkill === 'gale' ? 145 : 230
       this.heroSwingLeft = this.heroSwingDuration
@@ -792,7 +794,7 @@ export class BattleScene {
 
   private sourceHitNum(x: number, y: number, txt: string, crit: boolean, source: AttackSource) {
     const frozen = this.getSnap().freezeLeft > 0
-    if (source === 'hero') {
+    if (source === 'hero' || source === 'click') {
       if (frozen) this.damageNum(x, y, txt, crit, false, 0.82, true)
       else this.hitNum(x, y, txt, crit)
       return
@@ -828,6 +830,7 @@ export class BattleScene {
     t.position.set(x + (notice ? 0 : (Math.random() - 0.5) * 30), y)
     ;(t as FloatText)._vy = notice ? -0.45 : -2.4
     ;(t as FloatText)._life = 1
+    ;(t as FloatText)._lifeMs = notice ? 1800 : 900
     ;(t as FloatText)._frozen = frozen
     ;(t as FloatText)._notice = notice
     if (frozen) {
@@ -931,7 +934,7 @@ export class BattleScene {
       if (!t._frozen) {
         t.y += t._vy
         t._vy += 0.06
-        t._life -= ms / 900
+        t._life -= ms / t._lifeMs
         t.alpha = t._life
       } else {
         t.alpha = 0.7 + Math.sin(this.elapsed * 0.012 + i) * 0.12
@@ -1913,6 +1916,12 @@ export class BattleScene {
         .fill({ color: stored > charge ? 0xffb33f : 0x7ee8ff, alpha: 0.08 + glow * 0.15 })
       this.heroStateFx.circle(30, -82, 10 + glow * 12)
         .stroke({ width: 3, color: stored > charge ? 0xffd06b : 0xc8f8ff, alpha: 0.32 + glow * 0.42 })
+      if (stored > 0) {
+        this.heroStateFx.moveTo(38, -112).lineTo(38, -62)
+          .stroke({ width: 4, color: 0x6c4b2e, alpha: 0.9 })
+        this.heroStateFx.poly([40, -109, 67, -101, 40, -88])
+          .fill({ color: 0xf2c14e, alpha: 0.65 + stored * 0.3 })
+      }
     }
 
     if (snap.commandReady) {
@@ -1959,7 +1968,7 @@ export class BattleScene {
     }
 
     if (snap.perfectWindowLeft > 0) {
-      const ratio = Math.min(1, snap.perfectWindowLeft / 1.5)
+      const ratio = Math.min(1, snap.perfectWindowLeft / B.PERFECT_WINDOW_SEC)
       const radius = 42 + ratio * 54
       this.heroStateFx.circle(0, -72, radius)
         .stroke({ width: 5, color: 0xffdb58, alpha: 0.42 + (1 - ratio) * 0.45 })
@@ -2127,7 +2136,7 @@ export class BattleScene {
   }
 }
 
-type AttackSource = 'hero' | 'clone' | 'zone' | 'merc'
+type AttackSource = 'hero' | 'click' | 'clone' | 'zone' | 'merc'
 
 interface TimedFx extends Container {
   _age: number
@@ -2138,6 +2147,7 @@ interface TimedFx extends Container {
 interface FloatText extends Text {
   _vy: number
   _life: number
+  _lifeMs: number
   _frozen: boolean
   _notice: boolean
 }

@@ -40,26 +40,63 @@ export default function SkillBar() {
   const preview = nextUnlock(s)
   const slots: Array<SkillId | null> = [...owned]
   const [advancedSkill, setAdvancedSkill] = useState<SkillId | null>(null)
+  const [detailSkill, setDetailSkill] = useState<SkillId | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const suppressClick = useRef<SkillId | null>(null)
 
   useEffect(() => {
     const off = gameEvents.on((event) => {
       if (event.type !== 'cooldownAdvance' || !event.skillId) return
       setAdvancedSkill(event.skillId)
       if (flashTimer.current) clearTimeout(flashTimer.current)
-      flashTimer.current = setTimeout(() => setAdvancedSkill(null), 360)
+      flashTimer.current = setTimeout(() => setAdvancedSkill(null), 900)
     })
     return () => {
       off()
       if (flashTimer.current) clearTimeout(flashTimer.current)
+      if (holdTimer.current) clearTimeout(holdTimer.current)
     }
   }, [])
+
+  const startInspect = (id: SkillId) => {
+    if (holdTimer.current) clearTimeout(holdTimer.current)
+    suppressClick.current = null
+    holdTimer.current = setTimeout(() => {
+      suppressClick.current = id
+      setDetailSkill(id)
+    }, 450)
+  }
+
+  const endInspect = () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current)
+    holdTimer.current = null
+  }
 
   // 總攻就緒:兩招以上全部轉好 → 整排金光,提示玩家「留著一起放」(v1.6)
   const allReady = owned.length >= 2 && owned.every((id) => (s.skillCd[id] ?? 0) <= 0)
 
   return (
     <div className={`skills${s.commandReady ? ' command-ready' : ''}${allReady ? ' all-ready' : ''}`}>
+      {detailSkill && (
+        <div className="skill-info" role="dialog" aria-label={`${SKILLS[detailSkill].name}技能說明`}>
+          <div className="head">
+            <b><GameIcon name={detailSkill} size={17} /> {SKILLS[detailSkill].name}</b>
+            <button className="btn" onClick={() => setDetailSkill(null)}>關閉</button>
+          </div>
+          <div>{SKILLS[detailSkill].desc}</div>
+          <small>
+            冷卻 {Math.round(skillCooldown(s, detailSkill))} 秒
+            {SKILLS[detailSkill].consumesSigils &&
+              `・零印記也可施放：${B.SIGIL_BASE_BURST_SEC} 秒份傷害；每枚${SKILLS[detailSkill].sigilName}再加 ${B.SIGIL_BURST_SEC} 秒份`}
+          </small>
+          {SKILLS[detailSkill].consumesSigils && (
+            <small>
+              每 {B.PASSIVE_KILLS_PER_SIGIL} 次擊殺自然獲得 1 枚；第一技能視窗、命運與傭兵可加速累積
+            </small>
+          )}
+        </div>
+      )}
       {owned.length > 0 && (
         <button
           className={`skill skill-auto${s.autoCast ? ' is-on' : ''}`}
@@ -102,8 +139,23 @@ export default function SkillBar() {
           <button
             className={`skill${advancedSkill === id ? ' cooldown-advanced' : ''}`}
             key={id}
-            onClick={() => cast(id)}
-            disabled={!ready}
+            onPointerDown={() => startInspect(id)}
+            onPointerUp={endInspect}
+            onPointerCancel={endInspect}
+            onPointerLeave={endInspect}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              endInspect()
+              setDetailSkill(id)
+            }}
+            onClick={() => {
+              if (suppressClick.current === id) {
+                suppressClick.current = null
+                return
+              }
+              if (ready) cast(id)
+            }}
+            aria-disabled={!ready}
             aria-label={sk.name}
             title={`${sk.name}:${sk.desc}`}
             style={{ position: 'relative', overflow: 'hidden', opacity: ready ? 1 : 0.55 }}

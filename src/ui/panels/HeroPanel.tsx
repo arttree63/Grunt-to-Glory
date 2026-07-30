@@ -2,7 +2,7 @@ import daggerUrl from '../../../assets/visual/weapons/base-set/dagger.png'
 import swordUrl from '../../../assets/visual/weapons/base-set/sword.png'
 import woodUrl from '../../../assets/visual/weapons/base-set/wood.png'
 import * as B from '../../core/balance'
-import { fmt } from '../../core/format'
+import { fmt, fmtCombat } from '../../core/format'
 import { affordableLevels, bulkUpCost, upCost } from '../../core/formulas'
 import {
   activeLegends,
@@ -331,7 +331,7 @@ export default function HeroPanel() {
       </div>
       <div className="row">
         <span className="k">DPS</span>
-        <span className="v">{fmt(currentDPS(s))}/s</span>
+        <span className="v">{fmtCombat(currentDPS(s))}/s</span>
       </div>
       <details style={{ margin: '2px 0 6px' }}>
         <summary className="affix" style={{ cursor: 'pointer', padding: '4px 0' }}>

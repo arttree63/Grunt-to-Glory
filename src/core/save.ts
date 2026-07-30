@@ -1,4 +1,5 @@
 import { D } from './decimal'
+import { COMBAT_NUMBER_SCALE } from './balance'
 import { createInitialState, SAVE_VERSION, spawnEnemy } from './game'
 import { emptyTechs } from './techs'
 import type { GameState } from './types'
@@ -324,6 +325,12 @@ function migrate(raw: SaveData): SaveData {
     d.runBossFails = d.runBossFails ?? {}
     d.nemesis = d.nemesis ?? null
     d.version = 25
+  }
+  // v25 → v26:戰鬥 HP 與傷害統一放大 100 倍。經濟不變，舊檔當前小怪血量同步換尺。
+  if (d.version < 26) {
+    if (d.enemyHp !== undefined) d.enemyHp = D(d.enemyHp).mul(COMBAT_NUMBER_SCALE).toString()
+    if (d.enemyMaxHp !== undefined) d.enemyMaxHp = D(d.enemyMaxHp).mul(COMBAT_NUMBER_SCALE).toString()
+    d.version = 26
   }
   return d
 }

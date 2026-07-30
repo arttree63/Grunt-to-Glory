@@ -68,7 +68,7 @@ export const SKILLS: Record<SkillId, Skill> = {
   rally: {
     id: 'rally',
     name: '軍陣號令',
-    desc: '消耗全部軍勢,依層數造成爆發傷害',
+    desc: '立即發動小型號令；消耗全部軍勢強化爆發',
     cd: 20,
     consumesSigils: true,
     sigilName: '軍勢',
@@ -76,7 +76,7 @@ export const SKILLS: Record<SkillId, Skill> = {
   windMark: {
     id: 'windMark',
     name: '追風印記',
-    desc: '消耗全部追風印記,依層數發動追擊',
+    desc: '立即發動一次追擊；消耗全部追風印記強化追擊',
     cd: 20,
     consumesSigils: true,
     sigilName: '追風印記',
@@ -84,7 +84,7 @@ export const SKILLS: Record<SkillId, Skill> = {
   edict: {
     id: 'edict',
     name: '律令標記',
-    desc: '引爆全部法令,依層數造成裁決傷害',
+    desc: '立即降下小型裁決；引爆全部法令強化傷害',
     cd: 20,
     consumesSigils: true,
     sigilName: '法令',

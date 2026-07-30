@@ -49,6 +49,7 @@ interface Store {
   equip: (id: string) => void
   unequip: (slot: Slot) => void
   salvage: (id: string) => void
+  salvageEquipped: (slot: Slot) => void
   salvageBelow: (quality: number) => void
   /** 最近一次一鍵分解的結果(給 UI 回饋用) */
   lastSalvage: { count: number; materials: number; protectedCount: number } | null
@@ -64,6 +65,9 @@ interface Store {
    * 遊戲暫停(含 Boss 倒數,不偷玩家時間),點一下繼續。值 = 聚焦目標 id。
    */
   spotlight: string | null
+  /** 會遮住戰場或要求玩家閱讀的 UI。modal 全停；panel 只保護限時戰鬥。 */
+  uiLocks: string[]
+  setUiLock: (key: string, active: boolean) => void
   showSpotlight: (id: string) => void
   dismissSpotlight: () => void
   dismissOffline: () => void
@@ -94,6 +98,14 @@ export const useGame = create<Store>((set, get) => ({
   },
 
   spotlight: null,
+  uiLocks: [],
+  setUiLock(key, active) {
+    const locks = get().uiLocks
+    const next = active
+      ? locks.includes(key) ? locks : [...locks, key]
+      : locks.filter((lock) => lock !== key)
+    if (next !== locks) set({ uiLocks: next })
+  },
   showSpotlight(id) {
     set({ spotlight: id })
   },
@@ -102,8 +114,15 @@ export const useGame = create<Store>((set, get) => ({
   },
 
   tick(dtMs) {
-    if (get().spotlight) return // 聚光燈教學中:整個世界暫停,Boss 倒數也不走
-    const s = get().s
+    const state = get()
+    const s = state.s
+    const modalOpen = state.uiLocks.some((lock) => lock.startsWith('modal:'))
+    const panelOpen = state.uiLocks.includes('panel')
+    if (
+      state.spotlight ||
+      modalOpen ||
+      (panelOpen && (s.isBoss || !!s.event || s.perfectWindowLeft > 0))
+    ) return
     const events = G.applyTick(s, dtMs)
     // 每日首殺 Boss 保底菁英素材(core 不碰時鐘,日期由這裡提供)
     if (events.some((e) => e.type === 'bossKill')) {
@@ -215,6 +234,11 @@ export const useGame = create<Store>((set, get) => ({
 
   salvage(id) {
     if (G.salvage(get().s, id) > 0) gameEvents.emit(G.resonanceEvent('salvage'))
+    bump(set, get)
+  },
+
+  salvageEquipped(slot) {
+    if (G.salvageEquipped(get().s, slot) > 0) gameEvents.emit(G.resonanceEvent('salvage'))
     bump(set, get)
   },
 

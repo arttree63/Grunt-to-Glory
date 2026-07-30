@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useGame } from '../store/gameStore'
 
 export default function ResultReveal({
   items,
@@ -16,6 +17,7 @@ export default function ResultReveal({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const finishRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const doneRef = useRef(onDone)
+  const setUiLock = useGame((st) => st.setUiLock)
   doneRef.current = onDone
 
   const settle = () => {
@@ -27,6 +29,7 @@ export default function ResultReveal({
   }
 
   useEffect(() => {
+    setUiLock('modal:result', true)
     let index = 0
     intervalRef.current = setInterval(() => {
       index = (index + 1) % Math.max(1, items.length)
@@ -34,11 +37,12 @@ export default function ResultReveal({
     }, 80)
     const timer = setTimeout(settle, 920)
     return () => {
+      setUiLock('modal:result', false)
       clearTimeout(timer)
       if (intervalRef.current) clearInterval(intervalRef.current)
       if (finishRef.current) clearTimeout(finishRef.current)
     }
-  }, [result])
+  }, [result, setUiLock])
 
   return (
     <div
