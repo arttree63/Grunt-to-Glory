@@ -23,6 +23,7 @@ import { emptyTechs, heirloomSlots, techFineForges, techOfflineHours } from '../
 import { ACHIEVEMENTS } from '../achievements'
 import { ZONE_SPAN, zoneOf, zoneProgress } from '../zones'
 import { speciesPair } from '../enemies'
+import { ENCOUNTERS, ENCOUNTER_ORDER } from '../encounters'
 import {
   applyTick,
   attackInterval,
@@ -1479,6 +1480,47 @@ describe('存檔', () => {
     expect(back.floor).toBe(33)
     expect(back.forgeCount).toBe(0)
     expect(back.pityCount).toBe(0)
+  })
+
+  it('留存事件:七種都可結算、選項各自接到不同系統', () => {
+    const mk = (id: EncounterId) => {
+      const s = createInitialState()
+      s.floor = 45
+      s.gold = D('1e9')
+      s.materials = 100
+      s.encounters = [{ id, floor: 45 }]
+      return s
+    }
+    // ⚠️ 每一種都要能被結算掉,否則玩家的旅途紀錄會卡住一個處理不掉的項目
+    for (const id of ENCOUNTER_ORDER) {
+      const s = mk(id)
+      const ok = resolveEncounter(s, id, ENCOUNTERS[id].choices[0].id, () => 0.9)
+      expect(ok).toBe(true)
+      expect(s.encounters).toHaveLength(0)
+    }
+    // 埋葬:換共鳴而不是素材
+    const bury = mk('remains')
+    const matBefore = bury.materials
+    resolveEncounter(bury, 'remains', 'bury')
+    expect(bury.materials).toBe(matBefore)
+    expect(bury.resonance.hunter).toBeGreaterThan(0)
+    // 聽忠告:換敵情熟悉度,不換素材
+    const vet = mk('veteran')
+    const loreBefore = Object.values(vet.bossLore).reduce((a, b) => a + b.handled, 0)
+    resolveEncounter(vet, 'veteran', 'listen')
+    expect(Object.values(vet.bossLore).reduce((a, b) => a + b.handled, 0)).toBe(loreBefore + 1)
+    expect(vet.materials).toBe(100)
+    // 傷兵:換下一場 Boss 的越戰越勇,且受既有上限保護
+    const wd = mk('wounded')
+    wd.valiantStacks = B.VALIANT_MAX
+    resolveEncounter(wd, 'wounded', 'heal')
+    expect(wd.valiantStacks).toBe(B.VALIANT_MAX)
+    // 補給箱:賭與不賭都在合理範圍(rng 可注入才驗得到兩邊)
+    const lucky = mk('supply')
+    resolveEncounter(lucky, 'supply', 'pry', () => 0.1)
+    const unlucky = mk('supply')
+    resolveEncounter(unlucky, 'supply', 'pry', () => 0.9)
+    expect(lucky.materials).toBeGreaterThan(unlucky.materials)
   })
 
   it('敵種:每地帶兩種、跨地帶整組換、深層加前綴且不重複原名', () => {

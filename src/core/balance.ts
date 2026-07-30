@@ -472,6 +472,12 @@ export const RESONANCE = {
 /** 開場禮物:神匠共鳴=送一次鍛造的素材;尋寶=下一個事件立刻接近;戰術家=連斬起步層數 */
 export const RESONANCE_GIFT_COMBO = 10
 
+/**
+ * 戰場遺骸「埋葬」給的共鳴次數。⚠️ 共鳴只決定「哪條命運與你共鳴」與一次性開場禮物,
+ * 不進成長曲線(game-balance § 四),所以這裡給多一點也不會動到平衡。
+ */
+export const ENCOUNTER_BURY_RESONANCE = 4
+
 /** 家族宿敵:本輪對同一層 Boss 失敗達此次數,退役時結為宿敵 */
 export const NEMESIS_FAILURES = 3
 export const TOTEM_HP_RATIO = 0.03

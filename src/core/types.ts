@@ -119,7 +119,17 @@ export type BossKind = 'shell' | 'channel' | 'totem'
 /** 戰術修正(在線三選一,只對下一次挑戰生效;離線無修正) */
 export type TacticId = 'delay' | 'keepSigils' | 'mercFirst'
 /** 留存事件:不限時,保留在「旅途紀錄」等玩家回來處理,不會因掛機錯過 */
-export type EncounterId = 'blacksmith' | 'merchant' | 'crossroad'
+export type EncounterId =
+  | 'blacksmith'
+  | 'merchant'
+  | 'crossroad'
+  // 2026-07-31 擴充:原本只有三種,每一輪玩家看到的都是同樣三個選擇。
+  // 新增的四種刻意接上「素材↔金幣」以外的系統(共鳴/敵情/風險/越戰越勇),
+  // 讓選擇服務不同的構築目標,而不是換個包裝的同一個決定
+  | 'remains'
+  | 'veteran'
+  | 'supply'
+  | 'wounded'
 
 export interface PendingEncounter {
   id: EncounterId

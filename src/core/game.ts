@@ -1917,7 +1917,12 @@ function spawnEncounter(s: GameState, events: GameEvent[], rng: Rng) {
 }
 
 /** 處理旅途紀錄裡的一個事件 */
-export function resolveEncounter(s: GameState, id: EncounterId, choiceId: string): boolean {
+export function resolveEncounter(
+  s: GameState,
+  id: EncounterId,
+  choiceId: string,
+  rng: Rng = Math.random,
+): boolean {
   const idx = s.encounters.findIndex((e) => e.id === id)
   if (idx < 0) return false
   const enc = s.encounters[idx]
@@ -1941,8 +1946,27 @@ export function resolveEncounter(s: GameState, id: EncounterId, choiceId: string
       s.materials -= B.FORGE_COST
       s.gold = s.gold.add(price)
     }
-  } else {
+  } else if (id === 'crossroad') {
     s.routeBuff = { kind: choiceId === 'left' ? 'material' : 'gold', floorsLeft: B.ROUTE_BUFF_FLOORS }
+  } else if (id === 'remains') {
+    // 埋葬:放棄素材換命運共鳴。共鳴只影響「哪條命運與你共鳴」,不進成長曲線
+    if (choiceId === 'bury') for (let i = 0; i < B.ENCOUNTER_BURY_RESONANCE; i++) addResonance(s, 'encounter')
+    else s.materials += B.FORGE_COST * 2
+  } else if (id === 'veteran') {
+    // 聽忠告:下一種守關者的敵情 +1(戰前預告變精確)。給的是資訊,不是數值
+    if (choiceId === 'listen') {
+      const kind = bossKindFor(Math.floor(s.floor / B.BOSS_EVERY) * B.BOSS_EVERY + B.BOSS_EVERY)
+      s.bossLore[kind].seen++
+      s.bossLore[kind].handled++
+    } else s.materials += B.FORGE_COST * 2
+  } else if (id === 'supply') {
+    // 風險 vs 確定:期望值刻意相同,選的是「要不要賭」而不是「哪個比較好」
+    if (choiceId === 'pry') s.materials += rng() < 0.5 ? B.FORGE_COST * 4 : B.FORGE_COST
+    else s.materials += B.FORGE_COST * 2 + B.FORGE_COST / 2
+  } else {
+    // 傷兵:換下一場 Boss 的越戰越勇(受既有 VALIANT_MAX 上限保護)
+    if (choiceId === 'heal') s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
+    else s.materials += B.FORGE_COST * 2
   }
 
   s.encounters.splice(idx, 1)
