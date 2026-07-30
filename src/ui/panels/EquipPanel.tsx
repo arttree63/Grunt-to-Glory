@@ -152,6 +152,10 @@ export default function EquipPanel() {
   // 不可逆操作一律二次確認,用遊戲內樣式而不是原生 confirm
   const [confirmSalvage, setConfirmSalvage] = useState<Equipment | null>(null)
   const [confirmDevour, setConfirmDevour] = useState<Equipment | null>(null)
+  /** 改銘刻會讓舊傳家之器失格,用遊戲內彈窗確認(禁用原生 confirm) */
+  const [confirmInscribe, setConfirmInscribe] = useState<Equipment | null>(null)
+  /** 「更多」選單展開中的裝備 id:主要操作外的次要/危險操作收在裡面 */
+  const [moreId, setMoreId] = useState<string | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<Equipment['slot'] | null>(null)
   const equip = useGame((st) => st.equip)
   const unequip = useGame((st) => st.unequip)
@@ -239,9 +243,10 @@ export default function EquipPanel() {
                   setTagCount={e.setTag ? setCount(s, e.setTag) : 0}
                   repairLeft={heirloomRepairLeft(s)}
                 />
+                {/* 主要操作 + 更多:次要與危險操作收進選單,分解一律紅字(UX 回饋 P1-4) */}
                 <div className="btn-row" style={{ flexWrap: 'wrap' }}>
                   <button
-                    className="btn"
+                    className="btn primary"
                     style={TOUCH}
                     onClick={() => {
                       unequip(slot)
@@ -252,20 +257,30 @@ export default function EquipPanel() {
                   </button>
                   <button
                     className="btn"
-                    style={{ ...TOUCH, color: 'var(--gold)' }}
-                    onClick={() => {
-                      const cur = inscribed(s)
-                      if (cur && cur.id !== e.id && !confirm(`要改銘刻這件嗎?原本的「${itemLabel(cur)}」會失去傳家之器身分。`))
-                        return
-                      inscribe(e.id)
-                    }}
+                    style={TOUCH}
+                    onClick={() => setMoreId(moreId === e.id ? null : e.id)}
                   >
-                    {e.heirloom ? '已銘刻' : '銘刻'}
-                  </button>
-                  <button className="btn" style={TOUCH} onClick={() => setConfirmSalvage(e)}>
-                    分解 +{SALVAGE_RETURN[e.quality]}
+                    更多 ⋯
                   </button>
                 </div>
+                {moreId === e.id && (
+                  <div className="btn-row" style={{ flexWrap: 'wrap' }}>
+                    <button
+                      className="btn"
+                      style={{ ...TOUCH, color: 'var(--gold)' }}
+                      onClick={() => {
+                        const cur = inscribed(s)
+                        if (cur && cur.id !== e.id) setConfirmInscribe(e)
+                        else inscribe(e.id)
+                      }}
+                    >
+                      {e.heirloom ? '已銘刻' : '銘刻為傳家之器'}
+                    </button>
+                    <button className="btn danger" style={TOUCH} onClick={() => setConfirmSalvage(e)}>
+                      分解 +{SALVAGE_RETURN[e.quality]}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -333,13 +348,46 @@ export default function EquipPanel() {
                   {e.legend ? LEGENDS[e.legend].name : `${QUALITY_NAME[e.quality]}${SLOT_NAME[e.slot]}`}
                   {better && !e.legend && <span style={{ color: '#6dc46d', fontSize: 11 }}> ▲更好</span>}
                 </b>
+                {/* 主要操作只留「裝備」,其餘收進「更多」——窄手機四顆按鈕會溢位(UX 回饋 P1-4) */}
                 <span>
-                  <button className="btn" style={TOUCH} onClick={() => equip(e.id)}>
+                  <button className="btn primary" style={TOUCH} onClick={() => equip(e.id)}>
                     裝備
                   </button>
                   <button
                     className="btn"
                     style={{ ...TOUCH, marginLeft: 6 }}
+                    onClick={() => setMoreId(moreId === e.id ? null : e.id)}
+                  >
+                    更多 ⋯
+                  </button>
+                </span>
+              </div>
+              {moreId === e.id && (
+                <div className="btn-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+                  {/* 同時只能有一件:銘刻新的會取代舊的,所以要二次確認 */}
+                  <button
+                    className="btn"
+                    style={{ ...TOUCH, color: 'var(--gold)' }}
+                    onClick={() => {
+                      const cur = inscribed(s)
+                      if (cur && cur.id !== e.id) setConfirmInscribe(e)
+                      else inscribe(e.id)
+                    }}
+                  >
+                    {e.heirloom ? '已銘刻' : '銘刻為傳家之器'}
+                  </button>
+                  {canDevour && e.slot === 'weapon' && (
+                    <button
+                      className="btn"
+                      style={{ ...TOUCH, color: 'var(--gold)' }}
+                      onClick={() => setConfirmDevour(e)}
+                    >
+                      餵給武器
+                    </button>
+                  )}
+                  <button
+                    className="btn danger"
+                    style={TOUCH}
                     onClick={() =>
                       // 傳說 / 套裝件 / 傳家之器分解不可逆,先問一次
                       protectedFromBulkSalvage(e) ? setConfirmSalvage(e) : salvage(e.id)
@@ -347,30 +395,8 @@ export default function EquipPanel() {
                   >
                     分解 +{SALVAGE_RETURN[e.quality]}
                   </button>
-                  {/* 同時只能有一件:銘刻新的會取代舊的,所以要二次確認 */}
-                  <button
-                    className="btn"
-                    style={{ ...TOUCH, marginLeft: 6, color: 'var(--gold)' }}
-                    onClick={() => {
-                      const cur = inscribed(s)
-                      if (cur && cur.id !== e.id && !confirm(`要改銘刻這件嗎?原本的「${itemLabel(cur)}」會失去傳家之器身分。`))
-                        return
-                      inscribe(e.id)
-                    }}
-                  >
-                    {e.heirloom ? '已銘刻' : '銘刻'}
-                  </button>
-                  {canDevour && e.slot === 'weapon' && (
-                    <button
-                      className="btn"
-                      style={{ ...TOUCH, marginLeft: 6, color: 'var(--gold)' }}
-                      onClick={() => setConfirmDevour(e)}
-                    >
-                      餵給武器
-                    </button>
-                  )}
-                </span>
-              </div>
+                </div>
+              )}
               <Affixes
                 e={e}
                 setTagCount={e.setTag ? setCount(s, e.setTag) : 0}
@@ -474,6 +500,37 @@ export default function EquipPanel() {
                 }}
               >
                 仍要分解
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmInscribe && (
+        <div className="modal-mask" onPointerDown={() => setConfirmInscribe(null)}>
+          <div className="modal" onPointerDown={(ev) => ev.stopPropagation()}>
+            <h3>改 換 銘 刻</h3>
+            <p>
+              原本的「{(() => {
+                const cur = inscribed(s)
+                return cur ? itemLabel(cur) : '傳家之器'
+              })()}」會失去傳家之器身分,
+              <br />
+              改由「{itemLabel(confirmInscribe)}」傳承給下一代。
+            </p>
+            <div className="btn-row">
+              <button className="btn" style={TOUCH} onPointerDown={() => setConfirmInscribe(null)}>
+                取消
+              </button>
+              <button
+                className="btn primary"
+                style={TOUCH}
+                onPointerDown={() => {
+                  inscribe(confirmInscribe.id)
+                  setConfirmInscribe(null)
+                }}
+              >
+                改銘刻
               </button>
             </div>
           </div>

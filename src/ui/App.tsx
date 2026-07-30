@@ -48,7 +48,7 @@ type Tab = 'hero' | 'equip' | 'forge' | 'destiny' | 'journal' | 'legacy'
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'hero', label: '英雄' },
   { id: 'equip', label: '裝備' },
-  { id: 'forge', label: '鐵匠鋪' },
+  { id: 'forge', label: '鍛造' },
   { id: 'destiny', label: '命運' },
   { id: 'journal', label: '旅途' },
   { id: 'legacy', label: '傳承' },
@@ -254,6 +254,28 @@ function Game() {
   // 紅點三層收斂:同時只亮一顆,由近期目標的優先序決定(core/goals.ts)
   const near = nearGoal(s)
   const activeSets = setProgress(s).filter((set) => set.count >= 2)
+  const [chipsOpen, setChipsOpen] = useState(false)
+
+  // 主要機制卡:同時只有一張。優先序 = 時限緊迫度;聚光燈亮著的機制優先(卡要被照到)
+  const mech = {
+    channel: s.isBoss && s.channelLeft > 0,
+    perfect: s.perfectWindowLeft > 0 && s.sigils > 0 && !!JOBS[s.jobId].awakenSkill,
+    totem: s.isBoss && s.totemHp.gt(0),
+    shell: s.isBoss && s.shellLeft > 0,
+  }
+  const primary: keyof typeof mech | null =
+    spot && spot in mech && mech[spot as keyof typeof mech]
+      ? (spot as keyof typeof mech)
+      : mech.channel
+        ? 'channel'
+        : mech.perfect
+          ? 'perfect'
+          : mech.totem
+            ? 'totem'
+            : mech.shell
+              ? 'shell'
+              : null
+
   const flagStatus =
     s.bannerStored > 0
       ? {
@@ -274,10 +296,43 @@ function Game() {
               color: '#f0b44c',
             }
           : null
+
+  // 一般狀態全部收成 chip:超過 3 個折「+N」,點擊展開(clicker-ui § 七之五)
+  const chips: Array<{ key: string; text: string; gold?: boolean }> = []
+  for (const b of s.buffs)
+    chips.push({
+      key: `buff-${b.skillId}`,
+      text: `${SKILLS[b.skillId].name} ${b.permanent ? '常駐' : `${b.timeLeft.toFixed(1)}s`}`,
+    })
+  if (s.sigils > 0 && JOBS[s.jobId].awakenSkill && primary !== 'perfect')
+    chips.push({
+      key: 'sigils',
+      text: `${sigilName(s)} ${s.sigils}/${sigilCap(s)}`,
+      gold: s.sigils >= Math.ceil(sigilCap(s) * 0.8),
+    })
+  if (s.combo > 0)
+    chips.push({ key: 'combo', text: `連斬 ×${s.combo} +${Math.round((comboMult(s) - 1) * 100)}%`, gold: true })
+  if (s.relicLeft > 0)
+    chips.push({ key: 'relic', text: `遺物 ×${B.RELIC_MULT} ${s.relicLeft.toFixed(1)}s`, gold: true })
+  if (flagStatus) chips.push({ key: 'flag', text: flagStatus.title, gold: true })
+  if (s.charging || s.chargeBurstLeft > 0)
+    chips.push({
+      key: 'charge',
+      text: s.charging
+        ? `蓄勢 ${Math.floor(s.chargeStacks)} 層`
+        : `爆發 ${s.chargeBurstLeft.toFixed(1)}s +${Math.round((chargeMult(s) - 1) * 100)}%`,
+    })
+  if (s.conquestLeft > 0 && !s.isBoss)
+    chips.push({ key: 'conquest', text: `乘勝 ×${B.CONQUEST_MULT} ${s.conquestLeft.toFixed(0)}s`, gold: true })
+
   const hasSkills = availableSkills(s).length > 0
 
   return (
-    <div className={`wrap${hasSkills ? ' has-skills' : ' no-skills'}${tab ? ' panel-open' : ''}`}>
+    <div
+      className={`wrap${hasSkills ? ' has-skills' : ' no-skills'}${tab ? ' panel-open' : ''}${
+        near && near.tab && tab !== near.tab ? ' has-next' : ''
+      }`}
+    >
       <BattleCanvas>
         <div className="topbar">
           <div className="stage-label">
@@ -352,66 +407,53 @@ function Game() {
 
         {s.bossFailed && !s.isBoss && !s.event && <BossHint />}
 
-        {s.combo > 0 && (
+        {/* 戰場狀態兩層制(clicker-ui § 七之五):同時只有一張主要機制卡,其餘收成 chip 列。
+            聚光燈教學的 .spotlit 掛在主要機制卡上,所以優先選 spot 對應的機制 */}
+        {primary === 'channel' && (
           <div
-            className="retry"
-            style={{ top: 'auto', bottom: 74, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
+            className={`retry${spot === 'channel' ? ' spotlit' : ''}`}
+            style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--gold)', fontSize: 14 }}
           >
-            連斬 ×{s.combo}
-            <small className="affix"> 傷害 +{Math.round((comboMult(s) - 1) * 100)}%</small>
+            {channelProgress(s) >= 0.75 ? '就差一點——現在放!' : '蓄力中'} {s.channelLeft.toFixed(1)}s・打斷{' '}
+            {Math.floor(channelProgress(s) * 100)}%
+            <div className="goal-bar">
+              <div className="fill gold" style={{ width: `${channelProgress(s) * 100}%` }} />
+            </div>
+            <small className="affix">
+              還差 {fmtCombat(s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK).sub(s.channelDamage))} 傷害即可打斷
+            </small>
           </div>
         )}
-
-        {(s.charging || s.chargeBurstLeft > 0) && (
-          <div
-            className="retry"
-            style={{ top: 'auto', bottom: 46, pointerEvents: 'none', color: 'var(--morale-b)', fontSize: 13 }}
-          >
-            {s.charging
-              ? `蓄勢中 ${Math.floor(s.chargeStacks)} 層(暫停輸出)`
-              : `爆發 ${s.chargeBurstLeft.toFixed(1)}s・傷害 +${Math.round((chargeMult(s) - 1) * 100)}%`}
-          </div>
-        )}
-
-        {/* ⚠️ 狀態文字用固定槽位由下往上堆:46 / 74 / 102,兩個元件不可寫死同一個座標。
-            多槽 buff 併成一行,總攻疊窗時不會佔掉三個槽位 */}
-        {s.buffs.length > 0 && (
-          <div
-            className="retry"
-            style={{
-              top: 'auto',
-              bottom: s.charging || s.chargeBurstLeft > 0 ? 102 : 46,
-              pointerEvents: 'none',
-              color: 'var(--morale-b)',
-            }}
-          >
-            {s.buffs
-              .map((b) => `${SKILLS[b.skillId].name} ${b.permanent ? '常駐' : `${b.timeLeft.toFixed(1)}s`}`)
-              .join('・')}
-          </div>
-        )}
-
-        {/* 印記層數:核心循環(疊→挑時機引爆)原本只在技能格角落 11px,戰鬥中看不到 */}
-        {s.sigils > 0 && JOBS[s.jobId].awakenSkill && (
+        {primary === 'perfect' && (
           <div
             className={`retry${spot === 'perfect' ? ' spotlit' : ''}`}
-            style={{ top: 'auto', bottom: 186, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
+            style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--gold)', fontSize: 14 }}
           >
-            {sigilName(s)} {s.sigils}/{sigilCap(s)}
-            {/* 完美引爆窗口:滿層後限時手動引爆給操作獎勵(掛機正常引爆不受影響) */}
-            {s.perfectWindowLeft > 0 ? (
-              <small style={{ color: 'var(--gold)', fontWeight: 700 }}> 金色窗口——現在引爆=完美!</small>
-            ) : s.sigils >= Math.ceil(sigilCap(s) * 0.8) ? (
-              <small style={{ color: 'var(--gold)' }}> 快滿了——準備引爆</small>
-            ) : (
-              <small className="affix"> 第二技能隨時可用，印記越多越強</small>
-            )}
+            金色窗口——現在引爆=完美!
+            <div className="goal-bar">
+              <div
+                className="fill gold"
+                style={{ width: `${(s.perfectWindowLeft / B.PERFECT_WINDOW_SEC) * 100}%` }}
+              />
+            </div>
+            <small className="affix">
+              {sigilName(s)} {s.sigils}/{sigilCap(s)}・手動引爆獲得完美獎勵
+            </small>
           </div>
         )}
-
-        {/* Boss 目標梯度(goal-gradient):過程中就讓玩家看到「再多做一件事就會不同」,
-            而不是失敗診斷才告訴他差多少。三種原型互斥,共用同一個槽位 */}
-        {s.isBoss && s.shellLeft > 0 && (
+        {primary === 'totem' && (
+          <div
+            className={`retry${spot === 'totem' ? ' spotlit' : ''}`}
+            style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
+          >
+            圖騰 {Math.ceil(s.totemHp.div(s.totemMaxHp).toNumber() * 100)}%・倒數加速中
+            <div className="goal-bar">
+              <div className="fill" style={{ width: `${s.totemHp.div(s.totemMaxHp).toNumber() * 100}%` }} />
+            </div>
+            <small className="affix">燃燒/背刺可直打本體</small>
+          </div>
+        )}
+        {primary === 'shell' && (
           <div
             className={`retry${spot === 'shell' ? ' spotlit' : ''}`}
             style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
@@ -424,62 +466,25 @@ function Game() {
             <small className="affix">一次命中 {B.SHIELD_HIT_VALUE} 點・燃燒等狀態 {B.SHIELD_TICK_VALUE} 點</small>
           </div>
         )}
-        {s.isBoss && s.channelLeft > 0 && (
-          <div
-            className={`retry${spot === 'channel' ? ' spotlit' : ''}`}
-            style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--gold)', fontSize: 14 }}
-          >
-            {channelProgress(s) >= 0.75 ? '就差一點——現在放!' : '蓄力中'} {s.channelLeft.toFixed(1)}s・打斷{' '}
-            {Math.floor(channelProgress(s) * 100)}%
-            <div className="goal-bar">
-              <div
-                className="fill gold"
-                style={{ width: `${channelProgress(s) * 100}%` }}
-              />
-            </div>
-            <small className="affix">
-              還差 {fmtCombat(s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK).sub(s.channelDamage))} 傷害即可打斷
-            </small>
-          </div>
-        )}
-        {s.isBoss && s.totemHp.gt(0) && (
-          <div
-            className={`retry${spot === 'totem' ? ' spotlit' : ''}`}
-            style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
-          >
-            圖騰 {Math.ceil(s.totemHp.div(s.totemMaxHp).toNumber() * 100)}%・倒數加速中
-            <div className="goal-bar">
-              <div className="fill" style={{ width: `${s.totemHp.div(s.totemMaxHp).toNumber() * 100}%` }} />
-            </div>
-            <small className="affix">燃燒/背刺可直打本體</small>
-          </div>
-        )}
 
-        {s.conquestLeft > 0 && !s.isBoss && (
-          <div
-            className="retry"
-            style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
-          >
-            乘勝推進 ×{B.CONQUEST_MULT}・{s.conquestLeft.toFixed(0)}s
-          </div>
-        )}
-
-        {s.relicLeft > 0 && (
-          <div
-            className="retry"
-            style={{ top: 'auto', bottom: 130, pointerEvents: 'none', color: 'var(--gold)', fontSize: 13 }}
-          >
-            遺物弱點 ×{B.RELIC_MULT}・{s.relicLeft.toFixed(1)}s
-          </div>
-        )}
-
-        {flagStatus && (
-          <div
-            className="retry"
-            style={{ top: 'auto', bottom: 158, pointerEvents: 'none', color: flagStatus.color, fontSize: 13 }}
-          >
-            {flagStatus.title}
-            <small className="affix"> {flagStatus.detail}</small>
+        {chips.length > 0 && (
+          <div className="status-chips">
+            {(chipsOpen ? chips : chips.slice(0, 3)).map((c) => (
+              <span key={c.key} className={`chip${c.gold ? ' gold' : ''}`}>
+                {c.text}
+              </span>
+            ))}
+            {chips.length > 3 && (
+              <span
+                className="chip more"
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  setChipsOpen(!chipsOpen)
+                }}
+              >
+                {chipsOpen ? '收合' : `+${chips.length - 3}`}
+              </span>
+            )}
           </div>
         )}
 
@@ -494,6 +499,13 @@ function Game() {
       </BattleCanvas>
 
       <div className="bottom">
+        {/* 下一步行動提示:紅點只說「有事」,這條直接說「做什麼」,點了開正確分頁 */}
+        {near && near.tab && tab !== near.tab && (
+          <button className="next-step" onClick={() => setTab(near.tab as Tab)}>
+            <span>下一步:{near.text}</span>
+            <span className="go">前往 →</span>
+          </button>
+        )}
         <SkillBar />
         <div className="tabs">
           {TABS.map((t) => (
@@ -514,6 +526,13 @@ function Game() {
         <>
           <div className="panel-mask" onPointerDown={() => setTab(null)} />
           <div className="panel">
+            {/* 由下拉出的面板要有可見的關閉方式:把手 + ×(點外側/再點分頁仍可關) */}
+            <div className="panel-grip" onPointerDown={() => setTab(null)}>
+              <i />
+              <button className="x" aria-label="關閉">
+                ×
+              </button>
+            </div>
             {tab === 'hero' && <HeroPanel />}
             {tab === 'equip' && <EquipPanel />}
             {tab === 'forge' && <ForgePanel />}

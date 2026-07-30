@@ -64,6 +64,13 @@ button {
 .wrap.no-skills {
   --bottom-h: 78px;
 }
+/* 下一步提示條出現時,底部整體長高,面板/遮罩跟著 var 對齊 */
+.wrap.has-next {
+  --bottom-h: 170px;
+}
+.wrap.no-skills.has-next {
+  --bottom-h: 116px;
+}
 
 .stage {
   flex: 1;
@@ -248,12 +255,13 @@ button {
 .bottom {
   background: linear-gradient(180deg, #1b1524, #15101d);
   border-top: 1px solid var(--border);
-  padding: 10px 12px 14px;
-  height: var(--bottom-h);
+  /* iPhone 安全區:Home Indicator 不吃掉導覽的可點面積 */
+  padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+  height: calc(var(--bottom-h) + env(safe-area-inset-bottom, 0px));
   z-index: 10;
 }
 .wrap.no-skills .bottom {
-  padding: 8px 12px 10px;
+  padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px));
 }
 .skills {
   display: flex;
@@ -656,7 +664,7 @@ button {
 /* 面板 */
 .panel-mask {
   position: absolute;
-  inset: 0 0 var(--bottom-h) 0;
+  inset: 0 0 calc(var(--bottom-h) + env(safe-area-inset-bottom, 0px)) 0;
   z-index: 8;
 }
 .panel {
@@ -664,7 +672,7 @@ button {
   left: 0;
   right: 0;
   top: 25%;
-  bottom: var(--bottom-h);
+  bottom: calc(var(--bottom-h) + env(safe-area-inset-bottom, 0px));
   z-index: 12;
   background:
     radial-gradient(circle at 50% 0, #34224455, transparent 180px),
@@ -1198,4 +1206,95 @@ button {
 }
 @keyframes all-ready-pulse {
   50% { box-shadow: 0 0 18px rgba(242, 193, 78, 0.6); }
+}
+
+/* ── 戰場狀態兩層制(clicker-ui § 七之五,2026-07-31)── */
+/* 狀態 chip 列:一般狀態全部收成小 chip,超過 3 個折 +N */
+.status-chips {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 74px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  max-width: 92%;
+  pointer-events: none;
+}
+.status-chips .chip {
+  pointer-events: auto;
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #241d31cc;
+  border: 1px solid var(--border-card, #3a2f4d);
+  color: var(--text-main, #e8dcc8);
+  white-space: nowrap;
+}
+.status-chips .chip.gold {
+  color: var(--gold);
+}
+.status-chips .chip.more {
+  cursor: pointer;
+  color: var(--text-dim, #9a8fb0);
+}
+
+/* 下一步行動提示:紅點只說「有事」,這條直接說「做什麼」 */
+.next-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+  background: #241d31;
+  border: 1px solid var(--border-card, #3a2f4d);
+  color: var(--text-main, #e8dcc8);
+  cursor: pointer;
+}
+.next-step .go {
+  color: var(--gold);
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+/* 面板頂端把手:表示這是由下拉出的面板,點了可關 */
+.panel-grip {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0 4px;
+  margin: 0 -14px;
+  background: linear-gradient(180deg, #191321, #19132100);
+  cursor: pointer;
+}
+.panel-grip i {
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-card, #3a2f4d);
+}
+.panel-grip .x {
+  position: absolute;
+  right: 12px;
+  top: 2px;
+  font-size: 18px;
+  line-height: 1;
+  padding: 6px 10px;
+  color: var(--text-dim, #9a8fb0);
+  background: none;
+  border: none;
+}
+
+/* 危險操作(分解):與一般功能明確區隔 */
+.btn.danger {
+  color: var(--boss-b, #ff7a5c);
 }
