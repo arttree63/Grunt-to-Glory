@@ -1395,3 +1395,26 @@ button {
   color: var(--dim2, #9a8fb0);
   font-variant-numeric: tabular-nums;
 }
+
+/* 本層敵種名:告訴玩家「這裡住著什麼」,換地帶時整組換掉 */
+.mobbar-wrap {
+  position: absolute;
+  top: 62px;
+  left: 22%;
+  right: 22%;
+  z-index: 5;
+  pointer-events: none;
+}
+.mob-name {
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--dim2, #9a8fb0);
+  margin-bottom: 3px;
+}
+.mobbar-wrap .mobbar {
+  position: static;
+  left: auto;
+  right: auto;
+  top: auto;
+}

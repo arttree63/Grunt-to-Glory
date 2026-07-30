@@ -173,6 +173,8 @@ export interface BattleSnapshot {
   zoneTint: number
   /** 地帶霧氣濃度 0~1(越深越濃) */
   zoneFog: number
+  /** 本層的兩種敵種(名字/色/體型)。同兩張素材衍生,不新增逐幀資產 */
+  species: Array<{ name: string; sprite: 'goblin' | 'imp'; tint: number; scale: number }>
   /** 圖騰血量比例(>0 畫圖騰實體) */
   totemRatio: number
 }
@@ -1733,8 +1735,10 @@ export class BattleScene {
 
 
   private createMob(startT = 0) {
-    const textures = Math.random() < 0.55 ? this.assets.goblin : this.assets.imp
-    return new MobView(textures, startT)
+    // 本層兩種敵種交替:同一層看得到兩種生物,換層就整組換掉
+    const sp = this.getSnap().species[Math.random() < 0.55 ? 0 : 1]
+    const textures = sp.sprite === 'goblin' ? this.assets.goblin : this.assets.imp
+    return new MobView(textures, startT, sp.tint, sp.scale)
   }
 
   private spawnImpact(x: number, y: number, scale: number) {
@@ -1866,10 +1870,8 @@ export class BattleScene {
     const pack = (rr: number, gg: number, bb: number) =>
       (Math.round(rr * 255) << 16) | (Math.round(gg * 255) << 8) | Math.round(bb * 255)
     this.bg.tint = pack(r, g, b)
-    // 怪物只染一半:保留原本的辨識度
-    const half = (v: number) => 1 + (v - 1) * 0.5
-    const mobTint = pack(half(r), half(g), half(b))
-    for (const m of this.mobLayer.children) (m as Sprite).tint = mobTint
+    // ⚠️ 小怪不在這裡統一染色:每隻怪有自己的敵種色(MobView.baseTint),
+    // 在這裡覆寫會把敵種辨識度洗掉,而且會蓋掉受擊閃白與凍結色
 
     this.zoneFog.clear()
     if (fog > 0.01) {
@@ -2205,8 +2207,15 @@ class MobView {
   private offset = (Math.random() - 0.5) * 0.26
   private flashLeft = 0
 
-  constructor(textures: Texture[], startT = 0) {
+  constructor(
+    textures: Texture[],
+    startT = 0,
+    /** 敵種色:受擊閃白與解凍後要回到這個色,不是回到純白 */
+    private baseTint = 0xffffff,
+    private sizeMult = 1,
+  ) {
     this.view = new AnimatedSprite(textures)
+    this.view.tint = baseTint
     this.t = startT
     this.view.anchor.set(0.5, 233 / 256)
     this.view.animationSpeed = frameSpeed(MOB_FRAME_MS) * (0.9 + Math.random() * 0.2)
@@ -2228,14 +2237,14 @@ class MobView {
   layout(ms: number, W: number, H: number) {
     if (this.flashLeft > 0) {
       this.flashLeft -= ms
-      if (this.flashLeft <= 0) this.view.tint = 0xffffff
+      if (this.flashLeft <= 0) this.view.tint = this.baseTint
     }
     if (this.t < 1) this.t = Math.min(1, this.t + this.speed * ms)
     const ease = this.t * this.t
     // 像素怪本體比原型向量怪高,近戰位略上移避免壓住主角頭盔
     const y = H * (0.44 + 0.22 * ease)
     const x = W * (0.5 + this.offset * (0.3 + 0.7 * ease))
-    const sc = (0.25 + 0.95 * ease) * (Math.min(W, H) / 420) * 0.32
+    const sc = (0.25 + 0.95 * ease) * (Math.min(W, H) / 420) * 0.32 * this.sizeMult
     this.view.position.set(x, y)
     this.view.scale.set(sc)
     this.view.zIndex = y

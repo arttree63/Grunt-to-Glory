@@ -150,8 +150,10 @@ K1～K9 與帝國鐵壁自動引爆已完成；K10 仍等待設計決策。
 3. `zoneEnter` 專屬進場演出:地帶名橫幅 + 一句 `flavor`(core 的 `zoneOf(floor).flavor` 有);
    目前只有暫代 notice「進入 X」。
 4. 落葉粒子依地帶換色/換型(森林=葉、地底=塵、古堡=灰燼)——`zoneFog` 可當強度。
-5. **怪物種類只有兩種小怪**(forest-goblin / thorn-imp):可用 tint + 尺寸 + 輪廓變化
-   程式化衍生出「不同種族」的體感,不新增逐幀素材。這是目前最大的內容量瓶頸。
+5. ~~怪物種類只有兩種小怪~~ → 2026-07-31 Claude 已做敵種系統(`src/core/enemies.ts`,
+   16 種 = 8 地帶 × 2,tint + 體型 + 名字)。snapshot 帶 `species`,`MobView` 吃 baseTint/sizeMult。
+   ⚠️ **不要再於 applyZone 統一覆寫小怪 tint**——會洗掉敵種辨識度並蓋掉受擊閃白。
+   仍可加強:輪廓/剪影變化、菁英變體(帶光暈的稀有個體)、敵種圖鑑頁。
 
 ⚠️ 地帶**不帶任何數值**,純空間感。不要在 render 端反推任何戰鬥邏輯。
 

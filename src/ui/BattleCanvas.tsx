@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ACHIEVEMENTS } from '../core/achievements'
 import { zoneOf } from '../core/zones'
+import { speciesPair } from '../core/enemies'
 import { fmt, fmtCombat } from '../core/format'
 import * as B from '../core/balance'
 import { critMultiplier } from '../core/formulas'
@@ -110,6 +111,8 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         // 地帶:render 用 tint/fog 對同一張底圖做色調重繪(見 Codex 文件「地帶染色」)
         zoneTint: zoneOf(s.floor).tint,
         zoneFog: zoneOf(s.floor).fog,
+        // 敵種:同兩張素材靠 tint + 體型 + 名字衍生成不同生物(見 core/enemies.ts)
+        species: speciesPair(s.floor),
         totemRatio: s.totemMaxHp.gt(0) ? s.totemHp.div(s.totemMaxHp).toNumber() : 0,
         valiantStacks: s.valiantStacks,
         hourglassSteps: new Set(s.castOrder).size,

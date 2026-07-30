@@ -22,6 +22,7 @@ import { pendingChoice } from '../destiny'
 import { emptyTechs, heirloomSlots, techFineForges, techOfflineHours } from '../techs'
 import { ACHIEVEMENTS } from '../achievements'
 import { ZONE_SPAN, zoneOf, zoneProgress } from '../zones'
+import { speciesPair } from '../enemies'
 import {
   applyTick,
   attackInterval,
@@ -1478,6 +1479,29 @@ describe('存檔', () => {
     expect(back.floor).toBe(33)
     expect(back.forgeCount).toBe(0)
     expect(back.pityCount).toBe(0)
+  })
+
+  it('敵種:每地帶兩種、跨地帶整組換、深層加前綴且不重複原名', () => {
+    const forest = speciesPair(1)
+    expect(forest).toHaveLength(2)
+    expect(forest[0].name).toBe('森林哥布林')
+    // 同一地帶內任何一層都是同一組
+    expect(speciesPair(20).map((x) => x.name)).toEqual(forest.map((x) => x.name))
+    // 換地帶整組換掉
+    expect(speciesPair(21)[0].name).not.toBe(forest[0].name)
+    // ⚠️ 敵種只帶外觀,不可以有任何數值欄位(HP/金幣完全由層數決定)
+    expect(Object.keys(forest[0]).sort()).toEqual(['name', 'scale', 'sprite', 'tint'])
+    // 深層循環要加前綴,不能讓原名原樣再出現
+    const deep = speciesPair(1 + ZONE_SPAN * 8)[0]
+    expect(deep.name).not.toBe(forest[0].name)
+    expect(deep.name).toContain('墮化')
+    // 體型要留在不會壓到主角/看不見的範圍
+    for (const f of [1, 45, 85, 125, 165, 400]) {
+      for (const sp of speciesPair(f)) {
+        expect(sp.scale).toBeGreaterThanOrEqual(0.8)
+        expect(sp.scale).toBeLessThanOrEqual(1.4)
+      }
+    }
   })
 
   it('地帶:每 20 層換一次、跨界發事件、深層不重複用同一個名字', () => {

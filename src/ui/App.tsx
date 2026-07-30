@@ -30,6 +30,7 @@ import { SETS } from '../core/sets'
 import { JOBS } from '../core/jobs'
 import { nearGoal } from '../core/goals'
 import { zoneOf, zoneProgress } from '../core/zones'
+import { speciesPair } from '../core/enemies'
 import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
 import { FloorDots, FloorToast } from './FloorProgress'
@@ -256,6 +257,7 @@ function Game() {
   const near = nearGoal(s)
   const zone = zoneOf(s.floor)
   const zp = zoneProgress(s.floor)
+  const species = speciesPair(s.floor)
   const activeSets = setProgress(s).filter((set) => set.count >= 2)
   const [chipsOpen, setChipsOpen] = useState(false)
 
@@ -380,8 +382,12 @@ function Game() {
             <div className={`timer${s.bossTimeLeft < 5 ? ' danger' : ''}`}>{s.bossTimeLeft.toFixed(1)}</div>
           </div>
         ) : (
-          <div className="mobbar">
-            <div className="fill" style={{ width: `${Math.max(0, hpRatio) * 100}%` }} />
+          <div className="mobbar-wrap">
+            {/* 本層住著什麼:同兩張素材衍生出的敵種名。內容量要看得見才算數 */}
+            <div className="mob-name">{species.map((sp) => sp.name).join('・')}</div>
+            <div className="mobbar">
+              <div className="fill" style={{ width: `${Math.max(0, hpRatio) * 100}%` }} />
+            </div>
           </div>
         )}
 
