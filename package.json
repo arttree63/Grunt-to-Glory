@@ -11,7 +11,8 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "sim": "tsx tools/balance-sim/sim.ts",
-    "sim:legend": "tsx tools/balance-sim/legend-check.ts"
+    "sim:legend": "tsx tools/balance-sim/legend-check.ts",
+    "sim:shield": "tsx tools/balance-sim/shield-check.ts"
   },
   "dependencies": {
     "break_infinity.js": "^2.0.0",

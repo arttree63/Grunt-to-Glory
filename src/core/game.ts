@@ -83,6 +83,9 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     bossRetryFloor: null,
     bossKind: null,
     shellLeft: 0,
+    shellValue: 0,
+    shellValueThisSec: 0,
+    shellSecAcc: 0,
     shellVulnLeft: 0,
     channelLeft: 0,
     channelUsed: 0,
@@ -130,6 +133,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     bannerLeft: 0,
     zoneLeft: 0,
     zoneDps: D(0),
+    zoneFireAcc: 0,
     mercBestFloor: 0,
     legendsSeen: [],
     attackAcc: 0,
@@ -329,10 +333,15 @@ export function spawnEnemy(s: GameState) {
     s.enemyMaxHp = bossHP(s.floor)
     s.bossTimeLeft = B.BOSS_TIME
     s.freezeUsedThisBoss = 0
+    // Boss 開場壓縮傭兵倒數:否則 8~15 秒的間隔常常整場輪不到牠行動
+    if (s.activeMerc) s.mercTimer = Math.min(s.mercTimer, B.MERC_BOSS_OPENING_SEC)
     // Boss 行為原型(v1.7):X10 拆盾 / X20 蓄力 / X30 圖騰,循環。
     // 敵人對構築提出不同的問題——「這一場跟上一場不一樣」從這裡開始
     s.bossKind = bossKindFor(s.floor)
     s.shellLeft = s.bossKind === 'shell' ? B.SHELL_HITS : 0
+    s.shellValue = 0
+    s.shellValueThisSec = 0
+    s.shellSecAcc = 0
     s.shellVulnLeft = 0
     s.channelLeft = 0
     s.channelUsed = 0
@@ -348,6 +357,9 @@ export function spawnEnemy(s: GameState) {
       win: false,
       bySource: {},
       shellTime: 0,
+      shieldValue: 0,
+      shieldBySource: {},
+      shieldPeakPerSec: 0,
       interrupts: 0,
       channels: 0,
       totemTime: 0,
@@ -560,7 +572,12 @@ export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): G
   } else {
     raw.push({ type: 'attack', damage: dmg })
   }
-  registerBossHits(s, swingHits, raw)
+  registerBossHits(s, 1, raw, 'hero')
+  if (swingHits > 1) {
+    // 分身是完整的第二個攻擊者;軍旗是弱化回音(傷害只有 15%),給 2 點
+    if (swingSource === 'clone') registerBossHits(s, 1, raw, 'clone')
+    else addShieldValue(s, B.SHIELD_ECHO_VALUE, swingSource, raw)
+  }
   tickWindBoots(s, rng, raw)
 
   // 突發事件優先吃傷害:出現期間取代當前目標
@@ -680,6 +697,12 @@ function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng, o
 
 /** Boss 行為原型的時間驅動:蓄力排程、圖騰生成、各狀態倒數、統計 */
 function tickBossMechanics(s: GameState, dt: number, raw: GameEvent[]) {
+  // 破盾值每秒上限:滿一秒就重置額度
+  s.shellSecAcc += dt
+  if (s.shellSecAcc >= 1) {
+    s.shellSecAcc = 0
+    s.shellValueThisSec = 0
+  }
   if (s.shellVulnLeft > 0) s.shellVulnLeft = Math.max(0, s.shellVulnLeft - dt)
   if (s.vulnLeft > 0) s.vulnLeft = Math.max(0, s.vulnLeft - dt)
   if (s.hardenLeft > 0) s.hardenLeft = Math.max(0, s.hardenLeft - dt)
@@ -726,14 +749,39 @@ function dealSkillToBoss(s: GameState, dmg: Decimal, events: GameEvent[]) {
   dealDamage(s, dmg, events, Math.random, { source: 'skill' })
 }
 
-/** 拆盾:每一次「離散的出手」都算一次命中(揮砍/分身/軍旗/點擊/技能/背刺) */
-function registerBossHits(s: GameState, hits: number, raw: GameEvent[]) {
+/**
+ * 投入破盾值(GDD v3 § 5.4)。命中 4 點、狀態 tick 1 點,每 4 點破一層。
+ * ⚠️ 用明確的「來源 + 值」而不是呼叫次數:分身/砲台/傭兵各自是一個攻擊者,
+ * 技能內部多次呼叫仍是一擊。每秒上限防高頻構築直接把盾抹平。
+ */
+function addShieldValue(s: GameState, value: number, source: string, raw: GameEvent[]) {
   if (!s.isBoss || s.shellLeft <= 0 || s.totemHp.gt(0)) return
-  s.shellLeft = Math.max(0, s.shellLeft - hits)
+  const room = Math.max(0, B.SHIELD_VALUE_PER_SEC_CAP - s.shellValueThisSec)
+  const applied = Math.min(value, room)
+  if (applied <= 0) return
+  s.shellValueThisSec += applied
+  s.shellValue += applied
+
+  if (s.bossStats) {
+    s.bossStats.shieldValue += applied
+    s.bossStats.shieldBySource[source] = (s.bossStats.shieldBySource[source] ?? 0) + applied
+    s.bossStats.shieldPeakPerSec = Math.max(s.bossStats.shieldPeakPerSec, s.shellValueThisSec)
+  }
+
+  while (s.shellValue >= B.SHIELD_VALUE_PER_LAYER && s.shellLeft > 0) {
+    s.shellValue -= B.SHIELD_VALUE_PER_LAYER
+    s.shellLeft--
+  }
   if (s.shellLeft === 0) {
+    s.shellValue = 0
     s.shellVulnLeft = B.SHELL_BREAK_SEC
     raw.push({ type: 'shellBreak' })
   }
+}
+
+/** 獨立命中:每個攻擊者算一次(hits = 攻擊者數量) */
+function registerBossHits(s: GameState, hits: number, raw: GameEvent[], source = 'hero') {
+  addShieldValue(s, hits * B.SHIELD_HIT_VALUE, source, raw)
 }
 
 /** 事件逾時逃走。誘餌箱會留下較低階獎勵 */
@@ -1110,7 +1158,7 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
     const wasFull = spentNow >= sigilCap(s)
     const dmg = currentDPS(s).mul(spentNow * perSigil * skillDmg)
     skillDamage = skillDamage.add(dmg)
-    registerBossHits(s, 1, events)
+    registerBossHits(s, 1, events, 'skill') // 引爆是單次重擊,不因層數增加破盾值
     if (s.event) s.event.hp = s.event.hp.sub(dmg)
     else dealSkillToBoss(s, dmg, events)
     s.sigils = codex ? Math.floor(s.sigils * B.CODEX_KEEP) : 0
@@ -1139,7 +1187,7 @@ export function castSkill(s: GameState, id: SkillId): GameEvent[] {
       applyBurn(s, dmg.mul(1 - B.EMBER_IMMEDIATE), B.EMBER_BURN_DURATION)
       dmg = dmg.mul(B.EMBER_IMMEDIATE)
     }
-    registerBossHits(s, 1, events)
+    registerBossHits(s, 1, events, 'skill')
     if (s.event) {
       s.event.hp = s.event.hp.sub(dmg)
     } else {
@@ -1283,7 +1331,7 @@ function tickMerc(s: GameState, dt: number, events: GameEvent[], rng: Rng) {
       // 背刺 + 留下破綻(轉為印記,與第二技能咬合)
       const dmg = currentDPS(s).mul(B.MERC_ROGUE_SEC)
       events.push({ type: 'attack', damage: dmg, source: 'merc' })
-      registerBossHits(s, 1, events)
+      registerBossHits(s, 1, events, 'merc')
       // 背刺無視圖騰:位移的構築價值——盜賊繞到後面直接捅本體
       dealDamage(s, dmg, events, rng, { pierceTotem: true, source: 'merc' })
       gainSigil(s)
@@ -1343,6 +1391,8 @@ function tickCombatStatus(s: GameState, dt: number, events: GameEvent[], rng: Rn
     s.burnLeft -= dt
     if (dmg.gt(0)) {
       events.push({ type: 'burnTick', damage: dmg })
+      // 狀態週期 tick 投 1 點破盾值(GDD § 5.4)——燃燒流也能拆盾,只是比命中慢
+      addShieldValue(s, B.SHIELD_TICK_VALUE, 'burn', events)
       // 燃燒無視圖騰:狀態流的構築價值——火繼續燒本體
       dealDamage(s, dmg, events, rng, { pierceTotem: true, source: 'burn' })
     }
@@ -1355,13 +1405,22 @@ function tickCombatStatus(s: GameState, dt: number, events: GameEvent[], rng: Rn
   if (s.conquestLeft > 0) s.conquestLeft = Math.max(0, s.conquestLeft - dt)
   if (s.zoneLeft > 0) {
     const step = Math.min(dt, s.zoneLeft)
-    const dmg = s.zoneDps.mul(step)
     s.zoneLeft -= dt
-    if (dmg.gt(0)) {
-      events.push({ type: 'attack', damage: dmg, source: 'zone' })
-      dealDamage(s, dmg, events, rng, { source: 'zone' })
+    // 砲台依固定節奏開火(每 tick 一發等於 10 次/秒,會把破盾值上限直接吃滿)
+    s.zoneFireAcc += step
+    if (s.zoneFireAcc >= B.ZONE_FIRE_INTERVAL) {
+      const dmg = s.zoneDps.mul(s.zoneFireAcc)
+      s.zoneFireAcc = 0
+      if (dmg.gt(0)) {
+        events.push({ type: 'attack', damage: dmg, source: 'zone' })
+        registerBossHits(s, 1, events, 'zone') // 砲台是獨立攻擊者
+        dealDamage(s, dmg, events, rng, { source: 'zone' })
+      }
     }
-    if (s.zoneLeft <= 0) s.zoneLeft = 0
+    if (s.zoneLeft <= 0) {
+      s.zoneLeft = 0
+      s.zoneFireAcc = 0
+    }
   }
 }
 

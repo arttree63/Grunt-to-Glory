@@ -137,6 +137,19 @@ export interface RouteBuff {
 }
 
 /** 一場 Boss 戰的統計:失敗後要能告訴玩家「差在哪、該改什麼」 */
+/**
+ * 一次「命中」的明確描述(GDD v3 § 5.4)。
+ * ⚠️ 不可用 dealDamage 的呼叫次數當命中數:一個技能可能內部多次呼叫但玩家認知上是一擊,
+ * 反之本體與分身應算兩個攻擊者。否則技能重構會意外改變拆盾效率。
+ */
+export interface HitEvent {
+  /** 玩家認知上的「一擊」 */
+  hitEventId: string
+  /** 本體 / 分身 / 砲台 / 傭兵 */
+  sourceEntityId: string
+  shieldHitValue: number
+}
+
 export interface BossStats {
   floor: number
   kind: BossKind
@@ -145,6 +158,11 @@ export interface BossStats {
   bySource: Record<string, number>
   /** 護盾佔用的秒數 */
   shellTime: number
+  /** 投入的破盾值總量與各來源分帳(驗證分身/燃燒是否真的更快) */
+  shieldValue: number
+  shieldBySource: Record<string, number>
+  /** 本場破盾值曾達到的每秒峰值(反推上限用) */
+  shieldPeakPerSec: number
   /** 打斷成功 / 嘗試次數 */
   interrupts: number
   channels: number
@@ -217,8 +235,13 @@ export interface GameState {
   // ── Boss 行為(v1.7,全部單場暫態)──
   /** 本場 Boss 的行為原型;非 Boss 為 null */
   bossKind: BossKind | null
-  /** 拆盾:剩餘要吃的命中次數(0 = 已破) */
+  /** 拆盾:剩餘護盾層數(0 = 已破)。底層以破盾值累計,UI 只看層數 */
   shellLeft: number
+  /** 當前這一層累積的破盾值(0 ~ SHIELD_VALUE_PER_LAYER) */
+  shellValue: number
+  /** 本秒已投入的破盾值與計時(每秒上限,暫態) */
+  shellValueThisSec: number
+  shellSecAcc: number
   /** 破盾易傷剩餘秒數 */
   shellVulnLeft: number
   /** 蓄力:剩餘秒數(0 = 沒在蓄);本場已用掉哪幾個觸發點 */
@@ -320,6 +343,8 @@ export interface GameState {
   /** 場地物件(砲台)剩餘秒數與每秒傷害 */
   zoneLeft: number
   zoneDps: Decimal
+  /** 砲台開火計時(暫態):固定節奏而非每 tick */
+  zoneFireAcc: number
   /** 歷代最高層(跨轉生,解鎖傭兵用;highestFloor 每輪歸零所以要另存) */
   mercBestFloor: number
   /** 傳說圖鑑:歷代鍛出過哪些傳說(跨轉生保留) */

@@ -354,12 +354,20 @@ export const LIVING_MAX_STEPS = 5
 export const MERC_ROGUE_SEC = 1.2
 export const MERC_SAPPER_SEC = 1.4
 export const MERC_SAPPER_DURATION = 4
+/** 砲台開火間隔(GDD § 6.3「存在數秒依固定節奏攻擊」)。每 tick 一發會變成 10 次/秒 */
+export const ZONE_FIRE_INTERVAL = 0.5
 export const MERC_PYRO_SEC = 1.2
 export const MERC_PYRO_BURN_SEC = 5
 export const MERC_ICE_BONUS_SEC = 0.5
 /** 冰法師凍結秒數與每場 Boss 觸發上限(v1.5 § 7.3 護欄) */
 export const FREEZE_DURATION = 2
 export const FREEZE_BOSS_CAP = 2
+/**
+ * Boss 戰開場時傭兵最慢多久出手。
+ * ⚠️ 沒有這條的話,8~15 秒的間隔常常整場 Boss 都輪不到傭兵行動,
+ * 「傭兵是 Boss 檢定的解法之一」就是空話(實測砲台流拆盾貢獻 0%)。
+ */
+export const MERC_BOSS_OPENING_SEC = 2
 /** 行為間隔的隨機幅度 ±30% */
 export const MERC_INTERVAL_JITTER = 0.3
 
@@ -376,7 +384,29 @@ export const EMBER_BURN_DURATION = 4
 // ⚠️ 全部活在 Boss 30 秒沙盒內,不碰 farm 曲線。
 // ⚠️ 掛機契約:每個原型純 DPS 都能硬過(約需 ×1.2),主動與對構築只是更容易。
 /** 原型輪替:X10 拆盾 / X20 蓄力 / X30 圖騰(循環)。第一個 Boss 教最簡單的 */
-/** 拆盾:護盾吃 N 次命中才破(不看傷害);盾上傷害衰減;破盾後短暫易傷 */
+/**
+ * 破盾值系統(GDD v3 § 5.4)。底層用「點」,UI 換算成完整層數(不顯示小數)。
+ * 每 SHIELD_VALUE_PER_LAYER 點破一層。
+ * ⚠️ 每秒上限由模擬反推(`npm run sim:shield`),使一般配置落在上限的 50~60%
+ * ——若上限就等於 4 次獨立命中,分身流會與燃燒流撞到同一道天花板,
+ * 「分身讓拆盾更快」這個假設就永遠驗不出來。
+ */
+export const SHIELD_HIT_VALUE = 4 // 獨立命中(普攻/技能/分身/砲台/傭兵)
+export const SHIELD_TICK_VALUE = 1 // 狀態週期 tick(燃燒等)
+/**
+ * 弱化衝擊(熔火軍旗的分帳打擊):2 點。
+ * GDD § 5.4 只定義了「獨立命中 4 點」與「狀態 tick 1 點」,軍旗這種
+ * 「傷害只有 15% 的回音式打擊」介於兩者之間——給滿 4 點會讓它 +33% 超出適性上限。
+ */
+export const SHIELD_ECHO_VALUE = 2
+export const SHIELD_VALUE_PER_LAYER = 4
+/**
+ * 每秒破盾值上限。**由 `npm run sim:shield` 反推**,不硬編猜值。
+ * 2026-07-30 實測:一般配置 4.6 點/秒 → 上限 8 使其落在 57%(規則要求 50~60%),
+ * 留出讓分身/軍旗/燃燒真正受益的空間,同時封住高頻構築把盾直接抹平。
+ */
+export const SHIELD_VALUE_PER_SEC_CAP = 8
+/** 拆盾:護盾層數(每層需 SHIELD_VALUE_PER_LAYER 點) */
 export const SHELL_HITS = 10
 export const SHELL_DR = 0.3
 export const SHELL_BREAK_MULT = 1.3

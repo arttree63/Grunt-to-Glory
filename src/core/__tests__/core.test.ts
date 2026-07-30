@@ -2188,7 +2188,7 @@ describe('Boss 行為原型(v1.7:敵人不再是木樁)', () => {
     expect(bossKindFor(40)).toBe('shell')
   })
 
-  it('拆盾:盾上傷害衰減、命中數打破後易傷;分身一揮算兩次命中', () => {
+  it('拆盾:破盾值制(命中 4 點、每 4 點破一層)、盾上傷害衰減、破盾後易傷', () => {
     const s = createInitialState()
     s.lv = 20
     promote(s, 'scout')
@@ -2202,13 +2202,14 @@ describe('Boss 行為原型(v1.7:敵人不再是木樁)', () => {
     click(s)
     const dealt = before.sub(s.enemyHp)
     expect(dealt.div(currentDPS(s).mul(B.CLICK_DMG_SEC)).toNumber()).toBeCloseTo(B.SHELL_DR, 2)
-    expect(s.shellLeft).toBe(B.SHELL_HITS - 1) // 點一下 = 一次命中
+    // 一次命中 4 點 = 剛好一層
+    expect(s.shellLeft).toBe(B.SHELL_HITS - 1)
 
-    // 點到破盾 → 易傷窗口。⚠️ 點擊傷害有每秒預算(GDD v3 § 1.4),
-    // 預算盡的點擊不算命中——所以點擊之間要過 tick 回充預算
-    for (let i = 0; i < B.SHELL_HITS; i++) {
-      applyTick(s, 400)
-      s.attackAcc = 0 // 隔離自動攻擊的命中,只算點擊
+    // 打到破盾 → 易傷窗口。⚠️ 點擊有每秒預算、破盾值也有每秒上限,
+    // 所以要過 tick 讓兩者都回充(這正是「上限防高頻構築抹平護盾」的效果)
+    for (let i = 0; i < B.SHELL_HITS * 3 && s.shellLeft > 0; i++) {
+      applyTick(s, 500)
+      s.attackAcc = 0 // 隔離自動攻擊,只算點擊
       click(s)
     }
     expect(s.shellLeft).toBe(0)
@@ -2447,5 +2448,65 @@ describe('自動施放開關(GDD v3 § 2.4 最小版)', () => {
     v20.version = 20
     delete v20.autoCast
     expect(deserialize(v20 as never).autoCast).toBe(false)
+  })
+})
+
+describe('破盾值系統(GDD v3 § 5.4)', () => {
+  const shellBoss = () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.floor = 10
+    spawnEnemy(s)
+    return s
+  }
+
+  it('每秒上限封住高頻構築:同一秒內投再多命中也只吃到上限', () => {
+    const s = shellBoss()
+    // 同一秒內硬塞很多次點擊命中(遠超上限);點擊預算另有上限,所以直接呼叫破盾值路徑
+    for (let i = 0; i < 20; i++) {
+      s.clickBudget = B.CLICK_BUDGET_PER_SEC // 繞過點擊預算,單獨測破盾值上限
+      click(s)
+    }
+    expect(s.bossStats!.shieldValue).toBeLessThanOrEqual(B.SHIELD_VALUE_PER_SEC_CAP)
+    expect(s.shellLeft).toBeGreaterThan(B.SHELL_HITS - 20) // 沒被抹平
+  })
+
+  it('分帳記錄各來源:分身是完整攻擊者(4 點),軍旗是弱化回音(2 點)', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.equipped.weapon = {
+      id: 'bf', slot: 'weapon', quality: 'gold', base: 'heavy', legend: 'bannerflag', affixes: [],
+    }
+    s.floor = 10
+    spawnEnemy(s)
+    castSkill(s, 'shieldRush') // 插旗
+    // ⚠️ 不能只把 attackAcc 設成 ATTACK_INTERVAL:重擊基底會拉長實際間隔(0.864s),
+    // 這時 attackAcc 反而還不夠——用一個足夠大的 tick 讓它一定出手
+    applyTick(s, 900)
+    expect(s.bossStats!.shieldBySource.hero).toBe(B.SHIELD_HIT_VALUE)
+    expect(s.bossStats!.shieldBySource.zone).toBe(B.SHIELD_ECHO_VALUE)
+  })
+
+  it('狀態 tick 投 1 點:燃燒流也能拆盾,只是比命中慢', () => {
+    const s = shellBoss()
+    s.mercBestFloor = 200
+    setActiveMerc(s, 'pyro')
+    s.mercTimer = 0.01
+    applyTick(s, 100) // 點燃
+    const before = s.bossStats!.shieldBySource.burn ?? 0
+    applyTick(s, 200)
+    expect((s.bossStats!.shieldBySource.burn ?? 0)).toBeGreaterThan(before)
+  })
+
+  it('Boss 開場壓縮傭兵倒數:否則整場輪不到牠出手', () => {
+    const s = createInitialState()
+    s.mercBestFloor = 200
+    setActiveMerc(s, 'sapper')
+    s.mercTimer = 14 // 間隔很長
+    s.floor = 10
+    spawnEnemy(s)
+    expect(s.mercTimer).toBeLessThanOrEqual(B.MERC_BOSS_OPENING_SEC)
   })
 })
