@@ -69,7 +69,17 @@ export default function App() {
     void init()
   }, [init])
 
-  if (!loaded) return <div className="wrap" />
+  // 讀檔期間渲染與 index.html 靜態 splash **同一組標記**(樣式內嵌在 index.html head),
+  // 從「bundle 下載中」到「讀存檔中」畫面不跳——原本這裡回空 wrap,進場會卡一幀黑屏
+  if (!loaded)
+    return (
+      <div className="boot-splash">
+        <div className="flame" />
+        <h1>小 兵 的 故 事</h1>
+        <small>整 裝 行 軍 中</small>
+        <div className="bar"><i /></div>
+      </div>
+    )
   return <Game />
 }
 
