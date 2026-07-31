@@ -108,7 +108,7 @@ function setup(seed: number, b: Build, lv: number) {
   s.lv = lv
   s.mercBestFloor = 200
   promote(s, b.job)
-  setActiveMerc(s, b.merc ?? null)
+  setActiveMerc(s, b.merc ?? null, rng)
   toggleAutoCast(s)
   s.floor = SHELL_FLOOR
   s.highestFloor = SHELL_FLOOR
@@ -137,7 +137,7 @@ function run(seed: number, b: Build, lv: number): Result {
       for (const id of availableSkills(s)) {
         const sk = SKILLS[id]
         if (sk.consumesSigils && s.sigils < sigilCap(s)) continue
-        if (skillReady(s, id)) castSkill(s, id, true) // auto:代理=掛機基準,不吃完美引爆獎勵
+        if (skillReady(s, id)) castSkill(s, id, true, rng) // auto:代理=掛機基準,不吃完美引爆獎勵
       }
     }
     const shellBefore = s.shellLeft

@@ -141,7 +141,7 @@ function run(
       for (const id of availableSkills(s)) {
         const sk = SKILLS[id]
         if (sk.consumesSigils && s.sigils < sigilCap(s)) continue
-        if (skillReady(s, id)) castSkill(s, id, true) // auto:代理=掛機基準,不吃完美引爆獎勵
+        if (skillReady(s, id)) castSkill(s, id, true, rng) // auto:代理=掛機基準,不吃完美引爆獎勵
       }
     }
     if (active) {

@@ -782,8 +782,8 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
   if (s.descentCooldown > 0) s.descentCooldown = Math.max(0, s.descentCooldown - dt)
   releaseTraining(s, dt)
   s.destinyGapSec += dt
-  tickSkills(s, dt, raw)
-  tickAutoCast(s, raw)
+  tickSkills(s, dt, raw, rng)
+  tickAutoCast(s, raw, rng)
   tickTactician(s, dt)
   tickMerc(s, dt, raw, rng)
   tickCombatStatus(s, dt, raw, rng)
@@ -1046,8 +1046,8 @@ function tickBossMechanics(s: GameState, dt: number, raw: GameEvent[]) {
  * 減傷/易傷/圖騰/蓄力累計管線(打斷型 Boss 的整個玩法都掛在這條上)。
  * 非 Boss 時等價於直接扣血。
  */
-function dealSkillToBoss(s: GameState, dmg: Decimal, events: GameEvent[]) {
-  dealDamage(s, dmg, events, Math.random, { source: 'skill' })
+function dealSkillToBoss(s: GameState, dmg: Decimal, events: GameEvent[], rng: Rng = Math.random) {
+  dealDamage(s, dmg, events, rng, { source: 'skill' })
 }
 
 /**
@@ -1703,7 +1703,7 @@ export function skillReady(s: GameState, id: SkillId): boolean {
  * 施放技能。buff 型覆蓋當前 buff;立即傷害型直接扣目標血量
  * (吃智力的技能傷害加成,是突破 Boss 檢定的主要工具)
  */
-export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] {
+export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Math.random): GameEvent[] {
   if (!skillReady(s, id)) return []
   const sk = SKILLS[id]
   s.skillCd[id] = skillCooldown(s, id)
@@ -1732,7 +1732,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
     const stored = currentDPS(s).mul(s.bannerStored)
     registerBossHits(s, 1, events)
     if (s.event) s.event.hp = s.event.hp.sub(stored)
-    else dealSkillToBoss(s, stored, events)
+    else dealSkillToBoss(s, stored, events, rng)
     s.bannerStored = 0
     events.push({ type: 'moraleBurst', damage: stored, via: 'lostbanner' })
   }
@@ -1747,7 +1747,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
     skillDamage = skillDamage.add(dmg)
     registerBossHits(s, 1, events, 'skill') // 引爆是單次重擊,不因層數增加破盾值
     if (s.event) s.event.hp = s.event.hp.sub(dmg)
-    else dealSkillToBoss(s, dmg, events)
+    else dealSkillToBoss(s, dmg, events, rng)
     s.sigils = codex ? Math.floor(s.sigils * B.CODEX_KEEP) : 0
     // 蓄勢而來:本場第一次引爆後保留幾層(傷害照算,層數留著續疊)
     if (s.isBoss && s.tacticKeepSigils) {
@@ -1798,7 +1798,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
     if (s.event) {
       s.event.hp = s.event.hp.sub(dmg)
     } else {
-      dealSkillToBoss(s, dmg, events)
+      dealSkillToBoss(s, dmg, events, rng)
     }
     // 立即傷害型(聖光審判)每次施放留下法令;連判(二轉進化)留三枚
     gainSigil(s, evolved(s, id) ? B.EVOLVE_EDICT_SIGILS : 1, events, 'edict')
@@ -1884,13 +1884,13 @@ function trackCastOrder(s: GameState, id: SkillId, events: GameEvent[]) {
  * 掛機玩家關著就完全不受影響(GDD v3 § 2.4.4 護欄一)。
  * 消耗印記型等滿層才放,保留「攢滿再引爆」的價值;蓄勢期間不放(那是刻意停手)。
  */
-function tickAutoCast(s: GameState, raw: GameEvent[]) {
+function tickAutoCast(s: GameState, raw: GameEvent[], rng: Rng = Math.random) {
   if (!s.autoCast || s.charging) return
   for (const id of availableSkills(s)) {
     const sk = SKILLS[id]
     if (sk.consumesSigils && s.sigils < sigilCap(s)) continue
     if (!skillReady(s, id)) continue
-    raw.push(...castSkill(s, id, true)) // auto=true:自動引爆拿不到完美獎勵
+    raw.push(...castSkill(s, id, true, rng)) // auto=true:自動引爆拿不到完美獎勵
   }
 }
 
@@ -1901,10 +1901,10 @@ export function toggleAutoCast(s: GameState): boolean {
 }
 
 /** 換一隻出戰傭兵(英雄頁第五區)。null = 收起 */
-export function setActiveMerc(s: GameState, id: MercId | null): boolean {
+export function setActiveMerc(s: GameState, id: MercId | null, rng: Rng = Math.random): boolean {
   if (id !== null && !unlockedMercs(bestFloorEver(s)).includes(id)) return false
   s.activeMerc = id
-  s.mercTimer = mercInterval(s, Math.random)
+  s.mercTimer = mercInterval(s, rng)
   return true
 }
 
@@ -2059,7 +2059,7 @@ function tickCombatStatus(s: GameState, dt: number, events: GameEvent[], rng: Rn
  * 帝國鐵壁 3 件:軍陣結束時把視窗內累積的印記自動引爆一次。
  * 威力低於手動引爆(B.IRONWALL_AUTO_POWER)——玩家用「挑時機」換到的東西不能白送。
  */
-function autoDetonate(s: GameState, events: GameEvent[]) {
+function autoDetonate(s: GameState, events: GameEvent[], rng: Rng = Math.random) {
   if (setCount(s, 'ironwall') < 3 || s.sigils <= 0) return
   const id = JOBS[s.jobId].awakenSkill
   if (!id || !availableSkills(s).includes(id)) return
@@ -2070,13 +2070,13 @@ function autoDetonate(s: GameState, events: GameEvent[]) {
   const dmg = currentDPS(s).mul(s.sigils * sigilPerStackSeconds(s) * skillDmg * B.IRONWALL_AUTO_POWER)
   registerBossHits(s, 1, events)
   if (s.event) s.event.hp = s.event.hp.sub(dmg)
-  else dealSkillToBoss(s, dmg, events)
+  else dealSkillToBoss(s, dmg, events, rng)
   s.sigils = 0
   s.perfectWindowLeft = 0 // 套裝自動引爆同樣不算完美(不是玩家挑的時機)
   events.push({ type: 'skill', skillId: id, damage: dmg, count: spent, via: 'ironwall' })
 }
 
-function tickSkills(s: GameState, dt: number, events: GameEvent[]) {
+function tickSkills(s: GameState, dt: number, events: GameEvent[], rng: Rng = Math.random) {
   for (const id of Object.keys(s.skillCd) as SkillId[]) {
     const left = (s.skillCd[id] ?? 0) - dt
     if (left <= 0) delete s.skillCd[id]
@@ -2090,7 +2090,7 @@ function tickSkills(s: GameState, dt: number, events: GameEvent[]) {
       // ⚠️ 先引爆再清:軍陣是「結束時的最後一擊」,反過來吃不到增益倍率(實測掉 18%)
       // 多槽下只在「這是最後一個持續視窗」時引爆,總攻疊窗不會連環爆
       const remaining = s.buffs.filter((b) => !(b.timeLeft <= 0 && !b.permanent))
-      if (hadWindow && !remaining.some((b) => SKILLS[b.skillId].duration)) autoDetonate(s, events)
+      if (hadWindow && !remaining.some((b) => SKILLS[b.skillId].duration)) autoDetonate(s, events, rng)
       s.buffs = remaining
     }
   }
