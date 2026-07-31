@@ -148,6 +148,17 @@ export interface BattleSnapshot {
   activeMerc: MercId | null
   /** 雙生影刃:分身出場中(疾風連刺視窗 + 傳說) */
   cloneActive: boolean
+  // ── 殘影(命運種子「殘留之影」)。⚠️ 與 cloneActive 是兩個不同的東西 ──
+  /** 殘影正在場上 */
+  afterimageActive: boolean
+  /** 殘影還要重演幾次普攻 */
+  afterimageLeft: number
+  /** 距下一個殘影的蓄積進度 0~1(決策可視化:玩家要看得見「快出殘影了」) */
+  afterimageCharge: number
+  /** 同步步伐改造:殘影變成破綻產生器,外觀要看得出不同 */
+  afterimageSync: boolean
+  /** 殘影留下的背刺窗口 */
+  backstabReady: boolean
   /** 熔火軍旗:軍旗剩餘秒數 */
   bannerLeft: number
   /** 砲台剩餘秒數 */

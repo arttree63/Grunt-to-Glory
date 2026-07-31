@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ACHIEVEMENTS } from '../core/achievements'
 import { zoneOf } from '../core/zones'
+import { hasNode } from '../core/destiny'
 import { speciesPair } from '../core/enemies'
 import { fmt, fmtCombat } from '../core/format'
 import * as B from '../core/balance'
@@ -124,6 +125,21 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         encounterWaiting: s.encounters.length > 0,
         activeMerc: s.activeMerc,
         cloneActive: critWindowActive(s) && activeLegends(s).includes('twinblade'),
+        // ── 殘影(命運種子)。⚠️ 與 twinblade 的 cloneActive 是兩回事,不要共用同一個 sprite ──
+        /** 殘影正在場上(還有重演次數) */
+        afterimageActive: s.afterimageLeft > 0,
+        /** 還要重演幾次 */
+        afterimageLeft: s.afterimageLeft,
+        /**
+         * 距下一個殘影的蓄積進度 0~1。
+         * ⚠️ 這是整個機制的決策可視化:玩家要看得見「快出殘影了」才會產生
+         * 「現在要不要先存殘影、把強化普攻留給它一起複製」的判斷
+         */
+        afterimageCharge: hasNode(s, 'seed_afterimage') ? s.afterimageAcc / B.AFTERIMAGE_EVERY : 0,
+        /** 同步步伐:殘影從傷害來源變成破綻產生器,外觀應該看得出不同 */
+        afterimageSync: hasNode(s, 'shade_sync'),
+        /** 殘影留下的背刺窗口:主角下一擊無視圖騰 */
+        backstabReady: s.backstabReady,
         bannerLeft: s.bannerLeft,
         zoneLeft: s.zoneLeft,
         burnLeft: s.burnLeft,
