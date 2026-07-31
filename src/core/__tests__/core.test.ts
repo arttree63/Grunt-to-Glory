@@ -241,8 +241,76 @@ describe('戰鬥循環', () => {
     mage.tracks.magic = 100
 
     expect(mpRegen(plain)).toBeCloseTo(B.MP_REGEN_BASE, 5) // 平均分配 = 基礎速率
-    expect(mpRegen(mage)).toBeGreaterThan(mpRegen(plain) * 2) // 全押魔法 ≈ ×2.6
-    expect(B.MP_MAX).toBe(400) // 池子大小不隨等級長,長的是回復速度
+    expect(mpRegen(mage)).toBeGreaterThan(mpRegen(plain) * 2) // 全押魔法 ≈ ×2.5
+    // 池子必須裝得下二轉最貴的兩招(360 + 320),否則多槽疊窗做不到
+    expect(B.MP_MAX).toBeGreaterThanOrEqual(680)
+  })
+
+  it('v28 → v29 遷移:任何等級都是真平均分配,曲線不動(v4.1 § 3)', () => {
+    for (const lv of [2, 5, 20, 51, 401]) {
+      const old = createInitialState()
+      old.lv = lv
+      const raw = serialize(old) as unknown as Record<string, unknown>
+      raw.version = 28
+      delete raw.tracks
+      delete raw.trackFocus
+
+      const out = deserialize(raw as never)
+      expect(trackTotal(out) + 1).toBe(out.lv) // 恆等式
+      // 餘數輪流分 → 任兩科最多差 1 點,不會有一科獨大
+      const pts = TRACKS.map((t) => out.tracks[t])
+      expect(Math.max(...pts) - Math.min(...pts)).toBeLessThanOrEqual(1)
+      // 曲線中性:與同等級的舊模型相比,傷害不該被遷移改掉。
+      // ⚠️ 點數極少時(lv 2~5)餘數本來就分不平,允許 ±10%;點數一多就收斂到 1.0
+      const ratio = currentDPS(out).div(currentDPS(old)).toNumber()
+      expect(ratio).toBeGreaterThan(0.9)
+      expect(ratio).toBeLessThan(lv < 10 ? 1.12 : 1.02)
+    }
+  })
+
+  it('壞掉的存檔會自癒回恆等式,不會靜默改掉玩家的 build(v4.1 § 3)', () => {
+    const base = createInitialState()
+    base.lv = 51
+    const raw = serialize(base) as unknown as Record<string, unknown>
+    raw.version = 29
+    raw.tracks = { arms: 3, body: 0, agility: 0, magic: 0, faith: 0 } // 點數對不上 lv
+    const out = deserialize(raw as never)
+    expect(trackTotal(out) + 1).toBe(out.lv)
+  })
+
+  it('重整不能當補血鍵:讀檔會把該層重來,不是滿血續打(v4.1 § 2)', () => {
+    const s = createInitialState()
+    s.floor = 47
+    s.killsInFloor = 2
+    const raw = serialize(s)
+    const out = deserialize(raw)
+    expect(out.floor).toBe(47) // 樓層保留
+    expect(out.killsInFloor).toBe(0) // 但這一層從頭打
+    expect(out.endurance.eq(enduranceMax(out))).toBe(true)
+  })
+
+  it('MP 進存檔:重整不是免費補滿(v4.1 § 5)', () => {
+    const s = createInitialState()
+    s.mp = 42
+    const out = deserialize(serialize(s))
+    expect(out.mp).toBe(42)
+  })
+
+  it('自動施放:貴的招優先,便宜的招不會把貴招餓死(v4.1 § 5)', () => {
+    const s = createInitialState()
+    s.lv = 100
+    promote(s, 'infantry')
+    s.highestFloor = B.AWAKEN_FLOOR
+    s.autoCast = true
+    const skills = availableSkills(s).filter((id) => !isApexSkill(s, id))
+    if (skills.length >= 2) {
+      const dear = [...skills].sort((a, b) => mpCost(s, b) - mpCost(s, a))[0]
+      s.mp = mpCost(s, dear) // 剛好只夠最貴那一招
+      s.floor = 5
+      spawnEnemy(s)
+      applyTick(s, 100)
+      expect(s.skillCd[dear]).toBeGreaterThan(0) // 貴的那招真的放出去了
+    }
   })
 
   it('操練 = 等級:總點數 + 1 恆等於 lv,買一級就是投一點進主修(v4.1 § 3)', () => {
@@ -264,10 +332,16 @@ describe('戰鬥循環', () => {
     for (const t of TRACKS) even.tracks[t] = 20
     expect(trackMult(even, 'arms')).toBeCloseTo(1, 5)
 
+    // 全押:因為佔比有虛擬基礎點平滑,不會剛好到滿格,但要明顯高於平均、且其他科明顯低於平均
     const allIn = createInitialState()
-    allIn.tracks.arms = 100
-    expect(trackMult(allIn, 'arms')).toBeCloseTo(B.TRACK_MULT_BASE + B.TRACK_MULT_SPAN, 5)
-    expect(trackMult(allIn, 'body')).toBeCloseTo(B.TRACK_MULT_BASE, 5)
+    allIn.tracks.arms = 200
+    expect(trackMult(allIn, 'arms')).toBeGreaterThan(2.3)
+    expect(trackMult(allIn, 'body')).toBeLessThan(0.75)
+
+    // 平滑的重點:買第一點不可以讓其他科崩掉(否則第一顆正回饋變成「我變弱了」)
+    const rookie = createInitialState()
+    rookie.tracks.arms = 1
+    expect(trackMult(rookie, 'body')).toBeGreaterThan(0.9)
   })
 
   it('練攻擊不會連帶變肉:耐久上限只吃體能,不吃武藝(v4.1 § 3)', () => {

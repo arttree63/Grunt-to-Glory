@@ -72,7 +72,9 @@ export default function SkillBar() {
           </div>
           <div>{SKILLS[detailSkill].desc}</div>
           <small>
-            冷卻 {Math.round(skillCooldown(s, detailSkill))} 秒
+            {isApexSkill(s, detailSkill)
+              ? `冷卻 ${Math.round(skillCooldown(s, detailSkill))} 秒`
+              : `法力 ${Math.round(mpCost(s, detailSkill))}・保底冷卻 ${B.MP_MIN_CD} 秒`}
             {SKILLS[detailSkill].consumesSigils &&
               `・零印記也可施放：${B.SIGIL_BASE_BURST_SEC} 秒份傷害；每枚${SKILLS[detailSkill].sigilName}再加 ${sigilPerStackSeconds(s).toFixed(1)} 秒份`}
           </small>
@@ -184,7 +186,7 @@ export default function SkillBar() {
                     fontVariantNumeric: 'tabular-nums',
                   }}
                 >
-                  {Math.ceil(left)}
+                  {apex || left > 0 ? Math.ceil(left) : `缺 ${Math.ceil(cost - s.mp)}`}
                 </span>
               </>
             )}

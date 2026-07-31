@@ -9,6 +9,8 @@ import type { TrackId, GameState } from './types'
 export interface SaveData {
   version: number
   lv: number
+  /** MP(v4.1)。跨場資源,要存——不存的話重整頁面就是一次免費補滿 */
+  mp?: number
   /** 五科操練點數(v4.1)。總和 + 1 = lv */
   tracks?: Record<TrackId, number>
   trackFocus?: TrackId
@@ -90,6 +92,7 @@ export function serialize(s: GameState): SaveData {
   return {
     version: SAVE_VERSION,
     lv: s.lv,
+    mp: s.mp,
     tracks: { ...s.tracks },
     trackFocus: s.trackFocus,
     gold: s.gold.toString(),
@@ -373,9 +376,13 @@ function migrate(raw: SaveData): SaveData {
       const pts = Math.max(0, (d.lv ?? 1) - 1)
       const each = Math.floor(pts / 5)
       d.tracks = { arms: each, body: each, agility: each, magic: each, faith: each }
-      d.tracks.arms += pts - each * 5 // 除不盡的餘數給武藝
+      // ⚠️ 餘數要**輪流**分,不能整包丟武藝:低等級存檔(pts < 5)會變成全押武藝,
+      // 傷害暴增而耐久/MP 全崩,正好全打在這批新做的生存與 MP 軸上
+      const order: TrackId[] = ['arms', 'body', 'agility', 'magic', 'faith']
+      for (let i = 0; i < pts - each * 5; i++) d.tracks[order[i]]++
     }
     d.trackFocus = d.trackFocus ?? 'arms'
+    d.mp = d.mp ?? MP_MAX
     d.version = 29
   }
   return d
@@ -388,6 +395,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
   const out: GameState = {
     ...base,
     lv: d.lv ?? 1,
+    mp: d.mp ?? MP_MAX,
     tracks: { ...base.tracks, ...(d.tracks ?? {}) },
     trackFocus: d.trackFocus ?? 'arms',
     gold: D(d.gold ?? 0),
@@ -466,8 +474,18 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
   // 限時檢定本來就不該從一半恢復——重開那一場(滿血、計時重來、機制齊全)
   if (out.isBoss) spawnEnemy(out)
   // 耐久同為單場暫態,不進存檔:讀檔一律滿血,否則會帶著 0 血進場、一秒陣亡
+  // ⚠️ 這一層重來:耐久是「每層的容錯額度」,若保留 killsInFloor,
+  // 玩家只要在快沒血時重整就能滿血續打同一層 —— 生存檢定會被重整鍵繞過
+  out.killsInFloor = 0
   refillEndurance(out)
-  out.mp = MP_MAX // MP 同樣不進存檔,讀檔給滿(它不隨樓層補,見 refillEndurance)
+  // 恆等式自癒:lv 與五科總點數必須相等(舊分頁、壞檔、手改檔都可能讓它斷掉)。
+  // 以 lv 為準把差額補進主修,不然玩家的 build 會被靜默改掉
+  const total = out.tracks.arms + out.tracks.body + out.tracks.agility + out.tracks.magic + out.tracks.faith
+  if (total !== out.lv - 1) {
+    const diff = out.lv - 1 - total
+    if (diff > 0) out.tracks[out.trackFocus] += diff
+    else out.lv = total + 1 // 點數比等級多:以點數為準,不要偷走玩家的點
+  }
   // 冪等自癒:補「有命運點卻沒有選項」與節點改名後的殘留 id。
   // 放這裡而不是 migrate():migrate 全是純欄位操作,不該反向依賴會變動的節點表
   reconcileDestiny(out)

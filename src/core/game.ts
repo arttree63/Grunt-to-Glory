@@ -263,8 +263,11 @@ export function trackTotal(s: GameState): number {
 
 /** 某一科的佔比 0~1。沒點過任何一科時視為平均分配(避免開局除以零與極端值) */
 export function trackShare(s: GameState, t: TrackId): number {
-  const total = trackTotal(s)
-  return total <= 0 ? 0.2 : s.tracks[t] / total
+  // 虛擬基礎點平滑(見 balance.TRACK_SHARE_SMOOTH):
+  // 總點數很小時佔比會跳到極端值,買第一點反而讓其他四科崩掉。
+  // 平均分配在任何點數下仍恰好是 0.2(×1.0),所以舊存檔遷移的中性不受影響。
+  const k = B.TRACK_SHARE_SMOOTH
+  return (s.tracks[t] + k) / (trackTotal(s) + 5 * k)
 }
 
 /**
@@ -1575,11 +1578,15 @@ function tickAfterimage(s: GameState, dmg: Decimal, raw: GameEvent[], rng: Rng):
 
 /** 推進所有冷卻中技能。⚠️ 受既有 CD_FLOOR 護欄保護的入口只有這裡與 castEcho */
 function advanceCooldowns(s: GameState, seconds: number, events: GameEvent[]): void {
+  let mpGranted = false
   for (const id of availableSkills(s)) {
     if (!isApexSkill(s, id)) {
-      // 吃 MP 的招:推冷卻沒有意義(只有 1.5 秒),改成折算成 MP 還給玩家
-      grantMp(s, seconds)
-      events.push({ type: 'cooldownAdvance', skillId: id, seconds, via: 'reload' })
+      // 吃 MP 的招:推冷卻沒有意義(只有 1.5 秒),改成折算成 MP 還給玩家。
+      // ⚠️ 整批只折算一次:每招各發一份的話,招越多產得越多,等於偷偷加強這些節點
+      if (!mpGranted && grantMp(s, seconds)) {
+        mpGranted = true
+        events.push({ type: 'cooldownAdvance', skillId: id, seconds, via: 'reload' })
+      }
       continue
     }
     const left = s.skillCd[id] ?? 0
@@ -1623,8 +1630,17 @@ function castEcho(s: GameState, skillDamage: Decimal, id: SkillId, events: GameE
   events.push({ type: 'attack', damage: echo, source: 'clone' })
   addShieldValue(s, B.SHIELD_ECHO_VALUE, 'clone', events)
   // 推進「其他」技能的冷卻:玩家要排順序才吃得到
+  let echoMpGranted = false
   for (const other of availableSkills(s)) {
     if (other === id) continue
+    if (!isApexSkill(s, other)) {
+      // MP 招的 CD 只有 1.5 秒,推它等於什麼都沒做 → 折算成 MP(整批一次,見 grantMp)
+      if (!echoMpGranted && grantMp(s, B.AFTERIMAGE_ECHO_CD_SEC)) {
+        echoMpGranted = true
+        events.push({ type: 'cooldownAdvance', skillId: other, seconds: B.AFTERIMAGE_ECHO_CD_SEC, via: 'reload' })
+      }
+      continue
+    }
     const left = s.skillCd[other] ?? 0
     if (left <= 0) continue
     const next = left - B.AFTERIMAGE_ECHO_CD_SEC
@@ -1843,8 +1859,12 @@ export function mpCost(s: GameState, id: SkillId): number {
  * 把「推進冷卻 N 秒」換算成 MP。倒轉沙漏 / 引爆回轉 / 追風者之靴這些效果原本都在推冷卻,
  * 但吃 MP 的招 CD 只剩 1.5 秒,推它等於什麼都沒做——效果要落在真正的限制上。
  */
-export function grantMp(s: GameState, seconds: number) {
+export function grantMp(s: GameState, seconds: number): boolean {
+  // ⚠️ 舊版推冷卻有兩道天然護欄:只推「真的在冷卻中」的招、收益上限是剩餘冷卻。
+  // 折算成 MP 時要把它們補回來,否則滿 MP 也照領 → 變成憑空產 MP 的引擎。
+  if (s.mp >= B.MP_MAX) return false
   s.mp = Math.min(B.MP_MAX, s.mp + seconds * B.MP_REGEN_BASE)
+  return true
 }
 
 /** MP 每秒回復:基礎固定,魔法科只加速這一項(v4.1 § 5) */
@@ -1895,7 +1915,13 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
   const command = s.commandReady
   if (command) {
     s.commandReady = false
-    s.skillCd[id] = (s.skillCd[id] ?? 0) * B.COMMANDER_CD
+    if (isApexSkill(s, id)) {
+      s.skillCd[id] = (s.skillCd[id] ?? 0) * B.COMMANDER_CD
+    } else {
+      // ⚠️ MP 招的 CD 只有 1.5 秒,乘 1.15 等於代價蒸發(0.225 秒換 ×1.6 傷害)。
+      // 代價改由 MP 承擔,交換才真的成立
+      s.mp = Math.max(0, s.mp - mpCost(s, id) * (B.COMMANDER_CD - 1))
+    }
   }
   const skillDmg = (1 + bonus.skillDmg) * (command ? B.COMMANDER_POWER : 1)
 
@@ -1928,13 +1954,16 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
     }
 
     // 引爆回轉(Reload 式):依消耗層數推進其他技能的冷卻,把循環閉合成 loop
+    let reloadMpGranted = false
     for (const other of availableSkills(s)) {
       if (other === id) continue
       const advance = spentNow * B.RELOAD_PER_SIGIL
       if (!isApexSkill(s, other)) {
-        // MP 招:推它只剩 1.5 秒的 CD 等於什麼都沒做,折算成 MP(見 grantMp)
-        grantMp(s, advance)
-        events.push({ type: 'cooldownAdvance', skillId: other, seconds: advance, via: 'reload' })
+        // MP 招:推它只剩 1.5 秒的 CD 等於什麼都沒做,折算成 MP(整批只折算一次,見 grantMp)
+        if (!reloadMpGranted && grantMp(s, advance)) {
+          reloadMpGranted = true
+          events.push({ type: 'cooldownAdvance', skillId: other, seconds: advance, via: 'reload' })
+        }
         continue
       }
       const left = s.skillCd[other] ?? 0
@@ -2068,7 +2097,10 @@ function trackCastOrder(s: GameState, id: SkillId, events: GameEvent[]) {
  */
 function tickAutoCast(s: GameState, raw: GameEvent[], rng: Rng = Math.random) {
   if (!s.autoCast || s.charging) return
-  for (const id of availableSkills(s)) {
+  // ⚠️ 貴的招要先放:MP 是共用池,照原順序跑的話便宜的招會一路把 MP 吃光,
+  // 貴的那招永遠等不到足夠的 MP —— 二轉的第一技能會變成完全不存在的內容
+  const order = [...availableSkills(s)].sort((a, b) => mpCost(s, b) - mpCost(s, a))
+  for (const id of order) {
     const sk = SKILLS[id]
     if (sk.consumesSigils && s.sigils < sigilCap(s)) continue
     if (!skillReady(s, id)) continue
