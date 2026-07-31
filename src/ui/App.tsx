@@ -33,6 +33,7 @@ import { JOBS } from '../core/jobs'
 import { nearGoal, runGoal, type GoalTab } from '../core/goals'
 import { zoneOf, zoneProgress } from '../core/zones'
 import { speciesPair } from '../core/enemies'
+import { gameEvents } from '../store/events'
 import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
 import { FloorDots, FloorToast } from './FloorProgress'
@@ -177,7 +178,7 @@ function BossHint() {
 }
 
 /** 轉生結算:證明這一代沒有白玩,並預告下一輪快碰到什麼 */
-function RunSummary() {
+function RunSummary({ onDeparture }: { onDeparture?: () => void }) {
   const entry = useGame((st) => st.lastRun)
   const dismiss = useGame((st) => st.dismissRunSummary)
   const s = useGameState()
@@ -229,7 +230,14 @@ function RunSummary() {
           下一個目標:{nextGoal(s)}
         </div>
 
-        <button className="btn primary" style={{ width: '100%', marginTop: 12 }} onClick={dismiss}>
+        <button
+          className="btn primary"
+          style={{ width: '100%', marginTop: 12 }}
+          onClick={() => {
+            dismiss()
+            onDeparture?.()
+          }}
+        >
           下一代出發
         </button>
       </div>
@@ -267,6 +275,28 @@ function Game() {
 
   const hpRatio = s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0
   // 紅點三層收斂:同時只亮一顆,由近期目標的優先序決定(core/goals.ts)
+  // 「所有的開始」都走同一個 loading 畫面:首次進場(index.html + !loaded 分支)、
+  // 下一代出發(轉生)、重置全部進度。開始是儀式,黑一下再亮等於沒有開始過。
+  const [startSplash, setStartSplash] = useState<string | null>(null)
+  useEffect(() => {
+    if (!startSplash) return
+    const t = setTimeout(() => setStartSplash(null), 1300)
+    return () => clearTimeout(t)
+  }, [startSplash])
+  useEffect(() => {
+    // 重置(reset)發 runReset 且沒有結算卡;轉生也發但隨後有 lastRun,
+    // 那條的 splash 改掛在「下一代出發」按鈕上(結算卡蓋著,現在播沒人看見)
+    const off = gameEvents.on((e) => {
+      if (e.type !== 'runReset') return
+      setTimeout(() => {
+        if (!useGame.getState().lastRun) setStartSplash('整 裝 行 軍 中')
+      }, 0)
+    })
+    return () => {
+      off()
+    }
+  }, [])
+
   const near = nearGoal(s)
   /**
    * 主畫面「下一步」條的內容。三層目標(goals.ts)原本只有 near 一層上得了主畫面,
@@ -588,7 +618,16 @@ function Game() {
         </>
       )}
 
-      <RunSummary />
+      <RunSummary onDeparture={() => setStartSplash('下 一 代 整 裝 中')} />
+
+      {startSplash && (
+        <div className="boot-splash">
+          <div className="flame" />
+          <h1>小 兵 的 故 事</h1>
+          <small>{startSplash}</small>
+          <div className="bar"><i /></div>
+        </div>
+      )}
 
       <Tutorial />
 
