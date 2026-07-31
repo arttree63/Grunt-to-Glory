@@ -604,3 +604,6 @@ export const AFTERIMAGE_DAMAGE_SHARE = 0.4
  * 限制效率是為了避免「同時複製所有機制」造成失控。
  */
 export const AFTERIMAGE_SIGIL_PER = 2
+/** 同步步伐:殘影每次攻擊都累積破綻(效率 1/1),代價是直接傷害打折 */
+export const AFTERIMAGE_SYNC_SIGIL_PER = 1
+export const AFTERIMAGE_SYNC_DAMAGE_MULT = 0.75

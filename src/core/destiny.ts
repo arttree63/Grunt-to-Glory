@@ -181,6 +181,23 @@ export const DESTINY_SEEDS: DestinyNode[] = [
   },
 ]
 
+/**
+ * 降臨型改造。⚠️ 這些**不是**升級數值,而是改變殘影在做什麼——
+ * 「殘影傷害 +30%」那種只會讓後續分支退化成「分身傷害加多少」。
+ */
+export const DESTINY_MODS: DestinyNode[] = [
+  {
+    id: 'shade_sync',
+    path: 'tactician',
+    tier: 1,
+    kind: 'descend',
+    weight: 8,
+    reqs: [{ k: 'node', id: 'seed_afterimage' }],
+    name: '同步步伐',
+    desc: '殘影重演攻擊時也會累積破綻,但直接傷害降低——殘影從傷害來源變成破綻產生器。',
+  },
+]
+
 /** 第 30 層的抉擇:殘影最後長成什麼。三條刻意指向不同的玩法,不是同一件事的強弱 */
 export const DESTINY_CHOICES: DestinyNode[] = [
   {
@@ -219,7 +236,7 @@ export const DESTINY_CHOICES: DestinyNode[] = [
 ]
 
 /** 全部可降臨/可抉擇的新節點,併進查表 */
-for (const n of [...DESTINY_SEEDS, ...DESTINY_CHOICES]) DESTINY_NODES[n.id] = n
+for (const n of [...DESTINY_SEEDS, ...DESTINY_MODS, ...DESTINY_CHOICES]) DESTINY_NODES[n.id] = n
 
 /** 條件是否成立。⚠️ 只讀引擎查得到的狀態 */
 export function meetsReq(s: GameState, r: DestinyReq): boolean {
@@ -262,7 +279,9 @@ export function rollDescent(
   s: GameState,
   rng: () => number,
 ): { node: DestinyNode; bucket: DestinyBucket } | null {
-  const pool = [...DESTINY_SEEDS, ...DESTINY_CHOICES].filter((n) => n.kind !== 'choice' && eligible(s, n))
+  const pool = [...DESTINY_SEEDS, ...DESTINY_MODS, ...DESTINY_CHOICES].filter(
+    (n) => n.kind !== 'choice' && eligible(s, n),
+  )
   if (pool.length === 0) return null
 
   const forcedSame = s.destinyLog.length < B.DESTINY_SAME_BUCKET_FIRST

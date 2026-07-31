@@ -33,7 +33,7 @@ import {
 import { availableJobs } from '../../src/core/jobs'
 import { SKILLS } from '../../src/core/skills'
 import { canBuyTech, heirloomSlots, techDamageMult, techGoldMult } from '../../src/core/techs'
-import { hasNode, pendingChoice } from '../../src/core/destiny'
+import { DESTINY_NODES, hasNode, pendingChoice } from '../../src/core/destiny'
 import type { DestinyPathId, GameState, Techs } from '../../src/core/types'
 import { equipPower, QUALITY_NAME, score, SLOTS } from '../../src/core/equipment'
 import { D, Decimal } from '../../src/core/decimal'
@@ -170,7 +170,10 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
         else resolveEncounter(s, enc.id, 'left')
       }
 
-      // 命運樹:代理玩家選定路徑後,有點就照固定偏好選
+      // 命運樹:代理玩家選定路徑後,有點就照固定偏好選。
+      // ⚠️ 命運降臨制下,種子會在第 10 層自動定錨流派;這裡仍先手動定錨是為了
+      // 讓 DESTINY=xxx 的流派對照仍然成立(那是 15~25% 差距驗證的基礎)。
+      // 降臨與抉擇由 reward()/pendingChoice 自動吃到,代理不必特別處理。
       if (!s.destinyPath) chooseDestiny(s, destinyAgent)
       const choice = pendingChoice(s)
       if (choice) pickDestinyNode(s, choice[0].id)
@@ -257,6 +260,15 @@ function table(label: string, active: boolean) {
     state = prestige(r.state, keep) ?? createInitialState()
   }
   console.log('首輪節奏:', first!.pace.map(([f, min]) => `${f}層 ${min}分`).join(' / '))
+  // ⚠️ 命運降臨制上線後必看:代理沒吃到降臨的話,所有平衡數字都不反映真實玩法
+  const log = first!.state.destinyLog
+  console.log(
+    '首輪命運:',
+    log.length === 0
+      ? '⚠️ 一次降臨都沒有(代理沒吃到,平衡數字不可信)'
+      : log.map((r) => `${r.floor}層 ${DESTINY_NODES[r.id]?.name ?? r.id}(${r.bucket})`).join(' / '),
+    `| 鎖定:${first!.state.destinyLocked}`,
+  )
   console.log('首輪畢業裝:', first!.gear, `(裝備乘區 ×${first!.gearMult.toFixed(2)})`)
   console.log('首輪轉職里程碑(等級→分鐘):', JSON.stringify(first!.lvMarks))
 }

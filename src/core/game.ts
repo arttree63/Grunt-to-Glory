@@ -1339,12 +1339,16 @@ function tickAfterimage(s: GameState, dmg: Decimal, raw: GameEvent[], rng: Rng):
   // 先結算既有的殘影(它重演的是「這一次」普攻)
   if (s.afterimageLeft > 0) {
     s.afterimageLeft--
-    const share = dmg.mul(B.AFTERIMAGE_DAMAGE_SHARE)
+    // 同步步伐:破綻累積效率翻倍,代價是直接傷害打折(從傷害來源變成資源產生器)
+    const sync = hasNode(s, 'shade_sync')
+    const share = dmg
+      .mul(B.AFTERIMAGE_DAMAGE_SHARE)
+      .mul(sync ? B.AFTERIMAGE_SYNC_DAMAGE_MULT : 1)
     raw.push({ type: 'attack', damage: share, source: 'clone' })
     // 獨立行動者但是弱化打擊:破盾值用軍旗回音的 2 點,不是本體的 4 點
     addShieldValue(s, B.SHIELD_ECHO_VALUE, 'clone', raw)
     s.afterimageSigilAcc++
-    if (s.afterimageSigilAcc >= B.AFTERIMAGE_SIGIL_PER) {
+    if (s.afterimageSigilAcc >= (sync ? B.AFTERIMAGE_SYNC_SIGIL_PER : B.AFTERIMAGE_SIGIL_PER)) {
       s.afterimageSigilAcc = 0
       gainSigil(s, 1, raw, 'afterimage')
     }
