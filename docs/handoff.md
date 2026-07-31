@@ -1,4 +1,25 @@
-# Session 交接(2026-07-30 二次收尾)
+# Session 交接(2026-07-31 收尾)
+
+## 〇、目前狀態(接手先讀這段)
+
+- **線上**:https://arttree63.github.io/Grunt-to-Glory/ ,main = `459e0ef`,Pages 部署綠。
+- **工作樹乾淨**,四顆 commit 全推上去:
+  `b3a02b0` 上市品質循環十一輪 + Codex Game Review 工作台(合批)
+  `06f11bc` 進場 loading splash
+  `459e0ef` 所有「開始」都走 splash(轉生/重置)
+  `feature/game-review-workspace` 分支也已推上 origin(與 main 同點),Codex 可接。
+- **驗證**:251 core 測試 / typecheck / build 全綠。
+- **工作模式**:用戶已決定改為「邊玩邊調整、一步步收」——不再跑自動循環。
+  用戶會丟遊玩回饋,一條條修,每條修完部署。
+- **用戶已丟、已做**:進場 loading splash(三個「開始」都走同一畫面)。
+- **用戶已丟、未做**:一張完整標題畫面的視覺稿(開始遊戲/繼續旅途/冒險日誌/成就選單,
+  紫夜像素風,見上傳圖)。那是完整 title scene,牽涉「開始 vs 繼續」存檔流程,當獨立項目排。
+- 大批次的細節記錄在 **§ 十**(十一輪 + 審查 + 量測陷阱五條);
+  下一步候選清單在 § 十的「給下一階段的起點」。
+
+---
+
+# 上一份交接(2026-07-30 二次收尾)
 
 > 給下一個 session 的第一份讀物。現況 = `main`(籃 B 全部 + 籃 C 裁決三階段第一版都已上線),
 > typecheck / 213 測試 / build 全綠。線上:https://arttree63.github.io/Grunt-to-Glory/
