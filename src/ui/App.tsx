@@ -37,6 +37,7 @@ import BattleCanvas from './BattleCanvas'
 import { FloorDots, FloorToast } from './FloorProgress'
 import SkillBar from './SkillBar'
 import LevelBar from './LevelBar'
+import DestinyCard from './DestinyCard'
 import Tutorial, { SpotlightTeach } from './Tutorial'
 import EquipPanel from './panels/EquipPanel'
 import ForgePanel from './panels/ForgePanel'
@@ -510,6 +511,7 @@ function Game() {
           </div>
         </div>
 
+        <DestinyCard />
         <SpotlightTeach />
       </BattleCanvas>
 

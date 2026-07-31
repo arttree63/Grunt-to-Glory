@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ACHIEVEMENTS } from '../core/achievements'
 import { zoneOf } from '../core/zones'
-import { DESTINY_NODES, interpretOf } from '../core/destiny'
 import { speciesPair } from '../core/enemies'
 import { fmt, fmtCombat } from '../core/format'
 import * as B from '../core/balance'
@@ -189,13 +188,6 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       } else if (e.type === 'zoneEnter') {
         // 進新地帶:一句地帶描述,讓推進有敘事而不只是數字往上跳
         scene.notice(`進入 ${zoneOf(e.floor!).name}`)
-      } else if (e.type === 'destinyDescend') {
-        // 命運降臨:小卡式快速揭示,不暫停遊戲(大抉擇才停)
-        const n = DESTINY_NODES[e.destinyNodeId ?? '']
-        if (n) {
-          const shown = interpretOf(n, useGame.getState().s.jobId)
-          scene.notice(`命運降臨・${shown.name}`)
-        }
       } else if (e.type === 'achievement') {
         const a = ACHIEVEMENTS.find((x) => x.id === e.achievementId)
         if (a) scene.notice(`軍功記錄・${a.name}`)
