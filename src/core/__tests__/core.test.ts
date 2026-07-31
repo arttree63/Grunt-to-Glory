@@ -24,6 +24,7 @@ import { ACHIEVEMENTS } from '../achievements'
 import { ZONE_SPAN, zoneOf, zoneProgress } from '../zones'
 import { speciesPair } from '../enemies'
 import { ENCOUNTERS, ENCOUNTER_ORDER } from '../encounters'
+import { reconcileDestiny } from '../destiny'
 import type { EncounterId } from '../types'
 import {
   applyTick,
@@ -61,6 +62,7 @@ import {
   click,
   skillCooldown,
   skillReady,
+  addDestinyPoint,
   computeOffline,
   createInitialState,
   sigilPerStackSeconds,
@@ -464,7 +466,9 @@ describe('命運樹', () => {
   it('二選一:選了一個,另一個本輪關閉', () => {
     const s = createInitialState()
     chooseDestiny(s, 'artisan')
-    s.destinyPoints = 1
+    // ⚠️ 走 addDestinyPoint 而不是直接寫 destinyPoints——
+    // 直接寫不會備妥 pendingChoiceIds,那正是會讓點數卡死的路徑
+    addDestinyPoint(s)
 
     const choice = pendingChoice(s)!
     expect(choice.map((n) => n.id)).toEqual(['artisan_1a', 'artisan_1b'])
@@ -475,9 +479,45 @@ describe('命運樹', () => {
 
     // 沒點數不能再選,而且下一個決策點換成第二層
     expect(pickDestinyNode(s, 'artisan_1b')).toBe(false)
-    s.destinyPoints = 1
+    addDestinyPoint(s)
     expect(pendingChoice(s)!.map((n) => n.id)).toEqual(['artisan_2a', 'artisan_2b'])
     expect(pickDestinyNode(s, 'artisan_1b')).toBe(false) // 上一層的選項已關閉
+  })
+
+  it('所有發點路徑都要備妥選項,否則點數會靜默卡死', () => {
+    // ⚠️ 這條守的是 R10 的「同一個值只能有一個算法」:里程碑、命運交易、
+    // 傳令兵科技三條路徑都必須走 addDestinyPoint,不可各自 destinyPoints++
+    const s = createInitialState()
+    chooseDestiny(s, 'artisan')
+    addDestinyPoint(s)
+    expect(pendingChoice(s)).not.toBeNull()
+
+    // 傳令兵科技:開局直接給點,同樣要能花掉
+    const herald = createInitialState(0, 1, { ...emptyTechs(), herald: 1 })
+    chooseDestiny(herald, 'tactician')
+    expect(herald.destinyPoints).toBe(1)
+    expect(pendingChoice(herald)).not.toBeNull()
+  })
+
+  it('reconcileDestiny 冪等自癒:補回遺失的選項、清掉不存在的節點 id', () => {
+    const s = createInitialState()
+    chooseDestiny(s, 'artisan')
+    addDestinyPoint(s)
+
+    // 模擬節點改名後的殘留
+    s.pendingChoiceIds = ['已經不存在的節點']
+    reconcileDestiny(s)
+    expect(pendingChoice(s)!.every((n) => !!n)).toBe(true)
+
+    // 有點數卻沒有選項(舊存檔的形狀)
+    s.pendingChoiceIds = null
+    reconcileDestiny(s)
+    expect(pendingChoice(s)).not.toBeNull()
+
+    // 冪等:再跑一次不會變
+    const before = [...s.pendingChoiceIds!]
+    reconcileDestiny(s)
+    expect(s.pendingChoiceIds).toEqual(before)
   })
 
   it('不能選不屬於當前決策點的節點', () => {

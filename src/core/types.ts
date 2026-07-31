@@ -353,6 +353,13 @@ export interface GameState {
   bossKills: number
   /** 本輪選擇的命運路徑 */
   destinyPath: DestinyPathId | null
+  /**
+   * 待決的抉擇選項。
+   * ⚠️ 一定要是 state,不可再用「已有節點數當 choices 索引」推導——
+   * 命運降臨每次塞一個 tier>0 節點進去,索引立刻錯位,玩家會看到錯的選項
+   * 或直接拿不到選項(命運點永遠花不掉,而且完全靜默)
+   */
+  pendingChoiceIds: DestinyNodeId[] | null
   /** 已解鎖的命運節點(本輪) */
   destinyNodes: DestinyNodeId[]
   /** 未使用的命運點 */

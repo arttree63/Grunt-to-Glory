@@ -30,7 +30,14 @@ import { legendFor } from './legends'
 import { MERCS, unlockedMercs } from './mercs'
 import { SETS } from './sets'
 import { SKILLS } from './skills'
-import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, hasNode, pendingChoice } from './destiny'
+import {
+  ALL_PATHS,
+  DESTINY_NODES,
+  DESTINY_PATHS,
+  hasNode,
+  nextChoiceIds,
+  pendingChoice,
+} from './destiny'
 import { makeChronicleEntry, soldierName } from './chronicle'
 import { ENCOUNTER_ORDER } from './encounters'
 import {
@@ -126,6 +133,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     destinyPath: null,
     destinyNodes: [],
     destinyPoints: 0,
+    pendingChoiceIds: null,
     destinyEarned: 0,
     autoCast: false, // 預設關:掛機玩家的基準不因新系統改變
     skillCd: {},
@@ -195,7 +203,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   }
   // 準備型科技:買的是「下一輪怎麼開局」,所以效果在這裡兌現。
   // ⚠️ 這三項都不進 DPS 乘區——它們降低運氣支配、讓構築更早成形,不是更大的數字
-  s.destinyPoints = techs.herald
+  for (let i = 0; i < techs.herald; i++) addDestinyPoint(s)
   for (let i = 0; i < techs.quarter; i++) {
     // 開局部位素材:輪流分配而非隨機,免得買了三級還全押同一個部位
     s.partMaterials[SLOTS[i % SLOTS.length]]++
@@ -1262,6 +1270,7 @@ export function chooseDestiny(s: GameState, path: DestinyPathId): boolean {
   if (s.destinyPath !== null) return false
   s.destinyPath = path
   s.destinyNodes = [DESTINY_PATHS[path].start]
+  if (s.destinyPoints > 0) s.pendingChoiceIds = nextChoiceIds(s)
   // 共鳴開場禮物:選了「共鳴最強」的那條才發,一次性、小型、不成長期強弱差。
   // 三條照選——共鳴只是傾向的呈現,不是標準答案
   if (strongestResonance(s) === path) {
@@ -1279,16 +1288,31 @@ export function pickDestinyNode(s: GameState, id: DestinyNodeId): boolean {
   if (!choice || !choice.some((n) => n.id === id)) return false
   s.destinyPoints--
   s.destinyNodes.push(id)
+  // 這一組用掉了:清空,還有點數就備下一組(沒點數就等發點時再備)
+  s.pendingChoiceIds = s.destinyPoints > 0 ? nextChoiceIds(s) : null
   return true
 }
 
 /** 里程碑發點。用當輪層數,每輪重新來過 */
+/**
+ * 給一枚命運點。
+ * ⚠️ **所有發點路徑都要走這裡**(里程碑、命運交易、傳令兵科技)。
+ * 只加 `destinyPoints` 而不備妥 `pendingChoiceIds`,玩家就會拿到一枚永遠花不掉的點數,
+ * 而且完全靜默(紅點常駐、面板顯示「本輪命運已經走完」)。
+ * 這是 R10 立下的「同一個值只能有一個算法」的同型問題。
+ */
+export function addDestinyPoint(s: GameState): void {
+  s.destinyPoints++
+  // 發點的同一刻就把選項定下來,之後多幾個降臨節點也不會讓玩家手上的選項變掉
+  if (!s.pendingChoiceIds) s.pendingChoiceIds = nextChoiceIds(s)
+}
+
 function grantDestinyPoints(s: GameState, events: GameEvent[]) {
   const next = B.DESTINY_MILESTONES[s.destinyEarned]
   if (next === undefined || s.floor < next) return
   // 未使用的點滿了就停發,但不擋推進(掛機玩家回來不必連點十次)
   if (s.destinyPoints >= B.DESTINY_POINT_CAP) return
-  s.destinyPoints++
+  addDestinyPoint(s)
   s.destinyEarned++
   events.push({ type: 'destinyPoint', floor: s.floor })
 }
@@ -1997,7 +2021,7 @@ export function barterForDestiny(s: GameState): boolean {
   if (s.eventKindsDone.length === 0) return false // 至少完成過一次事件
   s.barterUsed++
   s.eventKindsDone = []
-  s.destinyPoints++
+  addDestinyPoint(s)
   return true
 }
 

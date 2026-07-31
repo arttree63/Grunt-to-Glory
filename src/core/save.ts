@@ -2,6 +2,7 @@ import { D } from './decimal'
 import { COMBAT_NUMBER_SCALE } from './balance'
 import { createInitialState, SAVE_VERSION, spawnEnemy } from './game'
 import { emptyTechs } from './techs'
+import { reconcileDestiny } from './destiny'
 import type { GameState } from './types'
 
 /** 存檔格式:Decimal 一律轉字串 */
@@ -48,6 +49,7 @@ export interface SaveData {
   destinyPath: GameState['destinyPath']
   destinyNodes: GameState['destinyNodes']
   destinyPoints: number
+  pendingChoiceIds: string[] | null
   destinyEarned: number
   materials: number
   forgeCount: number
@@ -121,6 +123,7 @@ export function serialize(s: GameState): SaveData {
     destinyPath: s.destinyPath,
     destinyNodes: s.destinyNodes,
     destinyPoints: s.destinyPoints,
+    pendingChoiceIds: s.pendingChoiceIds,
     destinyEarned: s.destinyEarned,
     materials: s.materials,
     forgeCount: s.forgeCount,
@@ -384,6 +387,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     destinyPath: d.destinyPath ?? null,
     destinyNodes: d.destinyNodes ?? [],
     destinyPoints: d.destinyPoints ?? 0,
+    pendingChoiceIds: d.pendingChoiceIds ?? null,
     destinyEarned: d.destinyEarned ?? 0,
     materials: d.materials ?? 0,
     forgeCount: d.forgeCount ?? 0,
@@ -413,5 +417,8 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
   // ⚠️ Boss 戰中存的檔:行為原型(護盾/蓄力/圖騰)是暫態,直接還原會變成無機制木樁。
   // 限時檢定本來就不該從一半恢復——重開那一場(滿血、計時重來、機制齊全)
   if (out.isBoss) spawnEnemy(out)
+  // 冪等自癒:補「有命運點卻沒有選項」與節點改名後的殘留 id。
+  // 放這裡而不是 migrate():migrate 全是純欄位操作,不該反向依賴會變動的節點表
+  reconcileDestiny(out)
   return out
 }

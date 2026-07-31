@@ -110,14 +110,51 @@ export function hasNode(s: GameState, id: DestinyNodeId): boolean {
   return s.destinyNodes.includes(id)
 }
 
-/** 下一個決策點的選項;沒得選時回 null */
+/**
+ * 下一個決策點的選項;沒得選時回 null。
+ *
+ * ⚠️ 改讀 `s.pendingChoiceIds`,**不再用「已有節點數」當 `path.choices[]` 的索引**。
+ * 舊寫法在命運降臨制下必壞:降臨每次塞一個 tier>0 節點進去,索引就往前跳一格,
+ * 玩家會看到下一輪的選項,或 `choices[tier]` 直接 undefined → 回 null →
+ * 命運點永遠花不掉、紅點常駐不滅,而且不會報錯、測試也抓不到。
+ */
 export function pendingChoice(s: GameState): DestinyNode[] | null {
-  if (!s.destinyPath || s.destinyPoints <= 0) return null
+  if (s.destinyPoints <= 0) return null
+  const ids = s.pendingChoiceIds
+  if (!ids || ids.length === 0) return null
+  return ids.map((id) => DESTINY_NODES[id]).filter((n): n is DestinyNode => !!n)
+}
+
+/**
+ * 依目前進度算出「下一組」抉擇選項。發命運點時用它寫進 `pendingChoiceIds`。
+ * 這裡仍用 tier 索引,但**只在發點的那一刻算一次**,算完就固定住,
+ * 之後再多幾個降臨節點也不會讓玩家手上的選項變掉。
+ */
+export function nextChoiceIds(s: GameState): DestinyNodeId[] | null {
+  if (!s.destinyPath) return null
   const path = DESTINY_PATHS[s.destinyPath]
-  const tier = s.destinyNodes.filter((id) => DESTINY_NODES[id]?.tier > 0).length
-  const ids = path.choices[tier]
-  if (!ids) return null
-  return ids.map((id) => DESTINY_NODES[id])
+  // 只數「抉擇型」節點,降臨得到的節點不推進決策點
+  const taken = s.destinyNodes.filter((id) => {
+    const n = DESTINY_NODES[id]
+    return n && n.tier > 0 && path.choices.some((g) => g.includes(id))
+  }).length
+  const ids = path.choices[taken]
+  return ids && ids.length > 0 ? [...ids] : null
+}
+
+/**
+ * 冪等自癒:讀檔後與每次節點池變動後都可以呼叫。
+ * 專治「有命運點但沒有選項」這種會讓點數卡死的狀態,
+ * 以及節點改名後 `pendingChoiceIds` 裡殘留已不存在的 id。
+ * ⚠️ 放這裡而不是 save.ts 的 migrate():migrate 全是純欄位操作,
+ * 讓它反向依賴會變動的節點表,之後每次改節點都要回頭改遷移。
+ */
+export function reconcileDestiny(s: GameState): void {
+  if (s.pendingChoiceIds) {
+    const alive = s.pendingChoiceIds.filter((id) => !!DESTINY_NODES[id])
+    s.pendingChoiceIds = alive.length > 0 ? alive : null
+  }
+  if (!s.pendingChoiceIds && s.destinyPoints > 0) s.pendingChoiceIds = nextChoiceIds(s)
 }
 
 /** 本輪還會再給幾枚命運點 */
