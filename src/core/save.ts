@@ -1,5 +1,5 @@
 import { D } from './decimal'
-import { COMBAT_NUMBER_SCALE, MP_MAX } from './balance'
+import { COMBAT_NUMBER_SCALE, MP_MAX, MP_REGEN_BASE } from './balance'
 import { createInitialState, refillEndurance, SAVE_VERSION, spawnEnemy } from './game'
 import { emptyTechs } from './techs'
 import { reconcileDestiny } from './destiny'
@@ -395,7 +395,12 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
   const out: GameState = {
     ...base,
     lv: d.lv ?? 1,
-    mp: d.mp ?? MP_MAX,
+    // 離線那段時間 MP 照常回復:不補的話回來會發現技能全灰,
+    // 要乾等三分鐘 —— 那是「MP 進存檔」這個修正帶進來的副作用
+    mp: Math.min(
+      MP_MAX,
+      (d.mp ?? MP_MAX) + Math.max(0, (Date.now() - (d.lastSaved ?? Date.now())) / 1000) * MP_REGEN_BASE,
+    ),
     tracks: { ...base.tracks, ...(d.tracks ?? {}) },
     trackFocus: d.trackFocus ?? 'arms',
     gold: D(d.gold ?? 0),

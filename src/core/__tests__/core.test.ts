@@ -49,6 +49,7 @@ import {
   enduranceMax,
   threatPerSec,
   critRate,
+  faithHeal,
   trackTotal,
   trackMult,
   TRACKS,
@@ -290,11 +291,15 @@ describe('戰鬥循環', () => {
     expect(out.endurance.eq(enduranceMax(out))).toBe(true)
   })
 
-  it('MP 進存檔:重整不是免費補滿(v4.1 § 5)', () => {
+  it('MP 進存檔:重整不是免費補滿,但離線那段時間照常回復(v4.1 § 5)', () => {
     const s = createInitialState()
     s.mp = 42
-    const out = deserialize(serialize(s))
-    expect(out.mp).toBe(42)
+    const raw = serialize(s)
+    expect(deserialize(raw).mp).toBeLessThan(B.MP_MAX) // 沒有變成免費補滿
+
+    // 離線 60 秒 → 回來時多回 60 × 基礎速率(不然開遊戲會發現技能全灰要乾等)
+    const away = { ...raw, lastSaved: Date.now() - 60_000 }
+    expect(deserialize(away).mp).toBeGreaterThan(42 + 60 * B.MP_REGEN_BASE * 0.9)
   })
 
   it('自動施放:便宜的招要留貴招的份,不能把它餓死(v4.1 § 5)', () => {
@@ -436,6 +441,49 @@ describe('戰鬥循環', () => {
     faith.enemyHp = D(0)
     applyTick(faith, 100, () => 0.99)
     expect(faith.endurance.gt(before)).toBe(true)
+  })
+
+  it('信仰在 Boss 場也要能回血:只掛擊殺的話,唯一會死人的場合恆為 0(v4.1 § 3)', () => {
+    const s = createInitialState()
+    s.lv = 101
+    s.tracks.faith = 100
+    s.floor = 30
+    spawnEnemy(s)
+    expect(s.isBoss).toBe(true)
+    s.endurance = enduranceMax(s).div(2)
+    const before = s.endurance
+    // Boss 場的成功(破盾)也算觸發
+    faithHeal(s)
+    expect(s.endurance.gt(before)).toBe(true)
+  })
+
+  it('買等級不可以讓血條比例當場下掉(上限成長要保住比例)', () => {
+    const s = createInitialState()
+    s.lv = 50
+    s.gold = D(1e12)
+    s.floor = 20
+    spawnEnemy(s)
+    s.endurance = enduranceMax(s).mul(0.8)
+    const ratioBefore = s.endurance.div(enduranceMax(s)).toNumber()
+    buyLevels(s, 20)
+    const ratioAfter = s.endurance.div(enduranceMax(s)).toNumber()
+    expect(ratioAfter).toBeCloseTo(ratioBefore, 2)
+  })
+
+  it('換裝讓上限下降時,不可以永久蒸發本場耐久', () => {
+    const s = createInitialState()
+    s.lv = 60
+    s.tracks.body = 40
+    s.tracks.arms = 19
+    s.floor = 15
+    spawnEnemy(s)
+    const full = s.endurance
+    // 模擬「上限突然變小」:直接把體能點數拿掉一半(等同卸裝)
+    s.tracks.body = 10
+    applyTick(s, 500)
+    // 絕對值不該被夾下去(允許因為挨打而減少,但不能被 clamp 砍到新上限)
+    expect(s.endurance.gt(enduranceMax(s).mul(0.5))).toBe(true)
+    expect(full.gt(0)).toBe(true)
   })
 
   it('牆的可讀性:被打死與打不動要分得出來(v4.1 § 2 驗收標準)', () => {

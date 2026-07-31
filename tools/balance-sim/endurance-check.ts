@@ -3,9 +3,31 @@
  * 兩條檢定不該互相污染——這支就是用來確認生存軸沒有默默變成第二道 DPS 牆。
  * 用法:npx tsx tools/balance-sim/endurance-check.ts
  */
-import { createInitialState, spawnEnemy, enduranceMax, threatPerSec, currentDPS } from '../../src/core/game'
+import {
+  createInitialState,
+  spawnEnemy,
+  enduranceMax,
+  threatPerSec,
+  currentDPS,
+  defenseCut,
+  dodgeRate,
+  enduranceRegen,
+} from '../../src/core/game'
 import { mobHP, bossHP } from '../../src/core/formulas'
 import * as B from '../../src/core/balance'
+
+/**
+ * 真實可撐秒數:要把減傷、迴避、被動回血都算進去。
+ * ⚠️ 只算「耐久 ÷ 威脅」的話,量到的是另一個遊戲——
+ * 全押武藝的 defenseCut 有 33%,實際比裸算長約 50%。
+ */
+function survivalSeconds(s: ReturnType<typeof createInitialState>): number {
+  const perSec = threatPerSec(s).toNumber() * (1 - defenseCut(s)) * (1 - dodgeRate(s))
+  const regenPerSec = enduranceMax(s).toNumber() * enduranceRegen(s)
+  const net = perSec - regenPerSec
+  if (net <= 0) return Infinity // 淨回血 > 挨打:這個流派的生存軸不存在
+  return s.endurance.toNumber() / net
+}
 
 console.log('層 | 剛好過檢定的等級 | Boss 場可撐(秒) | 小怪場可撐(秒)')
 for (const floor of [10, 30, 50, 100, 200, 300]) {
@@ -19,7 +41,7 @@ for (const floor of [10, 30, 50, 100, 200, 300]) {
   }
   // ⚠️ 不預設 isBoss:走真實進場路徑,量到的才是玩家實際帶進 Boss 場的血
   spawnEnemy(s)
-  const bossSurvive = s.endurance.div(threatPerSec(s)).toNumber()
+  const bossSurvive = survivalSeconds(s)
   s.isBoss = false
   const mobSurvive = enduranceMax(s).div(threatPerSec(s)).toNumber()
   const ttk = mobHP(floor).div(currentDPS(s)).toNumber()
@@ -50,9 +72,10 @@ for (const [name, alloc] of builds) {
     s.floor = floor
     spawnEnemy(s)
     const killSec = bossHP(floor).div(currentDPS(s)).toNumber()
-    const surviveSec = s.endurance.div(threatPerSec(s)).toNumber()
+    const surviveSec = survivalSeconds(s)
     if (killSec > B.BOSS_TIME) { stop = `輸出不夠(要打 ${killSec.toFixed(0)}s > ${B.BOSS_TIME}s)`; break }
     if (surviveSec < killSec) { stop = `擋不住(只能撐 ${surviveSec.toFixed(0)}s,但要打 ${killSec.toFixed(0)}s)`; break }
+    if (!Number.isFinite(surviveSec) && floor >= 300) { stop = '生存軸不存在(淨回血 > 挨打)'; break }
   }
   console.log(`${name.padEnd(22)} 牆在第 ${floor} 層 → ${stop}`)
 }

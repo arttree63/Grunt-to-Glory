@@ -55,8 +55,13 @@ export const AGILITY_CRIT_MAX = 0.35
 export const AGILITY_DODGE_MAX = 0.3
 /** 武藝次屬性:全押時的防禦力(減少場上威脅傷害) */
 export const ARMS_DEFENSE_MAX = 0.35
-/** 體能次屬性:全押時每秒回復耐久上限的比例 */
-export const BODY_REGEN_MAX = 0.02
+/**
+ * 體能次屬性:全押時每秒回復耐久上限的比例。
+ * ⚠️ 上限威脅約是每秒 2.2% 的池子(池子 = 45 秒份),所以這個值一逼近 2% 就會出現
+ * 「淨回血 > 挨打」——那些流派的生存軸整條不存在,血條永遠貼著 100%。
+ * 0.008 = 全押體能時抵銷約三分之一的威脅:有感,但不會讓血條變裝飾。
+ */
+export const BODY_REGEN_MAX = 0.008
 /** 信仰主屬性:全押時每次擊殺回復耐久上限的比例(觸發式回血,與體能的持續回血分工) */
 export const FAITH_HEAL_MAX = 0.05
 

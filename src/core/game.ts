@@ -695,12 +695,7 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
   const gained = Math.floor(rawMat) + (rng() < rawMat % 1 ? 1 : 0)
   s.materials += gained
   s.forgeHeatMaterials += gained
-  // 信仰主屬性:觸發式回血(v4.1 § 3)。與體能的「持續回血」分工——
-  // 體能是「一直有」,信仰是「打得動就活得下去」,兩者在不同的戰鬥節奏下有用
-  const faith = B.FAITH_HEAL_MAX * trackShare(s, 'faith')
-  if (faith > 0 && s.endurance.gt(0)) {
-    s.endurance = Decimal.min(enduranceMax(s), s.endurance.add(enduranceMax(s).mul(faith)))
-  }
+  faithHeal(s)
   events.push({ type: boss ? 'bossKill' : 'kill', gold: g, floor: s.floor })
   if (boss) {
     // 舊存檔或中途改版玩家可能已超過 10F 但還沒有命運。
@@ -1017,6 +1012,7 @@ export function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng:
       s.totemHp = D(0)
       s.bossLore.totem.handled++ // 敵情:成功毀掉一根圖騰
       raw.push({ type: 'totemDown' })
+      faithHeal(s) // 信仰:Boss 場的成功也要能回血,不然這一科在唯一會死人的場合是 0
       if (dmg.lte(0)) return
     }
     // 減傷/易傷相乘:盾上衰減、蓄力失敗的硬化、打斷成功與破盾的易傷
@@ -1036,6 +1032,7 @@ export function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng:
         if (s.bossStats) s.bossStats.interrupts++
         s.bossLore.channel.handled++ // 敵情:成功打斷一次
         raw.push({ type: 'interrupted' })
+        faithHeal(s)
       }
     }
     // 統計分帳(以 maxHp 的比例累計,避免大數)
@@ -1155,6 +1152,7 @@ function addShieldValue(s: GameState, value: number, source: string, raw: GameEv
     s.shellVulnLeft = B.SHELL_BREAK_SEC
     s.bossLore.shell.handled++ // 敵情:成功破盾一次
     raw.push({ type: 'shellBreak' })
+    faithHeal(s)
   }
 }
 
@@ -1230,12 +1228,15 @@ function failFloor(s: GameState, raw: GameEvent[], reason: 'timeout' | 'enduranc
     s.runBossFails[s.floor] = rec
     s.bossStats = null
   }
-  // 越戰越勇只補償「Boss 打不動」那種失敗:耐久死與連鎖退層若也給,等於白送疊層
-  if (hasNode(s, 'tactician_2a') && reason === 'timeout') {
+  // 越戰越勇補償「Boss 檢定失敗」,兩種死法都算(被打死的人更需要追趕機制);
+  // 要排除的是連鎖退層那種一般層死亡,不是耐久死
+  if (hasNode(s, 'tactician_2a') && isBossFloor(s.floor)) {
     s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
   }
-  // ⚠️ 連鎖退層時不要把挑戰目標一路往下吃:玩家真正想回去的是**最高的那一層**
-  s.bossRetryFloor = Math.max(s.bossRetryFloor ?? 0, s.floor)
+  // ⚠️ 目標就是「剛剛輸掉的那一層」。曾經改成取 max(想保住最高目標),
+  // 結果連鎖退層後 28/29 這些打得贏的層變成完全進不去,推進迴圈直接停擺——
+  // 逐層爬回去才是這個機制原本的樣子
+  s.bossRetryFloor = s.floor
   s.floor = Math.max(1, s.floor - 1)
   s.killsInFloor = 0
   raw.push({ type: 'bossFail', floor: s.bossRetryFloor, reason })
@@ -1253,12 +1254,37 @@ export function enduranceMax(s: GameState): Decimal {
   // 而且 regen 的 clamp 會在 DPS 回落時**憑空刪掉絕對耐久**(只有練體能的人會中)。
   // 這裡只吃長期成長:等級 / 科技 / 裝備 / 體能點數。
   // 也刻意不吃武藝乘區——不然練攻擊會連帶變肉,體能就沒有存在意義。
+  // 暴擊期望要算進來:它是穩定的(來自身法點數與裝備,不隨戰意/buff 抖動)。
+  // 丟掉它等於全流派池子少 27%、身法流少一半,而威脅常數並沒有跟著調
+  const stableCrit = critMultiplier(
+    B.CRIT_RATE +
+      B.AGILITY_CRIT_MAX * trackShare(s, 'agility') +
+      equipBonuses(s.equipped).crit +
+      (JOBS[s.jobId].bonus.crit ?? 0),
+    critDamageBonus(s),
+  )
   const base = heroDPS({
     lv: s.lv,
     techMult: techDamageMult(s.techs),
     equipBonus: equipBonuses(s.equipped).dmg + (JOBS[s.jobId].bonus.dmg ?? 0),
+    critMult: stableCrit,
   }).mul(equipPower(s.equipped))
   return base.mul(trackMult(s, 'body')).mul(B.ENDURANCE_SECONDS)
+}
+
+/**
+ * 信仰主屬性:觸發式回血(v4.1 § 3)。與體能的「持續回血」分工——
+ * 體能是「一直有」,信仰是「打得順就活得下去」。
+ * ⚠️ 觸發點不能只有擊殺:Boss 場整整 30 秒只有一次擊殺(而且是贏了才有),
+ * 只掛擊殺的話,信仰在**唯一會死人的場合**恆為 0,等於沒有消費端。
+ * 所以破盾、打斷蓄力、擊破圖騰這些 Boss 場的成功也算。
+ */
+export function faithHeal(s: GameState) {
+  const faith = B.FAITH_HEAL_MAX * trackShare(s, 'faith')
+  if (faith <= 0 || s.endurance.lte(0)) return
+  const cap = enduranceMax(s)
+  if (s.endurance.gte(cap)) return
+  s.endurance = Decimal.min(cap, s.endurance.add(cap.mul(faith)))
 }
 
 /** 進新樓層 = 滿血進場(v4.1 § 1)。耐久不跨層記帳 */
@@ -1282,7 +1308,12 @@ function tickThreat(s: GameState, dt: number, raw: GameEvent[], rng: Rng) {
   // 體能次屬性:被動回血。先回再挨打,不然滿血時的回復完全看不到
   const regen = enduranceRegen(s)
   if (regen > 0 && s.endurance.gt(0)) {
-    s.endurance = Decimal.min(enduranceMax(s), s.endurance.add(enduranceMax(s).mul(regen * dt)))
+    // ⚠️ 只在低於上限時才補,而且**不往下夾**:上限會因為換裝/卸裝而下降,
+    // 用 min(上限, …) 無條件夾的話,開個背包比較裝備就會永久蒸發本場耐久
+    const cap = enduranceMax(s)
+    if (s.endurance.lt(cap)) {
+      s.endurance = Decimal.min(cap, s.endurance.add(cap.mul(regen * dt)))
+    }
   }
   if (s.enemyHp.lte(0)) return
   s.threatTimer += dt
@@ -2433,6 +2464,11 @@ export function chooseTraining(s: GameState, id: TrainingId): boolean {
 }
 
 export function buyLevels(s: GameState, count = 1): number {
+  // 買等級會抬高耐久上限。⚠️ 絕對值不動的話,血條比例當場下掉——
+  // 這款最常按的正回饋(尤其「全投」一次幾十級)會在 Boss 戰把血條打進紅色瀕死,
+  // 而實際生存力一點沒變。上限成長時**保住比例**
+  const capBefore = enduranceMax(s)
+  const ratio = capBefore.gt(0) ? s.endurance.div(capBefore) : D(1)
   let bought = 0
   for (let i = 0; i < count; i++) {
     const cost = upCost(s.lv)
@@ -2442,6 +2478,10 @@ export function buyLevels(s: GameState, count = 1): number {
     s.tracks[s.trackFocus]++
     s.lv++
     bought++
+  }
+  if (bought > 0) {
+    const capAfter = enduranceMax(s)
+    if (capAfter.gt(capBefore)) s.endurance = Decimal.min(capAfter, capAfter.mul(ratio))
   }
   return bought
 }
