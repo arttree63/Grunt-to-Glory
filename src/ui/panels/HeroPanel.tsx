@@ -328,7 +328,7 @@ export default function HeroPanel() {
             <strong>總等級 {s.lv}</strong>
             <span>下一級 {fmt(cost1)} 金</span>
           </div>
-          <span>{job.desc}</span>
+          <span>{job.desc.replace(',戰意衰減減半', '')}</span>
         </div>
       </div>
       {/* ⚠️ 可轉職時置頂:曾經被四區能力+傭兵區推到兩屏之下,
@@ -359,7 +359,7 @@ export default function HeroPanel() {
         <summary className="affix" style={{ cursor: 'pointer', padding: '4px 0' }}>
           傷害來自哪裡?
         </summary>
-        {dpsBreakdown(s).map((p) => (
+        {dpsBreakdown(s).filter((p) => !p.label.startsWith('戰意')).map((p) => (
           <div className="row" key={p.label} style={{ paddingLeft: 8 }}>
             <span className="k">{p.label}</span>
             <span className="v" style={{ color: p.mult > 1 ? 'var(--gold)' : 'var(--dim)' }}>

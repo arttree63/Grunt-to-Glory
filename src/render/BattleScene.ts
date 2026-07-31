@@ -100,7 +100,6 @@ export interface BattleSnapshot {
   isBoss: boolean
   /** 突發事件種類,無事件為 null */
   event: 'chest' | 'goblin' | null
-  morale: number
   jobId: JobId
   /** 帝國鐵壁 2 件的軍陣生效中(腳下多一圈) */
   formation: boolean
@@ -138,10 +137,6 @@ export interface BattleSnapshot {
   commanderTracking: boolean
   /** 印記滿層後的完美引爆窗口 */
   perfectWindowLeft: number
-  /** 戰意昂揚層數(輪內常駐加成,主角紅金光環隨層數加深) */
-  zealStacks: number
-  /** 有留存事件等待處理:路邊常駐路標 */
-  encounterWaiting: boolean
 
   // ── v1.5 行為原型(演出:分身 / 軍旗 / 砲台 / 燃燒 / 凍結)──
   /** 出戰傭兵(null = 沒帶)。老獵犬沿用現有 dog sprite */
@@ -153,8 +148,6 @@ export interface BattleSnapshot {
   afterimageActive: boolean
   /** 殘影還要重演幾次普攻 */
   afterimageLeft: number
-  /** 距下一個殘影的蓄積進度 0~1(決策可視化:玩家要看得見「快出殘影了」) */
-  afterimageCharge: number
   /** 同步步伐改造:殘影變成破綻產生器,外觀要看得出不同 */
   afterimageSync: boolean
   /** 殘影留下的背刺窗口 */
@@ -325,7 +318,6 @@ export class BattleScene {
   private dmgLayer = new Container()
   private overlayLayer = new Container()
   private hero = new Container()
-  private heroAura = new Graphics()
   private formationFx = new Graphics()
   private heroStateFx = new Graphics()
   private fieldFx = new Graphics()
@@ -442,7 +434,7 @@ export class BattleScene {
     this.overlayLayer.addChild(this.overlayFx)
     this.formationLabel.anchor.set(0.5)
     this.formationLabel.position.set(0, 27)
-    this.hero.addChild(this.heroAura, this.formationFx, this.heroStateFx, this.formationLabel)
+    this.hero.addChild(this.formationFx, this.heroStateFx, this.formationLabel)
 
     for (let i = 0; i < 2; i++) {
       const ghost = new AnimatedSprite(this.assets.heroes.rookie)
@@ -827,7 +819,7 @@ export class BattleScene {
       this.heroSwingSide *= -1
       this.slashFx.visible = true
       this.slashFx.alpha = snap.buffSkill === 'gale' ? 0.72 : 1
-      this.slashFx.tint = snap.morale >= 100 ? 0x8affe0 : 0xffffff
+      this.slashFx.tint = 0xffffff
       this.slashFx.scale.y = snap.buffSkill === 'gale' ? 0.42 : 1
       this.slashFx.animationSpeed =
         snap.buffSkill === 'shieldRush' ? frameSpeed(95) : snap.buffSkill === 'gale' ? frameSpeed(48) : frameSpeed(SLASH_FRAME_MS)
@@ -1078,7 +1070,6 @@ export class BattleScene {
     // 背景微幅浮動:靜止的底圖會讓所有前進感被「背景完全不動」抵銷
     this.bg.y = this.H / 2 + Math.sin(this.elapsed * 0.0016) * 2 + this.marchBoost * this.H * 0.045
     this.applyZone(snap, ms)
-    this.drawAura(snap.morale)
     this.drawFormation(snap.formation, snap.buffSkill, snap.buffPermanent)
     this.drawHeroStates(snap)
     this.drawBattleStates(snap)
@@ -2135,15 +2126,6 @@ export class BattleScene {
     }
   }
 
-  private drawAura(morale: number) {
-    this.heroAura.clear()
-    if (morale <= 30) return
-    const a = (morale / 100) * 0.5
-    const r = 70 + Math.sin(this.elapsed * 0.01) * 6
-    this.heroAura.ellipse(0, 6, r * 1.3, r * 0.5).fill({ color: 0x3fae9f, alpha: a * 0.25 })
-    this.heroAura.ellipse(0, 6, r * 1.15, r * 0.42).stroke({ width: 3, color: 0x8affe0, alpha: a })
-  }
-
   /** 軍陣:套裝 2 件生效時腳下的方陣圈,讓「套裝真的在運作」看得見 */
   private drawFormation(active: boolean, buffSkill: SkillId | null, permanent: boolean) {
     this.formationFx.clear()
@@ -2256,16 +2238,6 @@ export class BattleScene {
         .stroke({ width: 3, color: 0xff6554, alpha: 0.3 + Math.min(0.25, snap.valiantStacks * 0.02) })
     }
 
-    if (snap.zealStacks > 0) {
-      const zealPulse = 0.7 + Math.sin(this.elapsed * 0.009) * 0.16
-      this.heroStateFx.ellipse(0, -67, 58 + snap.zealStacks * 3, 88 + snap.zealStacks * 4)
-        .stroke({ width: 3 + snap.zealStacks * 0.35, color: 0xff8b45, alpha: 0.28 + zealPulse * 0.26 })
-      for (let i = 0; i < 5; i++) {
-        this.heroStateFx.circle(-20 + i * 10, -158, i < snap.zealStacks ? 4.5 : 3)
-          .fill({ color: i < snap.zealStacks ? 0xffa246 : 0x3b2924, alpha: 0.9 })
-      }
-    }
-
     if (snap.perfectWindowLeft > 0) {
       const ratio = Math.min(1, snap.perfectWindowLeft / B.PERFECT_WINDOW_SEC)
       const radius = 42 + ratio * 54
@@ -2273,18 +2245,6 @@ export class BattleScene {
         .stroke({ width: 5, color: 0xffdb58, alpha: 0.42 + (1 - ratio) * 0.45 })
       this.heroStateFx.arc(0, -72, radius - 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio)
         .stroke({ width: 3, color: 0xfff2aa, alpha: 0.9 })
-    }
-
-    if (snap.afterimageCharge > 0 || this.afterimageVisualActive) {
-      const ticks = 8
-      const lit = Math.floor(Math.min(0.999, snap.afterimageCharge) * ticks)
-      const chargeColor = snap.afterimageSync ? 0xb69adf : 0x76dbff
-      for (let i = 0; i < ticks; i++) {
-        const a0 = -Math.PI / 2 + (i / ticks) * Math.PI * 2
-        const a1 = a0 + Math.PI * 2 / ticks - 0.14
-        this.heroStateFx.arc(0, 10, 86, a0, a1)
-          .stroke({ width: i < lit ? 5 : 2, color: i < lit ? chargeColor : 0x34404a, alpha: i < lit ? 0.88 : 0.48 })
-      }
     }
 
     const galeActive = snap.buffSkill === 'gale' || snap.buffSkill === 'shadowClone'
@@ -2344,17 +2304,6 @@ export class BattleScene {
         .stroke({ width: 4, color: 0xffc14f, alpha: 0.7 })
       this.fieldFx.arc(target.x, target.y + 55, 68, -Math.PI / 2, -Math.PI / 2 + (this.elapsed * 0.002) % (Math.PI * 2))
         .stroke({ width: 5, color: 0xfff2b0, alpha: 0.8 })
-    }
-
-    if (snap.encounterWaiting && !snap.event && !snap.isBoss) {
-      const x = this.W * 0.81
-      const y = this.H * 0.58
-      this.fieldFx.ellipse(x, y + 8, 30, 8).fill({ color: 0x080608, alpha: 0.32 })
-      this.fieldFx.rect(x - 3, y - 58, 6, 66).fill({ color: 0x513725, alpha: 0.9 })
-      this.fieldFx.poly([x, y - 55, x + 45, y - 46, x, y - 31])
-        .fill({ color: 0xd69443, alpha: 0.82 })
-      this.fieldFx.circle(x + 12, y - 43, 4 + Math.sin(this.elapsed * 0.008) * 1.2)
-        .fill({ color: 0xffe29a, alpha: 0.75 })
     }
 
     if (snap.burnLeft > 0) {

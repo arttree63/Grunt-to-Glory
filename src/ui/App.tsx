@@ -371,13 +371,7 @@ function Game() {
             detail: '攻擊追加軍旗回音・破盾 +2',
             color: 'var(--boss-b)',
           }
-        : s.encounters.length > 0 && !s.event && !s.isBoss
-          ? {
-              title: '旅途旗標・有際遇待處理',
-              detail: '到「旅途」分頁查看，不限時',
-              color: '#f0b44c',
-            }
-          : null
+        : null
 
   // 一般狀態全部收成 chip:超過 3 個折「+N」,點擊展開(clicker-ui § 七之五)
   const chips: Array<{ key: string; text: string; gold?: boolean }> = []
@@ -587,18 +581,11 @@ function Game() {
           </div>
         )}
 
-        {/* 遠征耐久:單場容錯額度,每層滿血。放在戰意上方、主角正上方不遮臉 */}
+        {/* 遠征耐久:單場容錯額度,每層滿血。放在主角正上方不遮臉 */}
         <div className={`endurance${endurRatio <= 0.34 ? ' low' : ''}`}>
           <div className="tag">耐 久</div>
           <div className="bar">
             <div className="fill" style={{ width: `${Math.max(0, endurRatio * 100)}%` }} />
-          </div>
-        </div>
-
-        <div className="morale">
-          <div className="tag">戰 意</div>
-          <div className="bar">
-            <div className="fill" style={{ width: `${s.morale}%` }} />
           </div>
         </div>
 
@@ -609,6 +596,7 @@ function Game() {
       <div className="bottom">
         {/* 核心成長迴圈要在主畫面上按得到:金幣漲→亮起→按(對照點擊泰坦的商店即主畫面) */}
         <LevelBar />
+        <SkillBar />
         {/* 下一步行動提示:紅點只說「有事」,這條直接說「做什麼」,點了開正確分頁 */}
         {stepGoal && (!stepGoal.tab || tab !== stepGoal.tab) && (
           <button
@@ -619,7 +607,6 @@ function Game() {
             {stepGoal.tab && <span className="go">前往 →</span>}
           </button>
         )}
-        <SkillBar />
         <div className="tabs">
           {TABS.map((t) => (
             <button

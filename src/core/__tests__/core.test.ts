@@ -182,9 +182,10 @@ describe('format', () => {
 
   it('戰鬥數字一律顯示整數', () => {
     expect(fmtCombat(999.8)).toBe('999')
-    expect(fmtCombat(1234.8)).toBe('1,234')
-    expect(fmtCombat(999999.9)).toBe('999,999')
-    expect(fmtCombat(1.8e6)).toBe('1M')
+    expect(fmtCombat(1000)).toBe('1K')
+    expect(fmtCombat(1234.8)).toBe('1.2K')
+    expect(fmtCombat(12_345)).toBe('12K')
+    expect(fmtCombat(1.8e6)).toBe('1.8M')
   })
   it('時間格式', () => {
     expect(fmtTime(65)).toBe('1:05')

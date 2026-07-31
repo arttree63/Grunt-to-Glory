@@ -17,15 +17,16 @@ export function fmt(v: Num, decimals = 1): string {
   return mantissa.toFixed(decimals) + suffix(tier)
 }
 
-/** 戰鬥用整數格式。避免 HP、DPS、跳字出現小數點，百萬以下保留完整整數。 */
+/** 戰鬥數字格式。千以上立即縮寫，讓密集跳字維持容易掃讀。 */
 export function fmtCombat(v: Num): string {
   const d = v instanceof Decimal ? v : D(v)
   if (d.lt(0)) return '-' + fmtCombat(d.neg())
   if (d.gt(0) && d.lt(1)) return '1'
-  if (d.lt(1_000_000)) return Math.floor(d.toNumber()).toLocaleString('en-US')
+  if (d.lt(1000)) return Math.floor(d.toNumber()).toLocaleString('en-US')
   const tier = Math.floor(d.log10() / 3)
-  const mantissa = d.div(Decimal.pow(1000, tier)).floor().toString()
-  return mantissa + suffix(tier)
+  const mantissa = d.div(Decimal.pow(1000, tier)).toNumber()
+  const shown = mantissa < 10 && !Number.isInteger(mantissa) ? mantissa.toFixed(1) : Math.floor(mantissa).toString()
+  return shown + suffix(tier)
 }
 
 function suffix(tier: number): string {

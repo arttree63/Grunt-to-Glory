@@ -19,7 +19,7 @@ import { useGameState } from './useGameState'
 export const TRAINING_NAME: Record<TrainingId, string> = {
   heavy: '重擊操練',
   rapid: '疾攻操練',
-  morale: '戰意操練',
+  morale: '主動操練',
 }
 
 const TRAINING: Array<{
@@ -42,13 +42,6 @@ const TRAINING: Array<{
     lead: '打得又快又碎。',
     desc: '出手變快,同樣的傷害切成更多次。護盾、殘影、每次命中才觸發的效果全部吃這個。',
     result: `攻擊間隔 ×${B.TRAINING_RAPID_INTERVAL}・總 DPS 不變`,
-  },
-  {
-    id: 'morale',
-    role: '點擊 / 主動',
-    lead: '你自己下場打。',
-    desc: '點擊累積的戰意更多、離開後消退更慢。掛著不管沒有差別,你越常主動介入,差距越大。',
-    result: `戰意獲取 +${Math.round((B.TRAINING_MORALE_GAIN - 1) * 100)}%・衰減 −${Math.round((1 - B.TRAINING_MORALE_DECAY) * 100)}%`,
   },
 ]
 
@@ -120,7 +113,7 @@ export default function TrainingCard() {
       ) : (
         s.training.length > 0 && (
           <>
-            {(['heavy', 'rapid', 'morale'] as TrainingId[]).map((id) => (
+            {(['heavy', 'rapid'] as TrainingId[]).map((id) => (
               <div className="row" key={id}>
                 <span className="k">{TRAINING_NAME[id]}</span>
                 <span className="v">×{trainingCount(s, id)}</span>

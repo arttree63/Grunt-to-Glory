@@ -187,13 +187,13 @@ button {
   background: #7a6a8a;
 }
 
-/* 遠征耐久(玩家血條):與戰意同一組版位語彙,只是換色與位置 */
+/* 遠征耐久(玩家血條) */
 .endurance {
   position: absolute;
   z-index: 5;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 34px;
+  bottom: 8px;
   width: 150px;
   pointer-events: none;
   text-align: center;
@@ -228,7 +228,7 @@ button {
   50% { opacity: 0.55; }
 }
 
-/* 法力(MP):與耐久/戰意同一組版位語彙 */
+/* 法力(MP) */
 .mana {
   position: absolute;
   z-index: 5;
@@ -257,35 +257,6 @@ button {
   height: 100%;
   background: linear-gradient(90deg, #4a6ad0, #8fa8e0);
   transition: width 0.2s linear;
-}
-
-/* 戰意 */
-.morale {
-  position: absolute;
-  z-index: 5;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 8px;
-  width: 150px;
-  pointer-events: none;
-  text-align: center;
-}
-.morale .tag {
-  color: #7fd0c0;
-  font-size: 11px;
-  letter-spacing: 4px;
-  margin-bottom: 3px;
-  opacity: 0.9;
-}
-.morale .bar {
-  height: 5px;
-  background: #20303255;
-  border-radius: 3px;
-  overflow: hidden;
-}
-.morale .fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--morale-a), var(--morale-b));
 }
 
 /* 撤退提示:放在上緣,不能擋主角。要小,新美術下大塊文字會蓋掉半個畫面 */

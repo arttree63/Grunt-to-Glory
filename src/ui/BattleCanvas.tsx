@@ -94,7 +94,6 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       return {
         isBoss: s.isBoss,
         event: s.event?.kind ?? null,
-        morale: s.morale,
         jobId: s.jobId,
         formation: ironwallActive(s),
         // 多槽 buff:buffSkill 維持「最新的那個」給 Codex 的分招演出用,不改契約
@@ -126,8 +125,6 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         hourglassSteps: new Set(s.castOrder).size,
         commanderTracking: setCount(s, 'commander') >= 2,
         perfectWindowLeft: s.perfectWindowLeft,
-        zealStacks: s.zealStacks,
-        encounterWaiting: s.encounters.length > 0,
         activeMerc: s.activeMerc,
         cloneActive: critWindowActive(s) && activeLegends(s).includes('twinblade'),
         // ── 殘影(命運種子)。⚠️ 與 twinblade 的 cloneActive 是兩回事,不要共用同一個 sprite ──
@@ -135,12 +132,6 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         afterimageActive: s.afterimageLeft > 0,
         /** 還要重演幾次 */
         afterimageLeft: s.afterimageLeft,
-        /**
-         * 距下一個殘影的蓄積進度 0~1。
-         * ⚠️ 這是整個機制的決策可視化:玩家要看得見「快出殘影了」才會產生
-         * 「現在要不要先存殘影、把強化普攻留給它一起複製」的判斷
-         */
-        afterimageCharge: hasNode(s, 'seed_afterimage') ? s.afterimageAcc / B.AFTERIMAGE_EVERY : 0,
         /** 同步步伐:殘影從傷害來源變成破綻產生器,外觀應該看得出不同 */
         afterimageSync: hasNode(s, 'shade_sync'),
         /** 殘影留下的背刺窗口:主角下一擊無視圖騰 */
@@ -184,27 +175,18 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         const base = e.damage!.div(critMultiplier(rate))
         const shown = crit ? base.mul(B.CRIT_MULT) : base
         sfx.play(crit ? 'crit' : 'hit')
-        const click = e.source === 'click'
-        const morale = click && (e.count ?? 0) > 0 ? `・戰意 +${Math.round(e.count!)}` : ''
-        const backstab = e.pierce && (e.source === 'hero' || !e.source)
-        scene.swing(
-          (backstab ? '背刺・' : e.pierce ? '穿透・' : '') + (crit ? '暴擊 ' : '') + (click ? '點擊 ' : '') + fmtCombat(shown) + morale,
-          crit,
-          e.source ?? 'hero',
-        )
+        scene.swing(fmtCombat(shown), crit, e.source ?? 'hero')
       } else if (e.type === 'clickFeedback') {
-        const morale = Math.round(e.count ?? 0)
-        scene.swing(morale > 0 ? `戰意 +${morale}` : '戰意已滿', false, 'click')
+        return
       } else if (e.type === 'moraleBurst') {
-        scene.swing(`${e.via === 'lostbanner' ? '失落軍旗' : '戰意爆發'} ${fmtCombat(e.damage!)}`, true)
+        scene.swing(fmtCombat(e.damage!), true)
       } else if (e.type === 'skill') {
         // 技能直傷原本完全沒有演出:血條瞬空但畫面什麼都沒發生
         const name = SKILLS[e.skillId!].name
         // 三系各有自己的音色:關掉技能名稱也要聽得出剛剛放的是哪一招(GDD § 10.5 身分層)
         sfx.play((e.count ?? 0) > 0 ? 'burst' : SKILL_SFX[e.skillId!] ?? 'skillShield')
         // count = 消耗掉的印記層數,演出可以據此畫 N 道射線
-        scene.skillHit(e.damage ? `${name} ${fmtCombat(e.damage)}` : name, e.skillId!, e.count ?? 0, e.via === 'ironwall')
-        if (e.burnDamage) scene.onEmberConvert(fmtCombat(e.burnDamage))
+        scene.skillHit(e.damage ? fmtCombat(e.damage) : name, e.skillId!, e.count ?? 0, !e.damage && e.via === 'ironwall')
       } else if (e.type === 'cooldownAdvance') {
         scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0, e.via)
       } else if (e.type === 'zoneEnter') {
@@ -251,16 +233,15 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       } else if (e.type === 'totemDown') {
         scene.notice('圖騰擊破')
       } else if (e.type === 'zealGain') {
-        scene.notice(`戰意昂揚 ×${e.count}(本輪傷害 +${e.count! * 2}%)`)
+        return
       } else if (e.type === 'mercAct') {
         scene.onMercAct(e.mercId!)
       } else if (e.type === 'freezeStart') {
         scene.onFreezeStart()
       } else if (e.type === 'freezeBurst') {
-        scene.onFreezeBurst(`冰裂 ${fmtCombat(e.damage!)}`)
+        scene.onFreezeBurst(fmtCombat(e.damage!))
       } else if (e.type === 'burnTick') {
-        // 穿透標記:圖騰在場時火仍燒進本體——規則讓玩家親眼看到,不用文字教
-        scene.onBurnTick(`${e.pierce ? '穿透・' : ''}燃燒 ${fmtCombat(e.damage!)}`)
+        scene.onBurnTick(fmtCombat(e.damage!))
       } else if (e.type === 'nemesisResolved') {
         scene.skillHit('宿 怨 終 結 !')
       } else if (e.type === 'perfectBurst') {

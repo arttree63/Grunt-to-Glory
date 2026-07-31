@@ -17,7 +17,7 @@ const STEPS = [
   {
     icon: 'hero' as const,
     title: '點畫面就是攻擊',
-    body: '每點一下就是一次揮砍,直接造成傷害;連點還會累積「戰意」讓小兵打得更快。掛著不管也會自己推進。',
+    body: '每點一下就是一次揮砍,直接造成傷害。掛著不管也會自己推進。',
   },
   {
     icon: 'charge' as const,
