@@ -1,4 +1,5 @@
 import * as B from './balance'
+import { isBossFloor } from './formulas'
 import { availableJobs, JOBS } from './jobs'
 import { MERCS } from './mercs'
 import { canBuyTech, TECHS } from './techs'
@@ -47,7 +48,13 @@ export function nearGoal(s: GameState): Goal | null {
 /** 本輪:下一個里程碑 */
 export function runGoal(s: GameState): Goal {
   if (s.bossFailed && s.bossRetryFloor !== null)
-    return { text: `重整旗鼓,再戰第 ${s.bossRetryFloor} 層守關者`, tab: null }
+    // ⚠️ v4.1 起一般層也會失敗(耐久歸零),那裡沒有守關者——不加這道判斷就是對玩家說謊
+    return {
+      text: isBossFloor(s.bossRetryFloor)
+        ? `重整旗鼓,再戰第 ${s.bossRetryFloor} 層守關者`
+        : `重整旗鼓,再攻第 ${s.bossRetryFloor} 層`,
+      tab: null,
+    }
   if (!s.destinyPath && s.floor <= B.DESTINY_SEED_FLOOR)
     return { text: `擊破第 ${B.DESTINY_SEED_FLOOR} 層守關者,迎接首次命運降臨`, tab: null }
   const milestone = B.DESTINY_MILESTONES[s.destinyEarned]

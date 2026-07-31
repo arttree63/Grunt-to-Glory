@@ -1230,7 +1230,9 @@ function failFloor(s: GameState, raw: GameEvent[], reason: 'timeout' | 'enduranc
   }
   // 越戰越勇補償「Boss 檢定失敗」,兩種死法都算(被打死的人更需要追趕機制);
   // 要排除的是連鎖退層那種一般層死亡,不是耐久死
-  if (hasNode(s, 'tactician_2a') && isBossFloor(s.floor)) {
+  // ⚠️ 再收緊一點:Boss 層被小怪打死(bossStats 為 null)也給的話,
+  // 玩家可以站在 Boss 層讓耐久歸零刷疊層(一輪約 20 秒、六輪滿疊)
+  if (hasNode(s, 'tactician_2a') && isBossFloor(s.floor) && (reason === 'timeout' || s.isBoss)) {
     s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
   }
   // ⚠️ 目標就是「剛剛輸掉的那一層」。曾經改成取 max(想保住最高目標),
