@@ -562,7 +562,7 @@ export const CHRONICLE_MAX = 30
 
 // 命運樹
 /** 本輪達到這些層數各給一枚命運點(用當輪層數,不是歷史最高) */
-export const DESTINY_MILESTONES = [20, 50, 90]
+export const DESTINY_MILESTONES = [30, 60, 90]
 /** 未使用命運點上限。滿了就停發,但不阻止推進(掛機玩家回來不用連點十次) */
 export const DESTINY_POINT_CAP = 2
 

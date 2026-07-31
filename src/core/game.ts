@@ -1308,6 +1308,12 @@ export function pickDestinyNode(s: GameState, id: DestinyNodeId): boolean {
   s.destinyNodes.push(id)
   // 這一組用掉了:清空,還有點數就備下一組(沒點數就等發點時再備)
   s.pendingChoiceIds = s.destinyPoints > 0 ? nextChoiceIds(s) : null
+  // 重大抉擇完成 = 流派正式定案。之後跨流派降臨照給節點,但不再改變 destinyPath。
+  // ⚠️ 這個鎖定必須發生在二轉(Lv.100)之前,否則 jobMatrix 會被隨機性污染且擦不掉
+  if (DESTINY_NODES[id]?.kind === 'choice') {
+    s.destinyLocked = true
+    s.destinyPath = dominantPath(s) ?? s.destinyPath
+  }
   return true
 }
 

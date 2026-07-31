@@ -186,7 +186,7 @@ export default function DestinyPanel() {
       {choice ? (
         <>
           <div className="affix" style={{ marginBottom: 8 }}>
-            二選一,選了另一個本輪就不會再出現。
+            {choice.length} 選 1,選了其他的本輪就不會再出現。
           </div>
           {choice.map((n) => (
             <div className="card" key={n.id}>

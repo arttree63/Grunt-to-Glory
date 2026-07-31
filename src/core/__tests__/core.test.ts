@@ -558,17 +558,28 @@ describe('命運樹', () => {
     expect(t.destinyLog).toHaveLength(logLen)
   })
 
-  it('降臨的節點不會推進既有的二選一決策點', () => {
-    // ⚠️ 這條守的是索引污染:降臨節點若被算進 choices 索引,
-    // 玩家手上的選項會憑空變掉、或直接拿不到
+  it('種子會讓自己的抉擇組優先,但不污染既有的二選一索引', () => {
     const s = createInitialState()
     chooseDestiny(s, 'tactician')
     addDestinyPoint(s)
-    const before = pendingChoice(s)!.map((n) => n.id)
+    const pathChoice = pendingChoice(s)!.map((n) => n.id)
+    expect(pathChoice).toEqual(['tactician_1a', 'tactician_1b'])
 
-    s.destinyNodes.push('seed_afterimage') // 模擬一次降臨
-    expect(pendingChoice(s)!.map((n) => n.id)).toEqual(before)
-    expect(nextChoiceIds(s)).toEqual(before)
+    // 拿到種子後,第 30 層要兌現的是「分身最後長成什麼」,不是路徑表的下一個二選一
+    s.destinyNodes.push('seed_afterimage')
+    s.pendingChoiceIds = nextChoiceIds(s)
+    expect(pendingChoice(s)!.map((n) => n.id)).toEqual([
+      'shade_swarm',
+      'shade_mirror',
+      'shade_lure',
+    ])
+
+    // 選完抉擇組後,路徑二選一要原封不動回來 ——
+    // ⚠️ 這才是「索引沒被降臨節點污染」的真正證明
+    expect(pickDestinyNode(s, 'shade_mirror')).toBe(true)
+    expect(s.destinyLocked).toBe(true) // 重大抉擇 = 流派定案
+    addDestinyPoint(s)
+    expect(pendingChoice(s)!.map((n) => n.id)).toEqual(pathChoice)
   })
 
   it('壞手保護:前幾次降臨強制同流派', () => {

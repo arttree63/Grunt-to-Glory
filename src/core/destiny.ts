@@ -294,6 +294,25 @@ function pickBucket(s: GameState, rng: () => number): DestinyBucket {
   return wild < B.DESTINY_WILD_PER_RUN ? 'wild' : 'cross'
 }
 
+/**
+ * 還沒兌現的抉擇組(例如殘影的第 30 層三選一)。
+ * 條件全滿足、且這一組還沒選過任何一個,才算待決。
+ */
+export function pendingChoiceGroup(s: GameState): DestinyNodeId[] | null {
+  const groups = new Map<string, DestinyNode[]>()
+  for (const n of DESTINY_CHOICES) {
+    if (!n.groupId) continue
+    if (!groups.has(n.groupId)) groups.set(n.groupId, [])
+    groups.get(n.groupId)!.push(n)
+  }
+  for (const members of groups.values()) {
+    if (members.some((n) => hasNode(s, n.id))) continue // 這組已經選過了
+    if (!members.every((n) => (n.reqs ?? []).every((r) => meetsReq(s, r)))) continue
+    return members.map((n) => n.id)
+  }
+  return null
+}
+
 /** 由已取得的節點反推傾向(定錨用)。平手取先取得的 */
 export function dominantPath(s: GameState): DestinyPathId | null {
   const count: Partial<Record<DestinyPathId, number>> = {}
@@ -342,6 +361,11 @@ export function pendingChoice(s: GameState): DestinyNode[] | null {
  * 之後再多幾個降臨節點也不會讓玩家手上的選項變掉。
  */
 export function nextChoiceIds(s: GameState): DestinyNodeId[] | null {
+  // 命運抉擇優先於既有的二選一:玩家手上有種子時,第 30 層要兌現的是
+  // 「我的分身最後長成什麼」,不是路徑表上的下一個二選一
+  const group = pendingChoiceGroup(s)
+  if (group) return group
+
   if (!s.destinyPath) return null
   const path = DESTINY_PATHS[s.destinyPath]
   // 只數「抉擇型」節點,降臨得到的節點不推進決策點
