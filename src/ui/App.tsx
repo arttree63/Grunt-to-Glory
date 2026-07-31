@@ -14,6 +14,7 @@ import {
   comboMult,
   diagnoseBoss,
   DIAGNOSIS_NAME,
+  enduranceMax,
   loreStage,
   BOSS_LORE_GLIMPSE,
   BOSS_LORE_MASTERY,
@@ -285,6 +286,9 @@ function Game() {
   }, [lastRun, offline, setUiLock])
 
   const hpRatio = s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0
+  // 耐久比例:上限只有 enduranceMax 一支算法(game-balance 硬規則),UI 不自己算
+  const endurCap = enduranceMax(s)
+  const endurRatio = endurCap.gt(0) ? Math.min(1, s.endurance.div(endurCap).toNumber()) : 0
   // 紅點三層收斂:同時只亮一顆,由近期目標的優先序決定(core/goals.ts)
   // 「所有的開始」都走同一個 loading 畫面:首次進場(index.html + !loaded 分支)、
   // 下一代出發(轉生)、重置全部進度。開始是儀式,黑一下再亮等於沒有開始過。
@@ -564,6 +568,14 @@ function Game() {
             )}
           </div>
         )}
+
+        {/* 遠征耐久:單場容錯額度,每層滿血。放在戰意上方、主角正上方不遮臉 */}
+        <div className={`endurance${endurRatio <= 0.34 ? ' low' : ''}`}>
+          <div className="tag">耐 久</div>
+          <div className="bar">
+            <div className="fill" style={{ width: `${Math.max(0, endurRatio * 100)}%` }} />
+          </div>
+        </div>
 
         <div className="morale">
           <div className="tag">戰 意</div>

@@ -356,6 +356,8 @@ export class BattleScene {
   private boss: BossView | null = null
   private eventView: EventView | null = null
   private shake = 0
+  /** 主角受擊紅閃剩餘秒數 */
+  private heroHurtLeft = 0
   private zoom = 0
   private elapsed = 0
   private spawnTimer = 0
@@ -785,6 +787,18 @@ export class BattleScene {
    * 頂端到 21% 高度,而原本第一格固定在 20% —— **每一則提示都直接蓋在倒數上**,
    * 而那是全遊戲最需要看清楚的數字。Pixi 量不到 HTML 的高度,所以用比例常數並在這裡說明來源。
    */
+  /**
+   * 主角挨了場上威脅一下:震屏 + 主角閃紅。
+   * ⚠️ 沒有攻擊幀素材(怪物只有 idle 四張),所以「誰打的」不演,只演「你被打到了」——
+   * 血條在掉但畫面毫無反應,玩家會以為是 bug。
+   */
+  threatHit() {
+    if (this.destroyed) return
+    this.shake = 6
+    this.heroSprite.tint = 0xff6a6a
+    this.heroHurtLeft = 0.25
+  }
+
   notice(text: string) {
     if (this.destroyed) return
     const slot = Math.min(2, this.dmgLayer.children.filter((child) => (child as FloatText)._notice).length)
@@ -1093,6 +1107,12 @@ export class BattleScene {
         t.alpha = 0.7 + Math.sin(this.elapsed * 0.012 + i) * 0.12
       }
       if (t._life <= 0) t.destroy()
+    }
+
+    // 主角受擊紅閃退場
+    if (this.heroHurtLeft > 0) {
+      this.heroHurtLeft -= ms / 1000
+      if (this.heroHurtLeft <= 0) this.heroSprite.tint = 0xffffff
     }
 
     // 震屏 + zoom punch(只作用於 world,HTML UI 不受影響)

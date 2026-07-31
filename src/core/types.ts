@@ -179,6 +179,8 @@ export interface HitEvent {
 }
 
 export interface BossStats {
+  /** 這場是怎麼輸的:逾時(輸出不夠)還是耐久歸零(擋不住)。null = 還沒輸 */
+  failedBy?: 'timeout' | 'endurance'
   floor: number
   kind: BossKind
   win: boolean
@@ -264,6 +266,14 @@ export interface GameState {
   enemyHp: Decimal
   enemyMaxHp: Decimal
   bossTimeLeft: number
+  /**
+   * 遠征耐久(血條)。**單場容錯額度,每層滿血進場,不跨層記帳**——
+   * 與 shellLeft/channelLeft 等 Boss 機制暫態同級,刻意不進存檔,進樓層時重設。
+   * 歸零 = 這層失敗,退回上一層駐守,不扣任何永久進度。
+   */
+  endurance: Decimal
+  /** 場上威脅的出手計時(秒)。與耐久同為單場暫態 */
+  threatTimer: number
   /** 本層 Boss 已挑戰失敗過 → 退回前一層 farm */
   bossFailed: boolean
   /** 失敗的是哪一層的 Boss。玩家退回前一層 farm,按鈕或自動重試會回到這層 */
@@ -569,6 +579,8 @@ export interface GameEvent {
   type:
     | 'kill'
     | 'bossKill'
+    | 'threatHit'
+    | 'enduranceDown'
     | 'bossFail'
     | 'floorUp'
     | 'levelUp'
@@ -635,6 +647,8 @@ export interface GameEvent {
   destinyNodeId?: string
   /** trainingChosen 事件:玩家這次投入的操練方向 */
   trainingId?: TrainingId
+  /** bossFail 事件:這場是怎麼輸的(逾時=輸出不夠 / 耐久=擋不住) */
+  reason?: 'timeout' | 'endurance'
   mercId?: MercId
   /** attack 事件:這一擊來自誰(分帳演出用)。省略 = 主角 */
   source?: 'hero' | 'click' | 'clone' | 'zone' | 'merc'

@@ -1,6 +1,6 @@
 import { D } from './decimal'
 import { COMBAT_NUMBER_SCALE } from './balance'
-import { createInitialState, SAVE_VERSION, spawnEnemy } from './game'
+import { createInitialState, refillEndurance, SAVE_VERSION, spawnEnemy } from './game'
 import { emptyTechs } from './techs'
 import { reconcileDestiny } from './destiny'
 import type { GameState } from './types'
@@ -445,6 +445,8 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
   // ⚠️ Boss 戰中存的檔:行為原型(護盾/蓄力/圖騰)是暫態,直接還原會變成無機制木樁。
   // 限時檢定本來就不該從一半恢復——重開那一場(滿血、計時重來、機制齊全)
   if (out.isBoss) spawnEnemy(out)
+  // 耐久同為單場暫態,不進存檔:讀檔一律滿血,否則會帶著 0 血進場、一秒陣亡
+  refillEndurance(out)
   // 冪等自癒:補「有命運點卻沒有選項」與節點改名後的殘留 id。
   // 放這裡而不是 migrate():migrate 全是純欄位操作,不該反向依賴會變動的節點表
   reconcileDestiny(out)

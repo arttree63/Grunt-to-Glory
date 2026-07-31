@@ -39,6 +39,8 @@ const EVENT_SFX: Partial<Record<GameEvent['type'], sfx.SfxName>> = {
   bossKill: 'bossKill',
   nemesisResolved: 'bossKill',
   bossFail: 'fail',
+  threatHit: 'hit',
+  enduranceDown: 'fail',
   channelFailed: 'fail',
   eventEscape: 'fail',
   levelUp: 'levelUp',
@@ -262,6 +264,10 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.skillHit('宿 怨 終 結 !')
       } else if (e.type === 'perfectBurst') {
         scene.skillHit('完 美 引 爆 !')
+      } else if (e.type === 'threatHit') {
+        scene.threatHit()
+      } else if (e.type === 'enduranceDown') {
+        scene.notice('耐久見底・戰線潰散')
       } else if (e.type === 'burnMax') {
         scene.onBurnMax()
       } else if (e.type === 'bannerStore') {

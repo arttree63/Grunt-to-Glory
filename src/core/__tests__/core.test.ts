@@ -46,6 +46,8 @@ import {
   canFineForge,
   barterForDestiny,
   availableSkills,
+  enduranceMax,
+  threatPerSec,
   chargeMult,
   chooseDestiny,
   chooseTraining,
@@ -190,6 +192,67 @@ describe('戰鬥循環', () => {
     expect(s.floor).toBeGreaterThan(2)
     const kill = events.find((e) => e.type === 'kill')
     expect(kill?.count).toBeGreaterThan(1) // 事件已合併,演出層不會被灌爆
+  })
+
+  it('遠征耐久:每層滿血進場,不跨層記帳(v4.1 § 2)', () => {
+    const s = createInitialState()
+    s.floor = 5
+    spawnEnemy(s)
+    expect(s.endurance.eq(enduranceMax(s))).toBe(true)
+
+    // 打掉一半,同一層換下一隻小怪不補血
+    s.endurance = enduranceMax(s).div(2)
+    s.killsInFloor = 1
+    spawnEnemy(s)
+    expect(s.endurance.lt(enduranceMax(s))).toBe(true)
+
+    // 進新樓層才滿血
+    s.killsInFloor = 0
+    s.floor = 6
+    spawnEnemy(s)
+    expect(s.endurance.eq(enduranceMax(s))).toBe(true)
+  })
+
+  it('遠征耐久歸零 → 這層失敗,退一層駐守,永久進度一毛不扣(v4.1 § 2)', () => {
+    const s = createInitialState()
+    s.floor = 12
+    s.lv = 30
+    spawnEnemy(s)
+    const goldBefore = s.gold
+    const matBefore = s.materials
+    const lvBefore = s.lv
+
+    // 只剩一口氣 → 場上威脅的下一擊就會把人打下去
+    s.endurance = D(1)
+    s.threatTimer = B.THREAT_INTERVAL
+    const events = applyTick(s, 100)
+
+    const fail = events.find((e) => e.type === 'bossFail')
+    expect(fail?.reason).toBe('endurance')
+    expect(s.floor).toBe(11) // 退一層
+    expect(s.bossRetryFloor).toBe(12) // 待挑戰的是原本那層
+    expect(s.bossFailed).toBe(true)
+    // 不扣任何永久進度
+    expect(s.gold.gte(goldBefore)).toBe(true)
+    expect(s.materials).toBeGreaterThanOrEqual(matBefore)
+    expect(s.lv).toBe(lvBefore)
+    // 退回去的那層是滿血重新開始
+    expect(s.endurance.eq(enduranceMax(s))).toBe(true)
+  })
+
+  it('兩條檢定分工:剛好過得了 DPS 檢定的功力,不會被生存軸卡死(v4.1 § 2)', () => {
+    // 找出剛好能在 30 秒內打死第 50 層 Boss 的等級,確認那個功力撐得過 30 秒
+    const s = createInitialState()
+    s.floor = 50
+    let lv = 1
+    while (lv < 3000 && currentDPS(s).mul(B.BOSS_TIME).lt(bossHP(50))) {
+      lv += 5
+      s.lv = lv
+    }
+    s.isBoss = true
+    spawnEnemy(s)
+    const survivalSec = enduranceMax(s).div(threatPerSec(s)).toNumber()
+    expect(survivalSec).toBeGreaterThan(B.BOSS_TIME) // 輸出剛好夠的人,不該被血條擋掉
   })
 
   it('Boss 限時到 → 退回前一層駐守,不自動再挑戰(GDD v4.0-A § 2.2)', () => {

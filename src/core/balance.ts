@@ -33,6 +33,21 @@ export const BOSS_TIME = 30 // 秒
 export const BOSS_GOLD_MULT = 3 // Boss 金幣 = 該層小怪 ×3(等同清一層,模擬已含)
 export const BOSS_MATERIALS = 3
 
+// ── 遠征耐久(生存檢定,v4.1)──
+/**
+ * 耐久上限 = 玩家 DPS × 這個秒數。
+ * ⚠️ 用 DPS 當基準不是偷懶:HP 與 DPS 都是指數成長,任何用固定數字寫死的血量,
+ * 在第 30 層跟第 300 層的意義會差好幾個數量級。批次 3(操練)會把這個上限
+ * 改成吃「體能」點數,消費端只認 enduranceMax() 一支函式,不必動。
+ */
+export const ENDURANCE_SECONDS = 45
+/** 場上威脅的每秒傷害 = 該層小怪滿血 × 這個比例(用小怪血當基準,Boss 才不會因為血厚 8 倍就殺瘋) */
+export const THREAT_RATIO = 0.12
+/** Boss 層的威脅倍率 */
+export const BOSS_THREAT_MULT = 1.5
+/** 威脅的出手間隔(秒):切成一下一下的,才有得預告、也才看得到血在掉 */
+export const THREAT_INTERVAL = 1.5
+
 // 戰意(點擊 buff)
 export const MORALE_PER_CLICK = 7
 export const MORALE_DECAY = 0.008 // 每 ms

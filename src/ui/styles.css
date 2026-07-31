@@ -187,6 +187,47 @@ button {
   background: #7a6a8a;
 }
 
+/* 遠征耐久(玩家血條):與戰意同一組版位語彙,只是換色與位置 */
+.endurance {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 34px;
+  width: 150px;
+  pointer-events: none;
+  text-align: center;
+}
+.endurance .tag {
+  color: #d99a9a;
+  font-size: 11px;
+  letter-spacing: 4px;
+  margin-bottom: 3px;
+  opacity: 0.9;
+}
+.endurance .bar {
+  height: 5px;
+  background: #30202055;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.endurance .fill {
+  height: 100%;
+  background: linear-gradient(90deg, #c8384a, #ff7a5c);
+  transition: width 0.2s linear;
+}
+/* 剩三分之一才變色:一直閃紅等於沒有警訊 */
+.endurance.low .tag {
+  color: #ff7a5c;
+}
+.endurance.low .fill {
+  animation: endurance-warn 0.9s ease-in-out infinite;
+}
+@keyframes endurance-warn {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 /* 戰意 */
 .morale {
   position: absolute;

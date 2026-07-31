@@ -97,6 +97,8 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     enemyHp: D(0),
     enemyMaxHp: D(0),
     bossTimeLeft: B.BOSS_TIME,
+    endurance: D(0), // 進樓層時由 refillEndurance 補滿(見 spawnEnemy)
+    threatTimer: 0,
     bossFailed: false,
     bossRetryFloor: null,
     bossKind: null,
@@ -381,6 +383,8 @@ export function goldPerSec(s: GameState): Decimal {
 
 /** 依現在的層數重建敵人(層數被外部改動、或讀檔後校正時呼叫) */
 export function spawnEnemy(s: GameState) {
+  // 每層滿血進場(v4.1 § 1):耐久是單場容錯額度,不跨層記帳
+  if (s.killsInFloor === 0) refillEndurance(s)
   if (isBossFloor(s.floor) && !s.bossFailed) {
     s.isBoss = true
     s.enemyMaxHp = bossHP(s.floor)
@@ -780,6 +784,11 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
   if (s.descentCooldown > 0) s.descentCooldown = Math.max(0, s.descentCooldown - dt)
   releaseTraining(s, dt)
   s.destinyGapSec += dt
+  tickThreat(s, dt, raw)
+  if (s.bossFailed && s.bossRetryFloor !== null && raw.some((e) => e.type === 'bossFail')) {
+    // 這個 tick 已經打輸退層了,後面的機制不要再跑在新的樓層上
+    return mergeKills(raw)
+  }
   tickSkills(s, dt, raw, rng)
   tickAutoCast(s, raw, rng)
   tickTactician(s, dt)
@@ -1110,7 +1119,16 @@ function checkBossTimeout(s: GameState, raw: GameEvent[], rng: Rng) {
     s.freezeLeft = 0
     s.frozenPool = D(0)
   }
-  // DPS check 失敗 → 退回前一層 farm(玩家心智模型:打不過就退一層)
+  failFloor(s, raw, 'timeout')
+}
+
+/**
+ * 這一層打輸了 → 退回上一層駐守。**兩條失敗路徑共用這裡**:
+ * Boss 逾時(輸出不夠)與耐久歸零(擋不住)。
+ * ⚠️ 不共用的話,越戰越勇、家族宿敵、失敗診斷會對新的失敗形態全盲,而且是靜默的。
+ * 不扣任何永久進度(金幣/素材/等級/勳章全留),只是位置退一層。
+ */
+function failFloor(s: GameState, raw: GameEvent[], reason: 'timeout' | 'endurance') {
   // 戰術修正一場一次:再敗要重新選(企劃裁決:不永久疊加、不越敗越簡單)
   s.bossTactic = null
   s.tacticDelayLeft = 0
@@ -1118,7 +1136,7 @@ function checkBossTimeout(s: GameState, raw: GameEvent[], rng: Rng) {
   s.bossFailed = true
   if (s.bossStats) {
     // 失敗的統計要留下來:診斷「差在哪、該改什麼」全靠它
-    s.lastBossStats = { ...s.bossStats, bySource: { ...s.bossStats.bySource } }
+    s.lastBossStats = { ...s.bossStats, bySource: { ...s.bossStats.bySource }, failedBy: reason }
     // 家族宿敵:記下本輪對這層 Boss 的失敗次數與最佳戰績
     const rec = s.runBossFails[s.floor] ?? { count: 0, bestDealt: 0 }
     rec.count++
@@ -1130,8 +1148,51 @@ function checkBossTimeout(s: GameState, raw: GameEvent[], rng: Rng) {
   s.bossRetryFloor = s.floor
   s.floor = Math.max(1, s.floor - 1)
   s.killsInFloor = 0
-  raw.push({ type: 'bossFail', floor: s.bossRetryFloor })
+  raw.push({ type: 'bossFail', floor: s.bossRetryFloor, reason })
   spawnEnemy(s)
+}
+
+/**
+ * 遠征耐久上限。**全遊戲只有這一支算法**(game-balance skill 硬規則:
+ * 會被科技/詞綴/命運節點改的量只能有一個算法,否則加成會靜默失效)。
+ * 現在吃玩家 DPS × 秒數;批次 3(操練)會改成吃「體能」點數,消費端不必動。
+ */
+export function enduranceMax(s: GameState): Decimal {
+  return currentDPS(s).mul(B.ENDURANCE_SECONDS)
+}
+
+/** 進新樓層 = 滿血進場(v4.1 § 1)。耐久不跨層記帳 */
+export function refillEndurance(s: GameState) {
+  s.endurance = enduranceMax(s)
+  s.threatTimer = 0
+}
+
+/** 場上威脅的每秒傷害:用**該層小怪**滿血當基準,Boss 才不會因為血厚 8 倍就殺瘋 */
+export function threatPerSec(s: GameState): Decimal {
+  return mobHP(s.floor).mul(B.THREAT_RATIO).mul(s.isBoss ? B.BOSS_THREAT_MULT : 1)
+}
+
+/**
+ * 場上威脅出手:每 THREAT_INTERVAL 秒砍一下耐久。
+ * 切成一下一下而不是連續扣,是為了看得到血在掉、也留得住預告的位置。
+ */
+function tickThreat(s: GameState, dt: number, raw: GameEvent[]) {
+  if (s.enemyHp.lte(0)) return
+  s.threatTimer += dt
+  // while 不是 if:單次 tick 最長 500ms,但測試與分頁凍結補算會一次餵好幾秒進來,
+  // 用 if 的話那幾秒只會挨一下,生存檢定在長 tick 下形同虛設
+  while (s.threatTimer >= B.THREAT_INTERVAL) {
+    s.threatTimer -= B.THREAT_INTERVAL
+    const dmg = threatPerSec(s).mul(B.THREAT_INTERVAL)
+    s.endurance = s.endurance.sub(dmg)
+    raw.push({ type: 'threatHit', damage: dmg })
+    if (s.endurance.lte(0)) {
+      s.endurance = D(0)
+      raw.push({ type: 'enduranceDown', floor: s.floor })
+      failFloor(s, raw, 'endurance')
+      return
+    }
+  }
 }
 
 /** 高 DPS 時單 tick 可能殺掉幾十隻,合併成一則事件,演出層不必被灌爆 */
