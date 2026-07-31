@@ -50,6 +50,9 @@ export interface SaveData {
   destinyNodes: GameState['destinyNodes']
   destinyPoints: number
   pendingChoiceIds: string[] | null
+  destinyLog: GameState['destinyLog']
+  destinyLocked: boolean
+  descentCooldown: number
   destinyEarned: number
   materials: number
   forgeCount: number
@@ -124,6 +127,9 @@ export function serialize(s: GameState): SaveData {
     destinyNodes: s.destinyNodes,
     destinyPoints: s.destinyPoints,
     pendingChoiceIds: s.pendingChoiceIds,
+    destinyLog: s.destinyLog,
+    destinyLocked: s.destinyLocked,
+    descentCooldown: s.descentCooldown,
     destinyEarned: s.destinyEarned,
     materials: s.materials,
     forgeCount: s.forgeCount,
@@ -337,6 +343,16 @@ function migrate(raw: SaveData): SaveData {
     if (d.enemyMaxHp !== undefined) d.enemyMaxHp = D(d.enemyMaxHp).mul(COMBAT_NUMBER_SCALE).toString()
     d.version = 26
   }
+  // v26 → v27:命運降臨制。純欄位補預設。
+  // ⚠️ destinyLocked 取 destinyPath != null:舊玩家已自己選過路徑,那就是他的定錨結果,
+  // 讀檔後不可以把他的流派改掉
+  if (d.version < 27) {
+    d.pendingChoiceIds = d.pendingChoiceIds ?? null
+    d.destinyLog = d.destinyLog ?? []
+    d.destinyLocked = d.destinyLocked ?? d.destinyPath != null
+    d.descentCooldown = d.descentCooldown ?? 0
+    d.version = 27
+  }
   return d
 }
 
@@ -388,6 +404,10 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     destinyNodes: d.destinyNodes ?? [],
     destinyPoints: d.destinyPoints ?? 0,
     pendingChoiceIds: d.pendingChoiceIds ?? null,
+    destinyLog: d.destinyLog ?? [],
+    // 舊玩家已經自己選過路徑了,那就是他的定錨結果——不要在讀檔後把他的流派改掉
+    destinyLocked: d.destinyLocked ?? d.destinyPath != null,
+    descentCooldown: d.descentCooldown ?? 0,
     destinyEarned: d.destinyEarned ?? 0,
     materials: d.materials ?? 0,
     forgeCount: d.forgeCount ?? 0,

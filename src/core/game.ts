@@ -34,9 +34,11 @@ import {
   ALL_PATHS,
   DESTINY_NODES,
   DESTINY_PATHS,
+  dominantPath,
   hasNode,
   nextChoiceIds,
   pendingChoice,
+  rollDescent,
 } from './destiny'
 import { makeChronicleEntry, soldierName } from './chronicle'
 import { ENCOUNTER_ORDER } from './encounters'
@@ -134,6 +136,9 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     destinyNodes: [],
     destinyPoints: 0,
     pendingChoiceIds: null,
+    destinyLog: [],
+    destinyLocked: false,
+    descentCooldown: 0,
     destinyEarned: 0,
     autoCast: false, // 預設關:掛機玩家的基準不因新系統改變
     skillCd: {},
@@ -212,7 +217,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 26
+export const SAVE_VERSION = 27
 
 // ---------- 數值查詢 ----------
 
@@ -614,6 +619,7 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
   s.materials += gained
   s.forgeHeatMaterials += gained
   events.push({ type: boss ? 'bossKill' : 'kill', gold: g, floor: s.floor })
+  if (boss) tryDescend(s, events, rng)
 
   if (!boss) return
   s.bossKills++
@@ -730,6 +736,7 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
     s.morale = Math.max(0, s.morale - decay * dtMs)
   }
 
+  if (s.descentCooldown > 0) s.descentCooldown = Math.max(0, s.descentCooldown - dt)
   tickSkills(s, dt, raw)
   tickAutoCast(s, raw)
   tickTactician(s, dt)
@@ -1294,6 +1301,36 @@ export function pickDestinyNode(s: GameState, id: DestinyNodeId): boolean {
 }
 
 /** 里程碑發點。用當輪層數,每輪重新來過 */
+/**
+ * 命運降臨。Boss 擊破後嘗試給一個命運節點。
+ *
+ * 兩道閘門:
+ * 1. **種子固定在第 `DESTINY_SEED_FLOOR` 層**,不受時間限制——玩家必須早點拿到它,
+ *    否則「帶著種子去選職業」這件事根本不會發生
+ * 2. 之後每次降臨要等 `DESTINY_DESCENT_GAP_SEC` 秒。⚠️ 不用固定樓層是因為
+ *    實測前 150 層只要 4.8 分鐘,固定每 10 層在前期會變成每 12 秒跳一張卡
+ *
+ * 定錨:第一顆種子會寫入 `destinyPath`(可浮動);第 30 層抉擇完成才鎖定。
+ */
+function tryDescend(s: GameState, events: GameEvent[], rng: Rng): void {
+  const isSeed = s.destinyLog.length === 0
+  if (isSeed) {
+    if (s.floor < B.DESTINY_SEED_FLOOR) return
+  } else if (s.descentCooldown > 0) {
+    return
+  }
+
+  const picked = rollDescent(s, rng)
+  if (!picked) return
+
+  s.destinyNodes.push(picked.node.id)
+  s.destinyLog.push({ floor: s.floor, id: picked.node.id, bucket: picked.bucket })
+  s.descentCooldown = B.DESTINY_DESCENT_GAP_SEC
+  // 定錨:還沒鎖定就跟著最新的傾向走;鎖定後跨流派降臨不再改變流派
+  if (!s.destinyLocked) s.destinyPath = dominantPath(s) ?? s.destinyPath
+  events.push({ type: 'destinyDescend', floor: s.floor, destinyNodeId: picked.node.id })
+}
+
 /**
  * 給一枚命運點。
  * ⚠️ **所有發點路徑都要走這裡**(里程碑、命運交易、傳令兵科技)。

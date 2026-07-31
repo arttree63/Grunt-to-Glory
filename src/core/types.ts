@@ -360,6 +360,23 @@ export interface GameState {
    * 或直接拿不到選項(命運點永遠花不掉,而且完全靜默)
    */
   pendingChoiceIds: DestinyNodeId[] | null
+  /**
+   * 這一輪的命運紀錄:什麼時候、拿到什麼、從哪個桶抽到的。
+   * 命運樹要能長成「這一輪發生了什麼」的樣子,靠的就是它。
+   */
+  destinyLog: Array<{ floor: number; id: DestinyNodeId; bucket: 'same' | 'cross' | 'wild' }>
+  /**
+   * 流派是否已鎖定。
+   * 第一次種子降臨會「定錨」destinyPath(可浮動);第 30 層抉擇完成後鎖定,此後不再改變。
+   * ⚠️ 這個時間點是刻意的:二轉在 Lv.100、jobMatrix 一寫入就跨轉生保留擦不掉,
+   * 鎖定必須發生在那之前,否則九宮格圖鑑會被隨機性污染。
+   */
+  destinyLocked: boolean
+  /**
+   * 距下一次可降臨還有幾秒(倒數)。用冷卻而不是時間戳,省掉一個全域時鐘,
+   * 也讓「暫停時不該推進」自然成立(tick 停了倒數就停)
+   */
+  descentCooldown: number
   /** 已解鎖的命運節點(本輪) */
   destinyNodes: DestinyNodeId[]
   /** 未使用的命運點 */
@@ -556,6 +573,7 @@ export interface GameEvent {
     | 'totemDown'
     | 'achievement'
     | 'zoneEnter'
+    | 'destinyDescend'
     | 'sigilGain'
     | 'resonanceGain'
     | 'freezeCapped'
@@ -576,6 +594,8 @@ export interface GameEvent {
   encounterId?: EncounterId
   /** achievement 事件:達成的軍功記錄 id */
   achievementId?: string
+  /** destinyDescend 事件:降臨的命運節點 id */
+  destinyNodeId?: string
   mercId?: MercId
   /** attack 事件:這一擊來自誰(分帳演出用)。省略 = 主角 */
   source?: 'hero' | 'click' | 'clone' | 'zone' | 'merc'

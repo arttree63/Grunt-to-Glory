@@ -24,7 +24,7 @@ import { ACHIEVEMENTS } from '../achievements'
 import { ZONE_SPAN, zoneOf, zoneProgress } from '../zones'
 import { speciesPair } from '../enemies'
 import { ENCOUNTERS, ENCOUNTER_ORDER } from '../encounters'
-import { reconcileDestiny } from '../destiny'
+import { nextChoiceIds, reconcileDestiny, rollDescent } from '../destiny'
 import type { EncounterId } from '../types'
 import {
   applyTick,
@@ -482,6 +482,59 @@ describe('命運樹', () => {
     addDestinyPoint(s)
     expect(pendingChoice(s)!.map((n) => n.id)).toEqual(['artisan_2a', 'artisan_2b'])
     expect(pickDestinyNode(s, 'artisan_1b')).toBe(false) // 上一層的選項已關閉
+  })
+
+  it('命運降臨:種子固定第 10 層、之後走時間閘門、會定錨流派', () => {
+    const s = createInitialState()
+    const rng = () => 0.5
+
+    // 第 9 層打贏 Boss 不給種子(還沒到第 10 層)
+    s.floor = 9
+    s.isBoss = true
+    s.enemyHp = D(0)
+    applyTick(s, 1000, rng) // ⚠️ 要超過攻擊間隔才會結算擊殺
+    expect(s.destinyLog).toHaveLength(0)
+
+    // 第 10 層才給,而且會定錨流派
+    const t = createInitialState()
+    t.floor = B.DESTINY_SEED_FLOOR
+    t.isBoss = true
+    t.enemyHp = D(0)
+    applyTick(t, 1000, rng)
+    expect(t.destinyLog).toHaveLength(1)
+    expect(t.destinyNodes).toContain('seed_afterimage')
+    expect(t.destinyPath).not.toBeNull() // 定錨
+    expect(t.destinyLocked).toBe(false) // 但還沒鎖定
+
+    // 冷卻沒過就不會再降臨(不然前期會每 12 秒跳一張卡)
+    expect(t.descentCooldown).toBeGreaterThan(0)
+    const logLen = t.destinyLog.length
+    t.floor = 20
+    t.isBoss = true
+    t.enemyHp = D(0)
+    applyTick(t, 1000, rng)
+    expect(t.destinyLog).toHaveLength(logLen)
+  })
+
+  it('降臨的節點不會推進既有的二選一決策點', () => {
+    // ⚠️ 這條守的是索引污染:降臨節點若被算進 choices 索引,
+    // 玩家手上的選項會憑空變掉、或直接拿不到
+    const s = createInitialState()
+    chooseDestiny(s, 'tactician')
+    addDestinyPoint(s)
+    const before = pendingChoice(s)!.map((n) => n.id)
+
+    s.destinyNodes.push('seed_afterimage') // 模擬一次降臨
+    expect(pendingChoice(s)!.map((n) => n.id)).toEqual(before)
+    expect(nextChoiceIds(s)).toEqual(before)
+  })
+
+  it('壞手保護:前幾次降臨強制同流派', () => {
+    const s = createInitialState()
+    s.destinyPath = 'tactician'
+    // rng 全部回 0.99(最偏向 wild 桶),前幾次仍必須是 same
+    const picked = rollDescent(s, () => 0.99)
+    expect(picked?.bucket).toBe('same')
   })
 
   it('所有發點路徑都要備妥選項,否則點數會靜默卡死', () => {

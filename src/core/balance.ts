@@ -565,3 +565,22 @@ export const CHRONICLE_MAX = 30
 export const DESTINY_MILESTONES = [20, 50, 90]
 /** 未使用命運點上限。滿了就停發,但不阻止推進(掛機玩家回來不用連點十次) */
 export const DESTINY_POINT_CAP = 2
+
+// ── 命運降臨(2026-07-31)──
+/**
+ * 兩次降臨之間的最小間隔(秒)。
+ * ⚠️ 這個值被**現行推進速度**綁死:實測前 150 層只要 4.8 分鐘,
+ * 所以企劃希望的「2~4 分鐘一次」在目前速度下整輪只會觸發兩次。
+ * 40 秒在前 150 層約給 7 次,是現況下可行的折衷。
+ * **恢復到 2~4 分鐘的前提是先修整體推進速度**(見 game-balance § 七的漂移紀錄)。
+ */
+export const DESTINY_DESCENT_GAP_SEC = 40
+/** 種子(第一次降臨)固定在這一層,不受時間閘門限制——玩家必須早點拿到它 */
+export const DESTINY_SEED_FLOOR = 10
+/** 前幾次降臨強制同流派,讓流派先成形(壞手保護) */
+export const DESTINY_SAME_BUCKET_FIRST = 2
+/** 桶權重:同流派 / 跨流派 / 其餘為意外 */
+export const DESTINY_BUCKET_SAME = 0.5
+export const DESTINY_BUCKET_CROSS = 0.3
+/** 每輪最多幾次「完全意外」,超過退回跨流派 */
+export const DESTINY_WILD_PER_RUN = 2

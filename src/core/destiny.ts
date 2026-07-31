@@ -12,6 +12,31 @@ import type { DestinyNodeId, DestinyPathId, GameState } from './types'
  * - **首版節點效果差距控制在 15~25%**,超過就會被換算成唯一最佳解
  */
 
+/**
+ * 節點的取得方式。
+ * - `seed`：命運種子。第一次降臨給的,只描述**共同核心概念**,不寫完整功能——
+ *   寫太滿等於系統偷偷替玩家選了職業
+ * - `descend`：命運降臨。系統給,不需玩家當場決定
+ * - `choice`：命運抉擇。玩家三選一,是流派真正分岔的地方
+ */
+export type DestinyKind = 'seed' | 'descend' | 'choice'
+
+/** 抽取時的權重桶:同流派 / 跨流派 / 完全意外 */
+export type DestinyBucket = 'same' | 'cross' | 'wild'
+
+/**
+ * 進池的先決條件。
+ * ⚠️ 一律用「引擎查得到的狀態」表達,不可寫成自由字串或 lambda——
+ * 否則「為什麼沒抽到這個」寫不出說明,圖鑑也分不了類。
+ * 第一階段只實作這四種;`{k:'tag'}`(需要有燃燒/分身來源)要先幫 SKILLS 補 tags,是獨立前置工作。
+ */
+export type DestinyReq =
+  | { k: 'node'; id: DestinyNodeId }
+  | { k: 'notNode'; id: DestinyNodeId }
+  | { k: 'job'; ids: string[] }
+  | { k: 'merc' }
+  | { k: 'awakenSkill' }
+
 export interface DestinyNode {
   id: DestinyNodeId
   path: DestinyPathId
@@ -19,6 +44,21 @@ export interface DestinyNode {
   desc: string
   /** 0 = 選擇路徑時自動獲得的起始能力 */
   tier: number
+
+  // ── 命運降臨制新增。現有 18 個節點走預設值,不必逐一改寫 ──
+  /** 預設 'descend' */
+  kind?: DestinyKind
+  /** 同桶內的相對權重。0 或未填 = 不進降臨池(只能由既有的抉擇流程取得) */
+  weight?: number
+  /** 全部滿足才進池 */
+  reqs?: DestinyReq[]
+  /**
+   * 種子的職業詮釋:同一顆種子,不同職業長成不同東西。
+   * 這是整套設計的核心——玩家會期待「我等等選什麼職業,這顆種子會變成什麼」
+   */
+  interpretations?: Record<string, { name: string; desc: string }>
+  /** 抉擇型:同一組三選一共用 */
+  groupId?: string
 }
 
 export interface DestinyPath {
@@ -104,6 +144,177 @@ export const DESTINY_PATHS: Record<DestinyPathId, DestinyPath> = {
 }
 
 export const ALL_PATHS = Object.values(DESTINY_PATHS)
+
+/**
+ * ── 命運降臨池(第一階段:殘影線)──
+ *
+ * 這批節點**不進 `DESTINY_PATHS.choices`**,因此不會推進既有的決策點索引,
+ * 舊的二選一流程完全不受影響(見 `nextChoiceIds` 的過濾)。
+ *
+ * ⚠️ 種子的描述刻意寫得「不完整」:第 10 層玩家還沒選職業,
+ * 若把功能寫死就等於系統替他選了斥候。職業詮釋放在 `interpretations`。
+ */
+export const DESTINY_SEEDS: DestinyNode[] = [
+  {
+    id: 'seed_afterimage',
+    path: 'tactician',
+    tier: 1,
+    kind: 'seed',
+    weight: 10,
+    name: '殘留之影',
+    desc: '你的動作在戰場上留下殘影。殘影會參與接下來的攻擊。',
+    interpretations: {
+      // 第一階段只實作斥候線;另兩個先給文案,UI 會標「尚未實作」
+      scout: {
+        name: '鏡影刺客',
+        desc: '殘影重播接下來的普攻,並從敵人另一側出現——製造破綻與背刺窗口。',
+      },
+      infantry: {
+        name: '守護殘像',
+        desc: '殘影重演盾擊,留在原地維持陣線。(尚未實作)',
+      },
+      marshal: {
+        name: '法術餘響',
+        desc: '殘影不複製普攻,改為重播最近一次技能。(尚未實作)',
+      },
+    },
+  },
+]
+
+/** 第 30 層的抉擇:殘影最後長成什麼。三條刻意指向不同的玩法,不是同一件事的強弱 */
+export const DESTINY_CHOICES: DestinyNode[] = [
+  {
+    id: 'shade_swarm',
+    path: 'tactician',
+    tier: 2,
+    kind: 'choice',
+    groupId: 'afterimage_30',
+    weight: 0,
+    reqs: [{ k: 'node', id: 'seed_afterimage' }],
+    name: '群影',
+    desc: '殘影數量增加,但每個只重演一次攻擊——追求攻速與每次命中的效果。',
+  },
+  {
+    id: 'shade_mirror',
+    path: 'tactician',
+    tier: 2,
+    kind: 'choice',
+    groupId: 'afterimage_30',
+    weight: 0,
+    reqs: [{ k: 'node', id: 'seed_afterimage' }],
+    name: '鏡像',
+    desc: '同時只有一個殘影,但它會重播你最近一次技能——技能順序變成主要決策。',
+  },
+  {
+    id: 'shade_lure',
+    path: 'tactician',
+    tier: 2,
+    kind: 'choice',
+    groupId: 'afterimage_30',
+    weight: 0,
+    reqs: [{ k: 'node', id: 'seed_afterimage' }],
+    name: '誘敵之影',
+    desc: '殘影不造成直接傷害,改為使敵人轉身——你的每一擊都是背刺。',
+  },
+]
+
+/** 全部可降臨/可抉擇的新節點,併進查表 */
+for (const n of [...DESTINY_SEEDS, ...DESTINY_CHOICES]) DESTINY_NODES[n.id] = n
+
+/** 條件是否成立。⚠️ 只讀引擎查得到的狀態 */
+export function meetsReq(s: GameState, r: DestinyReq): boolean {
+  switch (r.k) {
+    case 'node':
+      return hasNode(s, r.id)
+    case 'notNode':
+      return !hasNode(s, r.id)
+    case 'job':
+      return r.ids.includes(s.jobId)
+    case 'merc':
+      return s.activeMerc !== null
+    case 'awakenSkill':
+      return isAwakenedJob(s)
+  }
+}
+
+/** 覺醒判定的最小依賴(避免 destiny.ts 反向 import game.ts) */
+function isAwakenedJob(s: GameState): boolean {
+  return s.destinyNodes.some((id) => (DESTINY_NODES[id]?.tier ?? 0) > 0)
+}
+
+/** 這個節點現在能不能進池 */
+export function eligible(s: GameState, n: DestinyNode): boolean {
+  if (!n.weight || n.weight <= 0) return false
+  if (hasNode(s, n.id)) return false
+  return (n.reqs ?? []).every((r) => meetsReq(s, r))
+}
+
+/**
+ * 抽一個降臨節點。
+ *
+ * ⚠️ **壞手保護內建在這裡,不是事後補**:整輪只有幾次降臨,純加權抽在這個樣本數下
+ * 方差極大(整輪 0 次意外、或前三次連續意外都是常見結果)。
+ * 前 `SAME_BUCKET_FIRST` 次強制同流派,讓流派先成形,之後才開放跨流派與意外。
+ *
+ * ⚠️ rng 一定要用注入的:模擬器的重現性靠它,`Math.random` 會讓平衡驗證失效。
+ */
+export function rollDescent(
+  s: GameState,
+  rng: () => number,
+): { node: DestinyNode; bucket: DestinyBucket } | null {
+  const pool = [...DESTINY_SEEDS, ...DESTINY_CHOICES].filter((n) => n.kind !== 'choice' && eligible(s, n))
+  if (pool.length === 0) return null
+
+  const forcedSame = s.destinyLog.length < B.DESTINY_SAME_BUCKET_FIRST
+  const bucket: DestinyBucket = forcedSame ? 'same' : pickBucket(s, rng)
+  const inBucket = pool.filter((n) => bucketOf(s, n) === bucket)
+  // 該桶沒東西就退回整池,不要因為桶空了就什麼都不給
+  const candidates = inBucket.length > 0 ? inBucket : pool
+
+  let total = candidates.reduce((a, n) => a + (n.weight ?? 0), 0)
+  let roll = rng() * total
+  for (const n of candidates) {
+    roll -= n.weight ?? 0
+    if (roll <= 0) return { node: n, bucket }
+  }
+  return { node: candidates[candidates.length - 1], bucket }
+}
+
+function bucketOf(s: GameState, n: DestinyNode): DestinyBucket {
+  if (!s.destinyPath) return 'same'
+  return n.path === s.destinyPath ? 'same' : 'cross'
+}
+
+function pickBucket(s: GameState, rng: () => number): DestinyBucket {
+  const wild = s.destinyLog.filter((r) => r.bucket === 'wild').length
+  const r = rng()
+  if (r < B.DESTINY_BUCKET_SAME) return 'same'
+  if (r < B.DESTINY_BUCKET_SAME + B.DESTINY_BUCKET_CROSS) return 'cross'
+  // wild 有每輪上限,超過就退回 cross
+  return wild < B.DESTINY_WILD_PER_RUN ? 'wild' : 'cross'
+}
+
+/** 由已取得的節點反推傾向(定錨用)。平手取先取得的 */
+export function dominantPath(s: GameState): DestinyPathId | null {
+  const count: Partial<Record<DestinyPathId, number>> = {}
+  for (const id of s.destinyNodes) {
+    const n = DESTINY_NODES[id]
+    if (!n || n.tier <= 0) continue
+    count[n.path] = (count[n.path] ?? 0) + 1
+  }
+  let best: DestinyPathId | null = null
+  for (const id of s.destinyNodes) {
+    const n = DESTINY_NODES[id]
+    if (!n || n.tier <= 0) continue
+    if (best === null || (count[n.path] ?? 0) > (count[best] ?? 0)) best = n.path
+  }
+  return best
+}
+
+/** 種子在目前職業下的詮釋。沒有對應詮釋就回種子本身 */
+export function interpretOf(n: DestinyNode, jobId: string): { name: string; desc: string } {
+  return n.interpretations?.[jobId] ?? { name: n.name, desc: n.desc }
+}
 
 /** 已解鎖某節點 */
 export function hasNode(s: GameState, id: DestinyNodeId): boolean {
