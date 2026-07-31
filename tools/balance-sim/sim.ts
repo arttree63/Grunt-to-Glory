@@ -25,6 +25,7 @@ import {
   devourWeapon,
   pickDestinyNode,
   resolveEncounter,
+  retryBoss,
   skillReady,
   pityShortLeft,
   prestige,
@@ -132,6 +133,7 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
   let buyAcc = 0
   let clickAcc = 0
   let lastBlockMs = 0
+  let garrisonKills = 0
   let nextMark = 10
   const pace: Array<[number, number]> = []
   const lvMarks: Record<number, number> = {}
@@ -212,8 +214,23 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
       }
     }
 
-    applyTick(s, STEP_MS, rng)
+    // 撞牆後不再自動重試(GDD v4.0-A § 2.2 駐守),所以代理要自己按「挑戰」按鈕。
+    // ⚠️ 沒有這段的話,模擬器會永遠停在第一道牆前,而且**不會報錯**——
+    // skill 裡所有層數表會靜默失效(而且每輪都得跑滿 180 模擬分鐘,跑不完)。
+    // 代理=立刻重挑戰,對齊改動前「farm 3 隻就自動重試」的節奏(牆前小怪秒殺,幾乎等於立刻),
+    // 曲線才跟舊基準可比。「駐守累積再挑戰」的耐心玩家是另一組實驗,不在這支代理裡。
+    const evs = applyTick(s, STEP_MS, rng)
     ms += STEP_MS
+
+    // ⚠️ 代理必須先 farm 再挑戰:立刻重挑戰會讓它一分錢都賺不到,
+    // 純掛機直接死鎖在第 11 層(實測)。這裡數自己打了幾隻,湊滿一輪才按挑戰。
+    if (s.bossFailed && s.bossRetryFloor !== null) {
+      for (const e of evs) if (e.type === 'kill') garrisonKills += e.count ?? 1
+      if (garrisonKills >= B.MOBS_PER_FLOOR) {
+        garrisonKills = 0
+        retryBoss(s)
+      }
+    } else garrisonKills = 0
 
     if (s.floor > nextMark) {
       pace.push([nextMark, +(ms / 60_000).toFixed(1)])

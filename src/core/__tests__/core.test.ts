@@ -192,7 +192,7 @@ describe('戰鬥循環', () => {
     expect(kill?.count).toBeGreaterThan(1) // 事件已合併,演出層不會被灌爆
   })
 
-  it('Boss 限時到 → 退回前一層 farm,farm 一輪後自動再挑戰', () => {
+  it('Boss 限時到 → 退回前一層駐守,不自動再挑戰(GDD v4.0-A § 2.2)', () => {
     const s = createInitialState()
     s.floor = 10
     s.bossFailed = false
@@ -206,15 +206,19 @@ describe('戰鬥循環', () => {
     expect(s.floor).toBe(9) // 退回前一層
     expect(s.bossRetryFloor).toBe(10)
 
+    // 駐守:打得動也不會自己回去,而且不會越過牆繼續推層
     s.lv = 40
+    const goldBefore = s.gold
     let guard = 0
-    while (!s.isBoss && guard++ < 500) applyTick(s, 100)
-    expect(s.isBoss).toBe(true) // 清完一輪自動回去挑戰
-    expect(s.floor).toBe(10)
-    expect(s.bossRetryFloor).toBe(null)
+    while (guard++ < 500) applyTick(s, 100)
+    expect(s.isBoss).toBe(false)
+    expect(s.floor).toBe(9)
+    expect(s.bossRetryFloor).toBe(10)
+    expect(s.gold.gt(goldBefore)).toBe(true) // 駐守期間照常產出
+    expect(s.stallSec).toBeGreaterThan(0) // 停滯計時不再被自動重試清掉
   })
 
-  it('挑戰 Boss 按鈕:不必等清完小怪就能直接回 Boss 層', () => {
+  it('駐守後只有玩家按下挑戰才會回到 Boss 層', () => {
     const s = createInitialState()
     s.floor = 19
     s.bossFailed = true

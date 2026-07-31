@@ -149,8 +149,10 @@ function run(seed: number, b: Build, lv: number): Result {
     applyTick(s, STEP_MS, rng)
     ms += STEP_MS
     if (shellBefore > 0 && s.shellLeft === 0 && shellSec === 0) shellSec = ms / 1000
-    // 擊破:floor 前進代表 Boss 死了
-    if (s.floor !== SHELL_FLOOR) {
+    // 擊破:floor **前進**才代表 Boss 死了。
+    // ⚠️ 不能寫 !== :失敗會讓 floor 退一層(game.ts 的 checkBossTimeout),
+    // 那樣會把「打輸」記成「擊破」並寫進 killSec,量出來的是假數據。
+    if (s.floor > SHELL_FLOOR) {
       killSec = ms / 1000
       break
     }

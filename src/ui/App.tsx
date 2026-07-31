@@ -113,7 +113,8 @@ function BossHint() {
       : stage === 'mastered'
         ? BOSS_LORE_MASTERY[kind]
         : BOSS_KIND_HINT[kind]
-  // 戰術修正只在玩家在線盯著這面板時可選;掛機自動重試永遠無修正
+  // 戰術修正在挑戰前選;不選=無修正。撞牆後不再自動重試(GDD v4.0-A § 2.2),
+  // 所以每一次挑戰都是玩家按的——這個選單也就變成每次挑戰的必經決策
   const tactics = TACTICS.filter(
     (t) =>
       (t.id !== 'keepSigils' || JOBS[s.jobId].awakenSkill) && (t.id !== 'mercFirst' || s.activeMerc),
@@ -130,6 +131,10 @@ function BossHint() {
 
   return (
     <div className="boss-challenge-wrap">
+      {/* 撞牆後是「駐守」不是「卡住」:講清楚人在哪、要打哪,再挑戰由玩家決定(GDD v4.0-A § 2.3) */}
+      <div className="garrison-line">
+        駐守 第 {s.floor} 層・素材金幣照常產出
+      </div>
       <button
         className={`boss-challenge${ready ? ' ready' : ''}`}
         onPointerDown={(e) => {
@@ -162,7 +167,7 @@ function BossHint() {
           </small>
         )}
       </button>
-      {/* 戰術修正:在線三選一,只對下一次挑戰生效;不選=無修正(掛機自動重試走這條) */}
+      {/* 戰術修正:三選一,只對下一次挑戰生效;不選=無修正 */}
       <div className="tactic-row" onPointerDown={(e) => e.stopPropagation()}>
         {tactics.map((t) => (
           <button

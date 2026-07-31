@@ -1124,6 +1124,14 @@ button {
 
 /* Boss 挑戰按鈕:失敗退回前一層後常駐,讓玩家自己決定何時再上 */
 /* 外框接手定位,挑戰按鈕與戰術列直排 */
+/* 駐守提示:撞牆後人在哪、還在產出什麼(GDD v4.0-A § 2.3) */
+.garrison-line {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--dim2);
+  text-align: center;
+  margin-bottom: 6px;
+}
 .boss-challenge-wrap {
   position: absolute;
   z-index: 6;

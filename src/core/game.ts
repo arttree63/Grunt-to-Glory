@@ -710,17 +710,15 @@ function nextEnemy(s: GameState, events: GameEvent[]) {
     s.killsInFloor++
     if (s.killsInFloor >= B.MOBS_PER_FLOOR) {
       s.killsInFloor = 0
-      if (s.bossRetryFloor !== null) {
-        // 在前一層 farm 完一輪 → 自動再挑戰(掛機玩家不會卡死)
-        s.floor = s.bossRetryFloor
-        s.bossFailed = false
-        s.bossRetryFloor = null
-        s.stallSec = 0
-    events.push({ type: 'floorUp', floor: s.floor })
-      } else {
+      // 撞牆後**駐守**這一層,不自動再挑戰(GDD 修訂 v4.0-A § 2.2)。
+      // ⚠️ 原本是 farm 完一輪就自動彈回 Boss 層:掛機玩家會在牆前反覆失敗好幾個小時,
+      // 掛機時間變成純浪費,而且「要不要再撞」這個決策被系統代替玩家做掉了。
+      // 駐守期間金幣素材照常產出,再挑戰一律由玩家按 retryBoss。
+      // 另一個作用:stallSec 不再被自動重試清掉 → runStalled 的退役提示終於會準時出現。
+      if (s.bossRetryFloor === null) {
         s.floor++
         s.stallSec = 0
-    events.push({ type: 'floorUp', floor: s.floor })
+        events.push({ type: 'floorUp', floor: s.floor })
       }
     }
   }
