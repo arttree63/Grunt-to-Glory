@@ -30,6 +30,7 @@ import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 import { useHold } from '../useHold'
 import { BadgeIcon, GameIcon } from '../GameIcon'
+import TrainingCard from '../TrainingChoice'
 
 const WEAPON_ART = {
   wood: woodUrl,
@@ -332,6 +333,9 @@ export default function HeroPanel() {
       {/* ⚠️ 可轉職時置頂:曾經被四區能力+傭兵區推到兩屏之下,
           玩家到 Lv.20 開英雄頁看不到轉職,回報成「20 級不能轉職」 */}
       {canPromoteNow && <PromotionSection />}
+
+      {/* 操練令是本輪構築的一部分,排在原始數值之前;版位固定不隨待辦數移動 */}
+      <TrainingCard />
 
       <div className="hero-stats">
         <div>

@@ -118,6 +118,7 @@ export type EventKind = 'chest' | 'goblin'
 export type BossKind = 'shell' | 'channel' | 'totem'
 /** 戰術修正(在線三選一,只對下一次挑戰生效;離線無修正) */
 export type TacticId = 'delay' | 'keepSigils' | 'mercFirst'
+export type TrainingId = 'heavy' | 'rapid' | 'morale'
 /** 留存事件:不限時,保留在「旅途紀錄」等玩家回來處理,不會因掛機錯過 */
 export type EncounterId =
   | 'blacksmith'
@@ -245,6 +246,8 @@ export interface GameState {
   lv: number
   gold: Decimal
   jobId: JobId
+  /** 等級里程碑選擇的訓練方向。本輪保留、轉生後重新選。 */
+  training: TrainingId[]
 
   // 關卡
   floor: number
@@ -253,6 +256,11 @@ export interface GameState {
 
   // 當前戰鬥
   isBoss: boolean
+  /**
+   * 距離上次推進樓層過了幾秒。用來判定「這一輪到頂了」。
+   * ⚠️ 刻意不存檔:重讀後從 0 重新計時,寧可晚講也不要一開檔就叫玩家退役。
+   */
+  stallSec: number
   enemyHp: Decimal
   enemyMaxHp: Decimal
   bossTimeLeft: number
@@ -377,6 +385,21 @@ export interface GameState {
    * 也讓「暫停時不該推進」自然成立(tick 停了倒數就停)
    */
   descentCooldown: number
+  /**
+   * 已釋出(玩家看得到)的操練令次數,與距上次釋出幾秒。
+   * ⚠️ 只綁樓層給不出穩定節奏:同一組樓層,不鍛造的玩家第 125 層要 60 分鐘以上,
+   * 會鍛造的模擬器只要 4.1 分——差一個數量級。所以改成「樓層 AND 最小間隔」的二維閘,
+   * 與命運降臨的 descentCooldown 同一套做法。
+   * 兩者都刻意不存檔:重讀從 0 起算,寧可早一點給也不要吞掉玩家的次數。
+   */
+  trainingShown: number
+  trainingGapSec: number
+  /**
+   * 距上一個命運節拍(降臨或發點)幾秒。大抉擇的呼吸間隔用。
+   * ⚠️ 不存檔:重讀從 0 起算,最壞情況是讀檔後多等一個間隔才拿到里程碑點,
+   * 與 stallSec / trainingGapSec 同一套取捨。
+   */
+  destinyGapSec: number
 
   // ── 殘影(鏡影刺客)。單場暫態,進存檔只為了除錯方便 ──
   /** 距下一個殘影還差幾次普攻 */
@@ -590,6 +613,9 @@ export interface GameEvent {
     | 'freezeCapped'
     | 'relicPrimed'
     | 'shellGain'
+    | 'trainingReady'
+    | 'trainingChosen'
+    | 'mercUnlock'
   floor?: number
   gold?: Decimal
   /** attack 事件:這一擊實際造成的傷害 */
@@ -607,6 +633,8 @@ export interface GameEvent {
   achievementId?: string
   /** destinyDescend 事件:降臨的命運節點 id */
   destinyNodeId?: string
+  /** trainingChosen 事件:玩家這次投入的操練方向 */
+  trainingId?: TrainingId
   mercId?: MercId
   /** attack 事件:這一擊來自誰(分帳演出用)。省略 = 主角 */
   source?: 'hero' | 'click' | 'clone' | 'zone' | 'merc'

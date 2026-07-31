@@ -27,7 +27,7 @@ import {
 } from './formulas'
 import { destinyJobs, JOBS } from './jobs'
 import { legendFor } from './legends'
-import { MERCS, unlockedMercs } from './mercs'
+import { ALL_MERCS, MERCS, unlockedMercs } from './mercs'
 import { SETS } from './sets'
 import { SKILLS } from './skills'
 import {
@@ -38,6 +38,7 @@ import {
   hasNode,
   nextChoiceIds,
   pendingChoice,
+  reconcileDestiny,
   rollDescent,
 } from './destiny'
 import { makeChronicleEntry, soldierName } from './chronicle'
@@ -73,6 +74,7 @@ import type {
   TacticId,
   TechId,
   Techs,
+  TrainingId,
 } from './types'
 
 /**
@@ -86,10 +88,12 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     lv: 1,
     gold: D(techStartGold(techs)),
     jobId: 'rookie',
+    training: [],
     floor: 1,
     highestFloor: 1,
     killsInFloor: 0,
     isBoss: false,
+    stallSec: 0,
     enemyHp: D(0),
     enemyMaxHp: D(0),
     bossTimeLeft: B.BOSS_TIME,
@@ -139,6 +143,9 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     destinyLog: [],
     destinyLocked: false,
     descentCooldown: 0,
+    trainingShown: 0,
+    trainingGapSec: 0,
+    destinyGapSec: 0,
     afterimageAcc: 0,
     afterimageLeft: 0,
     afterimageSigilAcc: 0,
@@ -221,7 +228,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 27
+export const SAVE_VERSION = 28
 
 // ---------- 數值查詢 ----------
 
@@ -323,7 +330,7 @@ export function currentDPS(s: GameState): Decimal {
     morale: s.morale,
     moraleBoosted: inCheckWindow(s),
     critMult: critMultiplier(critRate(s), critDamageBonus(s)),
-    buffMult: buffMult(s) * comboMult(s) * chargeMult(s) * valiantMult(s),
+    buffMult: buffMult(s) * comboMult(s) * chargeMult(s) * valiantMult(s) * lastDitchMult(s),
   })
     .mul(equipPower(s.equipped)) // 每件裝備獨立乘區
     .mul(s.isBoss ? 1 + bonus.bossDmg : 1)
@@ -623,7 +630,21 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
   s.materials += gained
   s.forgeHeatMaterials += gained
   events.push({ type: boss ? 'bossKill' : 'kill', gold: g, floor: s.floor })
-  if (boss) tryDescend(s, events, rng)
+  if (boss) {
+    // 舊存檔或中途改版玩家可能已超過 10F 但還沒有命運。
+    // 首次降臨永遠優先，否則會先拿到一枚沒有任何選項可選的命運點。
+    if (!s.destinyPath) {
+      tryDescend(s, events, rng)
+    } else {
+      // 大抉擇只能在擊破里程碑守關者後發生。先前放在每幀更新裡，
+      // 玩家剛踏進第 30 層就被三選一攔住，完全沒有「戰利品」的因果。
+      const milestone = B.DESTINY_MILESTONES[s.destinyEarned]
+      // ⚠️ 里程碑被時間閘或點數上限擋下時,**要退回一般降臨**——
+      // 否則這幾場 Boss 什麼都不給,呼吸間隔反而把乾旱拉得更長(實測踩到)
+      if (milestone === undefined || s.floor < milestone || !grantDestinyPoints(s, events))
+        tryDescend(s, events, rng)
+    }
+  }
 
   if (!boss) return
   s.bossKills++
@@ -683,6 +704,7 @@ function nextEnemy(s: GameState, events: GameEvent[]) {
     s.bossRetryFloor = null
     s.valiantStacks = 0
     if (hasNode(s, 'tactician_1a')) s.combo = 0 // 破陣:Boss 戰結束後清空
+    s.stallSec = 0
     events.push({ type: 'floorUp', floor: s.floor })
   } else {
     s.killsInFloor++
@@ -693,15 +715,29 @@ function nextEnemy(s: GameState, events: GameEvent[]) {
         s.floor = s.bossRetryFloor
         s.bossFailed = false
         s.bossRetryFloor = null
-        events.push({ type: 'floorUp', floor: s.floor })
+        s.stallSec = 0
+    events.push({ type: 'floorUp', floor: s.floor })
       } else {
         s.floor++
-        events.push({ type: 'floorUp', floor: s.floor })
+        s.stallSec = 0
+    events.push({ type: 'floorUp', floor: s.floor })
       }
     }
   }
   if (zoneIndex(s.floor) !== zoneBefore) events.push({ type: 'zoneEnter', floor: s.floor })
+  // 傭兵解鎖:在**跨越門檻的那一刻**發事件。
+  // ⚠️ 不用狀態欄位記「宣告過了沒」——解鎖是跨轉生永久的,存了會多一次 migration,
+  // 不存又會每次讀檔重播。改成偵測 bestFloorEver 的跨越,一生只會發生一次,兩個問題都不存在。
+  const bestBefore = bestFloorEver(s)
   s.highestFloor = Math.max(s.highestFloor, s.floor)
+  const bestAfter = bestFloorEver(s)
+  if (bestAfter > bestBefore) {
+    for (const m of ALL_MERCS) {
+      if (bestBefore < m.unlockFloor && bestAfter >= m.unlockFloor) {
+        events.push({ type: 'mercUnlock', mercId: m.id, floor: m.unlockFloor })
+      }
+    }
+  }
   if (s.routeBuff) {
     s.routeBuff.floorsLeft--
     if (s.routeBuff.floorsLeft <= 0) s.routeBuff = null
@@ -736,11 +772,16 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
   // 戰意衰減(重裝步兵衰減減半)。檢定窗口內不衰減:
   // Boss 是二元判定,玩家在那 30 秒裡的努力不該一邊被扣掉
   if (!inCheckWindow(s)) {
-    const decay = B.MORALE_DECAY * (1 - (JOBS[s.jobId].bonus.morale ?? 0))
+    const decay =
+      B.MORALE_DECAY *
+      (1 - (JOBS[s.jobId].bonus.morale ?? 0)) *
+      Math.pow(B.TRAINING_MORALE_DECAY, trainingCount(s, 'morale'))
     s.morale = Math.max(0, s.morale - decay * dtMs)
   }
 
   if (s.descentCooldown > 0) s.descentCooldown = Math.max(0, s.descentCooldown - dt)
+  releaseTraining(s, dt)
+  s.destinyGapSec += dt
   tickSkills(s, dt, raw)
   tickAutoCast(s, raw)
   tickTactician(s, dt)
@@ -748,8 +789,9 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
   tickCombatStatus(s, dt, raw, rng)
   // 點擊傷害預算回充:每秒 CLICK_BUDGET_PER_SEC 秒份,存量上限同值(不可囤)
   s.clickBudget = Math.min(B.CLICK_BUDGET_PER_SEC, s.clickBudget + dt * B.CLICK_BUDGET_PER_SEC)
+  // 停滯計時:推進樓層才歸零。用來判定「這一輪到頂了」,而不是靠玩家自己意識到
+  s.stallSec += dt
   if (s.perfectWindowLeft > 0) s.perfectWindowLeft = Math.max(0, s.perfectWindowLeft - dt)
-  grantDestinyPoints(s, raw)
   if (s.charging) return mergeKills(raw) // 蓄勢期間停止輸出
 
   // ── 時間驅動:倒數與生成不受攻擊節奏影響 ──
@@ -819,6 +861,13 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
   // 背刺窗口:上一次殘影攻擊留下的,用掉就清。本體這一擊無視圖騰
   const backstab = s.backstabReady
   if (backstab) s.backstabReady = false
+  if (backstab) {
+    for (let i = raw.length - 1; i >= 0; i--) {
+      if (raw[i].type !== 'attack' || raw[i].source === 'clone') continue
+      raw[i].pierce = true
+      break
+    }
+  }
   dealDamage(s, dmg, raw, rng, {
     source: swingSource === 'hero' ? 'hero' : swingSource,
     pierceTotem: backstab || undefined,
@@ -861,7 +910,11 @@ interface DealOpts {
   source?: string
 }
 
-function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng, opts: DealOpts = {}) {
+/**
+ * ⚠️ 匯出僅為測試注入傷害用。以前測試靠「設 frozenPool + 解凍會再打一次」來灌傷害,
+ * 那條捷徑本身就是重複計算的 bug;修掉之後需要一條正規路徑,否則下次還會有人去戳池子。
+ */
+export function dealDamage(s: GameState, damage: Decimal, raw: GameEvent[], rng: Rng, opts: DealOpts = {}) {
   let dmg = damage
   // 凍結 = 表現延遲(GDD v3 § 4.3,封版):傷害在邏輯層**立即結算**,
   // frozenPool 只是演出彙總——解凍時給一個大數字,不是延後扣血。
@@ -1197,8 +1250,12 @@ export function click(s: GameState, rng: Rng = Math.random): GameEvent[] {
 
   // clickDmg 詞綴只加戰意獲取——點擊「傷害」禁止有任何升級軸(GDD v3 § 1.4)
   const clickBonus = equipBonuses(s.equipped).clickDmg
+  const moraleTraining = trainingCount(s, 'morale')
   const moraleBefore = s.morale
-  s.morale = Math.min(B.MORALE_MAX, s.morale + B.MORALE_PER_CLICK * (1 + clickBonus))
+  s.morale = Math.min(
+    B.MORALE_MAX,
+    s.morale + B.MORALE_PER_CLICK * (1 + clickBonus) * Math.pow(B.TRAINING_MORALE_GAIN, moraleTraining),
+  )
   const moraleGained = s.morale - moraleBefore
 
   // 點擊直接傷害:受每秒預算約束。預算盡了仍給戰意/素材,只是這一下不追加傷害
@@ -1333,24 +1390,46 @@ export function pickDestinyNode(s: GameState, id: DestinyNodeId): boolean {
  * 3. 機制累積效率是本體的一半(破盾走既有的 SHIELD_ECHO_VALUE、印記每 2 次給 1),
  *    避免「同時複製所有機制」失控
  */
+/**
+ * 殘影目前的形態。第 30 層命運抉擇改的就是這個。
+ * ⚠️ 這三個節點以前只有文案沒有實作,選哪個都一樣——而它會硬暫停遊戲。
+ * 形態集中在這裡回傳,`tickAfterimage` 只讀它,避免同一個值在兩處各算一次。
+ */
+export function afterimageShape(s: GameState): B.AfterimageShape {
+  if (hasNode(s, 'shade_swarm')) return B.AFTERIMAGE_SHAPE_SWARM
+  if (hasNode(s, 'shade_mirror')) return B.AFTERIMAGE_SHAPE_MIRROR
+  if (hasNode(s, 'shade_lure')) return B.AFTERIMAGE_SHAPE_LURE
+  return B.AFTERIMAGE_BASE_SHAPE
+}
+
 function tickAfterimage(s: GameState, dmg: Decimal, raw: GameEvent[], rng: Rng): void {
   if (!hasNode(s, 'seed_afterimage')) return
+  // ⚠️ 法術餘響**完全不重演普攻**,它的殘影只重播技能(castEcho)。
+  // 若兩者都給,法警就變成「斥候 + 額外一份」,那不是不同的詮釋而是更強的同一套
+  if (afterimageStyle(s) === 'echo') return
+
+  const shape = afterimageShape(s)
 
   // 先結算既有的殘影(它重演的是「這一次」普攻)
   if (s.afterimageLeft > 0) {
-    s.afterimageLeft--
+    // 守護殘像:視窗期間殘影不消耗次數,留在陣線上
+    if (!guardHoldsLine(s)) s.afterimageLeft--
     // 同步步伐:破綻累積效率翻倍,代價是直接傷害打折(從傷害來源變成資源產生器)
     const sync = hasNode(s, 'shade_sync')
-    const share = dmg
-      .mul(B.AFTERIMAGE_DAMAGE_SHARE)
-      .mul(sync ? B.AFTERIMAGE_SYNC_DAMAGE_MULT : 1)
+    const share = dmg.mul(shape.share).mul(sync ? B.AFTERIMAGE_SYNC_DAMAGE_MULT : 1)
     raw.push({ type: 'attack', damage: share, source: 'clone' })
-    // 獨立行動者但是弱化打擊:破盾值用軍旗回音的 2 點,不是本體的 4 點
-    addShieldValue(s, B.SHIELD_ECHO_VALUE, 'clone', raw)
+    // 基準是弱化打擊(2 點);誘敵之影把殘影升格成獨立命中(4 點)
+    addShieldValue(s, shape.shieldValue, 'clone', raw)
     s.afterimageSigilAcc++
-    if (s.afterimageSigilAcc >= (sync ? B.AFTERIMAGE_SYNC_SIGIL_PER : B.AFTERIMAGE_SIGIL_PER)) {
+    if (s.afterimageSigilAcc >= (sync ? B.AFTERIMAGE_SYNC_SIGIL_PER : shape.sigilPer)) {
       s.afterimageSigilAcc = 0
       gainSigil(s, 1, raw, 'afterimage')
+    }
+    // 鏡像:殘影替你轉冷卻,施放順序因此變成主要決策
+    if (shape.cdAdvance > 0) advanceCooldowns(s, shape.cdAdvance, raw)
+    // 餘燼之影:殘影從打擊者變成縱火者(燃燒無視圖騰、且每個 tick 再給 1 點破盾)
+    if (hasNode(s, 'shade_ember')) {
+      applyBurn(s, share.mul(B.SHADE_EMBER_MULT), B.SHADE_EMBER_SEC, raw)
     }
     // 留下背刺窗口給主角的下一擊
     s.backstabReady = true
@@ -1360,11 +1439,68 @@ function tickAfterimage(s: GameState, dmg: Decimal, raw: GameEvent[], rng: Rng):
 
   // 再累積下一個殘影
   s.afterimageAcc++
-  if (s.afterimageAcc >= B.AFTERIMAGE_EVERY) {
+  if (s.afterimageAcc >= shape.every) {
     s.afterimageAcc = 0
-    s.afterimageLeft = B.AFTERIMAGE_REPLAYS
+    s.afterimageLeft = shape.replays
     raw.push({ type: 'afterimageSpawn' })
   }
+}
+
+/** 推進所有冷卻中技能。⚠️ 受既有 CD_FLOOR 護欄保護的入口只有這裡與 castEcho */
+function advanceCooldowns(s: GameState, seconds: number, events: GameEvent[]): void {
+  for (const id of availableSkills(s)) {
+    const left = s.skillCd[id] ?? 0
+    if (left <= 0) continue
+    const next = left - seconds
+    if (next <= 0) delete s.skillCd[id]
+    else s.skillCd[id] = next
+    events.push({ type: 'cooldownAdvance', skillId: id, seconds, via: 'reload' })
+  }
+}
+
+/**
+ * 同一顆種子的職業詮釋。
+ * ⚠️ 三者改的是**觸發條件與重演對象**,不是傷害數字——只換名稱或加百分比,
+ * 玩法仍然由職業直接鎖死,那正是這套設計要解決的問題。
+ */
+export function afterimageStyle(s: GameState): 'mirror' | 'guard' | 'echo' | null {
+  if (!hasNode(s, 'seed_afterimage')) return null
+  const base = JOBS[s.jobId].from ?? s.jobId
+  if (s.jobId === 'infantry' || base === 'infantry') return 'guard'
+  if (s.jobId === 'marshal' || base === 'marshal') return 'echo'
+  return 'mirror'
+}
+
+/**
+ * 重裝步兵「守護殘像」:技能視窗期間殘影不消耗重演次數——殘影留在陣線上,
+ * 視窗內每一次普攻都被重演。決策從「數普攻」變成「何時開視窗、怎麼延長」。
+ */
+function guardHoldsLine(s: GameState): boolean {
+  return afterimageStyle(s) === 'guard' && s.buffs.some((b) => SKILLS[b.skillId].dmgMult)
+}
+
+/**
+ * 隨軍法警「法術餘響」:殘影不重演普攻,改為施放技能時追加一次餘響。
+ * ⚠️ 傷害**從該技能分帳**(總量不變),真正的價值是推進其他技能的冷卻——
+ * 技能順序因此成為主要決策,而不是又一份傷害。
+ */
+function castEcho(s: GameState, skillDamage: Decimal, id: SkillId, events: GameEvent[]): Decimal {
+  if (afterimageStyle(s) !== 'echo' || skillDamage.lte(0)) return skillDamage
+  const echo = skillDamage.mul(B.AFTERIMAGE_ECHO_SHARE)
+  events.push({ type: 'attack', damage: echo, source: 'clone' })
+  addShieldValue(s, B.SHIELD_ECHO_VALUE, 'clone', events)
+  // 推進「其他」技能的冷卻:玩家要排順序才吃得到
+  for (const other of availableSkills(s)) {
+    if (other === id) continue
+    const left = s.skillCd[other] ?? 0
+    if (left <= 0) continue
+    const next = left - B.AFTERIMAGE_ECHO_CD_SEC
+    if (next <= 0) delete s.skillCd[other]
+    else s.skillCd[other] = next
+    events.push({ type: 'cooldownAdvance', skillId: other, seconds: B.AFTERIMAGE_ECHO_CD_SEC, via: 'reload' })
+  }
+  // 分帳:本體那一份要扣掉餘響的量,總傷害不變
+  return skillDamage.sub(echo)
 }
 
 /**
@@ -1394,6 +1530,9 @@ function tryDescend(s: GameState, events: GameEvent[], rng: Rng): void {
   s.descentCooldown = B.DESTINY_DESCENT_GAP_SEC
   // 定錨:還沒鎖定就跟著最新的傾向走;鎖定後跨流派降臨不再改變流派
   if (!s.destinyLocked) s.destinyPath = dominantPath(s) ?? s.destinyPath
+  // 舊存檔可能已經持有命運點，卻因當時沒有路徑而算不出選項。
+  // 種子一旦定錨，就要立刻把那枚點數兌現成可選的抉擇。
+  reconcileDestiny(s)
   events.push({ type: 'destinyDescend', floor: s.floor, destinyNodeId: picked.node.id })
 }
 
@@ -1410,14 +1549,24 @@ export function addDestinyPoint(s: GameState): void {
   if (!s.pendingChoiceIds) s.pendingChoiceIds = nextChoiceIds(s)
 }
 
-function grantDestinyPoints(s: GameState, events: GameEvent[]) {
+/** 回傳是否真的發了點:被閘住時呼叫端要退回一般降臨,Boss 擊破不能什麼都不給 */
+function grantDestinyPoints(s: GameState, events: GameEvent[]): boolean {
   const next = B.DESTINY_MILESTONES[s.destinyEarned]
-  if (next === undefined || s.floor < next) return
+  if (next === undefined || s.floor < next) return false
   // 未使用的點滿了就停發,但不擋推進(掛機玩家回來不必連點十次)
-  if (s.destinyPoints >= B.DESTINY_POINT_CAP) return
+  if (s.destinyPoints >= B.DESTINY_POINT_CAP) return false
+  // 呼吸間隔(兩層):距上一次**大抉擇**至少 DESTINY_BEAT_GAP_SEC;
+  // 距上一次**小降臨**至少等 descentCooldown 歸零(40 秒),避免同一場 Boss 前後腳疊拍。
+  // ⚠️ gap 只被里程碑發點重置——第一版連小降臨也重置,結果 Boss 間隔 < gap 時
+  // 大抉擇被一路擠到降臨池乾掉才發(實測 16 分);池子一擴大就等於永遠不發。
+  // 觸發仍然只在擊破守關者的當下——「戰利品」的因果不變,推進也不會被擋
+  if (s.destinyGapSec < B.DESTINY_BEAT_GAP_SEC) return false
+  if (s.descentCooldown > 0) return false
   addDestinyPoint(s)
   s.destinyEarned++
+  s.destinyGapSec = 0
   events.push({ type: 'destinyPoint', floor: s.floor })
+  return true
 }
 
 export const destinyPaths = () => ALL_PATHS
@@ -1459,7 +1608,10 @@ export function attackInterval(s: GameState): number {
   const formation = ironwallActive(s) ? B.IRONWALL_INTERVAL : 1
   // 殘影(二轉進化):自己那招的視窗期間切得更細
   const echo = s.buffs.some((b) => evolved(s, b.skillId) && SKILLS[b.skillId].critAdd) ? B.EVOLVE_INTERVAL : 1
-  return (B.ATTACK_INTERVAL * mod * formation * echo) / (1 + s.morale * B.MORALE_ATTACK_SPEED)
+  const training =
+    Math.pow(B.TRAINING_HEAVY_INTERVAL, trainingCount(s, 'heavy')) *
+    Math.pow(B.TRAINING_RAPID_INTERVAL, trainingCount(s, 'rapid'))
+  return (B.ATTACK_INTERVAL * mod * formation * echo * training) / (1 + s.morale * B.MORALE_ATTACK_SPEED)
 }
 
 // ---------- 職業覺醒與印記 ----------
@@ -1506,14 +1658,17 @@ export function sigilCap(s: GameState): number {
 }
 
 /** 累積印記。既有技能建立累積,第二技能挑時機消耗 */
-function gainSigil(s: GameState, n = 1, events?: GameEvent[], via?: GameEvent['via']) {
+export function gainSigil(s: GameState, n = 1, events?: GameEvent[], via?: GameEvent['via']) {
   if (!JOBS[s.jobId].awakenSkill) return
   const before = s.sigils
   s.sigils = Math.min(sigilCap(s), s.sigils + n)
   // 疊層瞬間發事件:玩家要看得到「這隻為什麼給」(視窗擊殺/擲骰/連斬…)
   if (events && s.sigils > before) events.push({ type: 'sigilGain', count: s.sigils - before, via })
   // 疊滿的瞬間開金色窗口:窗口內「手動」引爆=完美引爆(掛機正常引爆,無完美獎勵)
-  if (before < sigilCap(s) && s.sigils >= sigilCap(s)) s.perfectWindowLeft = B.PERFECT_WINDOW_SEC
+  if (before < sigilCap(s) && s.sigils >= sigilCap(s))
+    // 獵隙者:窗口延長一倍,讓「挑時機」真的有時間可挑
+    s.perfectWindowLeft =
+      B.PERFECT_WINDOW_SEC * (hasNode(s, 'sigil_hunter') ? B.SIGIL_HUNTER_WINDOW_MULT : 1)
 }
 
 /** 命運對印記的改造說明,UI 直接顯示 */
@@ -1625,6 +1780,8 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
         s.zealStacks++
         events.push({ type: 'zealGain', count: s.zealStacks })
       }
+      // 回響裝填:引爆變成下一輪的起點,不是循環的終點
+      if (hasNode(s, 'sigil_reload')) advanceCooldowns(s, B.SIGIL_RELOAD_SEC, events)
       events.push({ type: 'perfectBurst' })
     }
     s.perfectWindowLeft = 0
@@ -1664,6 +1821,8 @@ export function castSkill(s: GameState, id: SkillId, auto = false): GameEvent[] 
   }
 
   trackCastOrder(s, id, events)
+  // 法術餘響:從這一招的傷害分一份給餘響(總量不變),並推進其他技能冷卻
+  skillDamage = castEcho(s, skillDamage, id, events)
   events.push({
     type: 'skill',
     skillId: id,
@@ -1843,11 +2002,15 @@ function tickCombatStatus(s: GameState, dt: number, events: GameEvent[], rng: Rn
       const pool = s.frozenPool
       s.frozenPool = D(0)
       if (pool.gt(0)) {
-        // 解凍引爆:累積的傷害一次結算 + 冰法師的小額獎勵
+        // ⚠️ `pool` 已經在 dealDamage 當下扣過血了(見該處「凍結 = 表現延遲」註解),
+        // 這裡**只負責演出**:把累積量一次顯示成大數字。曾經在這裡再 dealDamage(total)
+        // 一次,等於同一份傷害打兩遍——實測 4 秒內含 2 秒凍結時總傷 +50%,
+        // 而 balance.ts 宣稱冰法師是中性的。同樣情境的 checkBossTimeout 一直都是對的
+        // (只發事件、清池、不重打),兩條路徑不一致才讓它藏這麼久。
         const bonus = s.activeMerc === 'icemage' ? currentDPS(s).mul(B.MERC_ICE_BONUS_SEC) : D(0)
-        const total = pool.add(bonus)
-        events.push({ type: 'freezeBurst', damage: total })
-        dealDamage(s, total, events, rng, { source: 'frozen' })
+        events.push({ type: 'freezeBurst', damage: pool.add(bonus) })
+        // 只有冰法師的獎勵是真正新增的傷害
+        if (bonus.gt(0)) dealDamage(s, bonus, events, rng, { source: 'frozen' })
       }
     }
     return // 凍結期間燃燒與砲台也暫停(它們的傷害會進池,乾脆停表)
@@ -1943,6 +2106,47 @@ function tickSkills(s: GameState, dt: number, events: GameEvent[]) {
 
 // ---------- 養成 ----------
 
+export function trainingCount(s: GameState, id: TrainingId): number {
+  return s.training.filter((picked) => picked === id).length
+}
+
+/** 已到達但尚未選擇的下一個訓練里程碑。 */
+export function pendingTrainingLevel(s: GameState): number | null {
+  const milestone = B.TRAINING_FLOORS[s.training.length]
+  return milestone !== undefined && pendingTrainingCount(s) > 0 ? milestone : null
+}
+
+/**
+ * 還沒花掉的操練令數量。訓練不阻斷、不過期,可以累積著等玩家想選再選。
+ * ⚠️ 這裡刻意不顯示「Lv.10 里程碑」——銀行式累積下最舊的那個數字會很怪
+ * (Lv.50 才進來的玩家看到「Lv.10」)。對玩家只講「還有 N 次可選」。
+ */
+export function pendingTrainingCount(s: GameState): number {
+  return s.trainingShown - s.training.length
+}
+
+/**
+ * 釋出操練令:樓層到了、且距上次釋出夠久,才多給一次。
+ * ⚠️ 釋出與「玩家有沒有去選」是兩件事——已釋出但沒選的會一直存著(銀行式),
+ * 時間閘只管釋出的節奏,不會吞掉次數。
+ */
+function releaseTraining(s: GameState, dt: number): void {
+  s.trainingGapSec += dt
+  if (s.trainingShown >= B.TRAINING_FLOORS.length) return
+  const nextFloor = B.TRAINING_FLOORS[s.trainingShown]
+  if (s.highestFloor < nextFloor) return
+  // 第一次不必等間隔:玩家剛走到門檻,沒有「上一次」可以隔
+  if (s.trainingShown > 0 && s.trainingGapSec < B.TRAINING_MIN_GAP_SEC) return
+  s.trainingShown++
+  s.trainingGapSec = 0
+}
+
+export function chooseTraining(s: GameState, id: TrainingId): boolean {
+  if (pendingTrainingLevel(s) === null) return false
+  s.training.push(id)
+  return true
+}
+
 export function buyLevels(s: GameState, count = 1): number {
   let bought = 0
   for (let i = 0; i < count; i++) {
@@ -1997,9 +2201,27 @@ export function chargeMult(s: GameState): number {
   return s.chargeBurstLeft > 0 ? 1 + s.chargeStacks * B.CHARGE_DMG : 1
 }
 
+/**
+ * 這一輪到頂了嗎。撞牆後每 10 層要 20~30 分鐘,單層卡住 RUN_STALL_SEC 已經不是暫時的。
+ * ⚠️ 必須同時有勳章可拿才回 true——首輪前段被 Boss 卡住的新手不該被叫去退役。
+ */
+export function runStalled(s: GameState): boolean {
+  return s.stallSec >= B.RUN_STALL_SEC && pendingMedals(s) > 0
+}
+
 /** 越戰越勇:只在 Boss 戰生效 */
 export function valiantMult(s: GameState): number {
   return s.isBoss ? 1 + s.valiantStacks * B.VALIANT_DMG : 1
+}
+
+/**
+ * 背水一戰:守關倒數最後幾秒傷害提升。
+ * ⚠️ 只在 Boss 戰的尾段生效,所以它不進日常推進的乘區——
+ * 它買的是「差一點打不完」那些場,不是整體 DPS。
+ */
+export function lastDitchMult(s: GameState): number {
+  if (!s.isBoss || !hasNode(s, 'boss_lastditch')) return 1
+  return s.bossTimeLeft > 0 && s.bossTimeLeft <= B.LASTDITCH_SEC ? B.LASTDITCH_MULT : 1
 }
 
 /** 開始/結束蓄勢。蓄勢期間不輸出,換取結束後的短時爆發 */

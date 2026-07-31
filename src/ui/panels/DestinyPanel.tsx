@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-  ALL_PATHS,
   DESTINY_NODES,
   DESTINY_PATHS,
   interpretOf,
@@ -9,13 +8,13 @@ import {
 } from '../../core/destiny'
 import { QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
 import * as B from '../../core/balance'
-import { heirloomCandidates, pendingMedals, RESONANCE_SRC_NAME, strongestResonance } from '../../core/game'
+import { heirloomCandidates, pendingMedals, pendingTrainingCount } from '../../core/game'
 import { LEGENDS } from '../../core/legends'
 import { SETS } from '../../core/sets'
 import { heirloomSlots, TECHS } from '../../core/techs'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
-import { BadgeIcon, GameIcon, QualityMark } from '../GameIcon'
+import { BadgeIcon, QualityMark } from '../GameIcon'
 
 /**
  * 退役/轉生入口。2026-07-31 移到傳承頁頂部(UX 回饋方案 A):
@@ -29,6 +28,7 @@ export function PrestigeSection() {
   const [picked, setPicked] = useState<string[]>([])
   const gain = pendingMedals(s)
   const candidates = heirloomCandidates(s)
+  const pendingTraining = pendingTrainingCount(s)
   const slots = heirloomSlots(s.techs)
   // 再推幾層就多一枚勳章 —— 「差一點」比「你還早」有用得多
   const toNext = B.MEDAL_PER_FLOORS - (s.highestFloor % B.MEDAL_PER_FLOORS)
@@ -58,6 +58,14 @@ export function PrestigeSection() {
               現在退役只有 {gain} 枚,最便宜的科技要 {cheapest} 枚 —— 通常再推一段更划算。
             </div>
           )}
+        </div>
+      )}
+
+      {/* 訓練改成不阻斷之後,「帶著沒用的操練令轉生」變成正常路徑;
+          那 N 次選擇會隨轉生無聲消失,退役前一定要講 */}
+      {pendingTraining > 0 && (
+        <div className="affix" style={{ color: 'var(--gold)', marginBottom: 6 }}>
+          還有 {pendingTraining} 次操練沒分配,退役後會一起歸零 —— 先去「英雄」分頁用掉。
         </div>
       )}
 
@@ -124,57 +132,34 @@ export function PrestigeSection() {
 
 export default function DestinyPanel() {
   const s = useGameState()
-  const chooseDestiny = useGame((st) => st.chooseDestiny)
   const pickNode = useGame((st) => st.pickDestinyNode)
 
-  // 還沒選路徑:這一輪要怎麼玩
+  // 第一次降臨前不公開完整路徑。舊版在這裡直接列出三條命運，
+  // 玩家第 1 層就能讀完攻略，10F 的「降臨」自然不可能有驚喜。
   if (!s.destinyPath) {
-    const strongest = strongestResonance(s)
-    const srcLines = (Object.keys(s.resonanceSrc) as Array<keyof typeof s.resonanceSrc>)
-      .filter((k) => s.resonanceSrc[k] > 0)
-      .map((k) => `${RESONANCE_SRC_NAME[k]} ×${s.resonanceSrc[k]}`)
+    const beforeSeed = s.floor <= B.DESTINY_SEED_FLOOR
+    const progress = Math.min(100, Math.max(0, (s.floor / B.DESTINY_SEED_FLOOR) * 100))
     return (
       <div className="panel-page destiny-page">
         <h3>命 運</h3>
-        <div className="affix" style={{ marginBottom: 10, lineHeight: 1.7 }}>
-          選擇這一代小兵的命運。每輪只能選一條,轉生後重新選。
+        <div className="destiny-awaiting">
+          <div className="destiny-awaiting-rune" aria-hidden="true">?</div>
+          <small>本輪尚未發生</small>
+          <b>命運仍在迷霧之中</b>
+          <p>
+            {beforeSeed
+              ? `擊破第 ${B.DESTINY_SEED_FLOOR} 層守關者後，第一道命運會自動降臨。`
+              : '擊破下一位守關者後，命運會重新找到你。'}
+          </p>
+          {beforeSeed && (
+            <div className="destiny-awaiting-progress">
+              <span style={{ width: `${progress}%` }} />
+            </div>
+          )}
+          <em>
+            {beforeSeed ? `目前第 ${s.floor} 層` : '等待下一場守關戰'}・不提前公開未發生的命運
+          </em>
         </div>
-        {ALL_PATHS.map((p) => (
-          <div className="card destiny-card" key={p.id}>
-            <div className="head">
-              <div className="destiny-title">
-                <GameIcon name="destiny" size={30} />
-                <b>
-                  {p.name} <small className="affix">{p.tagline}</small>
-                {/* 共鳴是傾向的呈現,不是推薦——三條照選 */}
-                {strongest === p.id && (
-                  <small style={{ marginLeft: 6, color: 'var(--gold)' }}>
-                    共鳴 {s.resonance[p.id]}・較強共鳴,選它有開場禮物
-                  </small>
-                )}
-                {strongest !== p.id && s.resonance[p.id] > 0 && (
-                  <small className="affix" style={{ marginLeft: 6 }}>共鳴 {s.resonance[p.id]}</small>
-                )}
-                </b>
-              </div>
-              <button className="btn primary" onClick={() => chooseDestiny(p.id)}>
-                選擇
-              </button>
-            </div>
-            <div className="affix">{p.fantasy}</div>
-            <div className="affix" style={{ color: 'var(--text)', marginTop: 4 }}>
-              起始:{DESTINY_NODES[p.start].name} — {DESTINY_NODES[p.start].desc}
-            </div>
-          </div>
-        ))}
-        {strongest && (
-          <div className="affix" style={{ lineHeight: 1.7 }}>
-            你在本次旅途中,與{DESTINY_PATHS[strongest].name}命運產生了較強共鳴。
-            {srcLines.length > 0 && <>來源:{srcLines.join('、')}</>}
-            <br />
-            開場禮物(一次性):神匠=足夠鍛造一次的素材/尋寶=下一個事件立刻接近/戰術家=連斬起步 {B.RESONANCE_GIFT_COMBO} 層
-          </div>
-        )}
       </div>
     )
   }

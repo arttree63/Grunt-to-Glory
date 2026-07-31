@@ -835,6 +835,32 @@ npm run sim:legend
 第一階段改用 `MIN_DESCENT_GAP_SEC = 40`(前 150 層約 7 次),
 並把「恢復到 2~4 分鐘節奏」列為**需要先修整體推進速度**的後續工作,不在命運系統的範圍內。
 
+### 量節奏一律用瀏覽器腳本化真人操作,不用模擬器代理(2026-07-31,第二次踩)
+
+判斷「玩家多久會遇到 X」時,模擬器代理錯得離譜:訓練三選一的觸發時點,
+代理估 **10.6 分鐘**,瀏覽器實測 **88 秒**——差 6 倍。原因與 § 七 Step 4 同一個:
+代理每秒 buyMax + 秒殺怪,等級成長遠快於真人。
+
+**節奏量測的標準做法**(可直接複製):
+
+```js
+// 每 70ms 點擊 + 每秒買最大 + 每 200ms 掃「有沒有新的阻斷物」
+const BLOCKERS = ['.training-mask','.modal-mask','.spot-dim','.destiny-chamber','.result-reveal-mask']
+setInterval(() => stage.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true})), 70)
+setInterval(() => window.__game.getState().buy('max'), 1000)   // ⚠️ 不要打 .lvl-main
+```
+
+**四個會偽造結論的陷阱(全部實際踩過)**:
+
+1. **存檔在 IndexedDB(localforage `little-soldier`),不是 localStorage。**
+   `localStorage.clear()` 只清教學/提示/聚光燈旗標,遊戲進度原封不動。
+2. **`pagehide` 會 flush 存檔** → 「刪 DB 再 reload」必定失敗,unload 時舊 state 又寫回去,
+   新頁面載入的是舊進度。乾淨開檔唯一可靠做法:`__game.getState().reset()`(它會 `wipeSave` + 重建 state)。
+3. **Vite HMR 熱抽換會讓 `useHold` 的計時器外洩**:pointerdown 之後元件被換掉,
+   pointerup 打不到原本的 handler,等級會自己一直漲。量測期間一律走 store,不要打 DOM 上的長按按鈕。
+4. **React 狀態非同步**:同一個 `javascript_tool` 呼叫內 `click()` 完立刻讀 DOM 一定讀到舊值,
+   要分成兩次呼叫;而且 toggle 型卡片**連點兩次等於選了又取消**,很容易誤判成「點擊沒作用」。
+
 ### ⚠️ 準備型科技對變異的效果:**模擬未能證實**(2026-07-31)
 
 R2 加入三項準備型科技時的假設是「多的精工次數會收斂裝備乘區變異」。

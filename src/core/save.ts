@@ -11,6 +11,7 @@ export interface SaveData {
   lv: number
   gold: string
   jobId: GameState['jobId']
+  training?: GameState['training']
   floor: number
   highestFloor: number
   killsInFloor: number
@@ -88,6 +89,7 @@ export function serialize(s: GameState): SaveData {
     lv: s.lv,
     gold: s.gold.toString(),
     jobId: s.jobId,
+    training: s.training,
     floor: s.floor,
     highestFloor: s.highestFloor,
     killsInFloor: s.killsInFloor,
@@ -353,6 +355,11 @@ function migrate(raw: SaveData): SaveData {
     d.descentCooldown = d.descentCooldown ?? 0
     d.version = 27
   }
+  // v27 → v28:等級里程碑訓練。本輪新系統,舊存檔從尚未選擇開始。
+  if (d.version < 28) {
+    d.training = d.training ?? []
+    d.version = 28
+  }
   return d
 }
 
@@ -365,6 +372,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     lv: d.lv ?? 1,
     gold: D(d.gold ?? 0),
     jobId: d.jobId ?? 'rookie',
+    training: d.training ?? [],
     floor: d.floor ?? 1,
     highestFloor: d.highestFloor ?? 1,
     killsInFloor: d.killsInFloor ?? 0,

@@ -331,6 +331,33 @@ export const OFFLINE_CAP_HOURS = 4
  * 而不是像敵人在流血。渲染層的揮砍由 core 發出的 attack 事件驅動,兩者不會漂移。
  */
 export const ATTACK_INTERVAL = 0.8
+/** 訓練里程碑。只切換攻擊節奏/主動投入,不直接加基礎 DPS。 */
+/**
+ * 操練令的里程碑。⚠️ 2026-07-31 從**等級**改綁**樓層**。
+ *
+ * 原本是 `[10,20,30,40,50]` 級。實測腳本化真人操作:五次全部落在開局
+ * **1.73 分鐘內**(0.45 / 0.67 / 1.04 / 1.47 / 1.73 分),而且 Lv.20 那次與
+ * 一轉(`jobs.ts` 的 reqLv: 20)撞在同一幀——因為兩者都吃等級,而等級在前期會爆衝。
+ *
+ * 改綁樓層之後:
+ * - 與命運降臨、地帶、傭兵解鎖同一把尺,可以刻意交錯而不是意外重疊。
+ * - 一轉仍綁等級,所以那個同幀碰撞自動消失。
+ * - 樓層是單調遞增的 `highestFloor`,Boss 失敗退層不會把已發的操練令收回去。
+ *
+ * ⚠️ 第一個里程碑刻意放在**一轉(Lv.20,約 0.67 分)之後**:初版放第 12 層,
+ * 實測落在 0.47 分——距命運種子(0.45 分)只有 1.2 秒,正是要避免的那種重疊。
+ * 選點依據見下方實測表;會鍛造的玩家更快,但相對間距不變。
+ */
+export const TRAINING_FLOORS = [25, 40, 65, 95, 125] as const
+/**
+ * 兩次操練令之間至少隔多久。樓層閘負責「你走得夠遠了」,這道時間閘負責
+ * 「不管你走多快,節奏不會被壓扁」——推進快的玩家不會一口氣收到三張。
+ */
+export const TRAINING_MIN_GAP_SEC = 100
+export const TRAINING_HEAVY_INTERVAL = 1.12
+export const TRAINING_RAPID_INTERVAL = 0.9
+export const TRAINING_MORALE_GAIN = 1.12
+export const TRAINING_MORALE_DECAY = 0.9
 /**
  * 戰意縮短攻擊間隔:滿戰意時攻擊頻率翻倍。
  * 這是傷害中性的——每擊傷害 = DPS × 累積時間,打得快只是切得細。
@@ -431,9 +458,23 @@ export const SHELL_DR = 0.3
 export const SHELL_BREAK_MULT = 1.3
 export const SHELL_BREAK_SEC = 4
 /** 蓄力:剩 20s / 10s 各一次,持續 4s;期間打出 maxHp × 比例即打斷 */
-export const CHANNEL_TIMES = [20, 10]
+/**
+ * 蓄力觸發點(以 Boss 倒數剩餘秒數表示)。⚠️ 2026-07-31 從 [20,10] 前移。
+ * 舊值代表開戰後第 10 / 20 秒才起手,但實測前期 Boss 戰只有 6~9 秒就結束
+ * → **蓄力機制第一次真正發動是第 80 層 / 6.3 分鐘**,在那之前玩家以為 Boss 只有一種。
+ * 新值 = 開戰後第 4 / 15 秒,短戰也看得到。
+ */
+export const CHANNEL_TIMES = [26, 15]
 export const CHANNEL_DURATION = 4
-export const CHANNEL_HP_TO_BREAK = 0.06
+/**
+ * 打斷門檻(佔 Boss maxHp 比例)。⚠️ 2026-07-31 從 0.06 上調。
+ * 舊值算術上是**負機制稅**:剛好能通關的玩家(30 秒打完 maxHp)在 4 秒蓄力窗內
+ * 自然打進 13.3%,是門檻 6% 的 **2.22 倍**——能贏的人必定 100% 打斷,
+ * 於是蓄力型比同 HP 木樁**更好打**(打斷還送 6 秒 ×1.25 易傷)。
+ * 新值 0.20 高於 13.3%,所以純被動輸出會失敗,必須真的留一手爆發——
+ * 這正是聚光燈文案承諾的「留一手爆發,就是留給這種時候」。
+ */
+export const CHANNEL_HP_TO_BREAK = 0.2
 /** 打斷成功:Boss 易傷;失敗:Boss 硬化(拖時間但不擋通關) */
 export const INTERRUPT_VULN = 1.25
 export const INTERRUPT_VULN_SEC = 6
@@ -563,6 +604,14 @@ export const CHRONICLE_MAX = 30
 // 命運樹
 /** 本輪達到這些層數各給一枚命運點(用當輪層數,不是歷史最高) */
 export const DESTINY_MILESTONES = [30, 60, 90]
+/**
+ * 大抉擇與上一個命運節拍之間至少隔多久。
+ * ⚠️ 實測:種子 0.45 分、第 30 層大抉擇 1.31 分——全遊戲最重的決策
+ * 在最輕的隨機事件後 50 秒就到,玩家還沒消化「這輪我是殘影」。
+ * 樓層閘管「你走得夠遠」,這道時間閘管「上一拍有時間沉澱」,
+ * 與操練令的 TRAINING_MIN_GAP_SEC 同一套二維做法。
+ */
+export const DESTINY_BEAT_GAP_SEC = 150
 /** 未使用命運點上限。滿了就停發,但不阻止推進(掛機玩家回來不用連點十次) */
 export const DESTINY_POINT_CAP = 2
 
@@ -607,3 +656,109 @@ export const AFTERIMAGE_SIGIL_PER = 2
 /** 同步步伐:殘影每次攻擊都累積破綻(效率 1/1),代價是直接傷害打折 */
 export const AFTERIMAGE_SYNC_SIGIL_PER = 1
 export const AFTERIMAGE_SYNC_DAMAGE_MULT = 0.75
+/**
+ * ── 同一顆種子的三種職業詮釋 ──
+ * ⚠️ 三者改的是**觸發條件與重演對象**,不是傷害數字。
+ * 只換名稱或加百分比 = 職業仍然直接鎖死玩法,那正是這張卡要解決的問題。
+ *
+ * 重裝步兵「守護殘像」:技能視窗期間殘影不消耗重演次數(每一擊都被重演)。
+ * 決策從「數普攻次數」變成「什麼時候開視窗、怎麼延長它」——buffDur 詞綴因此有價值。
+ * 視窗佔比約 duration/cd ≈ 13%,額外淨增傷約 +3%,但視窗內體感明顯。
+ */
+export const AFTERIMAGE_GUARD_IN_WINDOW = true
+/**
+ * 隨軍法警「法術餘響」:殘影不重演普攻,改為施放技能時追加一次餘響。
+ * 傷害**從該技能分帳**(不加量),並推進其他技能的冷卻 → 技能順序成為主要決策。
+ * ⚠️ 冷卻推進走既有的 cooldownAdvance,受 CD_FLOOR(30%)護欄保護。
+ */
+export const AFTERIMAGE_ECHO_SHARE = 0.25
+export const AFTERIMAGE_ECHO_CD_SEC = 0.5
+
+/**
+ * ── 第 30 層命運抉擇:殘影的三種形態 ──
+ *
+ * ⚠️ 2026-07-31 體驗審查抓到:這三個節點在 core 與 render **零引用**,
+ * 選哪個結果完全一樣——而它會硬暫停整個遊戲。全遊戲唯一的真決策原本是假的。
+ *
+ * 三者刻意**不比大小**:前兩者淨增傷與基準幾乎相同(16.0% / 16.7% / 16.9%),
+ * 差別在「每次命中的密度」與「重演窗口的長度」;誘敵之影則明確用傷害換資源
+ * (淨增傷腰斬到 8%,但破綻效率翻倍、破盾從弱化的 2 點升到獨立命中的 4 點)。
+ * 能用計算機分高下的就不是決策——所以只有誘敵之影可以比,而它比的是「換什麼」。
+ */
+export interface AfterimageShape {
+  /** 每幾次普攻生成 */
+  every: number
+  /** 生成後重演幾次 */
+  replays: number
+  /** 每次重演的傷害佔比 */
+  share: number
+  /** 每幾次殘影攻擊給一枚破綻 */
+  sigilPer: number
+  /** 殘影的破盾值。基準用弱化的 SHIELD_ECHO_VALUE,誘敵之影升為獨立命中 */
+  shieldValue: number
+  /** 殘影攻擊時推進其他技能冷卻的秒數(0 = 不推進) */
+  cdAdvance: number
+}
+
+export const AFTERIMAGE_BASE_SHAPE: AfterimageShape = {
+  every: AFTERIMAGE_EVERY,
+  replays: AFTERIMAGE_REPLAYS,
+  share: AFTERIMAGE_DAMAGE_SHARE,
+  sigilPer: AFTERIMAGE_SIGIL_PER,
+  shieldValue: SHIELD_ECHO_VALUE,
+  cdAdvance: 0,
+}
+
+/**
+ * 群影:影子多而弱。每次普攻帶殘影的比例從 0.40 升到 0.67(+67% 獨立命中)
+ * → 拆盾與「每次命中」類效果變快,代價是每一道影子的傷害只剩基準的 6 成。
+ * ⚠️ every 變小**不等於**命中變多,決定命中密度的是 replays/every——
+ * 初版寫 every:3 / replays:1 得到 0.33,比基準還少,與身分相反(實測抓到)。
+ */
+export const AFTERIMAGE_SHAPE_SWARM: AfterimageShape = {
+  every: 3,
+  replays: 2,
+  share: 0.24,
+  sigilPer: 2,
+  shieldValue: SHIELD_ECHO_VALUE,
+  cdAdvance: 0,
+}
+
+/** 鏡像:影子少而長,且會推進其他技能冷卻 → 施放順序成為主要決策 */
+export const AFTERIMAGE_SHAPE_MIRROR: AfterimageShape = {
+  every: 8,
+  replays: 3,
+  share: 0.43,
+  sigilPer: 2,
+  shieldValue: SHIELD_ECHO_VALUE,
+  cdAdvance: 0.3,
+}
+
+/**
+ * 多久沒推進樓層就算「這一輪到頂了」。撞牆後每 10 層要 20~30 分鐘,
+ * 單層卡住 3 分鐘已經明顯不是暫時的。⚠️ 還要同時有勳章可拿才提示,
+ * 否則首輪前段被 Boss 卡住的新手會被叫去退役,那是反效果。
+ */
+export const RUN_STALL_SEC = 180
+
+// ── 命運池補充節點(2026-07-31,審查抓到池子只有 2 個)──
+/** 餘燼之影:殘影每次重演點燃敵人,燃燒量 = 該次殘影傷害的幾倍、持續幾秒 */
+export const SHADE_EMBER_MULT = 0.6
+export const SHADE_EMBER_SEC = 3
+/** 獵隙者:完美引爆金色窗口的倍率 */
+export const SIGIL_HUNTER_WINDOW_MULT = 2
+/** 回響裝填:完美引爆時額外推進所有冷卻中技能幾秒 */
+export const SIGIL_RELOAD_SEC = 2
+/** 背水一戰:守關倒數剩幾秒內、傷害乘多少 */
+export const LASTDITCH_SEC = 8
+export const LASTDITCH_MULT = 1.35
+
+/** 誘敵之影:放棄正面輸出換破綻。破綻效率翻倍、破盾升為獨立命中 4 點 */
+export const AFTERIMAGE_SHAPE_LURE: AfterimageShape = {
+  every: 5,
+  replays: 2,
+  share: 0.2,
+  sigilPer: 1,
+  shieldValue: SHIELD_HIT_VALUE,
+  cdAdvance: 0,
+}

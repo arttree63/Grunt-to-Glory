@@ -20,10 +20,12 @@ import {
 import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
 import { SKILLS } from '../core/skills'
+import { MERCS } from '../core/mercs'
 import type { GameEvent, SkillId } from '../core/types'
 import * as sfx from '../audio/sfx'
 import { useGame } from '../store/gameStore'
 import ResultReveal from './ResultReveal'
+import { TRAINING_NAME } from './TrainingChoice'
 
 const EVENT_REVEAL_ITEMS = ['金幣', '怪物素材', '菁英素材', '部位素材']
 
@@ -181,8 +183,9 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         sfx.play(crit ? 'crit' : 'hit')
         const click = e.source === 'click'
         const morale = click && (e.count ?? 0) > 0 ? `・戰意 +${Math.round(e.count!)}` : ''
+        const backstab = e.pierce && (e.source === 'hero' || !e.source)
         scene.swing(
-          (e.pierce ? '穿透・' : '') + (crit ? '暴擊 ' : '') + (click ? '點擊 ' : '') + fmtCombat(shown) + morale,
+          (backstab ? '背刺・' : e.pierce ? '穿透・' : '') + (crit ? '暴擊 ' : '') + (click ? '點擊 ' : '') + fmtCombat(shown) + morale,
           crit,
           e.source ?? 'hero',
         )
@@ -202,8 +205,12 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
       } else if (e.type === 'cooldownAdvance') {
         scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0, e.via)
       } else if (e.type === 'zoneEnter') {
-        // 進新地帶:一句地帶描述,讓推進有敘事而不只是數字往上跳
-        scene.notice(`進入 ${zoneOf(e.floor!).name}`)
+        const zone = zoneOf(e.floor!)
+        scene.onZoneEnter(zone.name, zone.flavor)
+      } else if (e.type === 'destinyDescend') {
+        scene.onDestinyDescend()
+      } else if (e.type === 'afterimageSpawn') {
+        scene.onAfterimageSpawn()
       } else if (e.type === 'achievement') {
         const a = ACHIEVEMENTS.find((x) => x.id === e.achievementId)
         if (a) scene.notice(`軍功記錄・${a.name}`)
@@ -213,6 +220,17 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.onResonanceGain(e.count ?? 0)
       } else if (e.type === 'shellGain') {
         scene.onShellGain(e.count ?? 0, e.shellSource)
+      } else if (e.type === 'mercUnlock') {
+        // 四次解鎖以前完全靜默(unlockedMercs 是純推導,沒有任何事件)。
+        // 用 skillHit 的大字而不是一行 notice:一輪只有 4 次,它是「拿到新東西」不是「+1 素材」
+        scene.skillHit(`新 戰 友 ・ ${MERCS[e.mercId!].name}`)
+        scene.notice(`到「英雄」分頁帶上他・${MERCS[e.mercId!].signature}`)
+      } else if (e.type === 'trainingReady') {
+        // 與 levelUp 同一幀觸發,靠 notice 的槽位堆疊錯開;字長要跟「升 級」同級,
+        // 去哪裡分配由分頁上的金色數字與下一步條負責,不塞進這一行
+        scene.notice(`操 練 令 +${e.count}`)
+      } else if (e.type === 'trainingChosen') {
+        scene.notice(`投入${TRAINING_NAME[e.trainingId!]}`)
       } else if (e.type === 'freezeCapped') {
         scene.notice('凍結上限・本場已用盡')
       } else if (e.type === 'relicPrimed') {
@@ -306,6 +324,7 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
           items={EVENT_REVEAL_ITEMS}
           result={eventReveal.text}
           tone={eventReveal.tone}
+          blocking={false}
           onDone={() => setEventReveal(null)}
         />
       )}

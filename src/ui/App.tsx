@@ -20,6 +20,7 @@ import {
   TACTICS,
   pendingMedals,
   ironwallActive,
+  pendingTrainingCount,
   setProgress,
   shellToNext,
   sigilCap,
@@ -29,7 +30,7 @@ import { hasNode } from '../core/destiny'
 import { SKILLS } from '../core/skills'
 import { SETS } from '../core/sets'
 import { JOBS } from '../core/jobs'
-import { nearGoal } from '../core/goals'
+import { nearGoal, runGoal, type GoalTab } from '../core/goals'
 import { zoneOf, zoneProgress } from '../core/zones'
 import { speciesPair } from '../core/enemies'
 import { useGame } from '../store/gameStore'
@@ -257,6 +258,15 @@ function Game() {
   const hpRatio = s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0
   // 紅點三層收斂:同時只亮一顆,由近期目標的優先序決定(core/goals.ts)
   const near = nearGoal(s)
+  /**
+   * 主畫面「下一步」條的內容。三層目標(goals.ts)原本只有 near 一層上得了主畫面,
+   * near 在中後段回 null → **整段最長的時間裡主畫面沒有任何「我在往哪裡走」的資訊**。
+   * near 沒東西時退回本輪里程碑(runGoal),它一定有值。
+   * ⚠️ run 目標刻意不帶 tab:它是「再推 N 層」這種靠打就會到的事,不該指去某個分頁,
+   * 也不該亮紅點(紅點單一來源仍由 near 驅動)。
+   */
+  const stepGoal = near?.tab ? near : { ...runGoal(s), tab: null as GoalTab | null }
+  const trainingPending = pendingTrainingCount(s)
   const zone = zoneOf(s.floor)
   const zp = zoneProgress(s.floor)
   const species = speciesPair(s.floor)
@@ -339,7 +349,7 @@ function Game() {
   return (
     <div
       className={`wrap${hasSkills ? ' has-skills' : ' no-skills'}${tab ? ' panel-open' : ''}${
-        near && near.tab && tab !== near.tab ? ' has-next' : ''
+        stepGoal && (!stepGoal.tab || tab !== stepGoal.tab) ? ' has-next' : ''
       }`}
     >
       <BattleCanvas>
@@ -511,18 +521,21 @@ function Game() {
           </div>
         </div>
 
-        <DestinyCard />
         <SpotlightTeach />
       </BattleCanvas>
 
+      <DestinyCard />
       <div className="bottom">
         {/* 核心成長迴圈要在主畫面上按得到:金幣漲→亮起→按(對照點擊泰坦的商店即主畫面) */}
         <LevelBar />
         {/* 下一步行動提示:紅點只說「有事」,這條直接說「做什麼」,點了開正確分頁 */}
-        {near && near.tab && tab !== near.tab && (
-          <button className="next-step" onClick={() => setTab(near.tab as Tab)}>
-            <span>下一步:{near.text}</span>
-            <span className="go">前往 →</span>
+        {stepGoal && (!stepGoal.tab || tab !== stepGoal.tab) && (
+          <button
+            className={`next-step${stepGoal.tab ? '' : ' info'}`}
+            onClick={() => stepGoal.tab && setTab(stepGoal.tab as Tab)}
+          >
+            <span>下一步:{stepGoal.text}</span>
+            {stepGoal.tab && <span className="go">前往 →</span>}
           </button>
         )}
         <SkillBar />
@@ -536,6 +549,9 @@ function Game() {
               <span><GameIcon name={t.id} size={19} /></span>
               {t.label}
               {near?.tab === t.id && <i className="dot" />}
+              {/* 未花掉的操練令是玩家手上的資源,不是「差一點」目標:
+                  紅點單一來源由 nearGoal 決定,這裡另掛金色數字,際遇卡住 near 槽位時仍看得見 */}
+              {t.id === 'hero' && trainingPending > 0 && <i className="pip">{trainingPending}</i>}
             </button>
           ))}
         </div>

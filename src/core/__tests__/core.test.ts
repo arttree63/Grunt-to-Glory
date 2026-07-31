@@ -28,6 +28,12 @@ import { nextChoiceIds, reconcileDestiny, rollDescent } from '../destiny'
 import type { EncounterId } from '../types'
 import {
   applyTick,
+  afterimageShape,
+  pendingMedals,
+  runStalled,
+  dealDamage,
+  gainSigil,
+  lastDitchMult,
   attackInterval,
   buffMult,
   hasLegend,
@@ -42,6 +48,7 @@ import {
   availableSkills,
   chargeMult,
   chooseDestiny,
+  chooseTraining,
   isAwakened,
   revealStage,
   sigilCap,
@@ -63,6 +70,7 @@ import {
   skillCooldown,
   skillReady,
   addDestinyPoint,
+  afterimageStyle,
   computeOffline,
   createInitialState,
   sigilPerStackSeconds,
@@ -73,6 +81,8 @@ import {
   equip,
   forge,
   pityLeft,
+  pendingTrainingCount,
+  pendingTrainingLevel,
   prestige,
   promote,
   retryBoss,
@@ -89,6 +99,7 @@ import {
   loreStage,
   setTactic,
   strongestResonance,
+  trainingCount,
   channelProgress,
   shellProgress,
   shellToNext,
@@ -256,6 +267,13 @@ describe('戰鬥循環', () => {
   })
 })
 
+
+/** 推進到指定樓層並讓時間流過,直到操練令釋出(釋出是 tick 驅動的:樓層 AND 最小間隔) */
+function advanceToTraining(s: ReturnType<typeof createInitialState>, floor: number, sec = 200) {
+  s.highestFloor = floor
+  for (let i = 0; i < sec; i++) applyTick(s, 1000)
+}
+
 describe('養成與經濟', () => {
   it('買等級扣金幣', () => {
     const s = createInitialState()
@@ -264,6 +282,104 @@ describe('養成與經濟', () => {
     expect(n).toBe(5)
     expect(s.lv).toBe(6)
     expect(s.gold.lt(1000)).toBe(true)
+  })
+
+  it('推進到里程碑樓層可選操練，重擊與疾攻只改攻擊節奏', () => {
+    const s = createInitialState()
+    const levelOneDps = currentDPS(s)
+    const baseInterval = attackInterval(s)
+    expect(pendingTrainingLevel(s)).toBe(null)
+
+    s.lv = 10
+    advanceToTraining(s, B.TRAINING_FLOORS[0])
+    const levelTenDps = currentDPS(s)
+    expect(levelTenDps.gt(levelOneDps)).toBe(true)
+    expect(pendingTrainingLevel(s)).toBe(B.TRAINING_FLOORS[0])
+    expect(chooseTraining(s, 'heavy')).toBe(true)
+    expect(trainingCount(s, 'heavy')).toBe(1)
+    expect(attackInterval(s)).toBeCloseTo(baseInterval * B.TRAINING_HEAVY_INTERVAL)
+    expect(currentDPS(s).eq(levelTenDps)).toBe(true)
+    expect(chooseTraining(s, 'rapid')).toBe(false)
+
+    advanceToTraining(s, B.TRAINING_FLOORS[1])
+    expect(chooseTraining(s, 'rapid')).toBe(true)
+    expect(attackInterval(s)).toBeCloseTo(
+      baseInterval * B.TRAINING_HEAVY_INTERVAL * B.TRAINING_RAPID_INTERVAL,
+    )
+  })
+
+  it('操練令可累積:跨多個里程碑不會漏,補選結果等同逐級選', () => {
+    // 不阻斷後玩家可能一路推到最後一個里程碑才回頭選,五筆一次補完不能少給
+    const banked = createInitialState()
+    // 時間閘只管釋出節奏,不吞次數:走到最後一個門檻、放著不選,最終仍會拿到全部五次
+    advanceToTraining(banked, B.TRAINING_FLOORS[B.TRAINING_FLOORS.length - 1], 900)
+    expect(pendingTrainingCount(banked)).toBe(B.TRAINING_FLOORS.length)
+
+    const stepwise = createInitialState()
+    for (const f of B.TRAINING_FLOORS) {
+      advanceToTraining(stepwise, f)
+      expect(pendingTrainingCount(stepwise)).toBe(1)
+      expect(chooseTraining(stepwise, 'rapid')).toBe(true)
+      expect(pendingTrainingCount(stepwise)).toBe(0)
+    }
+
+    for (let i = 0; i < B.TRAINING_FLOORS.length; i++) expect(chooseTraining(banked, 'rapid')).toBe(true)
+    expect(pendingTrainingCount(banked)).toBe(0)
+    expect(chooseTraining(banked, 'rapid')).toBe(false)
+    // 訓練沒有路徑相依:晚選不吃虧,所以不需要補償機制
+    expect(attackInterval(banked)).toBeCloseTo(attackInterval(stepwise))
+  })
+
+  it('操練令的時間閘:推進再快也不會一次收到三張,但一張都不會少', () => {
+    // ⚠️ 只綁樓層給不出穩定節奏——同一組樓層,不鍛造的玩家第 125 層要 60 分鐘以上,
+    // 會鍛造的模擬器只要 4.1 分。所以是「樓層 AND 最小間隔」的二維閘。
+    const rusher = createInitialState()
+    rusher.highestFloor = B.TRAINING_FLOORS[B.TRAINING_FLOORS.length - 1] // 一口氣衝到最後一個門檻
+    applyTick(rusher, 1000)
+    expect(pendingTrainingCount(rusher)).toBe(1) // 第一張立刻給,不必等
+
+    // 間隔沒到就不會有第二張
+    for (let i = 0; i < B.TRAINING_MIN_GAP_SEC - 5; i++) applyTick(rusher, 1000)
+    expect(pendingTrainingCount(rusher)).toBe(1)
+    // 過了間隔才給下一張
+    for (let i = 0; i < 10; i++) applyTick(rusher, 1000)
+    expect(pendingTrainingCount(rusher)).toBe(2)
+
+    // 放著不選也不會被吞掉:時間夠久最終拿滿
+    for (let i = 0; i < B.TRAINING_MIN_GAP_SEC * 5; i++) applyTick(rusher, 1000)
+    expect(pendingTrainingCount(rusher)).toBe(B.TRAINING_FLOORS.length)
+  })
+
+  it('待分配的操練令會出現在近期目標,但排在際遇之後', () => {
+    const s = createInitialState()
+    advanceToTraining(s, B.TRAINING_FLOORS[0])
+    expect(nearGoal(s)?.tab).toBe('hero')
+    expect(nearGoal(s)?.text).toContain('操練')
+
+    // 際遇會真的溢出丟失(cap 2),操練令不會過期 → 際遇優先
+    s.encounters = [{ id: 'wounded', floor: 5 }]
+    expect(nearGoal(s)?.tab).toBe('journal')
+
+    s.encounters = []
+    s.materials = B.FORGE_COST * 10
+    expect(nearGoal(s)?.tab).toBe('hero')
+    chooseTraining(s, 'heavy')
+    expect(nearGoal(s)?.tab).toBe('forge')
+  })
+
+  it('戰意訓練提高點擊累積並延長保留時間', () => {
+    const plain = createInitialState()
+    const trained = createInitialState()
+    advanceToTraining(trained, B.TRAINING_FLOORS[0])
+    expect(chooseTraining(trained, 'morale')).toBe(true)
+
+    click(plain)
+    click(trained)
+    expect(trained.morale).toBeCloseTo(plain.morale * B.TRAINING_MORALE_GAIN)
+
+    applyTick(plain, 500)
+    applyTick(trained, 500)
+    expect(trained.morale).toBeGreaterThan(plain.morale)
   })
 
   it('Lv.20 才能轉職,且只能轉一次', () => {
@@ -441,15 +557,28 @@ describe('命運樹', () => {
     expect(chooseDestiny(s, 'hunter')).toBe(false) // 不能改
   })
 
-  it('里程碑發命運點,用當輪層數', () => {
+  it('里程碑命運點只在擊破守關者後發放', () => {
     const s = createInitialState()
-    chooseDestiny(s, 'artisan')
-    s.lv = 200 // 推得動
-    let guard = 0
-    while (s.floor < B.DESTINY_MILESTONES[0] && guard++ < 5000) applyTick(s, 100)
+    s.destinyPath = 'tactician'
+    s.destinyNodes = ['seed_afterimage']
+    s.floor = B.DESTINY_MILESTONES[0]
+    s.destinyGapSec = B.DESTINY_BEAT_GAP_SEC // 呼吸間隔已滿(單獨的閘有自己的測試)
+    spawnEnemy(s)
+
     applyTick(s, 100)
+    expect(s.destinyPoints).toBe(0)
+
+    s.enemyHp = D(0)
+    s.attackAcc = 10
+    const events = applyTick(s, 1000)
     expect(s.destinyPoints).toBe(1)
     expect(s.destinyEarned).toBe(1)
+    expect(events.some((e) => e.type === 'destinyPoint')).toBe(true)
+    expect(pendingChoice(s)!.map((n) => n.id)).toEqual([
+      'shade_swarm',
+      'shade_mirror',
+      'shade_lure',
+    ])
   })
 
   it('未使用命運點有上限,滿了停發但不擋推進', () => {
@@ -508,6 +637,9 @@ describe('命運樹', () => {
     expect(swing().some((e) => e.type === 'attack' && e.source === 'clone')).toBe(true)
     expect(swing().some((e) => e.type === 'attack' && e.source === 'clone')).toBe(true)
     expect(s.afterimageLeft).toBe(0)
+    const backstab = swing().find((e) => e.type === 'attack' && e.source !== 'clone')
+    expect(backstab?.pierce).toBe(true)
+    expect(s.backstabReady).toBe(false)
 
     // 沒有種子就完全不會有殘影(不影響其他構築)
     const plain = createInitialState()
@@ -517,6 +649,90 @@ describe('命運樹', () => {
       const ev = applyTick(plain, 100, rng)
       expect(ev.some((e) => e.type === 'afterimageSpawn')).toBe(false)
     }
+  })
+
+  it('同一顆種子在三職業下是三種不同的機制,不是換名稱', () => {
+    const mk = (job: 'infantry' | 'scout' | 'marshal') => {
+      const s = createInitialState()
+      s.jobId = job
+      s.destinyNodes = ['seed_afterimage']
+      return s
+    }
+    expect(afterimageStyle(mk('scout'))).toBe('mirror')
+    expect(afterimageStyle(mk('infantry'))).toBe('guard')
+    expect(afterimageStyle(mk('marshal'))).toBe('echo')
+    // 沒有種子就沒有詮釋
+    const plain = createInitialState()
+    plain.jobId = 'infantry'
+    expect(afterimageStyle(plain)).toBeNull()
+  })
+
+  it('守護殘像:技能視窗期間殘影不消耗重演次數', () => {
+    const s = createInitialState()
+    s.jobId = 'infantry'
+    s.destinyNodes = ['seed_afterimage']
+    const rng = () => 0.5
+    const swing = () => {
+      s.attackAcc = 10
+      return applyTick(s, 100, rng)
+    }
+    for (let i = 0; i < 5; i++) swing() // 生成殘影
+    expect(s.afterimageLeft).toBe(B.AFTERIMAGE_REPLAYS)
+
+    // 開著 dmgMult 視窗時,重演次數不減。
+    // ⚠️ 只揮 2 次:再多會跨過「第 5 次重新生成」的邊界,測到的就不是這條規則了
+    s.buffs = [{ skillId: 'shieldRush', timeLeft: 99 }]
+    for (let i = 0; i < 2; i++) swing()
+    expect(s.afterimageLeft).toBe(B.AFTERIMAGE_REPLAYS)
+
+    // 視窗結束後恢復消耗
+    s.buffs = []
+    swing()
+    expect(s.afterimageLeft).toBe(B.AFTERIMAGE_REPLAYS - 1)
+  })
+
+  it('法術餘響完全不重演普攻——否則法警只是「斥候 + 額外一份」', () => {
+    const s = createInitialState()
+    s.jobId = 'marshal'
+    s.destinyNodes = ['seed_afterimage']
+    const rng = () => 0.5
+    for (let i = 0; i < 20; i++) {
+      s.attackAcc = 10
+      const ev = applyTick(s, 100, rng)
+      expect(ev.some((e) => e.type === 'attack' && e.source === 'clone')).toBe(false)
+      expect(ev.some((e) => e.type === 'afterimageSpawn')).toBe(false)
+    }
+  })
+
+  it('法術餘響:技能傷害是分帳不是加量,而且會推進其他技能冷卻', () => {
+    const withEcho = createInitialState()
+    withEcho.jobId = 'marshal'
+    withEcho.destinyNodes = ['seed_afterimage']
+    const plain = createInitialState()
+    plain.jobId = 'marshal'
+    for (const st of [withEcho, plain]) {
+      st.lv = 50
+      st.skillCd = {}
+      st.enemyHp = D('1e30')
+      st.enemyMaxHp = D('1e30')
+    }
+    const sum = (evs: ReturnType<typeof castSkill>) =>
+      evs.reduce((a, e) => (e.damage ? a + e.damage.toNumber() : a), 0)
+
+    const a = sum(castSkill(withEcho, 'judgement'))
+    const b = sum(castSkill(plain, 'judgement'))
+    // ⚠️ 總傷害一致 = 分帳不加量。差異只在「拆給誰」與冷卻推進
+    expect(a).toBeCloseTo(b, 5)
+
+    // 餘響會推進其他技能的冷卻(玩家要排順序才吃得到)
+    const s2 = createInitialState()
+    s2.jobId = 'marshal'
+    s2.destinyNodes = ['seed_afterimage']
+    s2.lv = 50
+    s2.skillCd = { judgement: 0 }
+    castSkill(s2, 'judgement')
+    const evs = castSkill(s2, 'judgement')
+    expect(evs.some((e) => e.type === 'cooldownAdvance')).toBe(false) // 只有一招時沒有「其他」可推
   })
 
   it('殘影淨增傷落在企劃要求的 15~20%', () => {
@@ -558,6 +774,24 @@ describe('命運樹', () => {
     expect(t.destinyLog).toHaveLength(logLen)
   })
 
+  it('舊存檔已有命運點但沒有路徑時，首次降臨會補回可選項目', () => {
+    const s = createInitialState()
+    s.floor = 50
+    s.destinyPoints = 1
+    s.pendingChoiceIds = null
+    s.isBoss = true
+    s.enemyHp = D(0)
+
+    applyTick(s, 1000, () => 0.5)
+    expect(s.destinyNodes).toContain('seed_afterimage')
+    expect(s.destinyPath).toBe('tactician')
+    expect(pendingChoice(s)!.map((n) => n.id)).toEqual([
+      'shade_swarm',
+      'shade_mirror',
+      'shade_lure',
+    ])
+  })
+
   it('種子會讓自己的抉擇組優先,但不污染既有的二選一索引', () => {
     const s = createInitialState()
     chooseDestiny(s, 'tactician')
@@ -580,6 +814,252 @@ describe('命運樹', () => {
     expect(s.destinyLocked).toBe(true) // 重大抉擇 = 流派定案
     addDestinyPoint(s)
     expect(pendingChoice(s)!.map((n) => n.id)).toEqual(pathChoice)
+  })
+
+  it('第 30 層三選一必須真的改變殘影行為(它會硬暫停遊戲,不能是 no-op)', () => {
+    // ⚠️ 2026-07-31 體驗審查:這三個節點原本在 core 零引用,選哪個結果完全一樣。
+    // 這條測試釘死「三者形態互不相同」,不准再退回文案。
+    const shapeOf = (choice: string | null) => {
+      const s = createInitialState()
+      s.destinyNodes.push('seed_afterimage')
+      if (choice) s.destinyNodes.push(choice)
+      return afterimageShape(s)
+    }
+    const base = shapeOf(null)
+    const swarm = shapeOf('shade_swarm')
+    const mirror = shapeOf('shade_mirror')
+    const lure = shapeOf('shade_lure')
+
+    // 三者彼此不同,且都不等於基準
+    const key = (x: typeof base) => JSON.stringify(x)
+    expect(new Set([key(base), key(swarm), key(mirror), key(lure)]).size).toBe(4)
+
+    // ⚠️ 命中密度是 replays/every,不是 every 本身。
+    // 初版寫 every:3 / replays:1 讓群影的命中數反而**低於**基準(實測 43 vs 52),
+    // 與「命中型」的身分相反。這條就是釘死那個錯誤。
+    const density = (x: typeof base) => x.replays / x.every
+    expect(density(swarm)).toBeGreaterThan(density(base))
+    expect(density(mirror)).toBeLessThan(density(base))
+    // 鏡像:影子少而長 + 替你轉冷卻 → 施放順序成為決策
+    expect(mirror.every).toBeGreaterThan(base.every)
+    expect(mirror.replays).toBeGreaterThan(base.replays)
+    expect(mirror.cdAdvance).toBeGreaterThan(0)
+    expect(base.cdAdvance).toBe(0)
+    expect(lure.share).toBeLessThan(base.share)
+    expect(lure.sigilPer).toBeLessThan(base.sigilPer)
+    expect(lure.shieldValue).toBe(B.SHIELD_HIT_VALUE)
+
+    // 前三者不可以用計算機分高下:淨增傷 = (replays/every) × share,差距須在 1 個百分點內
+    const net = (x: typeof base) => (x.replays / x.every) * x.share
+    expect(Math.abs(net(swarm) - net(base))).toBeLessThan(0.01)
+    expect(Math.abs(net(mirror) - net(base))).toBeLessThan(0.01)
+    // 誘敵之影是明講的取捨:傷害明顯低,換到的是破綻與破盾
+    expect(net(lure)).toBeLessThan(net(base) * 0.7)
+  })
+
+  it('命運降臨池要撐得住整輪,而且 cross/wild 桶抽得到', () => {
+    // ⚠️ 2026-07-31 審查:池子曾經只有 2 個節點(種子 + 同步步伐),
+    // 第 3 次降臨起 rollDescent 回 null 並靜默 return —— 負責「驚喜」的系統
+    // 在開局 1.5 分鐘後永久沉默。而 DESTINY_SAME_BUCKET_FIRST = 2 剛好等於池子總數,
+    // 所以 cross(30%)與 wild(20%)桶在首輪數學上不可能被抽到,壞手保護是死碼。
+    const s = createInitialState()
+    let rngState = 12345
+    const rng = () => ((rngState = (rngState * 1103515245 + 12345) % 2147483648) / 2147483648)
+
+    const buckets: string[] = []
+    for (let i = 0; i < 6; i++) {
+      const picked = rollDescent(s, rng)
+      expect(picked, `第 ${i + 1} 次降臨不該是 null`).not.toBe(null)
+      s.destinyNodes.push(picked!.node.id)
+      s.destinyLog.push({ floor: 10 + i * 10, id: picked!.node.id, bucket: picked!.bucket })
+      buckets.push(picked!.bucket)
+    }
+    // 池子必須大於強制同流派的次數,否則後面的桶永遠輪不到
+    expect(buckets.length).toBeGreaterThan(B.DESTINY_SAME_BUCKET_FIRST)
+    // 節點不重複(eligible 會擋掉已持有的)
+    expect(new Set(s.destinyNodes).size).toBe(s.destinyNodes.length)
+  })
+
+  it('凍結是表現延遲:總傷害不變,不可以把池子再打一次', () => {
+    // ⚠️ 曾經在 tickCombatStatus 解凍時 dealDamage(pool + bonus),
+    // 但 pool 在 dealDamage 當下就扣過血了 → 同一份傷害打兩遍,實測 +50%。
+    // 同情境的 checkBossTimeout 一直是對的(只發事件不重打),兩條路徑不一致才藏這麼久。
+    const measure = (freeze: boolean, merc: string | null) => {
+      const s = createInitialState()
+      s.jobId = 'scout'
+      s.lv = 50
+      s.activeMerc = merc as typeof s.activeMerc
+      const dps = currentDPS(s)
+      let dealt = D(0)
+      for (let i = 0; i < 40; i++) {
+        if (freeze && i === 10) s.freezeLeft = 2
+        s.enemyHp = D('1e12')
+        s.enemyMaxHp = D('1e12')
+        applyTick(s, 100)
+        dealt = dealt.add(D('1e12').sub(s.enemyHp))
+      }
+      return dealt.div(dps).toNumber()
+    }
+    const plain = measure(false, null)
+    const frozen = measure(true, null)
+    // 凍結不得改變總傷害(這是「表現延遲」的定義)
+    expect(frozen).toBeCloseTo(plain, 5)
+    // 但冰法師的解凍獎勵是真的新增傷害,不可以連它一起砍掉
+    expect(measure(true, 'icemage')).toBeGreaterThan(frozen)
+  })
+
+  it('蓄力型:剛好能通關的輸出**打不斷**,必須真的留一手爆發', () => {
+    // ⚠️ 舊值 CHANNEL_HP_TO_BREAK=0.06 是負機制稅:剛好能通關的玩家(BOSS_TIME 秒打完 maxHp)
+    // 在 CHANNEL_DURATION 秒的窗內自然打進 13.3%,是門檻 6% 的 2.22 倍
+    // → 能贏的人必定 100% 打斷,還白拿 6 秒易傷,蓄力型因此比同 HP 木樁更好打。
+    const winPace = (1 / B.BOSS_TIME) * B.CHANNEL_DURATION
+    expect(winPace).toBeLessThan(B.CHANNEL_HP_TO_BREAK) // 純被動輸出打不斷
+    // 但也不能高到「留爆發也打不斷」:第二技能零印記的基本威力就該夠
+    const burst = (B.SIGIL_BASE_BURST_SEC / B.BOSS_TIME)
+    expect(winPace + burst).toBeGreaterThan(B.CHANNEL_HP_TO_BREAK)
+  })
+
+  it('蓄力觸發點要早到短戰也看得見', () => {
+    // 舊值 [20,10] = 開戰後第 10/20 秒,而實測前期 Boss 戰只有 6~9 秒
+    // → 蓄力機制第一次真正發動在第 80 層 / 6.3 分鐘,在那之前玩家以為 Boss 只有一種
+    const firstAt = B.BOSS_TIME - B.CHANNEL_TIMES[0]
+    expect(firstAt).toBeLessThanOrEqual(6)
+    // 兩個觸發點不可以擠在一起
+    expect(B.CHANNEL_TIMES[0] - B.CHANNEL_TIMES[1]).toBeGreaterThanOrEqual(B.CHANNEL_DURATION * 2)
+  })
+
+  it('三層目標:near 沒東西時 run 目標一定有值(主畫面才不會空白)', () => {
+    // ⚠️ 原本只有 near 一層上得了主畫面,而 near 在中後段回 null
+    // → 整段最長的時間裡主畫面沒有任何「我在往哪裡走」的資訊。
+    const s = createInitialState()
+    s.jobId = 'shadow'
+    s.lv = 140
+    s.floor = 150
+    s.highestFloor = 150
+    s.destinyPath = 'tactician'
+    s.destinyLocked = true
+    s.encounters = []
+    s.materials = 0
+    s.medals = 0
+    s.destinyPoints = 0
+    s.training = ['heavy', 'rapid', 'morale', 'heavy', 'rapid']
+    s.trainingShown = 5
+    expect(nearGoal(s)).toBe(null) // near 這一層確實空了
+    const run = runGoal(s)
+    expect(run.text.length).toBeGreaterThan(0)
+    // ⚠️ run 目標不可以帶 tab:紅點單一來源仍由 near 驅動,帶了就會多亮一顆
+    expect(run.tab).toBe(null)
+  })
+
+  it('傭兵解鎖要發事件,而且一生只發一次', () => {
+    // ⚠️ 以前 unlockedMercs 是純推導,全庫零事件——玩家在第 30/60/90/120 層
+    // 各解鎖一名傭兵而完全不會知道。四個現成的「拿到新東西」節拍被實作成 0。
+    const s = createInitialState()
+    s.lv = 200 // 打得動,讓樓層自然推進
+    s.floor = 29
+    s.highestFloor = 29
+    const unlocks: string[] = []
+    for (let i = 0; i < 400; i++) {
+      for (const e of applyTick(s, 1000)) {
+        if (e.type === 'mercUnlock') unlocks.push(e.mercId!)
+      }
+      if (s.highestFloor > 65) break
+    }
+    // 跨過第 30 層 → 盜賊;跨過第 60 層 → 冰法師。各一次,不重複
+    expect(unlocks).toContain('rogue')
+    expect(unlocks.filter((m) => m === 'rogue')).toHaveLength(1)
+    // 起始傭兵(unlockFloor 1)不該在半路被宣告
+    expect(unlocks).not.toContain('hound')
+  })
+
+  it('本輪到頂判定:卡住夠久且有勳章才提示退役', () => {
+    const s = createInitialState()
+    s.highestFloor = 50 // 有勳章可拿
+    expect(runStalled(s)).toBe(false)
+    s.stallSec = B.RUN_STALL_SEC + 1
+    expect(runStalled(s)).toBe(true)
+    expect(nearGoal(s)?.tab).toBe('legacy')
+
+    // ⚠️ 首輪前段被 Boss 卡住的新手不該被叫去退役 —— 沒勳章就不提示
+    const rookie = createInitialState()
+    rookie.highestFloor = 3
+    rookie.stallSec = B.RUN_STALL_SEC + 1
+    expect(pendingMedals(rookie)).toBe(0)
+    expect(runStalled(rookie)).toBe(false)
+
+    // 推進樓層會歸零計時
+    const moving = createInitialState()
+    moving.highestFloor = 50
+    moving.stallSec = B.RUN_STALL_SEC + 1
+    moving.floor = 5 // 非 Boss 層,清完最後一隻就會推進
+    moving.killsInFloor = B.MOBS_PER_FLOOR - 1
+    moving.enemyHp = D(1)
+    moving.enemyMaxHp = D(1)
+    applyTick(moving, 1000) // 攻擊間隔 0.8s,要跨得過去才會擊殺
+    expect(moving.floor).toBe(6)
+    expect(moving.stallSec).toBeLessThan(B.RUN_STALL_SEC)
+  })
+
+  it('背水一戰只在守關倒數尾段生效,不是全程加傷', () => {
+    const s = createInitialState()
+    s.destinyNodes.push('boss_lastditch')
+    // 非 Boss:完全不生效(它買的是「差一點打不完」那些場,不是整體 DPS)
+    s.isBoss = false
+    s.bossTimeLeft = 3
+    expect(lastDitchMult(s)).toBe(1)
+    // Boss 戰但時間還多:不生效
+    s.isBoss = true
+    s.bossTimeLeft = B.LASTDITCH_SEC + 1
+    expect(lastDitchMult(s)).toBe(1)
+    // 進入尾段才開
+    s.bossTimeLeft = B.LASTDITCH_SEC - 1
+    expect(lastDitchMult(s)).toBe(B.LASTDITCH_MULT)
+    // 沒有節點的人不受任何影響
+    const plain = createInitialState()
+    plain.isBoss = true
+    plain.bossTimeLeft = 1
+    expect(lastDitchMult(plain)).toBe(1)
+  })
+
+  it('獵隙者延長金色窗口,回響裝填讓完美引爆推進冷卻', () => {
+    const base = createInitialState()
+    const hunter = createInitialState()
+    hunter.destinyNodes.push('sigil_hunter')
+    for (const s of [base, hunter]) {
+      s.jobId = 'scout'
+      s.lv = 60
+      s.sigils = sigilCap(s) - 1
+      gainSigil(s, 1, [], 'battle')
+    }
+    expect(base.perfectWindowLeft).toBe(B.PERFECT_WINDOW_SEC)
+    expect(hunter.perfectWindowLeft).toBe(B.PERFECT_WINDOW_SEC * B.SIGIL_HUNTER_WINDOW_MULT)
+  })
+
+  it('大抉擇的呼吸間隔:距上個命運節拍太近就等下一次 Boss', () => {
+    // ⚠️ 實測:種子 0.45 分、第 30 層大抉擇 1.31 分——全遊戲最重的決策
+    // 在最輕的隨機事件後 50 秒就到。時間閘只延後發放,不擋推進,因果仍在 Boss 擊破。
+    const kill = (s: ReturnType<typeof createInitialState>) => {
+      s.enemyHp = D(0)
+      s.attackAcc = 10
+      return applyTick(s, 1000)
+    }
+    const s = createInitialState()
+    s.destinyPath = 'tactician'
+    s.destinyNodes = ['seed_afterimage']
+    s.floor = B.DESTINY_MILESTONES[0]
+    s.destinyGapSec = 10 // 剛降臨過不久
+    spawnEnemy(s)
+    kill(s)
+    expect(s.destinyPoints).toBe(0) // 這次 Boss 不發——太近了
+
+    // 時間過了,下一次 Boss 擊破正常發
+    s.destinyGapSec = B.DESTINY_BEAT_GAP_SEC
+    s.descentCooldown = 0 // 距上次小降臨也要夠久(第二層閘)
+    s.floor = B.DESTINY_MILESTONES[0]
+    spawnEnemy(s)
+    kill(s)
+    expect(s.destinyPoints).toBe(1)
+    expect(s.destinyGapSec).toBe(0) // 發完歸零,下一拍重新計
   })
 
   it('壞手保護:前幾次降臨強制同流派', () => {
@@ -1604,6 +2084,7 @@ describe('存檔', () => {
     s.floor = 43
     s.highestFloor = 47
     s.materials = 10
+    s.training = ['heavy', 'morale']
     const e = forge(s)!
     equip(s, e.id)
 
@@ -1612,6 +2093,7 @@ describe('存檔', () => {
     expect(back.lv).toBe(88)
     expect(back.floor).toBe(43)
     expect(back.equipped[e.slot]?.id).toBe(e.id)
+    expect(back.training).toEqual(['heavy', 'morale'])
   })
 
   it('v1 存檔可遷移到 v2(缺的欄位補預設,進度不掉)', () => {
@@ -2586,11 +3068,8 @@ describe('Boss 行為原型(v1.7:敵人不再是木樁)', () => {
     const ev: import('../types').GameEvent[] = []
     s.lv = 1
     const need = s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK)
-    s.frozenPool = D(0)
-    // 用凍結池借道 dealDamage(最省事的灌傷害方式)
-    s.freezeLeft = 0.01
-    s.frozenPool = need.mul(1.01)
-    const out = applyTick(s, 100)
+    const out: import('../types').GameEvent[] = []
+    dealDamage(s, need.mul(1.01), out, () => 0.5)
     expect(out.some((e) => e.type === 'interrupted')).toBe(true)
     expect(s.vulnLeft).toBeGreaterThan(0)
     void ev
@@ -2885,15 +3364,11 @@ describe('破盾值系統(GDD v3 § 5.4)', () => {
     expect(channelProgress(s)).toBe(0)
 
     const need = s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK)
-    s.freezeLeft = 0.01
-    s.frozenPool = need.div(2)
-    applyTick(s, 100)
+    dealDamage(s, need.div(2), [], () => 0.5)
     expect(channelProgress(s)).toBeGreaterThan(0.3)
     expect(channelProgress(s)).toBeLessThan(1)
 
-    s.freezeLeft = 0.01
-    s.frozenPool = need
-    applyTick(s, 100)
+    dealDamage(s, need, [], () => 0.5)
     expect(s.channelLeft).toBe(0) // 已打斷
     expect(channelProgress(s)).toBe(0) // 沒在蓄力就不顯示
   })
@@ -2930,6 +3405,13 @@ describe('三層目標收斂(近期/本輪/跨輪各一個)', () => {
     expect(g).toBe(null)
   })
 
+  it('近期:首次降臨前不叫玩家預先選命運', () => {
+    const s = createInitialState()
+    s.floor = 9
+    expect(nearGoal(s)?.tab).not.toBe('destiny')
+    expect(runGoal(s).text).toContain(`第 ${B.DESTINY_SEED_FLOOR} 層`)
+  })
+
   it('本輪:Boss 失敗優先於里程碑;里程碑用 destinyEarned 對下一個門檻', () => {
     const s = createInitialState()
     s.bossFailed = true
@@ -2937,6 +3419,8 @@ describe('三層目標收斂(近期/本輪/跨輪各一個)', () => {
     expect(runGoal(s).text).toContain('第 10 層')
     s.bossFailed = false
     s.bossRetryFloor = null
+    s.destinyPath = 'tactician'
+    s.destinyNodes = ['seed_afterimage']
     s.floor = 5
     expect(runGoal(s).text).toContain(`第 ${B.DESTINY_MILESTONES[0]} 層`)
   })
@@ -3091,9 +3575,7 @@ describe('敵情熟悉度(籃 C 第一階段:初見/識破/精通,跨轉生)', (
     s.bossTimeLeft = B.CHANNEL_TIMES[0] + 0.05
     applyTick(s, 100)
     expect(s.channelLeft).toBeGreaterThan(0)
-    s.freezeLeft = 0.01
-    s.frozenPool = s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK).mul(1.01)
-    applyTick(s, 100)
+    dealDamage(s, s.enemyMaxHp.mul(B.CHANNEL_HP_TO_BREAK).mul(1.01), [], () => 0.5)
     expect(s.bossLore.channel.handled).toBe(1)
   })
 
@@ -3351,6 +3833,14 @@ describe('家族宿敵(籃 C 第三階段第一版)', () => {
     const out = deserialize(v25 as never)
     expect(out.enemyHp.toString()).toBe(s.enemyHp.toString())
     expect(out.enemyMaxHp.toString()).toBe(s.enemyMaxHp.toString())
+  })
+
+  it('v27 存檔遷移:補上本輪訓練欄位', () => {
+    const s = createInitialState()
+    const v27 = JSON.parse(JSON.stringify(serialize(s))) as Record<string, unknown>
+    v27.version = 27
+    delete v27.training
+    expect(deserialize(v27 as never).training).toEqual([])
   })
 
   it('敗多次但當代打贏:失敗紀錄清除,不結宿敵', () => {

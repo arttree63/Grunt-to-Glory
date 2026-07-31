@@ -2,7 +2,7 @@ import * as B from './balance'
 import { availableJobs, JOBS } from './jobs'
 import { MERCS } from './mercs'
 import { canBuyTech, TECHS } from './techs'
-import { bestFloorEver, isAwakened } from './game'
+import { bestFloorEver, isAwakened, pendingTrainingCount, runStalled } from './game'
 import type { GameState } from './types'
 
 /**
@@ -22,13 +22,20 @@ export interface Goal {
 
 /** 近期:現在就能做的一件事。優先序 = 對玩法的影響大小,不是誰先觸發 */
 export function nearGoal(s: GameState): Goal | null {
+  // ⚠️ 最高優先:這一輪已經推不動了。原本這件事只寫在一顆叫玩家「挑戰第 N 層 Boss」
+  // 的按鈕裡的第三行小字,而且要先輸過一次 Boss 才會渲染——等於沒講。
+  // 目標曲線的最後一環(解放 → 期待下一輪)靠它接上。
+  if (runStalled(s)) return { text: '這一代推不動了,可以退役換勳章', tab: 'legacy' }
   if (availableJobs(s.jobId, s.lv, s.destinyPath).length > 0)
     return { text: '可以轉職了', tab: 'hero' }
-  // ⚠️ 第 3 層前不推命運:開場教學正在教「點擊 + 升級」,這時再指一條「去選命運」
-  // 等於同時給兩個不同指令,新手第一分鐘會被兩邊拉扯(R3 新手實測發現)
-  if (!s.destinyPath && s.floor >= 3) return { text: '選一條命運', tab: 'destiny' }
-  if (s.destinyPoints > 0) return { text: '有命運點待使用', tab: 'destiny' }
+  if (s.destinyPoints > 0) return { text: '有命運抉擇待決定', tab: 'destiny' }
   if (s.encounters.length > 0) return { text: '路上有際遇等著處理', tab: 'journal' }
+  // 排在際遇之後(際遇 cap 2,溢出直接丟掉,那個才會真的損失)、素材之前:
+  // 素材無上限、永遠成立,擺在它後面等於永遠不會亮。操練令一輪只有 5 次,
+  // 選完就不再佔位,不像素材會常駐餓死後面的目標。
+  const training = pendingTrainingCount(s)
+  if (training > 0)
+    return { text: training > 1 ? `有 ${training} 次操練待分配` : '有一次操練待分配', tab: 'hero' }
   if (s.materials >= B.FORGE_COST) return { text: '素材夠打造一次', tab: 'forge' }
   if (TECHS.some((t) => canBuyTech(s.techs, s.medals, t.id)) || s.medals >= B.ELITE_MEDAL_COST)
     return { text: '勳章夠買永久強化', tab: 'legacy' }
@@ -41,9 +48,11 @@ export function nearGoal(s: GameState): Goal | null {
 export function runGoal(s: GameState): Goal {
   if (s.bossFailed && s.bossRetryFloor !== null)
     return { text: `重整旗鼓,再戰第 ${s.bossRetryFloor} 層守關者`, tab: null }
+  if (!s.destinyPath && s.floor <= B.DESTINY_SEED_FLOOR)
+    return { text: `擊破第 ${B.DESTINY_SEED_FLOOR} 層守關者,迎接首次命運降臨`, tab: null }
   const milestone = B.DESTINY_MILESTONES[s.destinyEarned]
-  if (milestone !== undefined && s.floor < milestone)
-    return { text: `推進到第 ${milestone} 層獲得命運點`, tab: null }
+  if (milestone !== undefined && s.floor <= milestone)
+    return { text: `擊破第 ${milestone} 層守關者,進入命運抉擇`, tab: null }
   if (JOBS[s.jobId].tier === 1 && !isAwakened(s) && s.highestFloor < B.AWAKEN_FLOOR)
     return { text: `抵達第 ${B.AWAKEN_FLOOR} 層解鎖第二技能`, tab: null }
   if (JOBS[s.jobId].tier === 1 && s.lv < JOBS.paladin.reqLv)

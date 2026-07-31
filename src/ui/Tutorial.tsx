@@ -43,7 +43,7 @@ const TIPS: Array<{ id: string; when: (s: ReturnType<typeof useGameState>) => bo
   {
     id: 'destiny',
     when: (s) => s.destinyPoints > 0,
-    text: '拿到命運點了。到「命運」分頁決定這一代要走哪條路——選的是機制,不是數值。',
+    text: '拿到命運抉擇了。重大抉擇會進入命運之間；其他選擇可到「命運」分頁決定。',
   },
   {
     id: 'sigil',
@@ -71,6 +71,7 @@ export default function Tutorial() {
   const [done, setDone] = useState(() => localStorage.getItem(KEY) === '1')
   const [seen, setSeen] = useState<string[]>(seenTips)
   const setUiLock = useGame((st) => st.setUiLock)
+  const spotlight = useGame((st) => st.spotlight)
 
   useEffect(() => {
     setUiLock('modal:tutorial', !done)
@@ -108,7 +109,10 @@ export default function Tutorial() {
     )
   }
 
-  const tip = TIPS.find((t) => !seen.includes(t.id) && t.when(s))
+  // ⚠️ 聚光燈進行中不出 TIP:`.spot-dim`(z20)蓋過 `.retry`(z6)且會 stopPropagation,
+  // 兩張一起出的話 TIP 看得到卻點不掉,玩家得先關聚光燈才能關它。
+  // 教學一次只能有一個焦點——這正是聚光燈存在的理由。
+  const tip = spotlight ? undefined : TIPS.find((t) => !seen.includes(t.id) && t.when(s))
   if (!tip) return null
 
   const dismiss = () => {

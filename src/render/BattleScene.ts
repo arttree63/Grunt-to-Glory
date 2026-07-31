@@ -190,6 +190,14 @@ export interface BattleSnapshot {
   totemRatio: number
 }
 
+/**
+ * 一行提示帶的起始高度(佔畫面高的比例)。
+ * ⚠️ Boss 版必須避開 HTML 層的 `.bossbar` —— 實測 375×812 手機上血條 + 倒數佔 y 64~126,
+ * 畫布高 590,即 0~0.214。原本兩者共用 0.20,提示每次都蓋在倒數上。
+ */
+const NOTICE_TOP = 0.2
+const NOTICE_TOP_BOSS = 0.27
+
 const HERO_FRAME_MS = 180
 const MOB_FRAME_MS = 200
 const BOSS_FRAME_MS = 180
@@ -359,6 +367,10 @@ export class BattleScene {
   private heroSwingLeft = 0
   private heroSwingDuration = 230
   private heroSwingSide = -1
+  private afterimageVisualActive = false
+  private afterimageSpawnLeft = 0
+  private afterimageExitLeft = 0
+  private afterimageReplayLeft = 0
 
   private constructor(
     private getSnap: () => BattleSnapshot,
@@ -661,11 +673,99 @@ export class BattleScene {
     this.notice('傳家之器・復原')
   }
 
-  /** 一行提示(拿到命運點、素材、傳家之器復原…),不搶戰鬥焦點 */
+  onAfterimageSpawn() {
+    if (this.destroyed) return
+    this.afterimageVisualActive = true
+    this.afterimageSpawnLeft = 420
+    this.afterimageExitLeft = 0
+    this.spawnHeroBurst(0x77d9ff)
+  }
+
+  onDestinyDescend() {
+    if (this.destroyed) return
+    const from = this.targetPoint()
+    const to = { x: this.W / 2, y: this.H * 0.72 }
+    const fx = new Container() as TimedFx
+    const shade = new Graphics()
+    const rune = new Graphics()
+    shade.rect(0, 0, this.W, this.H).fill({ color: 0x080513, alpha: 0.72 })
+    rune.poly([0, -18, 15, -7, 10, 13, -10, 13, -15, -7])
+      .stroke({ width: 4, color: 0xd9b8ff, alpha: 0.95 })
+    rune.circle(0, 0, 7).fill({ color: 0xffe8a6, alpha: 0.9 })
+    fx.addChild(shade, rune)
+    rune.position.set(from.x, from.y)
+    this.addTimedFx(fx, 720, (_node, p) => {
+      const q = 1 - (1 - p) ** 3
+      shade.alpha = Math.sin(Math.PI * p) * 0.58
+      rune.position.set(from.x + (to.x - from.x) * q, from.y + (to.y - from.y) * q)
+      rune.rotation += 0.06
+      rune.scale.set(0.7 + Math.sin(Math.PI * p) * 0.8)
+      if (p > 0.68) {
+        const flash = (p - 0.68) / 0.32
+        rune.alpha = 1 - flash
+        rune.scale.set(1.35 + flash * 2.5)
+      }
+    }, this.overlayLayer)
+    this.shake = Math.max(this.shake, 6)
+    this.zoom = Math.max(this.zoom, 1.2)
+  }
+
+  onZoneEnter(name: string, flavor: string) {
+    if (this.destroyed) return
+    const fx = new Container() as TimedFx
+    const panel = new Graphics()
+    const title = new Text({
+      text: name,
+      style: {
+        fontFamily: 'Arial Black, PingFang TC, sans-serif',
+        fontSize: 25,
+        fontWeight: '900',
+        fill: 0xffedc0,
+        stroke: { color: 0x160d20, width: 5 },
+        letterSpacing: 4,
+      },
+    })
+    const desc = new Text({
+      text: flavor,
+      style: {
+        fontFamily: 'PingFang TC, sans-serif',
+        fontSize: 12,
+        fill: 0xd8d0df,
+        align: 'center',
+        wordWrap: true,
+        wordWrapWidth: Math.min(420, this.W * 0.78),
+      },
+    })
+    panel.roundRect(-Math.min(240, this.W * 0.43), -40, Math.min(480, this.W * 0.86), 88, 12)
+      .fill({ color: 0x100b19, alpha: 0.82 })
+      .stroke({ width: 1, color: 0xbda66e, alpha: 0.72 })
+    title.anchor.set(0.5)
+    desc.anchor.set(0.5)
+    desc.y = 25
+    fx.addChild(panel, title, desc)
+    fx.position.set(this.W / 2, this.H * 0.22)
+    this.addTimedFx(fx, 2600, (node, p) => {
+      const fadeIn = Math.min(1, p * 7)
+      const fadeOut = 1 - Math.max(0, (p - 0.76) / 0.24)
+      node.alpha = fadeIn * fadeOut
+      node.y = this.H * 0.22 + (1 - fadeIn) * 18
+    }, this.overlayLayer)
+    this.marchBoost = 1
+  }
+
+  /**
+   * 一行提示(拿到命運點、素材、傳家之器復原…),不搶戰鬥焦點。
+   *
+   * ⚠️ Boss 戰要把整個提示帶往下推:HTML 層的 `.bossbar`(血條 + 倒數)實測佔畫面
+   * 頂端到 21% 高度,而原本第一格固定在 20% —— **每一則提示都直接蓋在倒數上**,
+   * 而那是全遊戲最需要看清楚的數字。Pixi 量不到 HTML 的高度,所以用比例常數並在這裡說明來源。
+   */
   notice(text: string) {
     if (this.destroyed) return
     const slot = Math.min(2, this.dmgLayer.children.filter((child) => (child as FloatText)._notice).length)
-    this.damageNum(this.W / 2, this.H * 0.2 + slot * 34, text, false, false, 0.82, false, true)
+    const bossOn = this.getSnap().bossTimeLeft !== null
+    const top = this.H * (bossOn ? NOTICE_TOP_BOSS : NOTICE_TOP)
+    this.damageNum(this.W / 2, top + slot * 34, text, false, false, 0.82, false, true)
   }
 
   /** 事件中點擊換素材。⚠️ 不可複用金幣模板,會拼出「+素材 +1 金」 */
@@ -696,7 +796,8 @@ export class BattleScene {
       this.shake = Math.min(this.shake + (snap.buffSkill === 'shieldRush' ? 8 : 4), 13)
       this.zoom = snap.buffSkill === 'shieldRush' ? 1.5 : 1
     } else if (source === 'clone') {
-      this.spawnCloneSlash()
+      if (this.afterimageVisualActive) this.spawnAfterimageReplay()
+      else this.spawnCloneSlash()
     } else {
       const origin = source === 'zone' ? { x: this.W * 0.72, y: this.H * 0.73 } : { x: this.W * 0.27, y: this.H * 0.68 }
       this.spawnProjectile(origin, this.targetPoint(), source === 'zone' ? 0xff9a45 : 0xaee8ff)
@@ -822,7 +923,9 @@ export class BattleScene {
       else this.hitNum(x, y, txt, crit)
       return
     }
-    const label = source === 'clone' ? '分身' : source === 'zone' ? '場地' : '傭兵'
+    const label = source === 'clone'
+      ? this.afterimageVisualActive ? '殘影' : '分身'
+      : source === 'zone' ? '場地' : '傭兵'
     const offset = source === 'clone' ? -42 : source === 'zone' ? 42 : 0
     this.damageNum(x + offset, y + 16, `${label} ${txt}`, false, false, 1, frozen)
   }
@@ -928,7 +1031,7 @@ export class BattleScene {
     // 這樣血條每一格的下降都對得上一次揮砍(BattleCanvas 轉發)
 
     this.tickMarch(ms)
-    this.tickLeaves(ms)
+    this.tickLeaves(ms, snap.zoneFog)
     this.tickDust(ms, !this.boss && !this.eventView)
 
     this.mercSprite.y = this.H * 0.895 + Math.sin(this.elapsed * 0.013 + 1) * 1.8
@@ -942,6 +1045,7 @@ export class BattleScene {
     this.drawBattleStates(snap)
     this.layoutHero()
     this.tickHeroSwing(ms)
+    this.tickAfterimage(ms, snap)
 
     if (
       (this.previousBuffSkill === 'shieldRush' || this.previousBuffSkill === 'bulwark') &&
@@ -1057,22 +1161,33 @@ export class BattleScene {
     }
   }
 
-  /** 森林環境落葉:低密度、低對比，提供背景生命感但不搶戰鬥焦點。 */
-  private tickLeaves(ms: number) {
+  /** 地帶環境粒子:淺層是葉片,地底是粉塵,深層是灰燼。 */
+  private tickLeaves(ms: number, zoneFog: number) {
     const { W, H } = this
     const quietScene = !!this.boss || !!this.eventView
     this.leafTimer -= ms
     if (this.leafTimer <= 0 && this.leaves.length < 9) {
       this.leafTimer = (quietScene ? 1050 : 680) + Math.random() * 620
       const leaf = new Graphics() as (typeof this.leaves)[number]
-      const palette = [0xc58a3d, 0xa96032, 0xd1a454, 0x7f7738]
+      const kind = zoneFog < 0.16 ? 'leaf' : zoneFog < 0.27 ? 'dust' : 'ash'
+      const palette = kind === 'leaf'
+        ? [0xc58a3d, 0xa96032, 0xd1a454, 0x7f7738]
+        : kind === 'dust'
+          ? [0xb7aaa0, 0x8d8990, 0xc8bcae, 0x747986]
+          : [0x8e7e82, 0xb2a2a0, 0x6f6872, 0xc0aaa4]
       const color = palette[Math.floor(Math.random() * palette.length)]
-      leaf.poly([-7, 0, -1, -4, 7, -1, 1, 4])
-        .fill({ color, alpha: 0.9 })
-        .stroke({ width: 1, color: 0xf1c879, alpha: 0.38 })
-      leaf.moveTo(-5, 0).lineTo(5, -1).stroke({ width: 1, color: 0x5b3b23, alpha: 0.45 })
+      if (kind === 'leaf') {
+        leaf.poly([-7, 0, -1, -4, 7, -1, 1, 4])
+          .fill({ color, alpha: 0.9 })
+          .stroke({ width: 1, color: 0xf1c879, alpha: 0.38 })
+        leaf.moveTo(-5, 0).lineTo(5, -1).stroke({ width: 1, color: 0x5b3b23, alpha: 0.45 })
+      } else if (kind === 'dust') {
+        leaf.circle(0, 0, 3 + Math.random() * 4).fill({ color, alpha: 0.72 })
+      } else {
+        leaf.roundRect(-2, -6, 4, 12, 2).fill({ color, alpha: 0.78 })
+      }
       leaf._t = 0
-      leaf._lifeMs = 4300 + Math.random() * 3400
+      leaf._lifeMs = (kind === 'ash' ? 5200 : 4300) + Math.random() * 3400
       leaf._startX = W * (0.05 + Math.random() * 0.9)
       leaf._startY = H * (0.06 + Math.random() * 0.42)
       leaf._drift = (Math.random() < 0.5 ? -1 : 1) * (0.05 + Math.random() * 0.14)
@@ -1101,7 +1216,7 @@ export class BattleScene {
       leaf.rotation = leaf._phase + leaf._t * leaf._spin
       leaf.skew.x = sway * 0.28
       const envelope = Math.min(1, leaf._t * 7) * Math.min(1, (1 - leaf._t) * 6)
-      leaf.alpha = envelope * (0.16 + leaf._depth * 0.22) * (quietScene ? 0.58 : 1)
+      leaf.alpha = envelope * (0.16 + leaf._depth * 0.22 + zoneFog * 0.18) * (quietScene ? 0.58 : 1)
     }
   }
 
@@ -1650,6 +1765,38 @@ export class BattleScene {
     this.spawnProjectile(start, target, 0x91c4ff, true)
   }
 
+  private spawnAfterimageReplay() {
+    const target = this.targetPoint()
+    const side = target.x >= this.W / 2 ? 1 : -1
+    const start = { x: target.x + side * Math.min(90, this.W * 0.18), y: target.y + 62 }
+    const sync = this.getSnap().afterimageSync
+    const fx = new Container() as TimedFx
+    const cut = new Graphics()
+    cut.roundRect(-34, -3, 68, 6, 3).fill({
+      color: sync ? 0x8d76bf : 0x79dcff,
+      alpha: sync ? 0.56 : 0.9,
+    })
+    cut.roundRect(-52, -1, 104, 2, 1).fill({
+      color: sync ? 0xb39bdd : 0xd8f8ff,
+      alpha: sync ? 0.35 : 0.68,
+    })
+    fx.addChild(cut)
+    fx.position.set(start.x, start.y)
+    fx.rotation = Math.atan2(target.y - start.y, target.x - start.x)
+    this.addTimedFx(fx, 360, (node, p) => {
+      if (p < 0.28) {
+        node.alpha = 0
+        return
+      }
+      const q = (p - 0.28) / 0.72
+      const travel = 1 - (1 - q) ** 3
+      node.alpha = Math.min(1, q * 7) * (1 - Math.max(0, (q - 0.74) / 0.26))
+      node.position.set(start.x + (target.x - start.x) * travel, start.y + (target.y - start.y) * travel)
+      node.scale.x = 0.75 + q * 1.45
+    })
+    this.afterimageReplayLeft = 280
+  }
+
   private spawnProjectile(from: { x: number; y: number }, to: { x: number; y: number }, color: number, slash = false) {
     const fx = new Container() as TimedFx
     const g = new Graphics()
@@ -1780,13 +1927,66 @@ export class BattleScene {
     this.heroBody.scale.set(s * 0.96)
     this.afterimages.forEach((ghost, i) => {
       ghost.scale.set(s * 0.96)
-      ghost.position.set(-15 - i * 15, 3 + i * 4)
+      if (i > 0) ghost.position.set(-20 - i * 14, 4 + i * 4)
     })
     this.cloneSprite.scale.set(s * 0.88)
     this.cloneSprite.position.set(-W * 0.105, -H * 0.015)
     this.hero.position.set(W / 2, H * 0.86)
     this.slashFx.position.set(0, -H * 0.12)
     this.slashFx.scale.set(s * 0.66)
+  }
+
+  private tickAfterimage(ms: number, snap: BattleSnapshot) {
+    const ghost = this.afterimages[0]
+    const trail = this.afterimages[1]
+    if (snap.afterimageActive && !this.afterimageVisualActive) this.onAfterimageSpawn()
+    if (!snap.afterimageActive && this.afterimageVisualActive && this.afterimageSpawnLeft <= 0 && this.afterimageExitLeft <= 0) {
+      this.afterimageExitLeft = 380
+    }
+
+    this.afterimageSpawnLeft = Math.max(0, this.afterimageSpawnLeft - ms)
+    this.afterimageReplayLeft = Math.max(0, this.afterimageReplayLeft - ms)
+    if (this.afterimageExitLeft > 0) {
+      this.afterimageExitLeft = Math.max(0, this.afterimageExitLeft - ms)
+      if (this.afterimageExitLeft === 0) this.afterimageVisualActive = false
+    }
+
+    ghost.visible = this.afterimageVisualActive
+    if (!ghost.visible) return
+    const target = this.targetPoint()
+    const side = target.x >= this.W / 2 ? 1 : -1
+    const endX = target.x - this.W / 2 + side * Math.min(88, this.W * 0.18)
+    const endY = target.y + 72 - this.H * 0.86
+    const spawnP = 1 - this.afterimageSpawnLeft / 420
+    const peel = Math.max(0, Math.min(1, spawnP))
+    ghost.position.set(endX * peel, endY * peel)
+    ghost.tint = snap.afterimageSync ? 0x9e84cf : 0x72dcff
+    ghost.alpha = (snap.afterimageSync ? 0.26 : 0.42) * Math.min(1, peel * 2)
+    ghost.rotation = 0
+    ghost.skew.x = 0
+
+    if (this.afterimageReplayLeft > 0) {
+      const p = 1 - this.afterimageReplayLeft / 280
+      if (p > 0.34) {
+        const swing = Math.sin(((p - 0.34) / 0.66) * Math.PI)
+        ghost.rotation = -side * swing * 0.34
+        ghost.skew.x = side * swing * 0.18
+        ghost.position.x -= side * swing * 16
+      }
+    }
+
+    if (this.afterimageExitLeft > 0) {
+      const p = 1 - this.afterimageExitLeft / 380
+      ghost.position.x -= side * p * 72
+      ghost.scale.x *= 1 + p * 1.7
+      ghost.scale.y *= 1 - p * 0.35
+      ghost.alpha *= 1 - p
+      trail.visible = true
+      trail.position.copyFrom(ghost.position)
+      trail.scale.copyFrom(ghost.scale)
+      trail.tint = ghost.tint
+      trail.alpha = ghost.alpha * 0.42
+    }
   }
 
   private tickHeroSwing(ms: number) {
@@ -2030,11 +2230,25 @@ export class BattleScene {
         .stroke({ width: 3, color: 0xfff2aa, alpha: 0.9 })
     }
 
+    if (snap.afterimageCharge > 0 || this.afterimageVisualActive) {
+      const ticks = 8
+      const lit = Math.floor(Math.min(0.999, snap.afterimageCharge) * ticks)
+      const chargeColor = snap.afterimageSync ? 0xb69adf : 0x76dbff
+      for (let i = 0; i < ticks; i++) {
+        const a0 = -Math.PI / 2 + (i / ticks) * Math.PI * 2
+        const a1 = a0 + Math.PI * 2 / ticks - 0.14
+        this.heroStateFx.arc(0, 10, 86, a0, a1)
+          .stroke({ width: i < lit ? 5 : 2, color: i < lit ? chargeColor : 0x34404a, alpha: i < lit ? 0.88 : 0.48 })
+      }
+    }
+
     const galeActive = snap.buffSkill === 'gale' || snap.buffSkill === 'shadowClone'
-    this.afterimages.forEach((ghost) => {
-      ghost.visible = galeActive
-      ghost.alpha = 0.14 + Math.sin(this.elapsed * 0.012 + ghost.x) * 0.04
-    })
+    const galeGhost = this.afterimages[1]
+    if (this.afterimageExitLeft <= 0) {
+      galeGhost.visible = galeActive
+      galeGhost.alpha = galeActive ? 0.14 + Math.sin(this.elapsed * 0.012 + galeGhost.x) * 0.04 : 0
+      galeGhost.tint = 0x75ddff
+    }
     this.cloneSprite.visible = snap.cloneActive
     this.cloneSprite.alpha = snap.cloneActive ? 0.28 + Math.sin(this.elapsed * 0.009) * 0.08 : 0
   }
@@ -2045,6 +2259,18 @@ export class BattleScene {
     this.overlayFx.clear()
     const target = this.targetPoint()
     const pulse = 0.7 + Math.sin(this.elapsed * 0.012) * 0.22
+
+    if (snap.backstabReady) {
+      const markX = target.x + 42
+      const markY = target.y - 16
+      const color = snap.afterimageSync ? 0xc0a0ed : 0x83e5ff
+      this.enemyStateFx.circle(markX, markY, 21 * pulse)
+        .fill({ color, alpha: 0.12 })
+        .stroke({ width: 3, color, alpha: 0.82 })
+      this.enemyStateFx.moveTo(markX - 9, markY - 9).lineTo(markX + 9, markY + 9)
+        .moveTo(markX + 9, markY - 9).lineTo(markX - 9, markY + 9)
+        .stroke({ width: 4, color: 0xf2e9ff, alpha: 0.9 })
+    }
 
     if (snap.bannerLeft > 0) {
       const x = this.W * 0.72
