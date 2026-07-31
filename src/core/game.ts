@@ -1220,8 +1220,9 @@ export function enduranceMax(s: GameState): Decimal {
 export function refillEndurance(s: GameState) {
   s.endurance = enduranceMax(s)
   s.threatTimer = 0
-  s.mp = B.MP_MAX
-}
+  // ⚠️ MP 刻意**不**跟著每層補滿:耐久是「每層的容錯額度」,MP 是連續資源。
+  // 一起補的話,清層速度快的人等於無限法力,MP 就完全不構成限制了。
+  }
 
 /** 場上威脅的每秒傷害:用**該層小怪**滿血當基準,Boss 才不會因為血厚 8 倍就殺瘋 */
 export function threatPerSec(s: GameState): Decimal {
@@ -1929,9 +1930,15 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
     // 引爆回轉(Reload 式):依消耗層數推進其他技能的冷卻,把循環閉合成 loop
     for (const other of availableSkills(s)) {
       if (other === id) continue
+      const advance = spentNow * B.RELOAD_PER_SIGIL
+      if (!isApexSkill(s, other)) {
+        // MP 招:推它只剩 1.5 秒的 CD 等於什麼都沒做,折算成 MP(見 grantMp)
+        grantMp(s, advance)
+        events.push({ type: 'cooldownAdvance', skillId: other, seconds: advance, via: 'reload' })
+        continue
+      }
       const left = s.skillCd[other] ?? 0
       if (left <= 0) continue
-      const advance = spentNow * B.RELOAD_PER_SIGIL
       const next = left - advance
       if (next <= 0) delete s.skillCd[other]
       else s.skillCd[other] = next

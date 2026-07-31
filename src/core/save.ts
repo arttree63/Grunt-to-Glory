@@ -1,5 +1,5 @@
 import { D } from './decimal'
-import { COMBAT_NUMBER_SCALE } from './balance'
+import { COMBAT_NUMBER_SCALE, MP_MAX } from './balance'
 import { createInitialState, refillEndurance, SAVE_VERSION, spawnEnemy } from './game'
 import { emptyTechs } from './techs'
 import { reconcileDestiny } from './destiny'
@@ -467,6 +467,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
   if (out.isBoss) spawnEnemy(out)
   // 耐久同為單場暫態,不進存檔:讀檔一律滿血,否則會帶著 0 血進場、一秒陣亡
   refillEndurance(out)
+  out.mp = MP_MAX // MP 同樣不進存檔,讀檔給滿(它不隨樓層補,見 refillEndurance)
   // 冪等自癒:補「有命運點卻沒有選項」與節點改名後的殘留 id。
   // 放這裡而不是 migrate():migrate 全是純欄位操作,不該反向依賴會變動的節點表
   reconcileDestiny(out)
