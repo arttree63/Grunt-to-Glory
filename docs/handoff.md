@@ -3,19 +3,78 @@
 ## 〇、目前狀態(接手先讀這段)
 
 - **線上**:https://arttree63.github.io/Grunt-to-Glory/ ,main = `459e0ef`,Pages 部署綠。
-- **工作樹乾淨**,四顆 commit 全推上去:
-  `b3a02b0` 上市品質循環十一輪 + Codex Game Review 工作台(合批)
-  `06f11bc` 進場 loading splash
-  `459e0ef` 所有「開始」都走 splash(轉生/重置)
-  `feature/game-review-workspace` 分支也已推上 origin(與 main 同點),Codex 可接。
-- **驗證**:251 core 測試 / typecheck / build 全綠。
 - **工作模式**:用戶已決定改為「邊玩邊調整、一步步收」——不再跑自動循環。
   用戶會丟遊玩回饋,一條條修,每條修完部署。
-- **用戶已丟、已做**:進場 loading splash(三個「開始」都走同一畫面)。
-- **用戶已丟、未做**:一張完整標題畫面的視覺稿(開始遊戲/繼續旅途/冒險日誌/成就選單,
-  紫夜像素風,見上傳圖)。那是完整 title scene,牽涉「開始 vs 繼續」存檔流程,當獨立項目排。
 - 大批次的細節記錄在 **§ 十**(十一輪 + 審查 + 量測陷阱五條);
   下一步候選清單在 § 十的「給下一階段的起點」。
+
+### 未 commit 的工作(2026-07-31 晚,標題畫面批)
+
+用戶回饋:「進入前都要有進入畫面 loading,現在等一會沒有讀取到畫面」+ 重丟標題畫面視覺稿。
+**已做完、已實機驗證,尚未 commit / 未部署**(用戶未要求 commit):
+
+- **真因(量到的,不是猜的)**:線上版 first-paint 卡在 **2664ms**。head 的
+  `<link rel=stylesheet>` 會擋掉整份文件的第一次繪製,連內嵌樣式的 splash 都畫不出來;
+  第二段縫隙是 `loaded=true` 之後 `BattleScene.create` 要串行等 **86 張貼圖 5.4MB**
+  才 appendChild canvas,那段玩家看到「HUD 都在、戰場一片空」。
+- **改法**:
+  1. `vite.config.ts` 加 `non-blocking-css` 外掛:建置產物的 stylesheet 改寫成
+     `preload + onload 換 rel`(附 noscript 退路)。同產物 A/B 實測
+     **first-paint 1400ms → 144ms**(慢速伺服器,CSS 壓 1.2s 延遲)。
+  2. `index.html` 靜態首屏換成標題畫面本體(`.title-*` 命名,樣式全部內嵌在 head;
+     ⚠️ 不能用 styles.css 的 CSS 變數,那份現在是非阻塞載入)。標題畫走 `<img>`
+     寫在 HTML 裡,瀏覽器解析當下就開始抓,不必等 JS。
+  3. 新 `src/ui/TitleScreen.tsx`:與靜態首屏同一組標記,React 掛載時原地接手。
+     掛載即 `warmBattleTextures()` 預抓戰場貼圖並顯示**實際百分比**,
+     讀檔完成 + 貼圖抓完才亮按鈕(有存檔=「繼續旅途」+ 第 N 代/最深層/職業一行;
+     沒有=「開始遊戲」)。12 秒保險絲:抓不到圖照樣放行。
+  4. `App.tsx` 加 `entered` gate:按下開始才 `sfx.unlock()`(順便解決「第一擊沒聲音」)
+     + `enterGame()` 才啟動遊戲迴圈。轉生/重置的 splash 沿用同一個 TitleScreen(caption 模式)。
+  5. `gameStore`:新增 `hasSave`(persist 回傳 raw != null);`startLoop` 從 `init()` 搬到
+     `enterGame()`——玩家還在標題畫面時小兵不該已經在推層、每 10 秒覆蓋存檔;
+     `reset()` 補清 `lastRun`(原本殘留會一直掛 `modal:app` lock 把遊戲停住)。
+  6. 美術:`assets/visual/scenes/title-v1.webp`(94KB)= 用戶視覺稿裁到選單上緣、
+     並把畫上假的 ver/齒輪/喇叭 UI 用同排天空補掉。`tools/build-single.mjs` 補 webp 編碼分支。
+- **驗證**:typecheck / 251 測試 / build 全綠;dev 實機走過新玩家→開始→教學、
+  老玩家→繼續旅途→離線結算、重置→splash(MutationObserver 量到 1307ms);
+  正式產物在慢速伺服器上量到 `[warm] start 1061ms → done 86 張 5739ms`,進度條走完才亮按鈕;
+  單檔版(build:single)確認標題畫內嵌成 data URI、產物仍是單一 index.html。
+- **視覺稿沒做的部分**:「冒險日誌 / 成就 / 每日獎勵 / 排行榜」四個入口沒做——
+  那些功能目前不存在,不做假入口。標題畫上原本畫著的那些按鈕已在素材裁切時去掉。
+- **對抗式審查後補的兩道防線**(CSS 非阻塞化的副作用):
+  - `TitleScreen` 多一個 `cssReady` 閘門(等 `link[data-app-css]` 載完才亮開始鍵;
+    dev 沒有那個 link 直接視為就緒,載入失敗也放行)。
+  - `BattleCanvas` 的 `.canvas-host` 定位改成寫死 inline style。
+    ⚠️ 真因:PIXI 的 `resizeTo` 是**掛載當下**量容器,樣式表若遲到會量到 0 高,
+    戰場永久空白且不會自己修正。
+- **留給用戶決定的建議**:戰場貼圖 5.4MB 裡 `forest-border-v1.png` 就佔 1.95MB
+  (1024×1536、55772 色)。轉成 webp q88 只要 **114KB**(整包 5.4MB → 約 3.6MB,
+  載入等待直接砍三分之一);要改就是換 import 副檔名 + 換檔,風險低但會動到戰場底圖畫質,
+  沒有用戶點頭不擅自改。
+- **審查列出、我沒動的小項**(等用戶決定):老瀏覽器不支援 `rel=preload` 會拿不到樣式表
+  (Firefox 84↓/Safari 11↓,可加 JS 補救);單檔版會把標題圖內嵌兩份 base64;
+  `build:single` 的守衛會被未追蹤的 title-v1.webp 擋住(commit 後自然解除);
+  worker 的 `/review/` 尾斜線 SPA fallback(既有問題)。
+- ⚠️ **commit 時別漏 `assets/visual/scenes/title-v1.webp`**(新增的二進位檔,
+  漏掉就 Pages build 直接失敗)。
+
+### 順手修掉的:模擬器不可重現(操練改版的護欄前提)
+
+同一個 SEED 跑兩次結果不同 → 所有「改前改後比對」都失效。根因是 `src/core/game.ts`
+有三處把 `Math.random` 寫死沒吃注入的 rng:`dealSkillToBoss`(技能傷害的暴擊擲骰)、
+`tickAutoCast → castSkill`、`setActiveMerc` 的傭兵計時。
+已把 rng 串進 `castSkill / dealSkillToBoss / autoDetonate / tickSkills / tickAutoCast /
+setActiveMerc`(全部帶預設值,runtime 行為不變),三支模擬器改成傳自己的 rng。
+**驗證**:同 seed 兩次跑 `diff` 完全一致;251 測試 / typecheck / build 全綠。
+
+### 下一批的起點:操練系統(用戶新方向,已寫規劃書、尚未動工)
+
+規劃書:`docs/操練系統_MVP規劃_v0.1.md`(含用戶定的設計理念、四條操練、
+架構決策 A~E、開場流程、驗證四題、施工六批)。核心決策:
+`lv` 不刪、改成「四條操練等級總和」的衍生值(既有傷害/成本/Boss 檢定/模擬器一行不動),
+MVP 仍用金幣投入(不做經驗/操練點,金幣出口不能斷),技能解鎖走新的 `TRAINING_TRACKS` 表。
+**待補**:規劃書 § 七列的五項(現有三種操練如何併軌、技能欄位上限、存檔遷移範例、
+會爆的測試清單、game-balance skill 要同步的條文)——盤點子代理跑到一半被叫停,下次接著補。
 
 ---
 
