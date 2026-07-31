@@ -121,15 +121,20 @@ function BossHint() {
     (t) =>
       (t.id !== 'keepSigils' || JOBS[s.jobId].awakenSkill) && (t.id !== 'mercFirst' || s.activeMerc),
   )
-  const advice = ready
-    ? '現在打得過了'
-    : s.materials >= B.FORGE_COST
-      ? '素材夠了,去鐵匠鋪換裝'
-      : s.gold.gte(upCost(s.lv))
-        ? '金幣夠了,先買等級'
-        : pendingMedals(s) > 0
-          ? '這代到極限了,可考慮退役'
-          : '在這層多打幾輪'
+  // ⚠️ 兩條檢定各有各的死法,提示不能混:被打死的人聽到「還差 1.5 倍 DPS」會往錯的方向補。
+  // 這是規格的「牆的可讀性」驗收標準——玩家要能說出自己是被什麼擋下來的
+  const diedByEndurance = s.lastBossStats?.failedBy === 'endurance'
+  const advice = diedByEndurance
+    ? '上一場是被打死的——耐久撐不住,去英雄頁把點數投進「體能」'
+    : ready
+      ? '現在打得過了'
+      : s.materials >= B.FORGE_COST
+        ? '素材夠了,去鐵匠鋪換裝'
+        : s.gold.gte(upCost(s.lv))
+          ? '金幣夠了,先投點操練'
+          : pendingMedals(s) > 0
+            ? '這代到極限了,可考慮退役'
+            : '在這層多打幾輪'
 
   return (
     <div className="boss-challenge-wrap">
@@ -156,7 +161,7 @@ function BossHint() {
             第 {nemesis.gen} 代曾 {nemesis.failures} 次敗於此,最佳戰績打掉 {Math.round(nemesis.bestDealt * 100)}% 血量——替家族終結這段宿怨
           </small>
         )}
-        <small>{ready ? advice : `還差 ${gap.toFixed(1)} 倍 DPS・${advice}`}</small>
+        <small>{ready || diedByEndurance ? advice : `還差 ${gap.toFixed(1)} 倍 DPS・${advice}`}</small>
         {isBossFloor(target) && <small style={{ opacity: 0.85 }}>{kindHint}</small>}
         {/* 失敗診斷三分類:先講「該改打法還是刷資源」,再講一句怎麼做 */}
         {diag && isBossFloor(target) && (

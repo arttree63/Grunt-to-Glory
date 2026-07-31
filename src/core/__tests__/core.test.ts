@@ -372,6 +372,26 @@ describe('戰鬥循環', () => {
     expect(next.medals).toBe(medalsBefore) // 勳章保留
   })
 
+  it('牆的可讀性:被打死與打不動要分得出來(v4.1 § 2 驗收標準)', () => {
+    // 耐久歸零 → failedBy = endurance,而且一般層也要留下紀錄
+    const dead = createInitialState()
+    dead.floor = 12
+    dead.lv = 30
+    spawnEnemy(dead)
+    dead.endurance = D(1)
+    dead.threatTimer = B.THREAT_INTERVAL
+    applyTick(dead, 100, () => 0.99)
+    expect(dead.lastBossStats?.failedBy).toBe('endurance')
+
+    // Boss 逾時 → failedBy = timeout
+    const slow = createInitialState()
+    slow.floor = 10
+    slow.lv = 1
+    spawnEnemy(slow)
+    applyTick(slow, B.BOSS_TIME * 1000)
+    expect(slow.lastBossStats?.failedBy).toBe('timeout')
+  })
+
   it('遠征耐久:每層滿血進場,不跨層記帳(v4.1 § 2)', () => {
     const s = createInitialState()
     s.floor = 5

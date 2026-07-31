@@ -1193,6 +1193,24 @@ function failFloor(s: GameState, raw: GameEvent[], reason: 'timeout' | 'enduranc
   s.tacticDelayLeft = 0
   s.tacticKeepSigils = false
   s.bossFailed = true
+  if (!s.bossStats && reason === 'endurance') {
+    // 一般層被打死也要留下「這場是怎麼輸的」,否則 UI 會拿上一場 Boss 的舊診斷來講話
+    s.lastBossStats = {
+      floor: s.floor,
+      kind: s.bossKind ?? 'shell',
+      win: false,
+      bySource: {},
+      shellTime: 0,
+      shieldValue: 0,
+      shieldBySource: {},
+      shieldPeakPerSec: 0,
+      interrupts: 0,
+      channels: 0,
+      totemTime: 0,
+      dealtRatio: 0,
+      failedBy: reason,
+    }
+  }
   if (s.bossStats) {
     // 失敗的統計要留下來:診斷「差在哪、該改什麼」全靠它
     s.lastBossStats = { ...s.bossStats, bySource: { ...s.bossStats.bySource }, failedBy: reason }
