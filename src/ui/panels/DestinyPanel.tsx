@@ -1,5 +1,12 @@
 import { useState } from 'react'
-import { ALL_PATHS, DESTINY_NODES, DESTINY_PATHS, nextMilestone, pendingChoice } from '../../core/destiny'
+import {
+  ALL_PATHS,
+  DESTINY_NODES,
+  DESTINY_PATHS,
+  interpretOf,
+  nextMilestone,
+  pendingChoice,
+} from '../../core/destiny'
 import { QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
 import * as B from '../../core/balance'
 import { heirloomCandidates, pendingMedals, RESONANCE_SRC_NAME, strongestResonance } from '../../core/game'
@@ -206,18 +213,34 @@ export default function DestinyPanel() {
         </div>
       )}
 
-      <h3 style={{ marginTop: 16 }}>已走過的路</h3>
+      {/* 命運樹只負責回顧:這一輪發生了什麼,而不是一張讓玩家照攻略加點的技能表。
+          ⚠️ 要分清楚「系統給的」與「你選的」——種子是降臨來的,不是玩家做過的決策 */}
+      <h3 style={{ marginTop: 16 }}>這 一 輪 的 命 運</h3>
       {s.destinyNodes.map((id) => {
         const n = DESTINY_NODES[id]
         if (!n) return null
+        const descent = s.destinyLog.find((r) => r.id === id)
+        // 種子在不同職業下長成不同東西,回顧要顯示它「現在」是什麼
+        const shown = interpretOf(n, s.jobId)
+        const label =
+          n.tier === 0
+            ? '起始'
+            : descent
+              ? `第 ${descent.floor} 層・降臨`
+              : n.kind === 'choice'
+                ? '你的抉擇'
+                : '獲得'
         return (
           <div key={id} style={{ padding: '4px 0' }}>
             <div className="row" style={{ border: 'none', padding: 0 }}>
-              <span className="k">{n.tier === 0 ? '起始' : `第 ${n.tier} 個決策`}</span>
-              <span className="v">{n.name}</span>
+              <span className="k" style={{ color: descent ? 'var(--gold)' : undefined }}>{label}</span>
+              <span className="v">
+                {shown.name}
+                {shown.name !== n.name && <small className="affix"> ← {n.name}</small>}
+              </span>
             </div>
             {/* 只列名稱的話,玩家過幾層就忘了自己選到什麼效果 */}
-            <div className="tier3" style={{ paddingLeft: 8 }}>{n.desc}</div>
+            <div className="tier3" style={{ paddingLeft: 8 }}>{shown.desc}</div>
           </div>
         )
       })}
