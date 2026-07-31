@@ -30,11 +30,15 @@ interface Store {
   /** 每次 state 變動 +1,供元件訂閱 */
   rev: number
   loaded: boolean
+  /** 這台裝置本來就有存檔:標題畫面用它決定「繼續旅途」還是「開始遊戲」 */
+  hasSave: boolean
   offline: OfflineReport | null
   /** 剛完成的轉生結算,供結算頁顯示 */
   lastRun: import('../core/types').ChronicleEntry | null
 
   init: () => Promise<void>
+  /** 玩家在標題畫面按下開始:世界從這一刻才開始跑 */
+  enterGame: () => void
   tick: (dtMs: number) => void
   click: () => void
   buy: (n: number | 'max') => void
@@ -86,18 +90,23 @@ export const useGame = create<Store>((set, get) => ({
   rev: 0,
   lastSalvage: null,
   loaded: false,
+  hasSave: false,
   offline: null,
   lastRun: null,
 
   async init() {
-    const { state, awayMs } = await loadGame()
+    const { state, awayMs, hasSave } = await loadGame()
     let offline: OfflineReport | null = null
     if (awayMs > 60_000) {
       const r = G.computeOffline(state, awayMs)
       state.gold = state.gold.add(r.gold)
       offline = { seconds: r.seconds, gold: r.gold, capped: r.capped }
     }
-    set({ s: state, loaded: true, offline, rev: get().rev + 1 })
+    set({ s: state, loaded: true, hasSave, offline, rev: get().rev + 1 })
+  },
+
+  // ⚠️ 迴圈刻意不在 init 啟動:玩家還停在標題畫面時,小兵不該已經在推層、每 10 秒覆蓋存檔
+  enterGame() {
     startLoop()
   },
 
@@ -308,7 +317,8 @@ export const useGame = create<Store>((set, get) => ({
   async reset() {
     await wipeSave()
     gameEvents.emit({ type: 'runReset' })
-    set({ s: G.createInitialState(), rev: get().rev + 1, offline: null })
+    // lastRun 一起清:重置時若結算卡還開著,它會一直掛著 modal:app lock 把遊戲停住
+    set({ s: G.createInitialState(), rev: get().rev + 1, offline: null, lastRun: null, hasSave: false })
   },
 }))
 

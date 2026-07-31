@@ -250,6 +250,31 @@ const textureGroups = {
   hit: [hit1Url, hit2Url, hit3Url, hit4Url],
 }
 
+/**
+ * 標題畫面期間就先把整組戰場貼圖抓下來(86 張、約 5.4MB)。
+ *
+ * ⚠️ 不先抓的話,玩家按下「開始」看到的是**空戰場**:BattleScene.create 是串行的
+ * 「等貼圖 → 等 PIXI init → 才 appendChild canvas」,這段期間 HUD 數字都在、戰場什麼都沒有。
+ * 抓完的貼圖進 PIXI 的 Assets 快取,create 內再呼叫一次 loadVisualAssets 就是直接命中。
+ */
+export const BATTLE_TEXTURE_URLS: string[] = [
+  forestUrl,
+  ...Object.values(textureGroups.heroes).flat(),
+  ...textureGroups.goblin,
+  ...textureGroups.imp,
+  ...textureGroups.boss,
+  ...textureGroups.chest,
+  ...textureGroups.goldenGoblin,
+  ...Object.values(textureGroups.mercenaries).flat(),
+  ...textureGroups.turret,
+  ...textureGroups.slash,
+  ...textureGroups.hit,
+]
+
+export function warmBattleTextures(onProgress?: (ratio: number) => void): Promise<unknown> {
+  return Assets.load(BATTLE_TEXTURE_URLS, onProgress)
+}
+
 async function loadTextures(urls: string[]): Promise<Texture[]> {
   const textures = await Promise.all(urls.map((url) => Assets.load<Texture>(url)))
   textures.forEach((texture) => {

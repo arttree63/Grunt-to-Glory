@@ -309,6 +309,33 @@ Boss 戰與突發事件期間地面流線**停止**(那是停下來處理的事)
 - 多槽 buff 的狀態文字**併成一行**(「盾牆突擊 8.2s・不動如山 12.1s」),總攻疊窗不佔多個槽位
 - 戰意昂揚每層跳一行 notice(+N%);乘勝推進走狀態槽位頂部
 
+## 七之六、進場標題畫面(v1.6,2026-07-31)⭐
+
+進場一律經過標題畫面,它同時就是 loading 畫面。三個「開始」共用同一個元件
+(`src/ui/TitleScreen.tsx`):首次進場、轉生「下一代出發」、重置全部進度。
+
+- **樣式住在 `index.html` 的 `<head>` 內嵌 style,不在 styles.css**。理由:這個畫面必須在
+  JS bundle 下載完之前就長對,而 styles.css 是**非阻塞載入**的(`vite.config.ts` 的
+  `non-blocking-css` 外掛把 stylesheet 改寫成 preload+onload,實測 first-paint 1400ms → 144ms)。
+  ⚠️ 因此內嵌樣式一律寫死色值,**不可以用 `var(--bg-deep)` 這類變數**——變數在 styles.css 裡,會晚到。
+- **class 一律 `title-` 前綴**(`.title-screen/.title-stage/.title-scene/.title-art/.title-veil/
+  .title-fallback/.title-panel/.title-bar/.title-start/.title-meta`)。踩過的坑:用 `.panel`/`.stage`
+  這種通名會被 styles.css 的同名規則污染,版面直接飛出畫面。
+- **標題畫走 `<img>` 寫在 index.html 裡**(不是 CSS background):瀏覽器解析 HTML 當下就開始下載。
+  React 版用同一組標記與同一個檔,掛載時看 `img.complete` 直接補上 `on`,畫面不倒退。
+  圖還沒到的期間顯示替身(營火 + 標題字),到了才淡入。
+- **這個畫面要蓋住的是整段載入,不只是讀存檔**:掛載即 `warmBattleTextures()` 預抓 86 張戰場貼圖
+  (5.4MB),進度條走**實際百分比**;讀檔完成 + 貼圖抓完才亮開始鍵。不預抓的話,按下開始會看到
+  「HUD 都在、戰場一片空」(`BattleScene.create` 是串行等貼圖才 appendChild canvas)。
+  12 秒保險絲:抓不到圖照樣放行,不能把玩家關在門外。
+- **按鈕文案由存檔決定**:`hasSave`(store 欄位,來自 `persist.loadGame` 的 `raw != null`)
+  → 「繼 續 旅 途」+ 一行「第 N 代・最深 第 N 層・職業」;沒有 → 「開 始 遊 戲」。
+- **遊戲迴圈在按下開始才啟動**(`gameStore.enterGame()`,不在 `init()`):玩家還在標題畫面時,
+  小兵不該已經在推層、也不該每 10 秒覆蓋存檔。那一下點擊同時是 `sfx.unlock()` 的使用者手勢。
+- 版面:畫撐滿寬度、底邊貼齊選單(小兵永遠站在按鈕正上方),螢幕不夠高時從**上緣**切天空;
+  下緣用 16% 的漸層收到底色,只吃掉腳下地面——**主角必須是最亮的東西**。
+- 沒做的入口(視覺稿上有、功能不存在):冒險日誌 / 成就 / 每日獎勵 / 排行榜。**不做假入口**。
+
 ## 八、數值顯示格式
 
 - 縮寫階梯:1.2K → 3.4M → 5.6B → 7.8T → 之後 aa, ab, ac…(定義於 `/core/format.ts`,UI 不得自行實作)

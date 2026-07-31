@@ -41,6 +41,8 @@ import SkillBar from './SkillBar'
 import LevelBar from './LevelBar'
 import DestinyCard from './DestinyCard'
 import Tutorial, { SpotlightTeach } from './Tutorial'
+import TitleScreen from './TitleScreen'
+import * as sfx from '../audio/sfx'
 import EquipPanel from './panels/EquipPanel'
 import ForgePanel from './panels/ForgePanel'
 import HeroPanel from './panels/HeroPanel'
@@ -66,20 +68,24 @@ const TABS: Array<{ id: Tab; label: string }> = [
 export default function App() {
   const init = useGame((st) => st.init)
   const loaded = useGame((st) => st.loaded)
+  const enterGame = useGame((st) => st.enterGame)
+  const [entered, setEntered] = useState(false)
   useEffect(() => {
     void init()
   }, [init])
 
-  // 讀檔期間渲染與 index.html 靜態 splash **同一組標記**(樣式內嵌在 index.html head),
-  // 從「bundle 下載中」到「讀存檔中」畫面不跳——原本這裡回空 wrap,進場會卡一幀黑屏
-  if (!loaded)
+  // 進場一律經過標題畫面:它同時是 loading 畫面(與 index.html 的靜態首屏同一組標記),
+  // 也是「開始是一個儀式」的那一下——而且那一下的手勢正好用來解鎖音訊(瀏覽器擋自動播放)。
+  if (!entered)
     return (
-      <div className="boot-splash">
-        <div className="flame" />
-        <h1>小 兵 的 故 事</h1>
-        <small>整 裝 行 軍 中</small>
-        <div className="bar"><i /></div>
-      </div>
+      <TitleScreen
+        ready={loaded}
+        onStart={() => {
+          sfx.unlock()
+          enterGame()
+          setEntered(true)
+        }}
+      />
     )
   return <Game />
 }
@@ -620,14 +626,7 @@ function Game() {
 
       <RunSummary onDeparture={() => setStartSplash('下 一 代 整 裝 中')} />
 
-      {startSplash && (
-        <div className="boot-splash">
-          <div className="flame" />
-          <h1>小 兵 的 故 事</h1>
-          <small>{startSplash}</small>
-          <div className="bar"><i /></div>
-        </div>
-      )}
+      {startSplash && <TitleScreen caption={startSplash} />}
 
       <Tutorial />
 

@@ -318,7 +318,9 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
 
   return (
     <div className="stage" onPointerDown={onPointerDown}>
-      <div className="canvas-host" ref={hostRef} />
+      {/* 定位寫死在這裡而不是只靠 styles.css:PIXI 的 resizeTo 是掛載當下量這個元素,
+          樣式表若還沒到(非阻塞載入),量到 0 高的戰場會永久空白,而且不會自己修正 */}
+      <div className="canvas-host" ref={hostRef} style={{ position: 'absolute', inset: 0 }} />
       {eventReveal && (
         <ResultReveal
           items={EVENT_REVEAL_ITEMS}

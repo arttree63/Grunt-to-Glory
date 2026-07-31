@@ -26,7 +26,11 @@ try {
     const meta = await sharp(rel).metadata()
     let pipe = sharp(rel)
     if (meta.width > 768) pipe = pipe.resize({ width: 768 })
-    const buf = await pipe.png({ palette: true, quality: 80, compressionLevel: 9 }).toBuffer()
+    // 編碼格式要跟副檔名一致:webp 檔塞 png 位元組的話,單檔版內嵌成 data:image/webp 會是壞圖
+    const buf = await (rel.endsWith('.webp')
+      ? pipe.webp({ quality: 80 })
+      : pipe.png({ palette: true, quality: 80, compressionLevel: 9 })
+    ).toBuffer()
     if (buf.length < orig) writeFileSync(rel, buf)
     after += Math.min(buf.length, orig)
   }
