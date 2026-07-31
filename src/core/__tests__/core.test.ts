@@ -314,6 +314,32 @@ describe('戰鬥循環', () => {
     }
   })
 
+  it('買第一點不可以讓任何一科變弱(佔比平滑的回歸鎖)', () => {
+    for (const focus of TRACKS) {
+      const s = createInitialState()
+      s.gold = D(1e6)
+      s.trackFocus = focus
+      const dpsBefore = currentDPS(s)
+      const endBefore = enduranceMax(s)
+      const mpBefore = mpRegen(s)
+      buyLevels(s, 1)
+      expect(currentDPS(s).gte(dpsBefore)).toBe(true)
+      expect(enduranceMax(s).gte(endBefore)).toBe(true)
+      expect(mpRegen(s)).toBeGreaterThan(mpBefore * 0.95)
+    }
+  })
+
+  it('退層之後也是滿血駐守(補血要在戰鬥狀態定案之後)', () => {
+    const s = createInitialState()
+    s.floor = 20
+    s.lv = 1
+    spawnEnemy(s)
+    applyTick(s, B.BOSS_TIME * 1000) // 打不動 → 逾時退層
+    expect(s.bossFailed).toBe(true)
+    expect(s.isBoss).toBe(false)
+    expect(s.endurance.eq(enduranceMax(s))).toBe(true)
+  })
+
   it('操練 = 等級:總點數 + 1 恆等於 lv,買一級就是投一點進主修(v4.1 § 3)', () => {
     const s = createInitialState()
     s.gold = D(1e9)
@@ -477,9 +503,12 @@ describe('戰鬥循環', () => {
       lv += 5
       s.lv = lv
     }
-    s.isBoss = true
+    // ⚠️ 刻意不先寫 s.isBoss = true:那樣會繞過真實的進場路徑,
+    // 「補血用上一層的狀態算」這類順序錯誤就永遠測不到
     spawnEnemy(s)
-    const survivalSec = enduranceMax(s).div(threatPerSec(s)).toNumber()
+    expect(s.isBoss).toBe(true) // 第 50 層本來就是 Boss 層
+    expect(s.endurance.eq(enduranceMax(s))).toBe(true) // 真的是滿血進場
+    const survivalSec = s.endurance.div(threatPerSec(s)).toNumber()
     expect(survivalSec).toBeGreaterThan(B.BOSS_TIME) // 輸出剛好夠的人,不該被血條擋掉
   })
 

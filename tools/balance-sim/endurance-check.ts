@@ -17,9 +17,9 @@ for (const floor of [10, 30, 50, 100, 200, 300]) {
     if (currentDPS(s).mul(B.BOSS_TIME).gte(bossHP(floor))) break
     lv += 5
   }
-  s.isBoss = true
+  // ⚠️ 不預設 isBoss:走真實進場路徑,量到的才是玩家實際帶進 Boss 場的血
   spawnEnemy(s)
-  const bossSurvive = enduranceMax(s).div(threatPerSec(s)).toNumber()
+  const bossSurvive = s.endurance.div(threatPerSec(s)).toNumber()
   s.isBoss = false
   const mobSurvive = enduranceMax(s).div(threatPerSec(s)).toNumber()
   const ttk = mobHP(floor).div(currentDPS(s)).toNumber()
@@ -48,10 +48,9 @@ for (const [name, alloc] of builds) {
   let stop = ''
   for (; floor < 400; floor += 10) {
     s.floor = floor
-    s.isBoss = true
     spawnEnemy(s)
     const killSec = bossHP(floor).div(currentDPS(s)).toNumber()
-    const surviveSec = enduranceMax(s).div(threatPerSec(s)).toNumber()
+    const surviveSec = s.endurance.div(threatPerSec(s)).toNumber()
     if (killSec > B.BOSS_TIME) { stop = `輸出不夠(要打 ${killSec.toFixed(0)}s > ${B.BOSS_TIME}s)`; break }
     if (surviveSec < killSec) { stop = `擋不住(只能撐 ${surviveSec.toFixed(0)}s,但要打 ${killSec.toFixed(0)}s)`; break }
   }
