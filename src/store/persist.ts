@@ -6,15 +6,23 @@ const KEY = 'little-soldier-save'
 
 localforage.config({ name: 'little-soldier', storeName: 'save' })
 
-/** hasSave 只有這一層知道:deserialize 在第一行就把 null 換成初始 state 了 */
-export async function loadGame(): Promise<{ state: GameState; awayMs: number; hasSave: boolean }> {
+/**
+ * lastSaved 與 hasSave 只有這一層知道:deserialize 在第一行就把 null 換成初始 state 了。
+ * ⚠️ hasSave 問的是「有沒有旅途可以繼續」而不是「檔案在不在」:重置後迴圈仍在跑,
+ * 10 秒內就會把全新的初始 state 寫回去,只看檔案存不存在的話,剛重置完會被叫「繼續旅途」。
+ */
+export async function loadGame(): Promise<{
+  state: GameState
+  lastSaved: number | null
+  hasSave: boolean
+}> {
   try {
     const raw = await localforage.getItem<SaveData>(KEY)
     const state = deserialize(raw)
-    const awayMs = raw?.lastSaved ? Date.now() - raw.lastSaved : 0
-    return { state, awayMs, hasSave: raw != null }
+    const started = state.runs > 0 || state.highestFloor > 1 || state.lv > 1 || state.medals > 0
+    return { state, lastSaved: raw?.lastSaved ?? null, hasSave: raw != null && started }
   } catch {
-    return { state: deserialize(null), awayMs: 0, hasSave: false }
+    return { state: deserialize(null), lastSaved: null, hasSave: false }
   }
 }
 

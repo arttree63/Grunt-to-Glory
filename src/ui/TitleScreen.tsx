@@ -33,14 +33,20 @@ export default function TitleScreen({
   const [cssReady, setCssReady] = useState(() => !document.querySelector('link[data-app-css]'))
   useEffect(() => {
     const link = document.querySelector<HTMLLinkElement>('link[data-app-css]')
-    if (!link || link.rel === 'stylesheet') {
+    // ⚠️ 樣式表幾乎一定比 JS 早有結果,load/error 早在這個 effect 掛上之前就燒掉了,
+    // 所以要先看「已完成」的痕跡:成功會把 rel 換成 stylesheet(link.sheet 也會有值),
+    // 失敗由 vite 注入的 onerror 留下 cssFailed。只靠監聽會在失敗時永遠等不到。
+    if (!link || link.rel === 'stylesheet' || link.sheet || link.dataset.cssFailed) {
       setCssReady(true)
       return
     }
     const on = () => setCssReady(true)
     link.addEventListener('load', on)
-    link.addEventListener('error', on) // 樣式表掛了也要讓玩家進得去
+    link.addEventListener('error', on)
+    // 再加一道保險絲:任何沒預料到的時序都不可以把玩家鎖在標題畫面
+    const fuse = setTimeout(on, 8_000)
     return () => {
+      clearTimeout(fuse)
       link.removeEventListener('load', on)
       link.removeEventListener('error', on)
     }

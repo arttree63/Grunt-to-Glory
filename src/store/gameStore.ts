@@ -85,6 +85,9 @@ interface Store {
 
 const bump = (set: (p: Partial<Store>) => void, get: () => Store) => set({ rev: get().rev + 1 })
 
+/** 讀檔時存檔上的 lastSaved:離線收益要算到「按下開始」為止,不是算到開頁為止 */
+let awayFrom: number | null = null
+
 export const useGame = create<Store>((set, get) => ({
   s: G.createInitialState(),
   rev: 0,
@@ -95,18 +98,25 @@ export const useGame = create<Store>((set, get) => ({
   lastRun: null,
 
   async init() {
-    const { state, awayMs, hasSave } = await loadGame()
-    let offline: OfflineReport | null = null
-    if (awayMs > 60_000) {
-      const r = G.computeOffline(state, awayMs)
-      state.gold = state.gold.add(r.gold)
-      offline = { seconds: r.seconds, gold: r.gold, capped: r.capped }
-    }
-    set({ s: state, loaded: true, hasSave, offline, rev: get().rev + 1 })
+    const { state, lastSaved, hasSave } = await loadGame()
+    // ⚠️ 離線結算刻意**不在這裡**做:玩家可能在標題畫面停很久(切走、放著)。
+    // 在讀檔當下結清的話,那段時間會兩頭落空——迴圈還沒跑所以沒有線上推進,
+    // 離線又只算到開頁那一刻;而且「按開始」與「重新整理」會拿到不一樣的收益。
+    awayFrom = lastSaved
+    set({ s: state, loaded: true, hasSave, rev: get().rev + 1 })
   },
 
-  // ⚠️ 迴圈刻意不在 init 啟動:玩家還停在標題畫面時,小兵不該已經在推層、每 10 秒覆蓋存檔
+  // ⚠️ 迴圈刻意不在 init 啟動:玩家還停在標題畫面時,小兵不該已經在推層、每 10 秒覆蓋存檔。
+  // 離線結算也在這一刻才結清,截止點是「按下開始」而不是「頁面載入」
   enterGame() {
+    const awayMs = awayFrom === null ? 0 : Date.now() - awayFrom
+    awayFrom = null
+    if (awayMs > 60_000) {
+      const s = get().s
+      const r = G.computeOffline(s, awayMs)
+      s.gold = s.gold.add(r.gold)
+      set({ s, offline: { seconds: r.seconds, gold: r.gold, capped: r.capped }, rev: get().rev + 1 })
+    }
     startLoop()
   },
 

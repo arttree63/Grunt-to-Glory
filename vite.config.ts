@@ -18,8 +18,10 @@ function nonBlockingCss(): Plugin {
       handler(html) {
         return html.replace(
           /<link rel="stylesheet"([^>]*)>/g,
+          // onerror 一定要有:失敗時 rel 會停在 preload,沒有旗標的話 TitleScreen 分不出
+          // 「還在載」與「已經掛了」,玩家會永遠等不到開始鍵(見 TitleScreen 的 cssReady)
           (tag, attrs) =>
-            `<link rel="preload" as="style" data-app-css${attrs} onload="this.onload=null;this.rel='stylesheet'"><noscript>${tag}</noscript>`,
+            `<link rel="preload" as="style" data-app-css${attrs} onload="this.onload=null;this.rel='stylesheet'" onerror="this.onerror=null;this.dataset.cssFailed='1'"><noscript>${tag}</noscript>`,
         )
       },
     },
