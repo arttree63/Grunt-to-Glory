@@ -118,6 +118,8 @@ export type EventKind = 'chest' | 'goblin'
 export type BossKind = 'shell' | 'channel' | 'totem'
 /** 戰術修正(在線三選一,只對下一次挑戰生效;離線無修正) */
 export type TacticId = 'delay' | 'keepSigils' | 'mercFirst'
+export type TrackId = 'arms' | 'body' | 'agility' | 'magic' | 'faith'
+
 export type TrainingId = 'heavy' | 'rapid' | 'morale'
 /** 留存事件:不限時,保留在「旅途紀錄」等玩家回來處理,不會因掛機錯過 */
 export type EncounterId =
@@ -250,6 +252,15 @@ export interface GameState {
   jobId: JobId
   /** 等級里程碑選擇的訓練方向。本輪保留、轉生後重新選。 */
   training: TrainingId[]
+
+  // ── 操練 = 等級(v4.1 § 3)──
+  /**
+   * 五科操練的點數。**總和 + 1 就是總等級**(`lv` 是這個總和的快取,兩者恆等)。
+   * 玩家自由分配,可以全押一科。
+   */
+  tracks: Record<TrackId, number>
+  /** 主修:主畫面的投入條會把點數投進這一科 */
+  trackFocus: TrackId
 
   // 關卡
   floor: number
@@ -673,6 +684,7 @@ export interface GameEvent {
     | 'windboots'
     | 'hourglass'
     | 'reload'
+    | 'dodge'
     | 'lostbanner'
     | 'ironwall'
   /** skill 事件(裁決餘燼):damage 中有多少轉入燃燒(七成立即、這一份慢燒) */

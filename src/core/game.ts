@@ -74,6 +74,7 @@ import type {
   TacticId,
   TechId,
   Techs,
+  TrackId,
   TrainingId,
 } from './types'
 
@@ -89,6 +90,8 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     gold: D(techStartGold(techs)),
     jobId: 'rookie',
     training: [],
+    tracks: { arms: 0, body: 0, agility: 0, magic: 0, faith: 0 },
+    trackFocus: 'arms',
     floor: 1,
     highestFloor: 1,
     killsInFloor: 0,
@@ -230,7 +233,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 28
+export const SAVE_VERSION = 29
 
 // ---------- 數值查詢 ----------
 
@@ -239,6 +242,51 @@ export function goldMult(s: GameState): number {
   return (
     (1 + equipBonuses(s.equipped).gold + (JOBS[s.jobId].bonus.gold ?? 0)) * techGoldMult(s.techs)
   )
+}
+
+/** 五科操練的總點數。**總等級 = 這個 + 1**(lv 是它的快取,兩者恆等) */
+/** 五科操練。順序 = UI 呈現順序(武藝→體能→身法→魔法→信仰) */
+export const TRACKS: TrackId[] = ['arms', 'body', 'agility', 'magic', 'faith']
+
+export const TRACK_NAME: Record<TrackId, string> = {
+  arms: '武藝',
+  body: '體能',
+  agility: '身法',
+  magic: '魔法',
+  faith: '信仰',
+}
+
+export function trackTotal(s: GameState): number {
+  return TRACKS.reduce((n, t) => n + s.tracks[t], 0)
+}
+
+/** 某一科的佔比 0~1。沒點過任何一科時視為平均分配(避免開局除以零與極端值) */
+export function trackShare(s: GameState, t: TrackId): number {
+  const total = trackTotal(s)
+  return total <= 0 ? 0.2 : s.tracks[t] / total
+}
+
+/**
+ * 分配加成:有界乘區(見 balance.TRACK_MULT_BASE 的註解——分配不准動指數)。
+ * 平均分配 = ×1.0、全押一科 = ×2.6、完全不點 = ×0.6。
+ */
+export function trackMult(s: GameState, t: TrackId): number {
+  return B.TRACK_MULT_BASE + B.TRACK_MULT_SPAN * trackShare(s, t)
+}
+
+/** 武藝次屬性:防禦力,直接減少場上威脅的傷害 */
+export function defenseCut(s: GameState): number {
+  return B.ARMS_DEFENSE_MAX * trackShare(s, 'arms')
+}
+
+/** 身法次屬性:迴避率,整下閃掉場上威脅的一次出手 */
+export function dodgeRate(s: GameState): number {
+  return B.AGILITY_DODGE_MAX * trackShare(s, 'agility')
+}
+
+/** 體能次屬性:被動回血,每秒回復耐久上限的一定比例 */
+export function enduranceRegen(s: GameState): number {
+  return B.BODY_REGEN_MAX * trackShare(s, 'body')
 }
 
 export function critRate(s: GameState): number {
@@ -250,7 +298,10 @@ export function critRate(s: GameState): number {
     const uptime = b.permanent ? ((sk.duration ?? 0) / sk.cd) * B.WALL_PERMANENT_BONUS : 1
     buffCrit += (sk.critAdd ?? 0) * uptime
   }
-  return B.CRIT_RATE + equipBonuses(s.equipped).crit + (JOBS[s.jobId].bonus.crit ?? 0) + buffCrit
+  // 身法主屬性:爆擊率**全域生效**,不分傷害來源(近戰/魔法/點擊都吃)——
+  // 這是身法可以跟任何科目組合出玩法的關鍵(v4.1 § 3)
+  const agility = B.AGILITY_CRIT_MAX * trackShare(s, 'agility')
+  return B.CRIT_RATE + agility + equipBonuses(s.equipped).crit + (JOBS[s.jobId].bonus.crit ?? 0) + buffCrit
 }
 
 /** 本職業的既有技能進化(二轉才有);沒有就是 null */
@@ -332,7 +383,9 @@ export function currentDPS(s: GameState): Decimal {
     morale: s.morale,
     moraleBoosted: inCheckWindow(s),
     critMult: critMultiplier(critRate(s), critDamageBonus(s)),
-    buffMult: buffMult(s) * comboMult(s) * chargeMult(s) * valiantMult(s) * lastDitchMult(s),
+    // 武藝主屬性:攻擊力(v4.1 § 3)。有界乘區,不動指數
+    buffMult:
+      buffMult(s) * comboMult(s) * chargeMult(s) * valiantMult(s) * lastDitchMult(s) * trackMult(s, 'arms'),
   })
     .mul(equipPower(s.equipped)) // 每件裝備獨立乘區
     .mul(s.isBoss ? 1 + bonus.bossDmg : 1)
@@ -784,7 +837,7 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
   if (s.descentCooldown > 0) s.descentCooldown = Math.max(0, s.descentCooldown - dt)
   releaseTraining(s, dt)
   s.destinyGapSec += dt
-  tickThreat(s, dt, raw)
+  tickThreat(s, dt, raw, rng)
   if (s.bossFailed && s.bossRetryFloor !== null && raw.some((e) => e.type === 'bossFail')) {
     // 這個 tick 已經打輸退層了,後面的機制不要再跑在新的樓層上
     return mergeKills(raw)
@@ -1158,7 +1211,8 @@ function failFloor(s: GameState, raw: GameEvent[], reason: 'timeout' | 'enduranc
  * 現在吃玩家 DPS × 秒數;批次 3(操練)會改成吃「體能」點數,消費端不必動。
  */
 export function enduranceMax(s: GameState): Decimal {
-  return currentDPS(s).mul(B.ENDURANCE_SECONDS)
+  // ⚠️ 基準刻意用「除掉武藝乘區」的功力:不然練攻擊的人會連帶變肉,體能就沒有存在意義
+  return currentDPS(s).div(trackMult(s, 'arms')).mul(trackMult(s, 'body')).mul(B.ENDURANCE_SECONDS)
 }
 
 /** 進新樓層 = 滿血進場(v4.1 § 1)。耐久不跨層記帳 */
@@ -1176,14 +1230,25 @@ export function threatPerSec(s: GameState): Decimal {
  * 場上威脅出手:每 THREAT_INTERVAL 秒砍一下耐久。
  * 切成一下一下而不是連續扣,是為了看得到血在掉、也留得住預告的位置。
  */
-function tickThreat(s: GameState, dt: number, raw: GameEvent[]) {
+function tickThreat(s: GameState, dt: number, raw: GameEvent[], rng: Rng) {
+  // 體能次屬性:被動回血。先回再挨打,不然滿血時的回復完全看不到
+  const regen = enduranceRegen(s)
+  if (regen > 0 && s.endurance.gt(0)) {
+    s.endurance = Decimal.min(enduranceMax(s), s.endurance.add(enduranceMax(s).mul(regen * dt)))
+  }
   if (s.enemyHp.lte(0)) return
   s.threatTimer += dt
   // while 不是 if:單次 tick 最長 500ms,但測試與分頁凍結補算會一次餵好幾秒進來,
   // 用 if 的話那幾秒只會挨一下,生存檢定在長 tick 下形同虛設
   while (s.threatTimer >= B.THREAT_INTERVAL) {
     s.threatTimer -= B.THREAT_INTERVAL
-    const dmg = threatPerSec(s).mul(B.THREAT_INTERVAL)
+    // 身法次屬性:迴避——整下閃掉,不是減傷(閃掉才有「賭一把」的手感)
+    if (rng() < dodgeRate(s)) {
+      raw.push({ type: 'threatHit', damage: D(0), via: 'dodge' })
+      continue
+    }
+    // 武藝次屬性:防禦力
+    const dmg = threatPerSec(s).mul(B.THREAT_INTERVAL).mul(1 - defenseCut(s))
     s.endurance = s.endurance.sub(dmg)
     raw.push({ type: 'threatHit', damage: dmg })
     if (s.endurance.lte(0)) {
@@ -2212,6 +2277,8 @@ export function buyLevels(s: GameState, count = 1): number {
     const cost = upCost(s.lv)
     if (s.gold.lt(cost)) break
     s.gold = s.gold.sub(cost)
+    // 操練 = 等級(v4.1 § 3):買一級就是投一點進主修那一科,lv 只是總點數的快取
+    s.tracks[s.trackFocus]++
     s.lv++
     bought++
   }

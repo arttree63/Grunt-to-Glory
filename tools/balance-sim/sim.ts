@@ -26,6 +26,7 @@ import {
   pickDestinyNode,
   resolveEncounter,
   retryBoss,
+  trackShare,
   skillReady,
   pityShortLeft,
   prestige,
@@ -197,6 +198,10 @@ function run(start: GameState, active = false, capMinutes = 180, rng = makeRng(S
         if (j.requiresDestiny) promote(s, j.id)
       }
 
+      // 操練分配政策(v4.1 § 3):代理當「有常識的玩家」——先把體能墊到 25%,其餘全押武藝。
+      // ⚠️ 不設政策的話代理會全押武藝(預設主修),變成打得死但站不住的玻璃大砲,
+      // 量到的曲線不能代表一般玩家。要量極端流派請另跑一組。
+      s.trackFocus = trackShare(s, 'body') < 0.25 ? 'body' : 'arms'
       const before = s.lv
       buyMaxLevels(s)
       if (s.lv !== before) {

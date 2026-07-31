@@ -1,6 +1,6 @@
 import { upCost } from '../core/formulas'
 import { fmt } from '../core/format'
-import { goldPerSec } from '../core/game'
+import { goldPerSec, TRACK_NAME } from '../core/game'
 import { useGame } from '../store/gameStore'
 import { useGameState } from './useGameState'
 import { useHold } from './useHold'
@@ -28,10 +28,10 @@ export default function LevelBar() {
       <button
         className={`lvl-main${can ? ' can' : ''}`}
         {...(can ? hold : {})}
-        aria-label={`升級到 Lv.${s.lv + 1}`}
+        aria-label={`投一點進${TRACK_NAME[s.trackFocus]}`}
       >
         <span className="txt">
-          升級 <b>Lv.{s.lv}</b> → {s.lv + 1}
+          操練 <b>{TRACK_NAME[s.trackFocus]}</b> {s.tracks[s.trackFocus]} → {s.tracks[s.trackFocus] + 1}
         </span>
         <span className="cost">
           {fmt(cost)} 金

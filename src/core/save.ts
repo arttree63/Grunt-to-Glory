@@ -3,12 +3,15 @@ import { COMBAT_NUMBER_SCALE } from './balance'
 import { createInitialState, refillEndurance, SAVE_VERSION, spawnEnemy } from './game'
 import { emptyTechs } from './techs'
 import { reconcileDestiny } from './destiny'
-import type { GameState } from './types'
+import type { TrackId, GameState } from './types'
 
 /** 存檔格式:Decimal 一律轉字串 */
 export interface SaveData {
   version: number
   lv: number
+  /** 五科操練點數(v4.1)。總和 + 1 = lv */
+  tracks?: Record<TrackId, number>
+  trackFocus?: TrackId
   gold: string
   jobId: GameState['jobId']
   training?: GameState['training']
@@ -87,6 +90,8 @@ export function serialize(s: GameState): SaveData {
   return {
     version: SAVE_VERSION,
     lv: s.lv,
+    tracks: { ...s.tracks },
+    trackFocus: s.trackFocus,
     gold: s.gold.toString(),
     jobId: s.jobId,
     training: s.training,
@@ -360,6 +365,19 @@ function migrate(raw: SaveData): SaveData {
     d.training = d.training ?? []
     d.version = 28
   }
+  // v28 → v29:操練 = 等級(v4.1 § 3)。舊存檔的等級**平均分配**到五科——
+  // ⚠️ 不是全押武藝:平均分配的分配乘區恰好是 ×1.0(見 balance.TRACK_MULT_BASE),
+  // 老玩家遷移過來曲線一格都不動;全押武藝會讓他們的傷害瞬間變 2.6 倍。
+  if (d.version < 29) {
+    if (!d.tracks) {
+      const pts = Math.max(0, (d.lv ?? 1) - 1)
+      const each = Math.floor(pts / 5)
+      d.tracks = { arms: each, body: each, agility: each, magic: each, faith: each }
+      d.tracks.arms += pts - each * 5 // 除不盡的餘數給武藝
+    }
+    d.trackFocus = d.trackFocus ?? 'arms'
+    d.version = 29
+  }
   return d
 }
 
@@ -370,6 +388,8 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
   const out: GameState = {
     ...base,
     lv: d.lv ?? 1,
+    tracks: { ...base.tracks, ...(d.tracks ?? {}) },
+    trackFocus: d.trackFocus ?? 'arms',
     gold: D(d.gold ?? 0),
     jobId: d.jobId ?? 'rookie',
     training: d.training ?? [],

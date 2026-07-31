@@ -48,6 +48,9 @@ import {
   availableSkills,
   enduranceMax,
   threatPerSec,
+  trackTotal,
+  trackMult,
+  TRACKS,
   chargeMult,
   chooseDestiny,
   chooseTraining,
@@ -194,6 +197,59 @@ describe('戰鬥循環', () => {
     expect(kill?.count).toBeGreaterThan(1) // 事件已合併,演出層不會被灌爆
   })
 
+  it('操練 = 等級:總點數 + 1 恆等於 lv,買一級就是投一點進主修(v4.1 § 3)', () => {
+    const s = createInitialState()
+    s.gold = D(1e9)
+    s.trackFocus = 'body'
+    buyLevels(s, 10)
+    expect(s.tracks.body).toBe(10)
+    expect(trackTotal(s) + 1).toBe(s.lv)
+
+    s.trackFocus = 'agility'
+    buyLevels(s, 5)
+    expect(s.tracks.agility).toBe(5)
+    expect(trackTotal(s) + 1).toBe(s.lv)
+  })
+
+  it('分配是有界乘區不是指數:平均分配 = ×1.0,全押一科 = ×2.6(v4.1 § 3)', () => {
+    const even = createInitialState()
+    for (const t of TRACKS) even.tracks[t] = 20
+    expect(trackMult(even, 'arms')).toBeCloseTo(1, 5)
+
+    const allIn = createInitialState()
+    allIn.tracks.arms = 100
+    expect(trackMult(allIn, 'arms')).toBeCloseTo(B.TRACK_MULT_BASE + B.TRACK_MULT_SPAN, 5)
+    expect(trackMult(allIn, 'body')).toBeCloseTo(B.TRACK_MULT_BASE, 5)
+  })
+
+  it('練攻擊不會連帶變肉:耐久上限只吃體能,不吃武藝(v4.1 § 3)', () => {
+    const arms = createInitialState()
+    arms.lv = 101
+    arms.tracks.arms = 100
+    const body = createInitialState()
+    body.lv = 101
+    body.tracks.body = 100
+
+    expect(currentDPS(arms).gt(currentDPS(body))).toBe(true) // 武藝的人打得痛
+    expect(enduranceMax(body).gt(enduranceMax(arms))).toBe(true) // 體能的人撐得久
+  })
+
+  it('轉生 = 重練:操練點數歸零,傳家/圖鑑/勳章保留(v4.1 § 6)', () => {
+    const s = createInitialState()
+    s.floor = 30
+    s.highestFloor = 30
+    s.lv = 51
+    s.tracks.arms = 50
+    const medalsBefore = s.medals + medalsFromFloor(s.highestFloor)
+
+    const next = prestige(s)!
+    expect(next).not.toBeNull()
+    expect(trackTotal(next)).toBe(0) // 點數全收回
+    expect(next.lv).toBe(1)
+    expect(next.codex.length).toBe(s.codex.length) // 圖鑑保留(轉生只收回操練點)
+    expect(next.medals).toBe(medalsBefore) // 勳章保留
+  })
+
   it('遠征耐久:每層滿血進場,不跨層記帳(v4.1 § 2)', () => {
     const s = createInitialState()
     s.floor = 5
@@ -225,7 +281,8 @@ describe('戰鬥循環', () => {
     // 只剩一口氣 → 場上威脅的下一擊就會把人打下去
     s.endurance = D(1)
     s.threatTimer = B.THREAT_INTERVAL
-    const events = applyTick(s, 100)
+    // 固定 rng:身法的「迴避」是擲骰,不鎖的話這條測試會 6% 機率閃掉那一擊而假失敗
+    const events = applyTick(s, 100, () => 0.99)
 
     const fail = events.find((e) => e.type === 'bossFail')
     expect(fail?.reason).toBe('endurance')

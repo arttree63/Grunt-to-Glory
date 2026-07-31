@@ -42,6 +42,8 @@ interface Store {
   tick: (dtMs: number) => void
   click: () => void
   buy: (n: number | 'max') => void
+  /** 主修:投入條會把點數投進這一科(v4.1 § 3) */
+  setTrackFocus: (t: import('../core/types').TrackId) => void
   chooseTraining: (id: TrainingId) => void
   promote: (job: JobId) => void
   chooseDestiny: (path: DestinyPathId) => void
@@ -159,6 +161,11 @@ export const useGame = create<Store>((set, get) => ({
 
   click() {
     G.click(get().s).forEach(gameEvents.emit)
+    bump(set, get)
+  },
+
+  setTrackFocus(t) {
+    get().s.trackFocus = t
     bump(set, get)
   },
 

@@ -31,6 +31,7 @@ import { useGameState } from '../useGameState'
 import { useHold } from '../useHold'
 import { BadgeIcon, GameIcon } from '../GameIcon'
 import TrainingCard from '../TrainingChoice'
+import TrackPanel from '../TrackPanel'
 
 const WEAPON_ART = {
   wood: woodUrl,
@@ -54,7 +55,7 @@ function PromotionSection() {
       <>
         <h3 style={{ marginTop: 16 }}>
           轉 職
-          {canPromote.length === 0 && `(Lv.${JOBS.infantry.reqLv} 解鎖,還差 ${JOBS.infantry.reqLv - s.lv} 級)`}
+          {canPromote.length === 0 && `(總等級 ${JOBS.infantry.reqLv} 解鎖,還差 ${JOBS.infantry.reqLv - s.lv} 點操練)`}
         </h3>
         {nextTierJobs(s.jobId).map((j) => (
           <div className="card" key={j.id}>
@@ -117,7 +118,7 @@ function PromotionSection() {
                   轉職
                 </button>
               ) : (
-                <small className="affix">Lv.{j.reqLv}(還差 {j.reqLv - s.lv} 級)</small>
+                <small className="affix">總等級 {j.reqLv}(還差 {j.reqLv - s.lv} 點操練)</small>
               )}
             </div>
             {j.requiresDestiny && (
@@ -138,7 +139,7 @@ function PromotionSection() {
                 ▲ {j.evolve.name}:{j.evolve.desc}
               </div>
             )}
-            {stage === 'named' && <div className="affix">接近 Lv.{j.reqLv} 時會顯示完整能力</div>}
+            {stage === 'named' && <div className="affix">接近總等級 {j.reqLv} 時會顯示完整能力</div>}
           </div>
         ))}
     </>
@@ -177,7 +178,7 @@ function AbilitySections() {
   return (
     <>
       <Section title="主動技能" count={skills.length}>
-        {skills.length === 0 && <div className="affix" style={{ paddingLeft: 8 }}>Lv.20 轉職後獲得第一個技能</div>}
+        {skills.length === 0 && <div className="affix" style={{ paddingLeft: 8 }}>總等級 20 轉職後獲得第一個技能</div>}
         {skills.map((id) => {
           const evo = skillEvolve(s)
           return (
@@ -324,7 +325,7 @@ export default function HeroPanel() {
             <span className="role-chip">{roleLabel}</span>
           </div>
           <div className="hero-level-line">
-            <strong>Lv.{s.lv}</strong>
+            <strong>總等級 {s.lv}</strong>
             <span>下一級 {fmt(cost1)} 金</span>
           </div>
           <span>{job.desc}</span>
@@ -333,6 +334,9 @@ export default function HeroPanel() {
       {/* ⚠️ 可轉職時置頂:曾經被四區能力+傭兵區推到兩屏之下,
           玩家到 Lv.20 開英雄頁看不到轉職,回報成「20 級不能轉職」 */}
       {canPromoteNow && <PromotionSection />}
+
+      {/* 操練 = 等級(v4.1 § 3):五科分配是這一代最核心的決定,排在所有數值之前 */}
+      <TrackPanel />
 
       {/* 操練令是本輪構築的一部分,排在原始數值之前;版位固定不隨待辦數移動 */}
       <TrainingCard />

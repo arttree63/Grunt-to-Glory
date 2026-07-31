@@ -33,6 +33,25 @@ export const BOSS_TIME = 30 // 秒
 export const BOSS_GOLD_MULT = 3 // Boss 金幣 = 該層小怪 ×3(等同清一層,模擬已含)
 export const BOSS_MATERIALS = 3
 
+// ── 操練 = 等級(v4.1 § 3)──
+/**
+ * 分配加成 = TRACK_MULT_BASE + TRACK_MULT_SPAN × 該科佔比。
+ * ⚠️ 刻意做成**有界乘區**而不是動指數:這款的成長是指數的,若讓分配去改指數,
+ * 全押一科與平均分配在第 300 層會差好幾百萬倍,任何平衡都不可能成立。
+ * 現在:平均分配(0.2)= ×1.0(= 改版前的曲線,舊存檔遷移過來不變強也不變弱)、
+ * 全押一科 = ×2.6、完全不點 = ×0.6。選擇有感,但不會炸掉曲線。
+ */
+export const TRACK_MULT_BASE = 0.6
+export const TRACK_MULT_SPAN = 2.0
+/** 身法主屬性:全押時額外爆擊率(全域生效,不分傷害來源) */
+export const AGILITY_CRIT_MAX = 0.35
+/** 身法次屬性:全押時的迴避率(閃掉場上威脅的一次出手) */
+export const AGILITY_DODGE_MAX = 0.3
+/** 武藝次屬性:全押時的防禦力(減少場上威脅傷害) */
+export const ARMS_DEFENSE_MAX = 0.35
+/** 體能次屬性:全押時每秒回復耐久上限的比例 */
+export const BODY_REGEN_MAX = 0.02
+
 // ── 遠征耐久(生存檢定,v4.1)──
 /**
  * 耐久上限 = 玩家 DPS × 這個秒數。
