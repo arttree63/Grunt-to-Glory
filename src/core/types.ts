@@ -377,6 +377,16 @@ export interface GameState {
    * 也讓「暫停時不該推進」自然成立(tick 停了倒數就停)
    */
   descentCooldown: number
+
+  // ── 殘影(鏡影刺客)。單場暫態,進存檔只為了除錯方便 ──
+  /** 距下一個殘影還差幾次普攻 */
+  afterimageAcc: number
+  /** 殘影還要重演幾次普攻 */
+  afterimageLeft: number
+  /** 印記 50% 效率的半格計數 */
+  afterimageSigilAcc: number
+  /** 殘影製造的背刺窗口:主角下一次普攻無視圖騰 */
+  backstabReady: boolean
   /** 已解鎖的命運節點(本輪) */
   destinyNodes: DestinyNodeId[]
   /** 未使用的命運點 */
@@ -574,6 +584,7 @@ export interface GameEvent {
     | 'achievement'
     | 'zoneEnter'
     | 'destinyDescend'
+    | 'afterimageSpawn'
     | 'sigilGain'
     | 'resonanceGain'
     | 'freezeCapped'
@@ -616,6 +627,7 @@ export interface GameEvent {
     | 'edict'
     | 'rogue'
     | 'battle'
+    | 'afterimage'
     | 'windboots'
     | 'hourglass'
     | 'reload'

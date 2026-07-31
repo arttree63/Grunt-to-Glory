@@ -484,6 +484,48 @@ describe('命運樹', () => {
     expect(pickDestinyNode(s, 'artisan_1b')).toBe(false) // 上一層的選項已關閉
   })
 
+  it('殘影:每 5 次普攻生成、重演 2 次、破盾 2 點、印記半速、背刺窗口用完即清', () => {
+    const s = createInitialState()
+    s.destinyNodes = ['seed_afterimage']
+    s.jobId = 'scout'
+    const rng = () => 0.5
+    const swing = () => {
+      s.attackAcc = 10 // 保證這一 tick 一定出手
+      return applyTick(s, 100, rng)
+    }
+
+    // 前 4 次不該有殘影
+    for (let i = 0; i < 4; i++) {
+      const ev = swing()
+      expect(ev.some((e) => e.type === 'afterimageSpawn')).toBe(false)
+      expect(ev.some((e) => e.source === 'clone')).toBe(false)
+    }
+    // 第 5 次生成
+    expect(swing().some((e) => e.type === 'afterimageSpawn')).toBe(true)
+    expect(s.afterimageLeft).toBe(B.AFTERIMAGE_REPLAYS)
+
+    // 接下來 2 次會有殘影攻擊,第 3 次沒有
+    expect(swing().some((e) => e.type === 'attack' && e.source === 'clone')).toBe(true)
+    expect(swing().some((e) => e.type === 'attack' && e.source === 'clone')).toBe(true)
+    expect(s.afterimageLeft).toBe(0)
+
+    // 沒有種子就完全不會有殘影(不影響其他構築)
+    const plain = createInitialState()
+    plain.jobId = 'scout'
+    for (let i = 0; i < 12; i++) {
+      plain.attackAcc = 10
+      const ev = applyTick(plain, 100, rng)
+      expect(ev.some((e) => e.type === 'afterimageSpawn')).toBe(false)
+    }
+  })
+
+  it('殘影淨增傷落在企劃要求的 15~20%', () => {
+    // ⚠️ 算式:每 AFTERIMAGE_EVERY 次普攻中有 AFTERIMAGE_REPLAYS 次帶殘影
+    const net = (B.AFTERIMAGE_REPLAYS / B.AFTERIMAGE_EVERY) * B.AFTERIMAGE_DAMAGE_SHARE
+    expect(net).toBeGreaterThanOrEqual(0.15)
+    expect(net).toBeLessThanOrEqual(0.2)
+  })
+
   it('命運降臨:種子固定第 10 層、之後走時間閘門、會定錨流派', () => {
     const s = createInitialState()
     const rng = () => 0.5

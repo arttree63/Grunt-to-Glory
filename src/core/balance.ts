@@ -584,3 +584,23 @@ export const DESTINY_BUCKET_SAME = 0.5
 export const DESTINY_BUCKET_CROSS = 0.3
 /** 每輪最多幾次「完全意外」,超過退回跨流派 */
 export const DESTINY_WILD_PER_RUN = 2
+
+// ── 殘影(命運種子「殘留之影」的斥候詮釋:鏡影刺客)──
+/** 每幾次普攻生成一個殘影。玩家要能「數」得出來,所以用次數不用秒數 */
+export const AFTERIMAGE_EVERY = 5
+/** 殘影重演接下來幾次普攻 */
+export const AFTERIMAGE_REPLAYS = 2
+/**
+ * 殘影傷害佔原攻擊的比例。
+ * ⚠️ 算式:穩定狀態每 AFTERIMAGE_EVERY 次普攻中有 AFTERIMAGE_REPLAYS 次帶殘影,
+ * 淨增傷 = (2/5) × 0.4 = **16%**,落在企劃要求的 15~20%。
+ * 企劃原本寫 20%,那只有 8% —— 節奏(5 次生成、重演 2 次)是操作感核心不能動,
+ * 所以調的是這個比例。
+ */
+export const AFTERIMAGE_DAMAGE_SHARE = 0.4
+/**
+ * 殘影的機制累積效率(相對本體)。破盾直接用既有的 SHIELD_ECHO_VALUE(4 的一半),
+ * 印記則是每 AFTERIMAGE_SIGIL_PER 次殘影攻擊給一枚。
+ * 限制效率是為了避免「同時複製所有機制」造成失控。
+ */
+export const AFTERIMAGE_SIGIL_PER = 2

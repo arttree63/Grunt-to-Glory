@@ -139,6 +139,10 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     destinyLog: [],
     destinyLocked: false,
     descentCooldown: 0,
+    afterimageAcc: 0,
+    afterimageLeft: 0,
+    afterimageSigilAcc: 0,
+    backstabReady: false,
     destinyEarned: 0,
     autoCast: false, // 預設關:掛機玩家的基準不因新系統改變
     skillCd: {},
@@ -812,7 +816,14 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
     return mergeKills(raw) // 事件期間不推進一般戰鬥
   }
 
-  dealDamage(s, dmg, raw, rng, { source: swingSource === 'hero' ? 'hero' : swingSource })
+  // 背刺窗口:上一次殘影攻擊留下的,用掉就清。本體這一擊無視圖騰
+  const backstab = s.backstabReady
+  if (backstab) s.backstabReady = false
+  dealDamage(s, dmg, raw, rng, {
+    source: swingSource === 'hero' ? 'hero' : swingSource,
+    pierceTotem: backstab || undefined,
+  })
+  tickAfterimage(s, dmg, raw, rng)
 
   // 逾時判定放在傷害之後,讓這一擊有機會先擊破
   checkBossTimeout(s, raw, rng)
@@ -1301,6 +1312,51 @@ export function pickDestinyNode(s: GameState, id: DestinyNodeId): boolean {
 }
 
 /** 里程碑發點。用當輪層數,每輪重新來過 */
+/**
+ * 殘影(命運種子「殘留之影」的斥候詮釋:鏡影刺客)。
+ *
+ * 規則:每 `AFTERIMAGE_EVERY` 次普攻生成一個殘影,它重演接下來
+ * `AFTERIMAGE_REPLAYS` 次普攻,每次造成原攻擊的 `AFTERIMAGE_DAMAGE_SHARE`。
+ *
+ * ⚠️ 三件事不能改:
+ * 1. **必須在觸發的同一 tick 立即結算**,不可做成延遲佇列——
+ *    `dealDamage` 上方的註解明令禁止 deferred damage buffer,
+ *    機制延遲曾造成「倒數前明明打夠了卻判失敗」
+ * 2. 殘影的價值主要在「多一個行動者」(破盾、印記、背刺窗口),不是傷害數字。
+ *    純重演在單目標引擎下只等於多打一份,`keywords.ts` 已把 afterimage 標為 no_distinct_feel
+ * 3. 機制累積效率是本體的一半(破盾走既有的 SHIELD_ECHO_VALUE、印記每 2 次給 1),
+ *    避免「同時複製所有機制」失控
+ */
+function tickAfterimage(s: GameState, dmg: Decimal, raw: GameEvent[], rng: Rng): void {
+  if (!hasNode(s, 'seed_afterimage')) return
+
+  // 先結算既有的殘影(它重演的是「這一次」普攻)
+  if (s.afterimageLeft > 0) {
+    s.afterimageLeft--
+    const share = dmg.mul(B.AFTERIMAGE_DAMAGE_SHARE)
+    raw.push({ type: 'attack', damage: share, source: 'clone' })
+    // 獨立行動者但是弱化打擊:破盾值用軍旗回音的 2 點,不是本體的 4 點
+    addShieldValue(s, B.SHIELD_ECHO_VALUE, 'clone', raw)
+    s.afterimageSigilAcc++
+    if (s.afterimageSigilAcc >= B.AFTERIMAGE_SIGIL_PER) {
+      s.afterimageSigilAcc = 0
+      gainSigil(s, 1, raw, 'afterimage')
+    }
+    // 留下背刺窗口給主角的下一擊
+    s.backstabReady = true
+    if (s.event) s.event.hp = s.event.hp.sub(share)
+    else dealDamage(s, share, raw, rng, { source: 'clone' })
+  }
+
+  // 再累積下一個殘影
+  s.afterimageAcc++
+  if (s.afterimageAcc >= B.AFTERIMAGE_EVERY) {
+    s.afterimageAcc = 0
+    s.afterimageLeft = B.AFTERIMAGE_REPLAYS
+    raw.push({ type: 'afterimageSpawn' })
+  }
+}
+
 /**
  * 命運降臨。Boss 擊破後嘗試給一個命運節點。
  *
