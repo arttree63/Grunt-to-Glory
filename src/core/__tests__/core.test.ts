@@ -297,21 +297,32 @@ describe('戰鬥循環', () => {
     expect(out.mp).toBe(42)
   })
 
-  it('自動施放:貴的招優先,便宜的招不會把貴招餓死(v4.1 § 5)', () => {
+  it('自動施放:便宜的招要留貴招的份,不能把它餓死(v4.1 § 5)', () => {
+    // ⚠️ 一定要用**二轉**職業:一轉只有一個非頂點技能,根本沒有餓死的可能,
+    // 用 infantry 寫的話這條測試會整段空轉(if 永遠不成立)
     const s = createInitialState()
     s.lv = 100
     promote(s, 'infantry')
+    promote(s, 'paladin')
     s.highestFloor = B.AWAKEN_FLOOR
     s.autoCast = true
+    s.floor = 5
+    spawnEnemy(s)
+
     const skills = availableSkills(s).filter((id) => !isApexSkill(s, id))
-    if (skills.length >= 2) {
-      const dear = [...skills].sort((a, b) => mpCost(s, b) - mpCost(s, a))[0]
-      s.mp = mpCost(s, dear) // 剛好只夠最貴那一招
-      s.floor = 5
-      spawnEnemy(s)
-      applyTick(s, 100)
-      expect(s.skillCd[dear]).toBeGreaterThan(0) // 貴的那招真的放出去了
-    }
+    expect(skills.length).toBeGreaterThanOrEqual(2) // 前提:真的有兩招在搶同一個池子
+    const sorted = [...skills].sort((a, b) => mpCost(s, b) - mpCost(s, a))
+    const [dear, cheap] = sorted
+
+    // 輪替:同一招不會連續霸佔池子。放完 cheap 之後,下一次輪到 dear
+    s.mp = mpCost(s, cheap)
+    applyTick(s, 100)
+    expect(s.lastAutoCast).toBe(cheap)
+
+    s.mp = B.MP_MAX
+    s.skillCd = {}
+    applyTick(s, 100)
+    expect(s.lastAutoCast).toBe(dear) // 換人了,不是同一招連放
   })
 
   it('買第一點不可以讓任何一科變弱(佔比平滑的回歸鎖)', () => {
@@ -2710,6 +2721,9 @@ describe('裝備四層架構(基底 / 詞綴分類 / 傳說)', () => {
 
     // v4.1:前三格改吃 MP,推冷卻沒有意義(只剩 1.5 秒保底)→ 沙漏折算成 MP 還回來
     castSkill(s, 'shieldRush')
+    // ⚠️ 要把 MP 壓到「付不起」才驗得到折算:招已經付得起時不給,
+    // 正是舊版「沒在冷卻中就不推」那道護欄的 MP 版
+    s.mp = 10
     const mpAfterCast = s.mp
     s.sigils = 3
     const ev = castSkill(s, 'rally') // 湊滿一輪 → 沙漏推進 + 引爆回轉各推一段
@@ -3280,6 +3294,7 @@ describe('總攻 loop(v1.6:buff 併存 / 引爆回轉 / 戰意昂揚 / 乘勝推
     chooseDestiny(s, 'tactician')
     s.destinyNodes.push('tactician_1a')
     castSkill(s, 'shieldRush')
+    s.mp = 10 // 同上:付得起就不折算
     const mpBefore = s.mp
     s.sigils = 10
     const ev = castSkill(s, 'rally')

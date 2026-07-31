@@ -290,6 +290,8 @@ export interface GameState {
    * 與耐久同為單場暫態,不進存檔;讀檔補滿。
    */
   mp: number
+  /** 自動施放上一次放的是哪一招。用來輪替,避免同一招一直霸佔共用的 MP 池 */
+  lastAutoCast: SkillId | null
   /** 本層 Boss 已挑戰失敗過 → 退回前一層 farm */
   bossFailed: boolean
   /** 失敗的是哪一層的 Boss。玩家退回前一層 farm,按鈕或自動重試會回到這層 */

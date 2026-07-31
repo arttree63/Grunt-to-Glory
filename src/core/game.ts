@@ -103,6 +103,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     endurance: D(0), // 進樓層時由 refillEndurance 補滿(見 spawnEnemy)
     threatTimer: 0,
     mp: B.MP_MAX,
+    lastAutoCast: null,
     bossFailed: false,
     bossRetryFloor: null,
     bossKind: null,
@@ -1625,7 +1626,7 @@ function advanceCooldowns(s: GameState, seconds: number, events: GameEvent[]): v
     if (!isApexSkill(s, id)) {
       // 吃 MP 的招:推冷卻沒有意義(只有 1.5 秒),改成折算成 MP 還給玩家。
       // ⚠️ 整批只折算一次:每招各發一份的話,招越多產得越多,等於偷偷加強這些節點
-      if (!mpGranted && grantMp(s, seconds)) {
+      if (!mpGranted && grantMp(s, seconds, id)) {
         mpGranted = true
         events.push({ type: 'cooldownAdvance', skillId: id, seconds, via: 'reload' })
       }
@@ -1677,7 +1678,7 @@ function castEcho(s: GameState, skillDamage: Decimal, id: SkillId, events: GameE
     if (other === id) continue
     if (!isApexSkill(s, other)) {
       // MP 招的 CD 只有 1.5 秒,推它等於什麼都沒做 → 折算成 MP(整批一次,見 grantMp)
-      if (!echoMpGranted && grantMp(s, B.AFTERIMAGE_ECHO_CD_SEC)) {
+      if (!echoMpGranted && grantMp(s, B.AFTERIMAGE_ECHO_CD_SEC, other)) {
         echoMpGranted = true
         events.push({ type: 'cooldownAdvance', skillId: other, seconds: B.AFTERIMAGE_ECHO_CD_SEC, via: 'reload' })
       }
@@ -1901,11 +1902,17 @@ export function mpCost(s: GameState, id: SkillId): number {
  * 把「推進冷卻 N 秒」換算成 MP。倒轉沙漏 / 引爆回轉 / 追風者之靴這些效果原本都在推冷卻,
  * 但吃 MP 的招 CD 只剩 1.5 秒,推它等於什麼都沒做——效果要落在真正的限制上。
  */
-export function grantMp(s: GameState, seconds: number): boolean {
-  // ⚠️ 舊版推冷卻有兩道天然護欄:只推「真的在冷卻中」的招、收益上限是剩餘冷卻。
-  // 折算成 MP 時要把它們補回來,否則滿 MP 也照領 → 變成憑空產 MP 的引擎。
+export function grantMp(s: GameState, seconds: number, forSkill?: SkillId): boolean {
+  // ⚠️ 舊版推冷卻有兩道天然護欄:只推「真的在冷卻中」的招、**收益上限是剩餘冷卻**。
+  // 折算成 MP 時兩道都要補回來,否則滿 MP 也照領、殘 1.5 秒冷卻也能換一大包 MP,
+  // 變成憑空產 MP 的引擎。
   if (s.mp >= B.MP_MAX) return false
-  s.mp = Math.min(B.MP_MAX, s.mp + seconds * B.MP_REGEN_BASE)
+  const raw = seconds * B.MP_REGEN_BASE
+  // 上限:把這一招從「付不起」補到「剛好付得起」為止,不再多給
+  const cap = forSkill ? Math.max(0, mpCost(s, forSkill) - s.mp) : raw
+  const gain = Math.min(raw, cap)
+  if (gain <= 0) return false
+  s.mp = Math.min(B.MP_MAX, s.mp + gain)
   return true
 }
 
@@ -1923,8 +1930,11 @@ export function skillCooldown(s: GameState, id: SkillId): number {
 export function skillReady(s: GameState, id: SkillId): boolean {
   if (!availableSkills(s).includes(id)) return false
   if ((s.skillCd[id] ?? 0) > 0) return false
-  // 前三格吃 MP、頂點技能只吃 CD(v4.1 § 5)
-  return isApexSkill(s, id) || s.mp >= mpCost(s, id)
+  if (isApexSkill(s, id)) return true
+  // 前三格吃 MP(v4.1 § 5)。⚠️ 指揮形態的附加成本要一起算進門檻:
+  // 不算的話自動施放會在 MP 剛好等於成本時就放,附加成本被 clamp 成 0 → ×1.6 變純白送
+  const extra = s.commandReady ? mpCost(s, id) * (B.COMMANDER_CD - 1) : 0
+  return s.mp >= mpCost(s, id) + extra
 }
 
 /**
@@ -2002,7 +2012,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
       const advance = spentNow * B.RELOAD_PER_SIGIL
       if (!isApexSkill(s, other)) {
         // MP 招:推它只剩 1.5 秒的 CD 等於什麼都沒做,折算成 MP(整批只折算一次,見 grantMp)
-        if (!reloadMpGranted && grantMp(s, advance)) {
+        if (!reloadMpGranted && grantMp(s, advance, other)) {
           reloadMpGranted = true
           events.push({ type: 'cooldownAdvance', skillId: other, seconds: advance, via: 'reload' })
         }
@@ -2124,7 +2134,7 @@ function trackCastOrder(s: GameState, id: SkillId, events: GameEvent[]) {
       if (left <= 0) delete s.skillCd[longest]
       else s.skillCd[longest] = left
     } else {
-      grantMp(s, advance) // MP 招:推冷卻等於什麼都沒做,折算成 MP(見 grantMp)
+      grantMp(s, advance, longest) // MP 招:推冷卻等於什麼都沒做,折算成 MP(見 grantMp)
     }
     events.push({ type: 'cooldownAdvance', skillId: longest, seconds: advance, via: 'hourglass' })
   }
@@ -2139,14 +2149,31 @@ function trackCastOrder(s: GameState, id: SkillId, events: GameEvent[]) {
  */
 function tickAutoCast(s: GameState, raw: GameEvent[], rng: Rng = Math.random) {
   if (!s.autoCast || s.charging) return
-  // ⚠️ 貴的招要先放:MP 是共用池,照原順序跑的話便宜的招會一路把 MP 吃光,
-  // 貴的那招永遠等不到足夠的 MP —— 二轉的第一技能會變成完全不存在的內容
-  const order = [...availableSkills(s)].sort((a, b) => mpCost(s, b) - mpCost(s, a))
-  for (const id of order) {
+  // ⚠️ 餓死是**門檻問題**不是排序問題:tickAutoCast 每個 tick 都跑,便宜的招一到門檻
+  // 就把池子清空,MP 永遠爬不到貴招的成本 —— 光排序沒有用,便宜的招在**時間上**先就緒。
+  // 但「預留貴招的份」又會把便宜的招餓死(實測 bulwark 60 秒 0 次):
+  // 一個共用池養不起兩招同時,回復速度就是不夠。
+  // 所以自動施放採**輪替**:上次放過的那招要讓給別招。想把視窗疊起來(總攻)是手動玩家的決定,
+  // 自動施放是「政策」不是「手速」,它只負責不讓任何一招被永久卡死。
+  const apex = availableSkills(s).filter((id) => isApexSkill(s, id))
+  const normal = availableSkills(s).filter((id) => !isApexSkill(s, id))
+  const castable = normal.filter((id) => {
+    const sk = SKILLS[id]
+    return !(sk.consumesSigils && s.sigils < sigilCap(s)) && skillReady(s, id)
+  })
+  // 先挑「不是上一次那招」的,都輪過了才允許重複
+  const pick =
+    castable.find((id) => id !== s.lastAutoCast) ?? castable[0] ?? null
+  if (pick) {
+    s.lastAutoCast = pick
+    raw.push(...castSkill(s, pick, true, rng)) // auto=true:自動引爆拿不到完美獎勵
+  }
+  // 頂點技能不吃 MP,不參與輪替
+  for (const id of apex) {
     const sk = SKILLS[id]
     if (sk.consumesSigils && s.sigils < sigilCap(s)) continue
     if (!skillReady(s, id)) continue
-    raw.push(...castSkill(s, id, true, rng)) // auto=true:自動引爆拿不到完美獎勵
+    raw.push(...castSkill(s, id, true, rng))
   }
 }
 
