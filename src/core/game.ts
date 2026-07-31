@@ -442,8 +442,7 @@ export function goldPerSec(s: GameState): Decimal {
 
 /** 依現在的層數重建敵人(層數被外部改動、或讀檔後校正時呼叫) */
 export function spawnEnemy(s: GameState) {
-  // 每層滿血進場(v4.1 § 1):耐久是單場容錯額度,不跨層記帳
-  if (s.killsInFloor === 0) refillEndurance(s)
+  const fresh = s.killsInFloor === 0
   if (isBossFloor(s.floor) && !s.bossFailed) {
     s.isBoss = true
     s.enemyMaxHp = bossHP(s.floor)
@@ -497,6 +496,9 @@ export function spawnEnemy(s: GameState) {
     s.bossKind = null
   }
   s.enemyHp = s.enemyMaxHp
+  // 每層滿血進場(v4.1 § 1)。⚠️ 一定要放在 isBoss / enemyMaxHp 都定案之後:
+  // 放前面的話補血是用「上一層的戰鬥狀態」算的,Boss 場永遠不是真的滿血進場
+  if (fresh) refillEndurance(s)
 }
 
 /** X10 拆盾 / X20 蓄力 / X30 圖騰(循環)。第一個 Boss 教最簡單的 */
@@ -692,6 +694,12 @@ function reward(s: GameState, boss: boolean, events: GameEvent[], rng: Rng = Mat
   const gained = Math.floor(rawMat) + (rng() < rawMat % 1 ? 1 : 0)
   s.materials += gained
   s.forgeHeatMaterials += gained
+  // 信仰主屬性:觸發式回血(v4.1 § 3)。與體能的「持續回血」分工——
+  // 體能是「一直有」,信仰是「打得動就活得下去」,兩者在不同的戰鬥節奏下有用
+  const faith = B.FAITH_HEAL_MAX * trackShare(s, 'faith')
+  if (faith > 0 && s.endurance.gt(0)) {
+    s.endurance = Decimal.min(enduranceMax(s), s.endurance.add(enduranceMax(s).mul(faith)))
+  }
   events.push({ type: boss ? 'bossKill' : 'kill', gold: g, floor: s.floor })
   if (boss) {
     // 舊存檔或中途改版玩家可能已超過 10F 但還沒有命運。
@@ -1221,7 +1229,10 @@ function failFloor(s: GameState, raw: GameEvent[], reason: 'timeout' | 'enduranc
     s.runBossFails[s.floor] = rec
     s.bossStats = null
   }
-  if (hasNode(s, 'tactician_2a')) s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
+  // 越戰越勇只補償「Boss 打不動」那種失敗:耐久死與連鎖退層若也給,等於白送疊層
+  if (hasNode(s, 'tactician_2a') && reason === 'timeout') {
+    s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
+  }
   // ⚠️ 連鎖退層時不要把挑戰目標一路往下吃:玩家真正想回去的是**最高的那一層**
   s.bossRetryFloor = Math.max(s.bossRetryFloor ?? 0, s.floor)
   s.floor = Math.max(1, s.floor - 1)

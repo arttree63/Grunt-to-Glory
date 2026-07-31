@@ -48,6 +48,7 @@ import {
   availableSkills,
   enduranceMax,
   threatPerSec,
+  critRate,
   trackTotal,
   trackMult,
   TRACKS,
@@ -370,6 +371,34 @@ describe('戰鬥循環', () => {
     expect(next.lv).toBe(1)
     expect(next.codex.length).toBe(s.codex.length) // 圖鑑保留(轉生只收回操練點)
     expect(next.medals).toBe(medalsBefore) // 勳章保留
+  })
+
+  it('五科都有真正的消費端:投進去一定要有東西改變(v4.1 § 3)', () => {
+    const base = createInitialState()
+    base.lv = 101
+    for (const t of TRACKS) base.tracks[t] = 20
+
+    const withTrack = (t: (typeof TRACKS)[number]) => {
+      const s = createInitialState()
+      s.lv = 101
+      for (const x of TRACKS) s.tracks[x] = x === t ? 100 : 0
+      return s
+    }
+
+    expect(currentDPS(withTrack('arms')).gt(currentDPS(base))).toBe(true) // 武藝 → 攻擊力
+    expect(enduranceMax(withTrack('body')).gt(enduranceMax(base))).toBe(true) // 體能 → 耐久上限
+    expect(critRate(withTrack('agility'))).toBeGreaterThan(critRate(base)) // 身法 → 爆擊率
+    expect(mpRegen(withTrack('magic'))).toBeGreaterThan(mpRegen(base)) // 魔法 → MP 回復
+
+    // 信仰 → 觸發式回血:擊殺會回耐久(這一科原本完全沒有消費端,投進去等於什麼都沒發生)
+    const faith = withTrack('faith')
+    faith.floor = 5
+    spawnEnemy(faith)
+    faith.endurance = enduranceMax(faith).div(2)
+    const before = faith.endurance
+    faith.enemyHp = D(0)
+    applyTick(faith, 100, () => 0.99)
+    expect(faith.endurance.gt(before)).toBe(true)
   })
 
   it('牆的可讀性:被打死與打不動要分得出來(v4.1 § 2 驗收標準)', () => {

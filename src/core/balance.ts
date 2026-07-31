@@ -57,6 +57,8 @@ export const AGILITY_DODGE_MAX = 0.3
 export const ARMS_DEFENSE_MAX = 0.35
 /** 體能次屬性:全押時每秒回復耐久上限的比例 */
 export const BODY_REGEN_MAX = 0.02
+/** 信仰主屬性:全押時每次擊殺回復耐久上限的比例(觸發式回血,與體能的持續回血分工) */
+export const FAITH_HEAL_MAX = 0.05
 
 // ── MP 制(v4.1 § 5,取代冷卻)──
 /**
