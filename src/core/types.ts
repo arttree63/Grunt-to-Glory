@@ -596,6 +596,7 @@ export interface GameEvent {
     | 'kill'
     | 'bossKill'
     | 'threatHit'
+    | 'dodge'
     | 'enduranceDown'
     | 'bossFail'
     | 'floorUp'

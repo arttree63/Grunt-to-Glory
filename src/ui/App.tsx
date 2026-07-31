@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as B from '../core/balance'
 import { fmt, fmtCombat, fmtTime } from '../core/format'
-import { affordableLevels, upCost } from '../core/formulas'
+import { affordableLevels, isBossFloor, upCost } from '../core/formulas'
 import { techOfflineHours } from '../core/techs'
 import {
   BOSS_KIND_HINT,
@@ -145,8 +145,10 @@ function BossHint() {
         }}
       >
         <b>
-          挑戰第 {target} 層 Boss
-          <small style={{ marginLeft: 6, opacity: 0.85 }}>{nemesis ? '家族宿敵' : kindLabel}</small>
+          挑戰第 {target} 層{isBossFloor(target) ? ' Boss' : ''}
+          {isBossFloor(target) && (
+            <small style={{ marginLeft: 6, opacity: 0.85 }}>{nemesis ? '家族宿敵' : kindLabel}</small>
+          )}
         </b>
         {/* 宿敵:前代戰績是最好的開場台詞——這是家族的事,不只是這一代的 */}
         {nemesis && (
@@ -155,9 +157,9 @@ function BossHint() {
           </small>
         )}
         <small>{ready ? advice : `還差 ${gap.toFixed(1)} 倍 DPS・${advice}`}</small>
-        <small style={{ opacity: 0.85 }}>{kindHint}</small>
+        {isBossFloor(target) && <small style={{ opacity: 0.85 }}>{kindHint}</small>}
         {/* 失敗診斷三分類:先講「該改打法還是刷資源」,再講一句怎麼做 */}
-        {diag && (
+        {diag && isBossFloor(target) && (
           <small style={{ color: 'var(--gold)' }}>
             上一場・{DIAGNOSIS_NAME[diag.category]}:{diag.text}
           </small>

@@ -234,7 +234,8 @@ button {
   z-index: 5;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 60px;
+  /* ⚠️ 不可低於 74:狀態 chip 列在那裡,會蓋掉「法 力」標籤(clicker-ui § 七之五) */
+  bottom: 104px;
   width: 150px;
   pointer-events: none;
   text-align: center;

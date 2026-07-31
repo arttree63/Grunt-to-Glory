@@ -12,7 +12,6 @@ import {
   enduranceRegen,
   trackMult,
   trackShare,
-  trackTotal,
 } from '../core/game'
 import type { TrackId } from '../core/types'
 import { useGame } from '../store/gameStore'
@@ -40,7 +39,6 @@ export default function TrackPanel() {
   const s = useGameState()
   const setFocus = useGame((st) => st.setTrackFocus)
   const buy = useGame((st) => st.buy)
-  const total = trackTotal(s)
   const cost = upCost(s.lv)
   const can = s.gold.gte(cost)
 
@@ -49,7 +47,7 @@ export default function TrackPanel() {
       <div className="track-head">
         <span>操 練</span>
         <small>
-          總點數 {total}・投一點 {fmt(cost)} 金
+          總等級 {s.lv}・投一點 {fmt(cost)} 金
         </small>
       </div>
 
@@ -63,7 +61,7 @@ export default function TrackPanel() {
           <button
             key={t}
             className={`track-card${focused ? ' focused' : ''}`}
-            onPointerDown={() => setFocus(t)}
+            onClick={() => setFocus(t)}
           >
             <div className="track-title">
               <GameIcon name={info.icon} size={16} />
@@ -83,7 +81,7 @@ export default function TrackPanel() {
 
       <button
         className={`btn primary track-invest${can ? ' can' : ''}`}
-        onPointerDown={() => buy(1)}
+        onClick={() => buy(1)}
         disabled={!can}
       >
         投一點進「{TRACK_NAME[s.trackFocus]}」・{fmt(cost)} 金

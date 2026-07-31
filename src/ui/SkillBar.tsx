@@ -59,7 +59,10 @@ export default function SkillBar() {
   }
 
   // 總攻就緒:兩招以上全部轉好 → 整排金光,提示玩家「留著一起放」(v1.6)
-  const allReady = owned.length >= 2 && owned.every((id) => skillReady(s, id))
+  // 「總攻就緒」= 真的付得起一起放:MP 是共用池,逐招 skillReady 會在只夠放一招時
+  // 就整排亮金光,那是假承諾(玩家照做會發現第二招放不出來)
+  const mpNeeded = owned.filter((id) => !isApexSkill(s, id)).reduce((n, id) => n + mpCost(s, id), 0)
+  const allReady = owned.length >= 2 && owned.every((id) => skillReady(s, id)) && s.mp >= mpNeeded
   if (owned.length === 0 && !hasNode(s, 'tactician_1b')) return null
 
   return (

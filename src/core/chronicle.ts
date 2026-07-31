@@ -1,4 +1,5 @@
 import { DESTINY_PATHS } from './destiny'
+import { isBossFloor } from './formulas'
 import { QUALITY_NAME, SLOT_NAME } from './equipment'
 import { JOBS } from './jobs'
 import type { ChronicleEntry, Equipment, GameState } from './types'
@@ -16,6 +17,12 @@ const NAMES = [
  */
 function epitaphFor(s: GameState): string {
   if (s.bossRetryFloor !== null) {
+    // ⚠️ 失敗有兩種形態(v4.1):輸出不夠(逾時)與擋不住(耐久歸零)。
+    // 一律寫「未能在時限內擊破守關者」的話,被打死的那些代會被寫成謊話,
+    // 而且非 Boss 層根本沒有守關者
+    const byEndurance = s.lastBossStats?.failedBy === 'endurance'
+    if (byEndurance) return `最終戰線潰散於第 ${s.bossRetryFloor} 層`
+    if (!isBossFloor(s.bossRetryFloor)) return `最終止步於第 ${s.bossRetryFloor} 層`
     return `最終未能在時限內擊破第 ${s.bossRetryFloor} 層的守關者`
   }
   if (s.highestFloor >= 100) return `遠征止步於第 ${s.highestFloor} 層,戰線在此潰散`

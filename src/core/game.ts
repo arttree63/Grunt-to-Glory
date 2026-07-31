@@ -408,7 +408,9 @@ export function dpsBreakdown(s: GameState): DpsPart[] {
   const bonus = equipBonuses(s.equipped)
   const job = JOBS[s.jobId]
   return [
-    { label: `等級 Lv.${s.lv}`, mult: Math.pow(B.DMG_PER_LV, s.lv - 1) },
+    { label: `總等級 ${s.lv}`, mult: Math.pow(B.DMG_PER_LV, s.lv - 1) },
+    // ⚠️ 漏掉這一項的話,面板明寫「全部相乘 = 目前 DPS」卻對不上,特化流派差到 2.6 倍
+    { label: `武藝 ${s.tracks.arms} 點`, mult: trackMult(s, 'arms') },
     { label: `職業 ${job.name}`, mult: 1 + (job.bonus.dmg ?? 0) },
     { label: '轉生科技', mult: techDamageMult(s.techs) },
     { label: '裝備品質', mult: equipPower(s.equipped) },
@@ -1202,7 +1204,8 @@ function failFloor(s: GameState, raw: GameEvent[], reason: 'timeout' | 'enduranc
     s.bossStats = null
   }
   if (hasNode(s, 'tactician_2a')) s.valiantStacks = Math.min(B.VALIANT_MAX, s.valiantStacks + 1)
-  s.bossRetryFloor = s.floor
+  // ⚠️ 連鎖退層時不要把挑戰目標一路往下吃:玩家真正想回去的是**最高的那一層**
+  s.bossRetryFloor = Math.max(s.bossRetryFloor ?? 0, s.floor)
   s.floor = Math.max(1, s.floor - 1)
   s.killsInFloor = 0
   raw.push({ type: 'bossFail', floor: s.bossRetryFloor, reason })
@@ -1215,8 +1218,17 @@ function failFloor(s: GameState, raw: GameEvent[], reason: 'timeout' | 'enduranc
  * 現在吃玩家 DPS × 秒數;批次 3(操練)會改成吃「體能」點數,消費端不必動。
  */
 export function enduranceMax(s: GameState): Decimal {
-  // ⚠️ 基準刻意用「除掉武藝乘區」的功力:不然練攻擊的人會連帶變肉,體能就沒有存在意義
-  return currentDPS(s).div(trackMult(s, 'arms')).mul(trackMult(s, 'body')).mul(B.ENDURANCE_SECONDS)
+  // ⚠️ 上限必須**穩定**:不能用 currentDPS,那裡面有戰意、buff、連斬、蓄勢、乘勝等暫態乘區。
+  // 用它當上限的話,放個技能就會讓上限跳高、血條比例當場暴跌並誤觸紅色警示,
+  // 而且 regen 的 clamp 會在 DPS 回落時**憑空刪掉絕對耐久**(只有練體能的人會中)。
+  // 這裡只吃長期成長:等級 / 科技 / 裝備 / 體能點數。
+  // 也刻意不吃武藝乘區——不然練攻擊會連帶變肉,體能就沒有存在意義。
+  const base = heroDPS({
+    lv: s.lv,
+    techMult: techDamageMult(s.techs),
+    equipBonus: equipBonuses(s.equipped).dmg + (JOBS[s.jobId].bonus.dmg ?? 0),
+  }).mul(equipPower(s.equipped))
+  return base.mul(trackMult(s, 'body')).mul(B.ENDURANCE_SECONDS)
 }
 
 /** 進新樓層 = 滿血進場(v4.1 § 1)。耐久不跨層記帳 */
@@ -1250,7 +1262,8 @@ function tickThreat(s: GameState, dt: number, raw: GameEvent[], rng: Rng) {
     s.threatTimer -= B.THREAT_INTERVAL
     // 身法次屬性:迴避——整下閃掉,不是減傷(閃掉才有「賭一把」的手感)
     if (rng() < dodgeRate(s)) {
-      raw.push({ type: 'threatHit', damage: D(0), via: 'dodge' })
+      // 迴避是「賭贏了」不是「挨打」:演出與音效都要不一樣,否則玩家不知道身法有在生效
+      raw.push({ type: 'dodge' })
       continue
     }
     // 武藝次屬性:防禦力

@@ -27,7 +27,10 @@ export default function LevelBar() {
     <div className="level-bar">
       <button
         className={`lvl-main${can ? ' can' : ''}`}
-        {...(can ? hold : {})}
+        // ⚠️ 事件一律掛上,不要用 `can ? hold : {}`:長按到一半金幣用盡時 can 會翻成 false,
+        // React 把 onPointerUp/Leave 拆掉 → 連點的 interval 永遠停不下來,
+        // 之後金幣一夠就會自動把點數投進主修(玩家沒按任何東西)。買不起時 core 自己會擋
+        {...hold}
         aria-label={`投一點進${TRACK_NAME[s.trackFocus]}`}
       >
         <span className="txt">
@@ -41,9 +44,9 @@ export default function LevelBar() {
       <button
         className={`lvl-max${s.gold.gte(cost) ? ' can' : ''}`}
         onClick={() => buy('max')}
-        aria-label="用現有金幣買到最多等級"
+        aria-label="用現有金幣把點數全部投進主修"
       >
-        最大
+        全投
       </button>
     </div>
   )
