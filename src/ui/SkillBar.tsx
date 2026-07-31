@@ -1,5 +1,12 @@
 import * as B from '../core/balance'
-import { availableSkills, sigilPerStackSeconds, skillCooldown } from '../core/game'
+import {
+  availableSkills,
+  isApexSkill,
+  mpCost,
+  sigilPerStackSeconds,
+  skillCooldown,
+  skillReady,
+} from '../core/game'
 import { hasNode } from '../core/destiny'
 import { SKILLS } from '../core/skills'
 import type { SkillId } from '../core/types'
@@ -52,7 +59,7 @@ export default function SkillBar() {
   }
 
   // 總攻就緒:兩招以上全部轉好 → 整排金光,提示玩家「留著一起放」(v1.6)
-  const allReady = owned.length >= 2 && owned.every((id) => (s.skillCd[id] ?? 0) <= 0)
+  const allReady = owned.length >= 2 && owned.every((id) => skillReady(s, id))
   if (owned.length === 0 && !hasNode(s, 'tactician_1b')) return null
 
   return (
@@ -104,8 +111,13 @@ export default function SkillBar() {
         if (!id) return <div className="skill locked" key={i} />
         const sk = SKILLS[id]
         const left = s.skillCd[id] ?? 0
-        const ready = left <= 0
-        const pct = ready ? 0 : left / skillCooldown(s, id)
+        // v4.1:前三格吃 MP、頂點技能吃 CD —— 一律問 core 的 skillReady,UI 不自己判
+        const ready = skillReady(s, id)
+        const apex = isApexSkill(s, id)
+        const cost = mpCost(s, id)
+        const pct = apex
+          ? left > 0 ? left / skillCooldown(s, id) : 0
+          : Math.max(left > 0 ? left / B.MP_MIN_CD : 0, cost > 0 ? Math.max(0, 1 - s.mp / cost) : 0)
         return (
           <button
             className={`skill${advancedSkill === id ? ' cooldown-advanced' : ''}`}

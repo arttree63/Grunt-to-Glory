@@ -15,6 +15,7 @@ import {
   diagnoseBoss,
   DIAGNOSIS_NAME,
   enduranceMax,
+  isApexSkill,
   loreStage,
   BOSS_LORE_GLIMPSE,
   BOSS_LORE_MASTERY,
@@ -566,6 +567,16 @@ function Game() {
                 {chipsOpen ? '收合' : `+${chips.length - 3}`}
               </span>
             )}
+          </div>
+        )}
+
+        {/* MP:前三格技能的主要限制(v4.1 § 5)。頂點技能不吃它,所以這條不代表「能不能放大招」 */}
+        {availableSkills(s).some((id) => !isApexSkill(s, id)) && (
+          <div className="mana">
+            <div className="tag">法 力</div>
+            <div className="bar">
+              <div className="fill" style={{ width: `${Math.round((s.mp / B.MP_MAX) * 100)}%` }} />
+            </div>
           </div>
         )}
 

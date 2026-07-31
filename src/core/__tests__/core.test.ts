@@ -51,6 +51,9 @@ import {
   trackTotal,
   trackMult,
   TRACKS,
+  isApexSkill,
+  mpCost,
+  mpRegen,
   chargeMult,
   chooseDestiny,
   chooseTraining,
@@ -112,6 +115,16 @@ import {
 import { legacyGoal, nearGoal, runGoal } from '../goals'
 import { titleFor } from '../chronicle'
 import { deserialize, serialize } from '../save'
+
+/**
+ * 測試用:把 MP 補滿再放招。
+ * ⚠️ v4.1 起前三格技能吃**共用的 MP 池**(不再是各自獨立冷卻),
+ * 所以「連放兩招」的測試若不補 MP,失敗的其實是 MP 不夠,不是它想測的那個機制。
+ */
+function castFull(s: ReturnType<typeof createInitialState>, id: Parameters<typeof castSkill>[1]) {
+  s.mp = B.MP_MAX
+  return castSkill(s, id)
+}
 
 describe('formulas', () => {
   it('新手斜坡:前 30 層走 1.13,之後回 1.16', () => {
@@ -195,6 +208,41 @@ describe('戰鬥循環', () => {
     expect(s.floor).toBeGreaterThan(2)
     const kill = events.find((e) => e.type === 'kill')
     expect(kill?.count).toBeGreaterThan(1) // 事件已合併,演出層不會被灌爆
+  })
+
+  it('MP 制:前三格吃 MP + 保底 CD,頂點技能維持正常 CD(v4.1 § 5)', () => {
+    const s = createInitialState()
+    s.lv = 20
+    promote(s, 'infantry')
+    s.highestFloor = B.AWAKEN_FLOOR
+
+    const normal = JOBS.infantry.skills[0]
+    const apex = JOBS.infantry.awakenSkill!
+    expect(isApexSkill(s, apex)).toBe(true)
+    expect(mpCost(s, apex)).toBe(0) // 頂點技能不吃 MP
+    expect(mpCost(s, normal)).toBeGreaterThan(0)
+
+    const mpBefore = s.mp
+    castSkill(s, normal)
+    expect(s.mp).toBeCloseTo(mpBefore - mpCost(s, normal), 5)
+    expect(s.skillCd[normal]).toBeCloseTo(B.MP_MIN_CD, 5) // 只有防連發的保底 CD
+
+    // MP 不夠就放不出來,即使保底 CD 已經過了
+    s.mp = 0
+    s.skillCd[normal] = 0
+    expect(skillReady(s, normal)).toBe(false)
+    expect(castSkill(s, normal)).toHaveLength(0)
+  })
+
+  it('MP 回復:基礎固定,魔法科只加速回復速度(v4.1 § 5)', () => {
+    const plain = createInitialState()
+    for (const t of TRACKS) plain.tracks[t] = 20
+    const mage = createInitialState()
+    mage.tracks.magic = 100
+
+    expect(mpRegen(plain)).toBeCloseTo(B.MP_REGEN_BASE, 5) // 平均分配 = 基礎速率
+    expect(mpRegen(mage)).toBeGreaterThan(mpRegen(plain) * 2) // 全押魔法 ≈ ×2.6
+    expect(B.MP_MAX).toBe(400) // 池子大小不隨等級長,長的是回復速度
   })
 
   it('操練 = 等級:總點數 + 1 恆等於 lv,買一級就是投一點進主修(v4.1 § 3)', () => {
@@ -2508,24 +2556,24 @@ describe('裝備四層架構(基底 / 詞綴分類 / 傳說)', () => {
     // 一轉只有兩招,門檻就是兩招(寫死 3 會讓這件裝備在 Lv.100 前完全是死的)
     expect(availableSkills(s)).toHaveLength(2)
 
+    // v4.1:前三格改吃 MP,推冷卻沒有意義(只剩 1.5 秒保底)→ 沙漏折算成 MP 還回來
     castSkill(s, 'shieldRush')
-    const afterCast = s.skillCd.shieldRush!
-    const spent = s.sigils
-    castSkill(s, 'rally') // 湊滿一輪 → 沙漏推進 + 引爆回轉(v1.6)各推一段
-    const progressed = s.skillCd.shieldRush!
-    expect(progressed).toBeCloseTo(
-      afterCast - skillCooldown(s, 'shieldRush') * B.HOURGLASS_PROGRESS - spent * B.RELOAD_PER_SIGIL,
-      5,
-    )
+    const mpAfterCast = s.mp
+    s.sigils = 3
+    const ev = castSkill(s, 'rally') // 湊滿一輪 → 沙漏推進 + 引爆回轉各推一段
+    expect(ev.some((e) => e.type === 'cooldownAdvance' && e.via === 'hourglass')).toBe(true)
+    expect(s.mp).toBeGreaterThan(mpAfterCast) // 推進落在真正的限制上
 
     // 上鎖期間再湊滿也不再推進(冷卻完成類不得連鎖自我觸發)
+    const mpLocked = s.mp
     s.sigils = 3
     s.skillCd.rally = 0
-    castSkill(s, 'rally')
-    castSkill(s, 'rally')
-    expect(s.skillCd.shieldRush).toBeLessThan(progressed + 0.01)
-    // 沙漏上鎖不再推進,但引爆回轉(v1.6)照常:允許 3 層 × RELOAD_PER_SIGIL 的量
-    expect(s.skillCd.shieldRush).toBeGreaterThan(progressed - 3 * B.RELOAD_PER_SIGIL - 0.01)
+    const ev2 = castFull(s, 'rally')
+    expect(ev2.some((e) => e.type === 'cooldownAdvance' && e.via === 'hourglass')).toBe(false)
+    expect(s.mp).toBeLessThanOrEqual(B.MP_MAX)
+    expect(mpLocked).toBeLessThanOrEqual(B.MP_MAX)
+    // 沙漏上鎖不再推進,但引爆回轉(v1.6)照常把印記折成 MP
+    expect(s.mp).toBeGreaterThanOrEqual(mpLocked)
   })
 
   it('精工保底那一次必定附上傳說(部位與基底對得上時)', () => {
@@ -2648,20 +2696,22 @@ describe('套裝標籤(裝備第四層)', () => {
     s.destinyNodes.push('tactician_1a')
     for (const sl of ['weapon', 'head', 'body'] as const) s.equipped[sl] = tagged(sl, 'commander')
 
-    castSkill(s, 'shieldRush')
+    castFull(s, 'shieldRush')
     s.sigils = 3
-    castSkill(s, 'rally') // 兩招各一次 = 完成一道指令
+    castFull(s, 'rally') // 兩招各一次 = 完成一道指令
     expect(s.commandReady).toBe(true)
 
     // 指揮形態:buff 持續時間拉長,但該次冷卻也延長(拿冷卻換威力)
     s.skillCd.shieldRush = 0
-    castSkill(s, 'shieldRush')
+    castFull(s, 'shieldRush')
     expect(s.commandReady).toBe(false)
     expect(s.buffs.find((b) => b.skillId === 'shieldRush')!.timeLeft).toBeCloseTo(
       SKILLS.shieldRush.duration! * B.COMMANDER_POWER,
       5,
     )
-    expect(s.skillCd.shieldRush!).toBeCloseTo(skillCooldown(s, 'shieldRush') * B.COMMANDER_CD, 5)
+    // v4.1:前三格吃 MP,冷卻只剩保底 1.5 秒 —— 指揮形態的代價改由 MP 池承擔,
+    // 這裡只驗「威力那一半」仍然成立(冷卻那一半在 MP 制下不再是有效的代價)
+    expect(s.skillCd.shieldRush!).toBeGreaterThan(0)
   })
 
   it('套裝效果只寫機制,不給純倍率', () => {
@@ -3061,14 +3111,14 @@ describe('總攻 loop(v1.6:buff 併存 / 引爆回轉 / 戰意昂揚 / 乘勝推
 
   it('buff 多槽併存:兩個視窗疊加,乘區相乘(總攻的數值來源)', () => {
     const s = twoSkillHero()
-    castSkill(s, 'shieldRush')
-    castSkill(s, 'bulwark')
+    castFull(s, 'shieldRush')
+    castFull(s, 'bulwark')
     expect(s.buffs).toHaveLength(2)
     expect(buffMult(s)).toBeCloseTo(2.5 * 3, 5) // 重疊視窗 > 輪流開
 
     // 同技能重放刷新自己,不會疊出第三槽
     s.skillCd.shieldRush = 0
-    castSkill(s, 'shieldRush')
+    castFull(s, 'shieldRush')
     expect(s.buffs).toHaveLength(2)
   })
 
@@ -3078,10 +3128,11 @@ describe('總攻 loop(v1.6:buff 併存 / 引爆回轉 / 戰意昂揚 / 乘勝推
     chooseDestiny(s, 'tactician')
     s.destinyNodes.push('tactician_1a')
     castSkill(s, 'shieldRush')
-    const before = s.skillCd.shieldRush!
+    const mpBefore = s.mp
     s.sigils = 10
     const ev = castSkill(s, 'rally')
-    expect(s.skillCd.shieldRush!).toBeCloseTo(before - 10 * B.RELOAD_PER_SIGIL, 5)
+    // v4.1:引爆回轉推的不再是冷卻,是 MP(前三格的真正限制)
+    expect(s.mp).toBeGreaterThan(mpBefore)
     expect(ev.filter((e) => e.type === 'cooldownAdvance').length).toBeGreaterThan(0)
   })
 

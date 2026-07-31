@@ -285,6 +285,11 @@ export interface GameState {
   endurance: Decimal
   /** 場上威脅的出手計時(秒)。與耐久同為單場暫態 */
   threatTimer: number
+  /**
+   * MP(v4.1 § 5)。前三格技能的主要限制,頂點技能不吃它。
+   * 與耐久同為單場暫態,不進存檔;讀檔補滿。
+   */
+  mp: number
   /** 本層 Boss 已挑戰失敗過 → 退回前一層 farm */
   bossFailed: boolean
   /** 失敗的是哪一層的 Boss。玩家退回前一層 farm,按鈕或自動重試會回到這層 */

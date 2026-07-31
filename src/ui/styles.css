@@ -228,6 +228,36 @@ button {
   50% { opacity: 0.55; }
 }
 
+/* 法力(MP):與耐久/戰意同一組版位語彙 */
+.mana {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 60px;
+  width: 150px;
+  pointer-events: none;
+  text-align: center;
+}
+.mana .tag {
+  color: #8fa8e0;
+  font-size: 11px;
+  letter-spacing: 4px;
+  margin-bottom: 3px;
+  opacity: 0.9;
+}
+.mana .bar {
+  height: 5px;
+  background: #20263a55;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.mana .fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4a6ad0, #8fa8e0);
+  transition: width 0.2s linear;
+}
+
 /* 戰意 */
 .morale {
   position: absolute;

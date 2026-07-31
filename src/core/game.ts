@@ -102,6 +102,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     bossTimeLeft: B.BOSS_TIME,
     endurance: D(0), // 進樓層時由 refillEndurance 補滿(見 spawnEnemy)
     threatTimer: 0,
+    mp: B.MP_MAX,
     bossFailed: false,
     bossRetryFloor: null,
     bossKind: null,
@@ -1219,6 +1220,7 @@ export function enduranceMax(s: GameState): Decimal {
 export function refillEndurance(s: GameState) {
   s.endurance = enduranceMax(s)
   s.threatTimer = 0
+  s.mp = B.MP_MAX
 }
 
 /** 場上威脅的每秒傷害:用**該層小怪**滿血當基準,Boss 才不會因為血厚 8 倍就殺瘋 */
@@ -1573,6 +1575,12 @@ function tickAfterimage(s: GameState, dmg: Decimal, raw: GameEvent[], rng: Rng):
 /** 推進所有冷卻中技能。⚠️ 受既有 CD_FLOOR 護欄保護的入口只有這裡與 castEcho */
 function advanceCooldowns(s: GameState, seconds: number, events: GameEvent[]): void {
   for (const id of availableSkills(s)) {
+    if (!isApexSkill(s, id)) {
+      // 吃 MP 的招:推冷卻沒有意義(只有 1.5 秒),改成折算成 MP 還給玩家
+      grantMp(s, seconds)
+      events.push({ type: 'cooldownAdvance', skillId: id, seconds, via: 'reload' })
+      continue
+    }
     const left = s.skillCd[id] ?? 0
     if (left <= 0) continue
     const next = left - seconds
@@ -1812,6 +1820,37 @@ export function sigilModifier(s: GameState): string | null {
  * ⚠️ 下限 B.CD_FLOOR 是系統級護欄,不是這裡的隨手保護:
  * 冷卻一旦能無限縮到 0,「冷卻完成 / 重複」類效果就能自我循環。
  */
+/** 這一招是不是「頂點技能」(第四格):維持正常 CD、不吃 MP,保留大招的稀有感 */
+export function isApexSkill(s: GameState, id: SkillId): boolean {
+  return JOBS[s.jobId].awakenSkill === id
+}
+
+/**
+ * 技能的 MP 成本 = 它原本的冷卻秒數 × 基礎回復速率。
+ * 這樣「平均分配」的玩家施法頻率與改版前一致,魔法科則靠回復速度加快到 ×2.6。
+ */
+export function mpCost(s: GameState, id: SkillId): number {
+  if (isApexSkill(s, id)) return 0
+  // 冷卻縮減詞綴改成降低 MP 成本:MP 制底下 CD 只剩防連發的保底,
+  // 不轉過來的話「冷卻 -X%」這一整類詞綴會靜默失效
+  const bonus = equipBonuses(s.equipped)
+  const mod = Math.max(B.CD_FLOOR, 1 + baseMods(s.equipped).cd - bonus.cdr)
+  return SKILLS[id].cd * B.MP_REGEN_BASE * mod
+}
+
+/**
+ * 把「推進冷卻 N 秒」換算成 MP。倒轉沙漏 / 引爆回轉 / 追風者之靴這些效果原本都在推冷卻,
+ * 但吃 MP 的招 CD 只剩 1.5 秒,推它等於什麼都沒做——效果要落在真正的限制上。
+ */
+export function grantMp(s: GameState, seconds: number) {
+  s.mp = Math.min(B.MP_MAX, s.mp + seconds * B.MP_REGEN_BASE)
+}
+
+/** MP 每秒回復:基礎固定,魔法科只加速這一項(v4.1 § 5) */
+export function mpRegen(s: GameState): number {
+  return B.MP_REGEN_BASE * trackMult(s, 'magic')
+}
+
 export function skillCooldown(s: GameState, id: SkillId): number {
   const bonus = equipBonuses(s.equipped)
   const mod = 1 + baseMods(s.equipped).cd - bonus.cdr
@@ -1820,7 +1859,9 @@ export function skillCooldown(s: GameState, id: SkillId): number {
 
 export function skillReady(s: GameState, id: SkillId): boolean {
   if (!availableSkills(s).includes(id)) return false
-  return (s.skillCd[id] ?? 0) <= 0
+  if ((s.skillCd[id] ?? 0) > 0) return false
+  // 前三格吃 MP、頂點技能只吃 CD(v4.1 § 5)
+  return isApexSkill(s, id) || s.mp >= mpCost(s, id)
 }
 
 /**
@@ -1830,7 +1871,13 @@ export function skillReady(s: GameState, id: SkillId): boolean {
 export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Math.random): GameEvent[] {
   if (!skillReady(s, id)) return []
   const sk = SKILLS[id]
-  s.skillCd[id] = skillCooldown(s, id)
+  if (isApexSkill(s, id)) {
+    s.skillCd[id] = skillCooldown(s, id)
+  } else {
+    // 吃 MP 的招:成本是 MP,CD 只是防連發的保底
+    s.mp = Math.max(0, s.mp - mpCost(s, id))
+    s.skillCd[id] = B.MP_MIN_CD
+  }
   s.runStats.skillCasts++
   const events: GameEvent[] = []
   addResonance(s, 'skill', events)
@@ -1994,9 +2041,13 @@ function trackCastOrder(s: GameState, id: SkillId, events: GameEvent[]) {
     .sort((a, b) => skillCooldown(s, b) - skillCooldown(s, a))[0]
   if (longest) {
     const advance = skillCooldown(s, longest) * B.HOURGLASS_PROGRESS
-    const left = (s.skillCd[longest] ?? 0) - advance
-    if (left <= 0) delete s.skillCd[longest]
-    else s.skillCd[longest] = left
+    if (isApexSkill(s, longest)) {
+      const left = (s.skillCd[longest] ?? 0) - advance
+      if (left <= 0) delete s.skillCd[longest]
+      else s.skillCd[longest] = left
+    } else {
+      grantMp(s, advance) // MP 招:推冷卻等於什麼都沒做,折算成 MP(見 grantMp)
+    }
     events.push({ type: 'cooldownAdvance', skillId: longest, seconds: advance, via: 'hourglass' })
   }
   s.castOrder = []
@@ -2201,6 +2252,8 @@ function autoDetonate(s: GameState, events: GameEvent[], rng: Rng = Math.random)
 }
 
 function tickSkills(s: GameState, dt: number, events: GameEvent[], rng: Rng = Math.random) {
+  // MP 回復:基礎固定,魔法科加速(v4.1 § 5)
+  if (s.mp < B.MP_MAX) s.mp = Math.min(B.MP_MAX, s.mp + mpRegen(s) * dt)
   for (const id of Object.keys(s.skillCd) as SkillId[]) {
     const left = (s.skillCd[id] ?? 0) - dt
     if (left <= 0) delete s.skillCd[id]
