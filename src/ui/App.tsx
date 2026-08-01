@@ -53,18 +53,17 @@ import LegacyPanel from './panels/LegacyPanel'
 import { useGameState } from './useGameState'
 import { BadgeIcon, GameIcon } from './GameIcon'
 import goldUrl from '../../assets/visual/items/core-resources/gold.png'
-import rookieUrl from '../../assets/visual/rookie-soldier/idle/idle-1.png'
-import infantryUrl from '../../assets/visual/heroes/infantry/idle/idle-1.png'
-import scoutUrl from '../../assets/visual/heroes/scout/idle/idle-1.png'
-import marshalUrl from '../../assets/visual/heroes/marshal/idle/idle-1.png'
-import paladinUrl from '../../assets/visual/heroes/paladin/idle/idle-1.png'
-import shadowUrl from '../../assets/visual/heroes/shadow/idle/idle-1.png'
-import archmageUrl from '../../assets/visual/heroes/archmage/idle/idle-1.png'
-import houndUrl from '../../assets/visual/mercenaries/old-hound/idle/idle-1.png'
-import rogueUrl from '../../assets/visual/mercenaries/rogue/idle/idle-1.png'
-import iceMageUrl from '../../assets/visual/mercenaries/ice-mage/idle/idle-1.png'
-import sapperUrl from '../../assets/visual/mercenaries/sapper/idle/idle-1.png'
-import pyroUrl from '../../assets/visual/mercenaries/pyromancer/idle/idle-1.png'
+import knightPortraitUrl from '../../assets/visual/ui/pixel-kit/knight.png'
+import magePortraitUrl from '../../assets/visual/ui/pixel-kit/mage.png'
+import rangerPortraitUrl from '../../assets/visual/ui/pixel-kit/ranger.png'
+import paladinPortraitUrl from '../../assets/visual/ui/pixel-kit/paladin.png'
+import shadowPortraitUrl from '../../assets/visual/ui/pixel-kit/shadow.png'
+import archmagePortraitUrl from '../../assets/visual/ui/pixel-kit/archmage.png'
+import houndPortraitUrl from '../../assets/visual/ui/pixel-kit/hound.png'
+import goblinPortraitUrl from '../../assets/visual/ui/pixel-kit/goblin.png'
+import firePortraitUrl from '../../assets/visual/ui/pixel-kit/fire.png'
+import icePortraitUrl from '../../assets/visual/ui/pixel-kit/ice.png'
+import archerPortraitUrl from '../../assets/visual/ui/pixel-kit/archer.png'
 
 type Tab = 'hero' | 'equip' | 'forge' | 'destiny' | 'journal' | 'legacy'
 
@@ -78,24 +77,24 @@ const TABS: Array<{ id: Tab; label: string }> = [
 ]
 
 const HERO_ART: Record<string, string> = {
-  rookie: rookieUrl,
-  infantry: infantryUrl,
-  scout: scoutUrl,
-  marshal: marshalUrl,
-  paladin: paladinUrl,
-  shadow: shadowUrl,
-  archmage: archmageUrl,
-  forgewarden: paladinUrl,
-  shadowvanguard: shadowUrl,
-  relicarbiter: archmageUrl,
+  rookie: knightPortraitUrl,
+  infantry: knightPortraitUrl,
+  scout: rangerPortraitUrl,
+  marshal: knightPortraitUrl,
+  paladin: paladinPortraitUrl,
+  shadow: shadowPortraitUrl,
+  archmage: magePortraitUrl,
+  forgewarden: paladinPortraitUrl,
+  shadowvanguard: shadowPortraitUrl,
+  relicarbiter: archmagePortraitUrl,
 }
 
 const MERC_ART: Record<string, string> = {
-  hound: houndUrl,
-  rogue: rogueUrl,
-  icemage: iceMageUrl,
-  sapper: sapperUrl,
-  pyro: pyroUrl,
+  hound: houndPortraitUrl,
+  rogue: archerPortraitUrl,
+  icemage: icePortraitUrl,
+  sapper: goblinPortraitUrl,
+  pyro: firePortraitUrl,
 }
 
 const STEP_DETAIL: Record<GoalTab, string> = {
