@@ -47,6 +47,7 @@ interface Store {
   chooseDestiny: (path: DestinyPathId) => void
   pickDestinyNode: (id: DestinyNodeId) => void
   castSkill: (id: SkillId) => void
+  toggleSkillEquip: (id: SkillId) => void
   forge: (opts?: G.ForgeOptions) => Equipment | null
   devourWeapon: (foodId: string) => void
   fineForge: (opts: G.FineForgeOptions) => Equipment | null
@@ -193,6 +194,11 @@ export const useGame = create<Store>((set, get) => ({
 
   castSkill(id) {
     G.castSkill(get().s, id).forEach(gameEvents.emit)
+    bump(set, get)
+  },
+
+  toggleSkillEquip(id) {
+    G.toggleSkillEquip(get().s, id)
     bump(set, get)
   },
 

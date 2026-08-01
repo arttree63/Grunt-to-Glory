@@ -81,6 +81,27 @@ export type JobId =
   | 'shadowvanguard'
   | 'relicarbiter'
 export type SkillId =
+  | 'armsHeavy'
+  | 'armsCharge'
+  | 'armsCommand'
+  | 'armsLegend'
+  | 'bodyGuard'
+  | 'bodyIronwall'
+  | 'bodyCommand'
+  | 'bodyLegend'
+  | 'agilityRoll'
+  | 'agilityHaste'
+  | 'agilityCommand'
+  | 'agilityLegend'
+  | 'magicFireball'
+  | 'magicBurst'
+  | 'magicCommand'
+  | 'magicLegend'
+  | 'faithHeal'
+  | 'faithBlessing'
+  | 'faithCommand'
+  | 'faithLegend'
+  // 舊版技能 ID 僅保留存檔與裝備資料相容，不再出現在玩家技能列。
   | 'shieldRush'
   | 'gale'
   | 'judgement'
@@ -453,6 +474,8 @@ export interface GameState {
   autoCast: boolean
   /** 各技能剩餘冷卻(秒) */
   skillCd: Partial<Record<SkillId, number>>
+  /** 玩家目前裝配的五系主動技能，最多五個。 */
+  skillLoadout: SkillId[]
   /**
    * 生效中的技能 buff(多槽併存,v1.6 總攻改版)。
    * ⚠️ 單槽互斥是「開全套總攻」在結構上不存在的原因——爽感的本體是

@@ -9,6 +9,7 @@ import {
   destinyNode,
   destinyOutcome,
   dpsBreakdown,
+  equippedSkills,
   goldPerSec,
   isAwakened,
   bestFloorEver,
@@ -254,8 +255,14 @@ function AbilitySections() {
   )
 }
 
+// 舊轉職資料保留供存檔相容，不再呈現在玩家介面。
+void PromotionSection
+void AbilitySections
+
 function SkillTreeBlueprint() {
   const s = useGameState()
+  const toggleEquip = useGame((state) => state.toggleSkillEquip)
+  const equipped = equippedSkills(s)
 
   return (
     <div className="training-tree">
@@ -298,6 +305,8 @@ function SkillTreeBlueprint() {
                 const node = branch.nodes[rowIndex]
                 const points = s.tracks[branch.id]
                 const unlocked = points >= node.level
+                const isEquipped = equipped.includes(node.skillId)
+                const equipFull = equipped.length >= 5 && !isEquipped
                 return (
                   <article
                     className={`matrix-node branch-${branch.id}${unlocked ? ' unlocked' : ''}`}
@@ -309,7 +318,17 @@ function SkillTreeBlueprint() {
                     <b>{node.name}</b>
                     <p>{node.desc}</p>
                     <em>{node.level === 20 ? '解鎖' : '進化'}：{node.corps}</em>
-                    <span className="node-state">{unlocked ? '已解鎖' : `${points}/${node.level}`}</span>
+                    {unlocked ? (
+                      <button
+                        className={`node-equip${isEquipped ? ' equipped' : ''}`}
+                        disabled={equipFull}
+                        onClick={() => toggleEquip(node.skillId)}
+                      >
+                        {isEquipped ? '已裝備' : equipFull ? '五格已滿' : '裝備'}
+                      </button>
+                    ) : (
+                      <span className="node-state">{points}/{node.level}</span>
+                    )}
                   </article>
                 )
               })}
@@ -397,8 +416,6 @@ function MercSection() {
 export default function HeroPanel() {
   const s = useGameState()
   const [view, setView] = useState<HeroView>('training')
-  const nextJobs = nextTierJobs(s.jobId)
-  const canPromoteNow = availableJobs(s.jobId, s.lv, s.destinyPath).length > 0
 
   return (
     <div className="panel-page hero-page">
@@ -466,12 +483,6 @@ export default function HeroPanel() {
       {view === 'blueprint' && (
         <div className="hero-tab-panel" role="tabpanel">
           <SkillTreeBlueprint />
-          <details className="current-ability-details" open={canPromoteNow}>
-            <summary>目前已生效的職業能力與轉職</summary>
-            {canPromoteNow && <PromotionSection />}
-            <AbilitySections />
-            {nextJobs.length > 0 && !canPromoteNow && <PromotionSection />}
-          </details>
         </div>
       )}
 

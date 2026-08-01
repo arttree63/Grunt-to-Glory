@@ -30,6 +30,7 @@ import { legendFor } from './legends'
 import { ALL_MERCS, MERCS, unlockedMercs } from './mercs'
 import { SETS } from './sets'
 import { SKILLS } from './skills'
+import { TRAINING_BRANCHES } from './trainingTree'
 import {
   ALL_PATHS,
   DESTINY_NODES,
@@ -159,6 +160,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     destinyEarned: 0,
     autoCast: false, // 預設關:掛機玩家的基準不因新系統改變
     skillCd: {},
+    skillLoadout: [],
     buffs: [],
     zealStacks: 0,
     conquestLeft: 0,
@@ -234,7 +236,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 29
+export const SAVE_VERSION = 30
 
 // ---------- 數值查詢 ----------
 
@@ -374,6 +376,25 @@ export function buffMult(s: GameState): number {
       mult *= ((dur * sk.dmgMult + (sk.cd - dur)) / sk.cd) * B.WALL_PERMANENT_BONUS
     }
   }
+  return mult
+}
+
+/** 雙屬性共鳴階段：50 解鎖、100 進化、200 最終。 */
+export function fusionStage(s: GameState, a: TrackId, b: TrackId): 0 | 1 | 2 | 3 {
+  const level = Math.min(s.tracks[a], s.tracks[b])
+  return level >= 200 ? 3 : level >= 100 ? 2 : level >= 50 ? 1 : 0
+}
+
+/** 持續技能對場上威脅傷害的乘區。 */
+export function skillDefenseMult(s: GameState): number {
+  let mult = 1
+  for (const buff of s.buffs) mult *= SKILLS[buff.skillId].defenseMult ?? 1
+  const shieldCharge = fusionStage(s, 'arms', 'body')
+  if (shieldCharge > 0 && s.buffs.some((buff) => buff.skillId === 'armsLegend'))
+    mult *= [1, 0.8, 0.65, 0.5][shieldCharge]
+  const steelSkirmish = fusionStage(s, 'body', 'agility')
+  if (steelSkirmish > 0 && s.buffs.some((buff) => buff.skillId === 'agilityRoll'))
+    mult *= [1, 0.85, 0.7, 0.55][steelSkirmish]
   return mult
 }
 
@@ -1325,7 +1346,7 @@ function tickThreat(s: GameState, dt: number, raw: GameEvent[], rng: Rng) {
       continue
     }
     // 武藝次屬性:防禦力
-    const dmg = threatPerSec(s).mul(B.THREAT_INTERVAL).mul(1 - defenseCut(s))
+    const dmg = threatPerSec(s).mul(B.THREAT_INTERVAL).mul(1 - defenseCut(s)).mul(skillDefenseMult(s))
     s.endurance = s.endurance.sub(dmg)
     raw.push({ type: 'threatHit', damage: dmg })
     if (s.endurance.lte(0)) {
@@ -1649,7 +1670,7 @@ function tickAfterimage(s: GameState, dmg: Decimal, raw: GameEvent[], rng: Rng):
 /** 推進所有冷卻中技能。⚠️ 受既有 CD_FLOOR 護欄保護的入口只有這裡與 castEcho */
 function advanceCooldowns(s: GameState, seconds: number, events: GameEvent[]): void {
   let mpGranted = false
-  for (const id of availableSkills(s)) {
+  for (const id of activeSkillPool(s)) {
     if (!isApexSkill(s, id)) {
       // 吃 MP 的招:推冷卻沒有意義(只有 1.5 秒),改成折算成 MP 還給玩家。
       // ⚠️ 整批只折算一次:每招各發一份的話,招越多產得越多,等於偷偷加強這些節點
@@ -1701,7 +1722,7 @@ function castEcho(s: GameState, skillDamage: Decimal, id: SkillId, events: GameE
   addShieldValue(s, B.SHIELD_ECHO_VALUE, 'clone', events)
   // 推進「其他」技能的冷卻:玩家要排順序才吃得到
   let echoMpGranted = false
-  for (const other of availableSkills(s)) {
+  for (const other of activeSkillPool(s)) {
     if (other === id) continue
     if (!isApexSkill(s, other)) {
       // MP 招的 CD 只有 1.5 秒,推它等於什麼都沒做 → 折算成 MP(整批一次,見 grantMp)
@@ -1827,7 +1848,8 @@ export function attackInterval(s: GameState): number {
   const formation = ironwallActive(s) ? B.IRONWALL_INTERVAL : 1
   // 殘影(二轉進化):自己那招的視窗期間切得更細
   const echo = s.buffs.some((b) => evolved(s, b.skillId) && SKILLS[b.skillId].critAdd) ? B.EVOLVE_INTERVAL : 1
-  return (B.ATTACK_INTERVAL * mod * formation * echo) / (1 + s.morale * B.MORALE_ATTACK_SPEED)
+  const skillSpeed = s.buffs.reduce((mult, buff) => mult * (SKILLS[buff.skillId].attackSpeedMult ?? 1), 1)
+  return (B.ATTACK_INTERVAL * mod * formation * echo * skillSpeed) / (1 + s.morale * B.MORALE_ATTACK_SPEED)
 }
 
 // ---------- 職業覺醒與印記 ----------
@@ -1849,6 +1871,39 @@ export function availableSkills(s: GameState): SkillId[] {
   const list = [...job.skills]
   if (job.awakenSkill && isAwakened(s)) list.push(job.awakenSkill)
   return list
+}
+
+/** 依單項操練點數解鎖的五系技能。 */
+export function unlockedTrainingSkills(s: GameState): SkillId[] {
+  return TRAINING_BRANCHES.flatMap((branch) =>
+    branch.nodes.filter((node) => s.tracks[branch.id] >= node.level).map((node) => node.skillId),
+  )
+}
+
+/** 戰鬥列實際裝配技能。未自訂時自動採用最早解鎖的五招。 */
+export function equippedSkills(s: GameState): SkillId[] {
+  const unlocked = unlockedTrainingSkills(s)
+  const valid = s.skillLoadout.filter((id) => unlocked.includes(id)).slice(0, 5)
+  return valid.length > 0 ? valid : unlocked.slice(0, 5)
+}
+
+/** 裝配或卸下技能；超過五格時拒絕新增。 */
+export function toggleSkillEquip(s: GameState, id: SkillId): boolean {
+  const unlocked = unlockedTrainingSkills(s)
+  if (!unlocked.includes(id)) return false
+  const current = equippedSkills(s)
+  if (current.includes(id)) {
+    s.skillLoadout = current.filter((skillId) => skillId !== id)
+    return true
+  }
+  if (current.length >= 5) return false
+  s.skillLoadout = [...current, id]
+  return true
+}
+
+/** 舊版技能僅供舊資料與測試相容，新系統技能則以裝配列為準。 */
+function activeSkillPool(s: GameState): SkillId[] {
+  return [...new Set([...availableSkills(s), ...equippedSkills(s)])]
 }
 
 /** 印記在當前職業叫什麼 */
@@ -1906,7 +1961,8 @@ export function sigilModifier(s: GameState): string | null {
  */
 /** 這一招是不是「頂點技能」(第四格):維持正常 CD、不吃 MP,保留大招的稀有感 */
 export function isApexSkill(s: GameState, id: SkillId): boolean {
-  return JOBS[s.jobId].awakenSkill === id
+  void s
+  return !!SKILLS[id].apex
 }
 
 /**
@@ -1952,7 +2008,7 @@ export function skillCooldown(s: GameState, id: SkillId): number {
 }
 
 export function skillReady(s: GameState, id: SkillId): boolean {
-  if (!availableSkills(s).includes(id)) return false
+  if (!activeSkillPool(s).includes(id)) return false
   if ((s.skillCd[id] ?? 0) > 0) return false
   if (isApexSkill(s, id)) return true
   // 前三格吃 MP(v4.1 § 5)。⚠️ 指揮形態的附加成本要一起算進門檻:
@@ -2000,6 +2056,37 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
     }
   }
   const skillDmg = (1 + bonus.skillDmg) * (command ? B.COMMANDER_POWER : 1)
+  let burstScale = 1
+  let bonusHits = 0
+  let healRatio = sk.healRatio ?? 0
+
+  if (id === 'armsHeavy') {
+    const agile = fusionStage(s, 'arms', 'agility')
+    const magic = fusionStage(s, 'arms', 'magic')
+    const faith = fusionStage(s, 'arms', 'faith')
+    bonusHits += agile
+    burstScale *= 1 + magic * 0.15
+    healRatio += faith * 0.03
+  }
+  if (id === 'agilityRoll') healRatio += fusionStage(s, 'agility', 'faith') * 0.05
+  if (id === 'magicBurst') bonusHits += fusionStage(s, 'agility', 'magic') * 2
+  if (id.startsWith('magic')) healRatio += fusionStage(s, 'magic', 'faith') * 0.03
+  if (healRatio > 0) {
+    const bodyFaith = fusionStage(s, 'body', 'faith')
+    const cap = enduranceMax(s)
+    s.endurance = Decimal.min(cap, s.endurance.add(cap.mul(healRatio * (1 + bodyFaith * 0.15))))
+  }
+
+  if (id === 'bodyGuard') {
+    const elementalShield = fusionStage(s, 'body', 'magic')
+    if (elementalShield > 0) {
+      const retaliation = currentDPS(s).mul(elementalShield * 3 * skillDmg)
+      skillDamage = skillDamage.add(retaliation)
+      registerBossHits(s, elementalShield, events, 'skill')
+      if (s.event) s.event.hp = s.event.hp.sub(retaliation)
+      else dealSkillToBoss(s, retaliation, events, rng)
+    }
+  }
 
   // 失落軍旗:戰意滿檔存起來的爆發,在這裡「轉化」成技能的一部分一起釋放
   if (s.bannerStored > 0) {
@@ -2031,7 +2118,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
 
     // 引爆回轉(Reload 式):依消耗層數推進其他技能的冷卻,把循環閉合成 loop
     let reloadMpGranted = false
-    for (const other of availableSkills(s)) {
+    for (const other of activeSkillPool(s)) {
       if (other === id) continue
       const advance = spentNow * B.RELOAD_PER_SIGIL
       if (!isApexSkill(s, other)) {
@@ -2069,7 +2156,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
     }
     s.perfectWindowLeft = 0
   } else if (sk.burstSeconds) {
-    let dmg = currentDPS(s).mul(sk.burstSeconds * skillDmg)
+    let dmg = currentDPS(s).mul(sk.burstSeconds * skillDmg * burstScale)
     skillDamage = skillDamage.add(dmg)
     // 裁決餘燼:七成立即、三成化為燃燒(總量不變——差別是敵人會持續冒火)
     if (hasLegend(s, 'ember')) {
@@ -2077,7 +2164,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
       applyBurn(s, emberBurn, B.EMBER_BURN_DURATION, events)
       dmg = dmg.mul(B.EMBER_IMMEDIATE)
     }
-    registerBossHits(s, 1, events, 'skill')
+    registerBossHits(s, (sk.hitCount ?? 1) + bonusHits, events, 'skill')
     if (s.event) {
       s.event.hp = s.event.hp.sub(dmg)
     } else {
@@ -2123,7 +2210,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
  * 下限 2 是為了覺醒前(只有 1 招)不要每放一次就觸發。
  */
 function distinctNeeded(s: GameState, want: number): number {
-  return Math.max(2, Math.min(want, availableSkills(s).length))
+  return Math.max(2, Math.min(want, activeSkillPool(s).length))
 }
 
 /**
@@ -2148,7 +2235,7 @@ function trackCastOrder(s: GameState, id: SkillId, events: GameEvent[]) {
   s.castOrder = []
   if (!hourglassDone) return
 
-  const longest = availableSkills(s)
+  const longest = activeSkillPool(s)
     .filter((sid) => (s.skillCd[sid] ?? 0) > 0)
     .sort((a, b) => skillCooldown(s, b) - skillCooldown(s, a))[0]
   if (longest) {
@@ -2179,8 +2266,9 @@ function tickAutoCast(s: GameState, raw: GameEvent[], rng: Rng = Math.random) {
   // 一個共用池養不起兩招同時,回復速度就是不夠。
   // 所以自動施放採**輪替**:上次放過的那招要讓給別招。想把視窗疊起來(總攻)是手動玩家的決定,
   // 自動施放是「政策」不是「手速」,它只負責不讓任何一招被永久卡死。
-  const apex = availableSkills(s).filter((id) => isApexSkill(s, id))
-  const normal = availableSkills(s).filter((id) => !isApexSkill(s, id))
+  const equipped = equippedSkills(s)
+  const apex = equipped.filter((id) => isApexSkill(s, id))
+  const normal = equipped.filter((id) => !isApexSkill(s, id))
   const castable = normal.filter((id) => {
     const sk = SKILLS[id]
     return !(sk.consumesSigils && s.sigils < sigilCap(s)) && skillReady(s, id)

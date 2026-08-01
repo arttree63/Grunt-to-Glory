@@ -6,7 +6,7 @@ import { techOfflineHours } from '../core/techs'
 import {
   BOSS_KIND_HINT,
   BOSS_KIND_NAME,
-  availableSkills,
+  equippedSkills,
   bossGap,
   bossKindFor,
   channelProgress,
@@ -110,7 +110,7 @@ const NAV_ART: Record<Tab, string> = {
 }
 
 const STEP_DETAIL: Record<GoalTab, string> = {
-  hero: '前往英雄頁完成成長與轉職。',
+  hero: '前往英雄頁分配操練、解鎖並裝配技能。',
   equip: '整理裝備，換上更適合的組合。',
   forge: '前往鐵匠鋪打造或強化裝備。',
   destiny: '前往命運頁完成這次選擇。',
@@ -456,7 +456,7 @@ function Game() {
   if (s.conquestLeft > 0 && !s.isBoss)
     chips.push({ key: 'conquest', text: `乘勝 ×${B.CONQUEST_MULT} ${s.conquestLeft.toFixed(0)}s`, gold: true })
 
-  const hasSkills = availableSkills(s).length > 0
+  const hasSkills = equippedSkills(s).length > 0
   const job = JOBS[s.jobId]
   const stepVisible = stepGoal && (!stepGoal.tab || tab !== stepGoal.tab)
 

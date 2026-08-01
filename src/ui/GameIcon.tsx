@@ -27,6 +27,26 @@ type IconName =
   | 'icemage'
   | 'sapper'
   | 'pyro'
+  | 'armsHeavy'
+  | 'armsCharge'
+  | 'armsCommand'
+  | 'armsLegend'
+  | 'bodyGuard'
+  | 'bodyIronwall'
+  | 'bodyCommand'
+  | 'bodyLegend'
+  | 'agilityRoll'
+  | 'agilityHaste'
+  | 'agilityCommand'
+  | 'agilityLegend'
+  | 'magicFireball'
+  | 'magicBurst'
+  | 'magicCommand'
+  | 'magicLegend'
+  | 'faithHeal'
+  | 'faithBlessing'
+  | 'faithCommand'
+  | 'faithLegend'
 
 export function GameIcon({ name, size = 22 }: { name: IconName; size?: number }) {
   const common = {
@@ -42,13 +62,13 @@ export function GameIcon({ name, size = 22 }: { name: IconName; size?: number })
     'aria-hidden': true,
   }
 
-  if (name === 'shieldRush' || name === 'bulwark' || name === 'equip') {
+  if (name === 'shieldRush' || name === 'bulwark' || name === 'equip' || name.startsWith('body')) {
     return <svg {...common}><path d="M12 2 20 5v6c0 5-3.4 9-8 11-4.6-2-8-6-8-11V5l8-3Z" /><path d="M12 5v13M7 9h10" /></svg>
   }
-  if (name === 'gale' || name === 'shadowClone' || name === 'hero' || name === 'rogue') {
+  if (name === 'gale' || name === 'shadowClone' || name === 'hero' || name === 'rogue' || name.startsWith('arms') || name.startsWith('agility')) {
     return <svg {...common}><path d="m4 20 4-4M7 17l10-10 2-4-4 2L5 15M14 6l4 4M3 21h6" /></svg>
   }
-  if (name === 'judgement' || name === 'meteor') {
+  if (name === 'judgement' || name === 'meteor' || name.startsWith('magic') || name.startsWith('faith')) {
     return <svg {...common}><path d="M12 2v5M12 17v5M2 12h5M17 12h5M5 5l3.5 3.5M15.5 15.5 19 19M19 5l-3.5 3.5M8.5 15.5 5 19" /><circle cx="12" cy="12" r="4" /></svg>
   }
   if (name === 'rally') {

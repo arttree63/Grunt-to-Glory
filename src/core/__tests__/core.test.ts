@@ -47,6 +47,9 @@ import {
   canFineForge,
   barterForDestiny,
   availableSkills,
+  equippedSkills,
+  unlockedTrainingSkills,
+  toggleSkillEquip,
   enduranceMax,
   threatPerSec,
   critRate,
@@ -301,18 +304,15 @@ describe('戰鬥循環', () => {
   })
 
   it('自動施放:便宜的招要留貴招的份,不能把它餓死(v4.1 § 5)', () => {
-    // ⚠️ 一定要用**二轉**職業:一轉只有一個非頂點技能,根本沒有餓死的可能,
-    // 用 infantry 寫的話這條測試會整段空轉(if 永遠不成立)
     const s = createInitialState()
-    s.lv = 100
-    promote(s, 'infantry')
-    promote(s, 'paladin')
-    s.highestFloor = B.AWAKEN_FLOOR
+    s.tracks.arms = 20
+    s.tracks.magic = 20
+    s.lv = 41
     s.autoCast = true
     s.floor = 5
     spawnEnemy(s)
 
-    const skills = availableSkills(s).filter((id) => !isApexSkill(s, id))
+    const skills = equippedSkills(s).filter((id) => !isApexSkill(s, id))
     expect(skills.length).toBeGreaterThanOrEqual(2) // 前提:真的有兩招在搶同一個池子
     const sorted = [...skills].sort((a, b) => mpCost(s, b) - mpCost(s, a))
     const [dear, cheap] = sorted
@@ -2604,6 +2604,40 @@ describe('五系操練技能樹', () => {
     expect(FUSION_SKILLS).toHaveLength(10)
     expect(new Set(pairs).size).toBe(10)
   })
+
+  it('依單項操練解鎖，且戰鬥裝配最多五招', () => {
+    const s = createInitialState()
+    s.tracks.arms = 200
+    s.tracks.body = 50
+    s.tracks.magic = 20
+    expect(unlockedTrainingSkills(s)).toEqual([
+      'armsHeavy', 'armsCharge', 'armsCommand', 'armsLegend', 'bodyGuard', 'bodyIronwall', 'magicFireball',
+    ])
+    expect(equippedSkills(s)).toHaveLength(5)
+    expect(toggleSkillEquip(s, 'magicFireball')).toBe(false)
+    expect(toggleSkillEquip(s, 'armsHeavy')).toBe(true)
+    expect(toggleSkillEquip(s, 'magicFireball')).toBe(true)
+    expect(equippedSkills(s)).toContain('magicFireball')
+  })
+
+  it('新技能可造成多段傷害、治療與減傷', () => {
+    const s = createInitialState()
+    s.tracks.arms = 100
+    s.tracks.body = 100
+    s.tracks.faith = 100
+    s.skillLoadout = ['armsCommand', 'bodyGuard', 'faithHeal']
+    s.enemyHp = D(1e30)
+    s.enemyMaxHp = s.enemyHp
+    s.endurance = enduranceMax(s).mul(0.2)
+
+    const command = castSkill(s, 'armsCommand')
+    expect(command.some((event) => event.type === 'skill' && event.damage?.gt(0))).toBe(true)
+    const beforeHeal = s.endurance
+    castSkill(s, 'faithHeal')
+    expect(s.endurance.gt(beforeHeal)).toBe(true)
+    castSkill(s, 'bodyGuard')
+    expect(s.buffs.some((buff) => buff.skillId === 'bodyGuard')).toBe(true)
+  })
 })
 
 describe('裝備四層架構(基底 / 詞綴分類 / 傳說)', () => {
@@ -3539,11 +3573,8 @@ describe('GDD v3 封版三項(2026-07-30)', () => {
 describe('自動施放開關(GDD v3 § 2.4 最小版)', () => {
   const hero = () => {
     const s = createInitialState()
-    s.lv = 20
-    promote(s, 'infantry')
-    s.highestFloor = B.AWAKEN_FLOOR
-    chooseDestiny(s, 'tactician')
-    s.destinyNodes.push('tactician_1a')
+    s.tracks.arms = 50
+    s.lv = 51
     s.enemyMaxHp = D(1e12)
     s.enemyHp = D(1e12)
     return s
@@ -3562,20 +3593,16 @@ describe('自動施放開關(GDD v3 § 2.4 最小版)', () => {
     toggleAutoCast(s)
     expect(s.autoCast).toBe(true)
     const ev = applyTick(s, 100)
-    expect(ev.some((e) => e.type === 'skill' && e.skillId === 'shieldRush')).toBe(true)
-    expect(s.buffs.some((b) => b.skillId === 'shieldRush')).toBe(true)
+    expect(ev.some((e) => e.type === 'skill' && e.skillId === 'armsHeavy')).toBe(true)
   })
 
-  it('消耗印記型等滿層才放(保留「攢滿再引爆」的價值)', () => {
+  it('自動施放只使用目前裝配的技能', () => {
     const s = hero()
+    s.skillLoadout = ['armsCharge']
     toggleAutoCast(s)
-    s.sigils = 3 // 未滿
-    applyTick(s, 100)
-    expect(s.sigils).toBe(3) // 沒被自動引爆
-
-    s.sigils = sigilCap(s)
-    applyTick(s, 100)
-    expect(s.sigils).toBeLessThan(sigilCap(s)) // 滿層才放
+    const ev = applyTick(s, 100)
+    expect(ev.some((e) => e.type === 'skill' && e.skillId === 'armsCharge')).toBe(true)
+    expect(ev.some((e) => e.type === 'skill' && e.skillId === 'armsHeavy')).toBe(false)
   })
 
   it('蓄勢期間不自動放(那是刻意停手)', () => {
@@ -3697,14 +3724,11 @@ describe('破盾值系統(GDD v3 § 5.4)', () => {
 })
 
 describe('三層目標收斂(近期/本輪/跨輪各一個)', () => {
-  it('近期:同時滿足多個條件只回優先序最高的一個(轉職 > 命運 > 際遇 > 打造)', () => {
+  it('近期:舊轉職退場後，命運優先於際遇與打造', () => {
     const s = createInitialState()
-    s.lv = 20 // 可轉職
+    s.lv = 20
     s.destinyPoints = 1
     s.materials = B.FORGE_COST
-    expect(nearGoal(s)!.tab).toBe('hero')
-    promote(s, 'infantry')
-    // 轉職完了 → 下一個是命運(尚未選路)
     expect(nearGoal(s)!.tab).toBe('destiny')
   })
 

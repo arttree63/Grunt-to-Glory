@@ -2442,6 +2442,17 @@ button {
   border-radius: 50%;
   box-shadow: 0 0 7px color-mix(in srgb, var(--branch-color) 40%, transparent);
 }
+.combat-skill-glyph {
+  display: block;
+  width: 40px;
+  height: 40px;
+  margin: auto;
+  border-radius: 50%;
+  background-image: url('../../assets/visual/ui/skill-tree-20260801/sources/icon-library.jpg');
+  background-repeat: no-repeat;
+  background-size: 640px 426.5px;
+  box-shadow: 0 0 8px #d39d4a55;
+}
 .skill-arms-0 { background-position: -50px -238px; }
 .skill-arms-1 { background-position: -85px -238px; }
 .skill-arms-2 { background-position: -120px -238px; }
@@ -2496,6 +2507,26 @@ button {
 }
 .matrix-node.unlocked .node-state {
   color: var(--branch-color);
+}
+.node-equip {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-height: 20px;
+  padding: 2px 5px;
+  border: 1px solid #69543a;
+  border-radius: 5px;
+  background: #171319;
+  color: #b8a58a;
+  font-size: 7px;
+}
+.node-equip.equipped {
+  border-color: var(--branch-color);
+  color: #f0d79f;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--branch-color) 40%, transparent);
+}
+.node-equip:disabled {
+  color: #6f676b;
 }
 .fusion-head {
   margin-top: 18px;

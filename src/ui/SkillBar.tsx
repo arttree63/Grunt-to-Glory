@@ -1,6 +1,6 @@
 import * as B from '../core/balance'
 import {
-  availableSkills,
+  equippedSkills,
   isApexSkill,
   mpCost,
   sigilPerStackSeconds,
@@ -16,13 +16,21 @@ import { useGameState } from './useGameState'
 import { GameIcon } from './GameIcon'
 import { useEffect, useRef, useState } from 'react'
 
+const TRAINING_SKILL_GLYPH: Partial<Record<SkillId, string>> = {
+  armsHeavy: 'skill-arms-0', armsCharge: 'skill-arms-1', armsCommand: 'skill-arms-2', armsLegend: 'skill-arms-3',
+  bodyGuard: 'skill-body-0', bodyIronwall: 'skill-body-1', bodyCommand: 'skill-body-2', bodyLegend: 'skill-body-3',
+  agilityRoll: 'skill-agility-0', agilityHaste: 'skill-agility-1', agilityCommand: 'skill-agility-2', agilityLegend: 'skill-agility-3',
+  magicFireball: 'skill-magic-0', magicBurst: 'skill-magic-1', magicCommand: 'skill-magic-2', magicLegend: 'skill-magic-3',
+  faithHeal: 'skill-faith-0', faithBlessing: 'skill-faith-1', faithCommand: 'skill-faith-2', faithLegend: 'skill-faith-3',
+}
+
 /** 技能列。冷卻用覆蓋層表示；未解鎖技能留在英雄頁預告，不占用戰鬥操作區。 */
 export default function SkillBar() {
   const s = useGameState()
   const cast = useGame((st) => st.castSkill)
   const toggleCharge = useGame((st) => st.toggleCharge)
   const toggleAutoCast = useGame((st) => st.toggleAutoCast)
-  const owned = availableSkills(s)
+  const owned = equippedSkills(s)
   const slots: Array<SkillId | null> = [...owned]
   const [advancedSkill, setAdvancedSkill] = useState<SkillId | null>(null)
   const [detailSkill, setDetailSkill] = useState<SkillId | null>(null)
@@ -148,7 +156,11 @@ export default function SkillBar() {
             title={`${sk.name}:${sk.desc}`}
             style={{ position: 'relative', overflow: 'hidden', opacity: ready ? 1 : 0.55 }}
           >
-            <GameIcon name={id} />
+            {TRAINING_SKILL_GLYPH[id] ? (
+              <span className={`combat-skill-glyph ${TRAINING_SKILL_GLYPH[id]}`} aria-hidden="true" />
+            ) : (
+              <GameIcon name={id} />
+            )}
             {sk.consumesSigils && s.sigils > 0 && (
               <span
                 style={{

@@ -1,9 +1,9 @@
 import * as B from './balance'
 import { isBossFloor } from './formulas'
-import { availableJobs, JOBS } from './jobs'
 import { MERCS } from './mercs'
+import { TRAINING_BRANCHES } from './trainingTree'
 import { canBuyTech, TECHS } from './techs'
-import { bestFloorEver, isAwakened, runStalled } from './game'
+import { bestFloorEver, runStalled } from './game'
 import type { GameState } from './types'
 
 /**
@@ -27,8 +27,6 @@ export function nearGoal(s: GameState): Goal | null {
   // 的按鈕裡的第三行小字,而且要先輸過一次 Boss 才會渲染——等於沒講。
   // 目標曲線的最後一環(解放 → 期待下一輪)靠它接上。
   if (runStalled(s)) return { text: '這一代推不動了,可以退役換勳章', tab: 'legacy' }
-  if (availableJobs(s.jobId, s.lv, s.destinyPath).length > 0)
-    return { text: '可以轉職了', tab: 'hero' }
   if (s.destinyPoints > 0) return { text: '有命運抉擇待決定', tab: 'destiny' }
   if (s.encounters.length > 0) return { text: '路上有際遇等著處理', tab: 'journal' }
   if (s.materials >= B.FORGE_COST) return { text: '素材夠打造一次', tab: 'forge' }
@@ -52,10 +50,10 @@ export function runGoal(s: GameState): Goal {
   const milestone = B.DESTINY_MILESTONES[s.destinyEarned]
   if (milestone !== undefined && s.floor <= milestone)
     return { text: `擊破第 ${milestone} 層守關者,進入命運抉擇`, tab: null }
-  if (JOBS[s.jobId].tier === 1 && !isAwakened(s) && s.highestFloor < B.AWAKEN_FLOOR)
-    return { text: `抵達第 ${B.AWAKEN_FLOOR} 層解鎖第二技能`, tab: null }
-  if (JOBS[s.jobId].tier === 1 && s.lv < JOBS.paladin.reqLv)
-    return { text: `Lv.${JOBS.paladin.reqLv} 可以二轉`, tab: null }
+  const focus = TRAINING_BRANCHES.find((branch) => branch.id === s.trackFocus)
+  const nextSkill = focus?.nodes.find((node) => s.tracks[s.trackFocus] < node.level)
+  if (focus && nextSkill)
+    return { text: `${focus.name}再投入 ${nextSkill.level - s.tracks[s.trackFocus]} 點，解鎖「${nextSkill.name}」`, tab: null }
   // 沒有特定里程碑就指向下一個守關者
   const nextBoss = Math.floor(s.floor / 10) * 10 + 10
   return { text: `攻上第 ${nextBoss} 層守關者`, tab: null }

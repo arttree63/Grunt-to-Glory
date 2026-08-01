@@ -18,6 +18,16 @@ export interface Skill {
   consumesSigils?: boolean
   /** 印記在這個職業叫什麼 */
   sigilName?: string
+  /** 傳奇技能不消耗 MP，改走完整冷卻。 */
+  apex?: boolean
+  /** 立即回復最大 HP 的比例。 */
+  healRatio?: number
+  /** 生效期間承受威脅傷害的倍率。 */
+  defenseMult?: number
+  /** 生效期間攻擊間隔倍率。 */
+  attackSpeedMult?: number
+  /** 技能造成的獨立命中段數。 */
+  hitCount?: number
 }
 
 /**
@@ -26,6 +36,32 @@ export interface Skill {
  * 現行模型做得出來(只要一個計數器 + 一次爆發),不需要位置、多目標或 HP。
  */
 export const SKILLS: Record<SkillId, Skill> = {
+  armsHeavy: { id: 'armsHeavy', name: '重擊', desc: '造成 8 秒份傷害，破盾值較高', cd: 14, burstSeconds: 8, hitCount: 2 },
+  armsCharge: { id: 'armsCharge', name: '衝鋒', desc: '先鋒軍發動三段突擊，造成 12 秒份傷害', cd: 26, burstSeconds: 12, hitCount: 3 },
+  armsCommand: { id: 'armsCommand', name: '先鋒號令', desc: '精銳先鋒發動五段協同攻擊', cd: 44, burstSeconds: 22, hitCount: 5 },
+  armsLegend: { id: 'armsLegend', name: '武神姿態', desc: '12 秒內傷害 ×3', cd: 85, duration: 12, dmgMult: 3, apex: true },
+
+  bodyGuard: { id: 'bodyGuard', name: '格擋', desc: '8 秒內承受威脅傷害 ×0.45', cd: 20, duration: 8, defenseMult: 0.45 },
+  bodyIronwall: { id: 'bodyIronwall', name: '鐵壁', desc: '12 秒內傷害 ×1.3、承受傷害 ×0.4', cd: 34, duration: 12, dmgMult: 1.3, defenseMult: 0.4 },
+  bodyCommand: { id: 'bodyCommand', name: '盾衛號令', desc: '回復 30% HP，10 秒內承受傷害 ×0.5', cd: 48, duration: 10, healRatio: 0.3, defenseMult: 0.5 },
+  bodyLegend: { id: 'bodyLegend', name: '不落要塞', desc: '回復 40% HP，15 秒內攻擊 ×1.8、承受傷害 ×0.2', cd: 95, duration: 15, dmgMult: 1.8, healRatio: 0.4, defenseMult: 0.2, apex: true },
+
+  agilityRoll: { id: 'agilityRoll', name: '翻滾', desc: '6 秒內暴擊率 +25%、承受傷害 ×0.15', cd: 18, duration: 6, critAdd: 0.25, defenseMult: 0.15 },
+  agilityHaste: { id: 'agilityHaste', name: '疾走', desc: '10 秒內攻擊間隔 ×0.65、暴擊率 +20%', cd: 30, duration: 10, critAdd: 0.2, attackSpeedMult: 0.65 },
+  agilityCommand: { id: 'agilityCommand', name: '游擊號令', desc: '游擊兵發動八段攻擊', cd: 44, burstSeconds: 18, hitCount: 8 },
+  agilityLegend: { id: 'agilityLegend', name: '無影突襲', desc: '12 秒內攻擊間隔 ×0.45、傷害 ×1.8', cd: 90, duration: 12, dmgMult: 1.8, attackSpeedMult: 0.45, apex: true },
+
+  magicFireball: { id: 'magicFireball', name: '火球術', desc: '造成 14 秒份魔法傷害', cd: 20, burstSeconds: 14 },
+  magicBurst: { id: 'magicBurst', name: '元素爆發', desc: '造成三段、共 26 秒份魔法傷害', cd: 38, burstSeconds: 26, hitCount: 3 },
+  magicCommand: { id: 'magicCommand', name: '法師號令', desc: '法師團共同詠唱，造成五段大型傷害', cd: 56, burstSeconds: 38, hitCount: 5 },
+  magicLegend: { id: 'magicLegend', name: '禁咒', desc: '造成 70 秒份最高級魔法傷害', cd: 105, burstSeconds: 70, apex: true },
+
+  faithHeal: { id: 'faithHeal', name: '治療術', desc: '立即回復 25% HP', cd: 22, healRatio: 0.25 },
+  faithBlessing: { id: 'faithBlessing', name: '神聖祝福', desc: '回復 15% HP，12 秒內傷害 ×1.35、承受傷害 ×0.7', cd: 38, duration: 12, dmgMult: 1.35, healRatio: 0.15, defenseMult: 0.7 },
+  faithCommand: { id: 'faithCommand', name: '祭司號令', desc: '回復 40% HP，並造成三段聖光傷害', cd: 54, burstSeconds: 12, healRatio: 0.4, hitCount: 3 },
+  faithLegend: { id: 'faithLegend', name: '聖域', desc: '回復 60% HP，15 秒內傷害 ×1.6、承受傷害 ×0.55', cd: 105, duration: 15, dmgMult: 1.6, healRatio: 0.6, defenseMult: 0.55, apex: true },
+
+  // 舊版定義保留供裝備與舊存檔資料解析，不再加入技能列。
   shieldRush: {
     id: 'shieldRush',
     name: '盾牆突擊',
@@ -72,6 +108,7 @@ export const SKILLS: Record<SkillId, Skill> = {
     cd: 20,
     consumesSigils: true,
     sigilName: '軍勢',
+    apex: true,
   },
   windMark: {
     id: 'windMark',
@@ -80,6 +117,7 @@ export const SKILLS: Record<SkillId, Skill> = {
     cd: 20,
     consumesSigils: true,
     sigilName: '追風印記',
+    apex: true,
   },
   edict: {
     id: 'edict',
@@ -88,6 +126,7 @@ export const SKILLS: Record<SkillId, Skill> = {
     cd: 20,
     consumesSigils: true,
     sigilName: '法令',
+    apex: true,
   },
   meteor: {
     id: 'meteor',

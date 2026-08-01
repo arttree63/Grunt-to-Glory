@@ -14,6 +14,7 @@ export interface SaveData {
   /** 五科操練點數(v4.1)。總和 + 1 = lv */
   tracks?: Record<TrackId, number>
   trackFocus?: TrackId
+  skillLoadout?: GameState['skillLoadout']
   gold: string
   jobId: GameState['jobId']
   training?: GameState['training']
@@ -95,6 +96,7 @@ export function serialize(s: GameState): SaveData {
     mp: s.mp,
     tracks: { ...s.tracks },
     trackFocus: s.trackFocus,
+    skillLoadout: s.skillLoadout,
     gold: s.gold.toString(),
     jobId: s.jobId,
     training: s.training,
@@ -385,6 +387,11 @@ function migrate(raw: SaveData): SaveData {
     d.mp = d.mp ?? MP_MAX
     d.version = 29
   }
+  // v29 → v30：五系主動技能裝配。舊存檔預設由已解鎖技能自動填入前五格。
+  if (d.version < 30) {
+    d.skillLoadout = d.skillLoadout ?? []
+    d.version = 30
+  }
   return d
 }
 
@@ -403,6 +410,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     ),
     tracks: { ...base.tracks, ...(d.tracks ?? {}) },
     trackFocus: d.trackFocus ?? 'arms',
+    skillLoadout: d.skillLoadout ?? [],
     gold: D(d.gold ?? 0),
     jobId: d.jobId ?? 'rookie',
     training: d.training ?? [],
