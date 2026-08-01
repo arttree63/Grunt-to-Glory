@@ -19,7 +19,6 @@ import {
 } from '../core/game'
 import { BattleScene, type BattleSnapshot } from '../render/BattleScene'
 import { gameEvents } from '../store/events'
-import { SKILLS } from '../core/skills'
 import { MERCS } from '../core/mercs'
 import type { GameEvent, SkillId } from '../core/types'
 import * as sfx from '../audio/sfx'
@@ -67,6 +66,7 @@ const EVENT_SFX: Partial<Record<GameEvent['type'], sfx.SfxName>> = {
   zoneEnter: 'bossKill',
   destinyDescend: 'legendForge',
   afterimageSpawn: 'skillGale',
+  retaliate: 'skillShield',
 }
 
 /** 三系技能的音色。第二技能(引爆)另走 burst,因為那是機制成功層不是身分層 */
@@ -118,12 +118,14 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         formation: ironwallActive(s),
         // 多槽 buff:buffSkill 維持「最新的那個」給 Codex 的分招演出用,不改契約
         buffSkill: s.buffs.at(-1)?.skillId ?? null,
+        bodyBuffSkill: [...s.buffs].reverse().find((buff) => buff.skillId.startsWith('body'))?.skillId ?? null,
         buffPermanent: !!s.buffs.at(-1)?.permanent,
         buffLeft: s.buffs.at(-1)?.timeLeft ?? 0,
         sigils: s.sigils,
         sigilMax: sigilCap(s),
         armyMomentum: s.armyMomentum,
         armyUnits: s.armyUnits,
+        armyFormation: s.armyFormation,
         combo: s.combo,
         trackArms: s.tracks.arms,
         trackBody: s.tracks.body,
@@ -210,11 +212,10 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.swing(fmtCombat(e.damage!), true)
       } else if (e.type === 'skill') {
         // 技能直傷原本完全沒有演出:血條瞬空但畫面什麼都沒發生
-        const name = SKILLS[e.skillId!].name
         // 三系各有自己的音色:關掉技能名稱也要聽得出剛剛放的是哪一招(GDD § 10.5 身分層)
         sfx.play((e.count ?? 0) > 0 ? 'burst' : SKILL_SFX[e.skillId!] ?? 'skillShield')
         // count = 消耗掉的印記層數,演出可以據此畫 N 道射線
-        scene.skillHit(e.damage ? fmtCombat(e.damage) : name, e.skillId!, e.count ?? 0)
+        scene.skillHit(e.damage ? fmtCombat(e.damage) : '', e.skillId!, e.count ?? 0)
       } else if (e.type === 'cooldownAdvance') {
         scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0, e.via)
       } else if (e.type === 'zoneEnter') {
@@ -235,6 +236,8 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.onArmySummon(e.count ?? 0)
       } else if (e.type === 'armyAssist') {
         scene.onArmyAssist(e.count ?? 0, e.damage ? fmtCombat(e.damage) : '')
+      } else if (e.type === 'retaliate') {
+        scene.onRetaliate(e.count ?? 0, e.damage ? fmtCombat(e.damage) : '', e.skillId!)
       } else if (e.type === 'resonanceGain') {
         scene.onResonanceGain(e.count ?? 0)
       } else if (e.type === 'shellGain') {

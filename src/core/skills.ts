@@ -28,6 +28,8 @@ export interface Skill {
   attackSpeedMult?: number
   /** 技能造成的獨立命中段數。 */
   hitCount?: number
+  /** 每次擋下威脅後，反擊折算的 DPS 秒數。 */
+  retaliationSeconds?: number
 }
 
 /**
@@ -41,10 +43,10 @@ export const SKILLS: Record<SkillId, Skill> = {
   armsCommand: { id: 'armsCommand', name: '先鋒號令', desc: '消耗所有已部署士兵發動總攻；每名士兵提高 12% 傷害', cd: 44, burstSeconds: 22, hitCount: 5 },
   armsLegend: { id: 'armsLegend', name: '武神姿態', desc: '12 秒內傷害 ×3', cd: 85, duration: 12, dmgMult: 3, apex: true },
 
-  bodyGuard: { id: 'bodyGuard', name: '格擋', desc: '8 秒內承受威脅傷害 ×0.45', cd: 20, duration: 8, defenseMult: 0.45 },
-  bodyIronwall: { id: 'bodyIronwall', name: '鐵壁', desc: '12 秒內傷害 ×1.3、承受傷害 ×0.4', cd: 34, duration: 12, dmgMult: 1.3, defenseMult: 0.4 },
-  bodyCommand: { id: 'bodyCommand', name: '盾衛號令', desc: '回復 30% HP，10 秒內承受傷害 ×0.5', cd: 48, duration: 10, healRatio: 0.3, defenseMult: 0.5 },
-  bodyLegend: { id: 'bodyLegend', name: '不落要塞', desc: '回復 40% HP，15 秒內攻擊 ×1.8、承受傷害 ×0.2', cd: 95, duration: 15, dmgMult: 1.8, healRatio: 0.4, defenseMult: 0.2, apex: true },
+  bodyGuard: { id: 'bodyGuard', name: '格擋', desc: '8 秒內減傷；每次受擊反擊，盾衛兵會強化反擊', cd: 20, duration: 8, defenseMult: 0.45, retaliationSeconds: 0.55 },
+  bodyIronwall: { id: 'bodyIronwall', name: '鐵壁', desc: '12 秒內傷害 ×1.3、減傷並強化反擊', cd: 34, duration: 12, dmgMult: 1.3, defenseMult: 0.4, retaliationSeconds: 0.8 },
+  bodyCommand: { id: 'bodyCommand', name: '盾衛號令', desc: '回復 30% HP，10 秒內全軍架盾反擊', cd: 48, duration: 10, healRatio: 0.3, defenseMult: 0.5, retaliationSeconds: 1.05 },
+  bodyLegend: { id: 'bodyLegend', name: '不落要塞', desc: '回復 40% HP，15 秒內攻擊 ×1.8、極大減傷與反擊', cd: 95, duration: 15, dmgMult: 1.8, healRatio: 0.4, defenseMult: 0.2, retaliationSeconds: 1.4, apex: true },
 
   agilityRoll: { id: 'agilityRoll', name: '翻滾', desc: '6 秒內暴擊率 +25%、承受傷害 ×0.15', cd: 18, duration: 6, critAdd: 0.25, defenseMult: 0.15 },
   agilityHaste: { id: 'agilityHaste', name: '疾走', desc: '10 秒內攻擊間隔 ×0.65、暴擊率 +20%', cd: 30, duration: 10, critAdd: 0.2, attackSpeedMult: 0.65 },

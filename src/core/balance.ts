@@ -104,8 +104,12 @@ export const ARMY_MOMENTUM_PER_SKILL_HIT = 8
 export const ARMY_ASSIST_INTERVAL = 2.4
 /** 每名士兵一次協同攻擊折算的 DPS 秒數。 */
 export const ARMY_ASSIST_DPS_SECONDS = 0.2
+/** 盾衛兵以防守為主，平時協同攻擊較低。 */
+export const SHIELD_GUARD_ASSIST_DPS_SECONDS = 0.12
 /** 先鋒號令每消耗一名士兵增加的傷害比例。 */
 export const ARMY_COMMAND_POWER_PER_UNIT = 0.12
+/** 每名已部署盾衛兵提高體能技能反擊傷害。 */
+export const SHIELD_GUARD_RETALIATION_BONUS = 0.18
 
 // ── 遠征耐久(生存檢定,v4.1)──
 /**

@@ -34,6 +34,8 @@ import {
   runStalled,
   dealDamage,
   gainSigil,
+  armyComposition,
+  setArmyFormationSlot,
   lastDitchMult,
   attackInterval,
   buffMult,
@@ -4103,6 +4105,22 @@ describe('命運共鳴(顯示傾向與公開來源,不替玩家推薦)', () => {
 })
 
 describe('軍勢系統', () => {
+  it('五格編制可切換兵種，非法席位與兵種會被拒絕', () => {
+    const s = createInitialState()
+    expect(setArmyFormationSlot(s, 1, 'shieldGuard')).toBe(true)
+    expect(s.armyFormation[1]).toBe('shieldGuard')
+    expect(setArmyFormationSlot(s, -1, 'vanguard')).toBe(false)
+    expect(setArmyFormationSlot(s, 5, 'vanguard')).toBe(false)
+    expect(setArmyFormationSlot(s, 0, 'mage' as never)).toBe(false)
+  })
+
+  it('已部署士兵依編制前 N 格計算兵種', () => {
+    const s = createInitialState()
+    s.armyFormation = ['shieldGuard', 'vanguard', 'shieldGuard', 'vanguard', 'vanguard']
+    s.armyUnits = 3
+    expect(armyComposition(s)).toEqual({ vanguard: 1, shieldGuard: 2 })
+  })
+
   it('累積滿格會部署一名士兵，編隊最多五名', () => {
     const s = createInitialState()
     const events: ReturnType<typeof castSkill> = []
@@ -4147,16 +4165,51 @@ describe('軍勢系統', () => {
     const s = createInitialState()
     s.armyMomentum = 73
     s.armyUnits = 4
+    s.armyFormation = ['shieldGuard', 'vanguard', 'shieldGuard', 'vanguard', 'shieldGuard']
     const out = deserialize(serialize(s))
     expect(out.armyMomentum).toBe(73)
     expect(out.armyUnits).toBe(4)
+    expect(out.armyFormation).toEqual(s.armyFormation)
 
     const raw = serialize(s) as unknown as Record<string, unknown>
     raw.armyMomentum = 999
     raw.armyUnits = 99
+    raw.armyFormation = ['shieldGuard', 'hacker', null, 'vanguard', {}, 'shieldGuard']
     const clamped = deserialize(raw as never)
     expect(clamped.armyMomentum).toBe(B.ARMY_MOMENTUM_MAX)
     expect(clamped.armyUnits).toBe(B.ARMY_UNIT_MAX)
+    expect(clamped.armyFormation).toEqual(['shieldGuard', 'vanguard', 'vanguard', 'vanguard', 'vanguard'])
+  })
+
+  it('體能技能受擊才反擊，盾衛兵會提高反擊且不累積軍勢', () => {
+    const make = (guards: number) => {
+      const s = createInitialState()
+      s.skillLoadout = ['bodyGuard']
+      s.enemyHp = D('1e100')
+      s.enemyMaxHp = s.enemyHp
+      s.endurance = D('1e100')
+      s.threatTimer = B.THREAT_INTERVAL - 0.01
+      s.armyUnits = guards
+      s.armyFormation = Array.from({ length: B.ARMY_UNIT_MAX }, () => 'shieldGuard')
+      s.armyMomentum = 37
+      castSkill(s, 'bodyGuard')
+      return s
+    }
+    const solo = make(0)
+    const squad = make(3)
+    const soloEvent = applyTick(solo, 20, () => 0.5).find((event) => event.type === 'retaliate')
+    const squadEvent = applyTick(squad, 20, () => 0.5).find((event) => event.type === 'retaliate')
+    expect(soloEvent?.count).toBe(0)
+    expect(squadEvent?.count).toBe(3)
+    expect(D(squadEvent?.damage ?? 0).gt(D(soloEvent?.damage ?? 0))).toBe(true)
+    expect(squad.armyMomentum).toBe(37)
+
+    const inactive = createInitialState()
+    inactive.enemyHp = D('1e100')
+    inactive.enemyMaxHp = inactive.enemyHp
+    inactive.endurance = D('1e100')
+    inactive.threatTimer = B.THREAT_INTERVAL - 0.01
+    expect(applyTick(inactive, 20, () => 0.5).some((event) => event.type === 'retaliate')).toBe(false)
   })
 })
 

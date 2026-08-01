@@ -3,6 +3,7 @@ import * as B from '../core/balance'
 import { D, type Decimal } from '../core/decimal'
 import * as G from '../core/game'
 import type {
+  ArmyUnitType,
   DestinyNodeId,
   DestinyPathId,
   EncounterId,
@@ -48,6 +49,7 @@ interface Store {
   pickDestinyNode: (id: DestinyNodeId) => void
   castSkill: (id: SkillId) => void
   toggleSkillEquip: (id: SkillId) => void
+  setArmyFormationSlot: (slot: number, unitType: ArmyUnitType) => void
   forge: (opts?: G.ForgeOptions) => Equipment | null
   devourWeapon: (foodId: string) => void
   fineForge: (opts: G.FineForgeOptions) => Equipment | null
@@ -200,6 +202,10 @@ export const useGame = create<Store>((set, get) => ({
   toggleSkillEquip(id) {
     G.toggleSkillEquip(get().s, id)
     bump(set, get)
+  },
+
+  setArmyFormationSlot(slot, unitType) {
+    if (G.setArmyFormationSlot(get().s, slot, unitType)) bump(set, get)
   },
 
   forge(opts) {

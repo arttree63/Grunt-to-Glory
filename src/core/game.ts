@@ -56,6 +56,7 @@ import {
   techStartGold,
 } from './techs'
 import type {
+  ArmyUnitType,
   BaseType,
   BossKind,
   BossStats,
@@ -163,6 +164,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     skillLoadout: [],
     armyMomentum: 0,
     armyUnits: 0,
+    armyFormation: ['vanguard', 'vanguard', 'vanguard', 'vanguard', 'vanguard'],
     armyAssistTimer: B.ARMY_ASSIST_INTERVAL,
     buffs: [],
     zealStacks: 0,
@@ -239,7 +241,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 31
+export const SAVE_VERSION = 32
 
 // ---------- 數值查詢 ----------
 
@@ -1361,7 +1363,24 @@ function tickThreat(s: GameState, dt: number, raw: GameEvent[], rng: Rng) {
       failFloor(s, raw, 'endurance')
       return
     }
+    retaliateAfterThreat(s, raw, rng)
   }
+}
+
+/** 體能技能的反擊只在敵方威脅實際命中後發動；同時開多招時取最高倍率一次。 */
+function retaliateAfterThreat(s: GameState, events: GameEvent[], rng: Rng) {
+  const active = s.buffs
+    .map((buff) => ({ skillId: buff.skillId, seconds: SKILLS[buff.skillId].retaliationSeconds ?? 0 }))
+    .filter((entry) => entry.seconds > 0)
+    .sort((a, b) => b.seconds - a.seconds)[0]
+  if (!active) return
+  const guards = armyComposition(s).shieldGuard
+  const damage = currentDPS(s).mul(
+    active.seconds * (1 + guards * B.SHIELD_GUARD_RETALIATION_BONUS),
+  )
+  registerBossHits(s, 1 + guards, events, 'retaliate')
+  events.push({ type: 'retaliate', skillId: active.skillId, count: guards, damage })
+  dealDamage(s, damage, events, rng, { source: 'retaliate' })
 }
 
 /** 高 DPS 時單 tick 可能殺掉幾十隻,合併成一則事件,演出層不必被灌爆 */
@@ -1974,6 +1993,38 @@ export function gainArmyMomentum(s: GameState, amount: number, events: GameEvent
   if (summoned) events.push({ type: 'armySummon', count: s.armyUnits })
 }
 
+/** 目前可編入軍團的兵種；實驗模式直接開放，方便逐招驗收。 */
+export function unlockedArmyUnitTypes(s: GameState): ArmyUnitType[] {
+  const unlocked: ArmyUnitType[] = []
+  if (B.SKILL_LAB_MODE || s.tracks.arms >= 20) unlocked.push('vanguard')
+  if (B.SKILL_LAB_MODE || s.tracks.body >= 20) unlocked.push('shieldGuard')
+  return unlocked.length > 0 ? unlocked : ['vanguard']
+}
+
+/** 變更固定五格編制；所有輸入都走白名單與席位邊界檢查。 */
+export function setArmyFormationSlot(s: GameState, slot: number, unitType: ArmyUnitType): boolean {
+  if (!Number.isInteger(slot) || slot < 0 || slot >= B.ARMY_UNIT_MAX) return false
+  if (!unlockedArmyUnitTypes(s).includes(unitType)) return false
+  const formation = Array.from(
+    { length: B.ARMY_UNIT_MAX },
+    (_, index) => s.armyFormation[index] ?? 'vanguard',
+  )
+  formation[slot] = unitType
+  s.armyFormation = formation
+  return true
+}
+
+/** 已部署部隊只占用編制前 N 格。 */
+export function armyComposition(s: GameState): Record<ArmyUnitType, number> {
+  const out: Record<ArmyUnitType, number> = { vanguard: 0, shieldGuard: 0 }
+  const count = Math.max(0, Math.min(B.ARMY_UNIT_MAX, Math.floor(s.armyUnits)))
+  for (let i = 0; i < count; i++) {
+    const type = s.armyFormation[i] === 'shieldGuard' ? 'shieldGuard' : 'vanguard'
+    out[type]++
+  }
+  return out
+}
+
 /** 已部署士兵按固定節奏協同攻擊，不反向累積軍勢，避免自我循環。 */
 function tickArmy(s: GameState, dt: number, events: GameEvent[], rng: Rng) {
   if (s.armyUnits <= 0) {
@@ -1983,7 +2034,11 @@ function tickArmy(s: GameState, dt: number, events: GameEvent[], rng: Rng) {
   s.armyAssistTimer -= dt
   if (s.armyAssistTimer > 0) return
   s.armyAssistTimer += B.ARMY_ASSIST_INTERVAL
-  const damage = currentDPS(s).mul(B.ARMY_ASSIST_DPS_SECONDS * s.armyUnits)
+  const composition = armyComposition(s)
+  const damage = currentDPS(s).mul(
+    B.ARMY_ASSIST_DPS_SECONDS * composition.vanguard +
+    B.SHIELD_GUARD_ASSIST_DPS_SECONDS * composition.shieldGuard,
+  )
   events.push({ type: 'armyAssist', count: s.armyUnits, damage })
   registerBossHits(s, s.armyUnits, events, 'army')
   dealDamage(s, damage, events, rng, { source: 'army' })

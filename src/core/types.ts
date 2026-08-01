@@ -54,6 +54,8 @@ export type MechanicTag =
   | 'displace'
 /** 傭兵(v1.5:低頻高辨識度的戰鬥事件來源) */
 export type MercId = 'hound' | 'rogue' | 'icemage' | 'sapper' | 'pyro'
+/** 指揮官軍團的可編制兵種。 */
+export type ArmyUnitType = 'vanguard' | 'shieldGuard'
 /** 套裝標籤(裝備第四層)。標籤制:任何品質都可能帶,不綁部位 */
 export type SetTagId = 'ironwall' | 'commander'
 /** 傳說特性(裝備第三層)。固定,不可被重鑄洗掉 */
@@ -480,6 +482,8 @@ export interface GameState {
   armyMomentum: number
   /** 已部署在英雄身後的軍團士兵，最多五名。 */
   armyUnits: number
+  /** 五個固定軍團席位；已部署士兵依序占用前面的席位。 */
+  armyFormation: ArmyUnitType[]
   /** 軍團下一次協同攻擊倒數。 */
   armyAssistTimer: number
   /**
@@ -672,6 +676,7 @@ export interface GameEvent {
     | 'armyGain'
     | 'armySummon'
     | 'armyAssist'
+    | 'retaliate'
     | 'resonanceGain'
     | 'freezeCapped'
     | 'relicPrimed'

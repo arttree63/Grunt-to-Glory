@@ -38,6 +38,16 @@ import vanguardCharge3Url from '../../assets/visual/army/vanguard/charge/charge-
 import vanguardCharge4Url from '../../assets/visual/army/vanguard/charge/charge-4.png'
 import vanguardCharge5Url from '../../assets/visual/army/vanguard/charge/charge-5.png'
 import vanguardCharge6Url from '../../assets/visual/army/vanguard/charge/charge-6.png'
+import shieldGuardIdle1Url from '../../assets/visual/army/shield-guard/idle/idle-1.png'
+import shieldGuardIdle2Url from '../../assets/visual/army/shield-guard/idle/idle-2.png'
+import shieldGuardIdle3Url from '../../assets/visual/army/shield-guard/idle/idle-3.png'
+import shieldGuardIdle4Url from '../../assets/visual/army/shield-guard/idle/idle-4.png'
+import shieldGuardBrace1Url from '../../assets/visual/army/shield-guard/brace/brace-1.png'
+import shieldGuardBrace2Url from '../../assets/visual/army/shield-guard/brace/brace-2.png'
+import shieldGuardBrace3Url from '../../assets/visual/army/shield-guard/brace/brace-3.png'
+import shieldGuardBrace4Url from '../../assets/visual/army/shield-guard/brace/brace-4.png'
+import shieldGuardBrace5Url from '../../assets/visual/army/shield-guard/brace/brace-5.png'
+import shieldGuardBrace6Url from '../../assets/visual/army/shield-guard/brace/brace-6.png'
 import goblin1Url from '../../assets/visual/monsters/forest-goblin/idle/idle-1.png'
 import goblin2Url from '../../assets/visual/monsters/forest-goblin/idle/idle-2.png'
 import goblin3Url from '../../assets/visual/monsters/forest-goblin/idle/idle-3.png'
@@ -116,7 +126,7 @@ import hero2Url from '../../assets/visual/rookie-soldier/idle/idle-2.png'
 import hero3Url from '../../assets/visual/rookie-soldier/idle/idle-3.png'
 import hero4Url from '../../assets/visual/rookie-soldier/idle/idle-4.png'
 import forestUrl from '../../assets/visual/scenes/forest-border-v1.png'
-import type { BossKind, JobId, LegendId, MercId, SkillId } from '../core/types'
+import type { ArmyUnitType, BossKind, JobId, LegendId, MercId, SkillId } from '../core/types'
 
 const cc0SpellModules = import.meta.glob('../../assets/visual/vfx/cc0-spells/**/*.png', {
   eager: true,
@@ -151,6 +161,8 @@ export interface BattleSnapshot {
   // ── 以下是給「技能與傳說要有身分」用的(視覺缺口清單 § 一、§ 二)──
   /** 生效中的 buff 是哪一招 → 每招畫自己的持續期間效果 */
   buffSkill: SkillId | null
+  /** 仍在生效的體能反擊技能；不受後續其他系 buff 覆蓋。 */
+  bodyBuffSkill: SkillId | null
   /** 不退之壁:軍陣常駐(不倒數) */
   buffPermanent: boolean
   /** buff 剩餘秒數(常駐時為 Infinity) */
@@ -161,6 +173,7 @@ export interface BattleSnapshot {
   /** 軍勢進度與已部署士兵。 */
   armyMomentum: number
   armyUnits: number
+  armyFormation: ArmyUnitType[]
   /** 連斬層數 → 腳下環狀刻度 */
   combo: number
   trackArms: number
@@ -235,14 +248,6 @@ export interface BattleSnapshot {
   totemRatio: number
 }
 
-/**
- * 一行提示帶的起始高度(佔畫面高的比例)。
- * ⚠️ Boss 版必須避開 HTML 層的 `.bossbar` —— 實測 375×812 手機上血條 + 倒數佔 y 64~126,
- * 畫布高 590,即 0~0.214。原本兩者共用 0.20,提示每次都蓋在倒數上。
- */
-const NOTICE_TOP = 0.2
-const NOTICE_TOP_BOSS = 0.27
-
 const HERO_FRAME_MS = 180
 const MOB_FRAME_MS = 200
 const BOSS_FRAME_MS = 180
@@ -269,6 +274,8 @@ interface VisualAssets {
   armsCharge: Texture[]
   vanguardIdle: Texture[]
   vanguardCharge: Texture[]
+  shieldGuardIdle: Texture[]
+  shieldGuardBrace: Texture[]
   spellSword: Texture[]
   spellFireball: Texture[]
   spellColumn: Texture[]
@@ -312,6 +319,8 @@ const textureGroups = {
   armsCharge: [armsCharge1Url, armsCharge2Url, armsCharge3Url, armsCharge4Url, armsCharge5Url, armsCharge6Url, armsCharge7Url, armsCharge8Url],
   vanguardIdle: [vanguardIdle1Url, vanguardIdle2Url, vanguardIdle3Url, vanguardIdle4Url],
   vanguardCharge: [vanguardCharge1Url, vanguardCharge2Url, vanguardCharge3Url, vanguardCharge4Url, vanguardCharge5Url, vanguardCharge6Url],
+  shieldGuardIdle: [shieldGuardIdle1Url, shieldGuardIdle2Url, shieldGuardIdle3Url, shieldGuardIdle4Url],
+  shieldGuardBrace: [shieldGuardBrace1Url, shieldGuardBrace2Url, shieldGuardBrace3Url, shieldGuardBrace4Url, shieldGuardBrace5Url, shieldGuardBrace6Url],
   spellSword: cc0SpellSequence('sword-fire'),
   spellFireball: cc0SpellSequence('fireball'),
   spellColumn: cc0SpellSequence('light-column'),
@@ -342,6 +351,8 @@ export const BATTLE_TEXTURE_URLS: string[] = [
   ...textureGroups.armsCharge,
   ...textureGroups.vanguardIdle,
   ...textureGroups.vanguardCharge,
+  ...textureGroups.shieldGuardIdle,
+  ...textureGroups.shieldGuardBrace,
   ...textureGroups.spellSword,
   ...textureGroups.spellFireball,
   ...textureGroups.spellColumn,
@@ -362,7 +373,7 @@ async function loadTextures(urls: string[]): Promise<Texture[]> {
 }
 
 async function loadVisualAssets(): Promise<VisualAssets> {
-  const [background, heroEntries, goblin, imp, boss, chest, goldenGoblin, mercEntries, turret, slash, hit, armsHeavy, armsCharge, vanguardIdle, vanguardCharge, spellSword, spellFireball, spellColumn, spellEnergy, spellDark] = await Promise.all([
+  const [background, heroEntries, goblin, imp, boss, chest, goldenGoblin, mercEntries, turret, slash, hit, armsHeavy, armsCharge, vanguardIdle, vanguardCharge, shieldGuardIdle, shieldGuardBrace, spellSword, spellFireball, spellColumn, spellEnergy, spellDark] = await Promise.all([
     Assets.load<Texture>(forestUrl),
     Promise.all(
       Object.entries(textureGroups.heroes).map(async ([jobId, urls]) => {
@@ -386,6 +397,8 @@ async function loadVisualAssets(): Promise<VisualAssets> {
     loadTextures(textureGroups.armsCharge),
     loadTextures(textureGroups.vanguardIdle),
     loadTextures(textureGroups.vanguardCharge),
+    loadTextures(textureGroups.shieldGuardIdle),
+    loadTextures(textureGroups.shieldGuardBrace),
     loadTextures(textureGroups.spellSword),
     loadTextures(textureGroups.spellFireball),
     loadTextures(textureGroups.spellColumn),
@@ -395,7 +408,7 @@ async function loadVisualAssets(): Promise<VisualAssets> {
   background.source.scaleMode = 'nearest'
   armsHeavy.forEach((texture) => { texture.source.scaleMode = 'linear' })
   armsCharge.forEach((texture) => { texture.source.scaleMode = 'linear' })
-  ;[vanguardIdle, vanguardCharge].flat().forEach((texture) => { texture.source.scaleMode = 'linear' })
+  ;[vanguardIdle, vanguardCharge, shieldGuardIdle, shieldGuardBrace].flat().forEach((texture) => { texture.source.scaleMode = 'linear' })
   ;[spellSword, spellFireball, spellColumn, spellEnergy, spellDark]
     .flat()
     .forEach((texture) => { texture.source.scaleMode = 'linear' })
@@ -403,7 +416,8 @@ async function loadVisualAssets(): Promise<VisualAssets> {
   const mercenaries = Object.fromEntries(mercEntries) as Record<MercId, Texture[]>
   return {
     background, heroes, goblin, imp, boss, chest, goldenGoblin, mercenaries, turret, slash, hit,
-    armsHeavy, armsCharge, vanguardIdle, vanguardCharge, spellSword, spellFireball, spellColumn, spellEnergy, spellDark,
+    armsHeavy, armsCharge, vanguardIdle, vanguardCharge, shieldGuardIdle, shieldGuardBrace,
+    spellSword, spellFireball, spellColumn, spellEnergy, spellDark,
   }
 }
 
@@ -445,6 +459,7 @@ export class BattleScene {
   private slashFx: AnimatedSprite
   private mercSprite: AnimatedSprite
   private armySprites: AnimatedSprite[] = []
+  private armySpriteTypes: ArmyUnitType[] = Array(B.ARMY_UNIT_MAX).fill('vanguard')
   private armyEntranceMs = [0, 0, 0, 0, 0]
   private mercId: MercId | null = null
   private turretSprite: AnimatedSprite
@@ -641,21 +656,26 @@ export class BattleScene {
       this.zoom = 1.8
     } else if (skillId === 'bodyGuard') {
       this.spawnHeroWard(1, 0x82c8ff)
-      this.shake = 5
+      this.spawnDefenseFormation(1, 0x82c8ff)
+      this.playShieldGuardFormation(B.ARMY_UNIT_MAX)
+      this.shake = 4
       this.zoom = 0.8
     } else if (skillId === 'bodyIronwall') {
       this.spawnHeroWard(2, 0x6fa9db)
-      this.spawnHeroAura(0x7fc7ff, 1)
+      this.spawnDefenseFormation(2, 0x6fa9db)
+      this.playShieldGuardFormation(B.ARMY_UNIT_MAX)
       this.shake = 7
       this.zoom = 1
     } else if (skillId === 'bodyCommand') {
       this.spawnHeroWard(3, 0x9edcff)
-      this.spawnTextureBurst(this.assets.spellColumn, this.heroPoint(), 760, 0.78, 0xa8d8ff)
+      this.spawnDefenseFormation(3, 0x9edcff)
+      this.playShieldGuardFormation(B.ARMY_UNIT_MAX)
       this.shake = 9
       this.zoom = 1.2
     } else if (skillId === 'bodyLegend') {
       this.spawnHeroWard(4, 0xd8efff)
-      this.spawnHeroAura(0x75bde8, 4)
+      this.spawnDefenseFormation(4, 0xd8efff)
+      this.playShieldGuardFormation(B.ARMY_UNIT_MAX)
       this.shake = 13
       this.zoom = 1.6
     } else if (skillId === 'agilityRoll') {
@@ -740,14 +760,16 @@ export class BattleScene {
     if (skillId === 'edict' && this.getSnap().legends.includes('codexpage')) {
       this.spawnReturningSigils(Math.min(4, Math.ceil(resourceSpent / 3)))
     }
-    const damageY = this.boss ? target.y + 12 : target.y - 45
-    this.damageNum(
-      target.x,
-      damageY,
-      text,
-      true,
-      skillId === 'judgement' || skillId === 'edict',
-    )
+    if (text) {
+      const damageY = this.boss ? target.y + 12 : target.y - 45
+      this.damageNum(
+        target.x,
+        damageY,
+        text,
+        true,
+        skillId === 'judgement' || skillId === 'edict',
+      )
+    }
   }
 
   /**
@@ -940,10 +962,24 @@ export class BattleScene {
 
   onArmyAssist(count: number, damageText: string) {
     if (this.destroyed || count <= 0) return
-    for (let i = 0; i < Math.min(count, this.armySprites.length); i++) this.playArmyCharge(this.armySprites[i])
+    const snap = this.getSnap()
+    for (let i = 0; i < Math.min(count, this.armySprites.length); i++) {
+      this.playArmyAction(this.armySprites[i], i, snap.armyFormation[i] ?? 'vanguard')
+    }
     const target = this.targetPoint()
     this.spawnImpact(target.x, target.y, 0.52 + Math.min(0.32, count * 0.05))
     if (damageText) this.damageNum(target.x, target.y - 42, damageText, false)
+  }
+
+  /** 反擊只播放已部署盾衛兵，英雄本人的盾波則永遠存在。 */
+  onRetaliate(guards: number, damageText: string, skillId: SkillId) {
+    if (this.destroyed) return
+    this.playShieldGuardFormation(Math.max(1, guards))
+    const target = this.targetPoint()
+    this.spawnRetaliationWave(target, skillId, guards)
+    if (damageText) this.damageNum(target.x, target.y - 44, damageText, false)
+    this.shake = Math.max(this.shake, 5 + Math.min(5, guards))
+    this.zoom = Math.max(this.zoom, 0.8 + guards * 0.12)
   }
 
   onDestinyDescend() {
@@ -1019,13 +1055,6 @@ export class BattleScene {
   }
 
   /**
-   * 一行提示(拿到命運點、素材、傳家之器復原…),不搶戰鬥焦點。
-   *
-   * ⚠️ Boss 戰要把整個提示帶往下推:HTML 層的 `.bossbar`(血條 + 倒數)實測佔畫面
-   * 頂端到 21% 高度,而原本第一格固定在 20% —— **每一則提示都直接蓋在倒數上**,
-   * 而那是全遊戲最需要看清楚的數字。Pixi 量不到 HTML 的高度,所以用比例常數並在這裡說明來源。
-   */
-  /**
    * 主角挨了場上威脅一下:震屏 + 主角閃紅。
    * ⚠️ 沒有攻擊幀素材(怪物只有 idle 四張),所以「誰打的」不演,只演「你被打到了」——
    * 血條在掉但畫面毫無反應,玩家會以為是 bug。
@@ -1037,12 +1066,8 @@ export class BattleScene {
     this.heroHurtLeft = 0.25
   }
 
-  notice(text: string) {
-    if (this.destroyed) return
-    const slot = Math.min(2, this.dmgLayer.children.filter((child) => (child as FloatText)._notice).length)
-    const bossOn = this.getSnap().bossTimeLeft !== null
-    const top = this.H * (bossOn ? NOTICE_TOP_BOSS : NOTICE_TOP)
-    this.damageNum(this.W / 2, top + slot * 34, text, false, false, 0.82, false, true)
+  notice(_text: string) {
+    // 戰鬥提示已退場；事件仍保留圖像與音效回饋。
   }
 
   /** 事件中點擊換素材。⚠️ 不可複用金幣模板,會拼出「+素材 +1 金」 */
@@ -1314,7 +1339,7 @@ export class BattleScene {
     // 背景微幅浮動:靜止的底圖會讓所有前進感被「背景完全不動」抵銷
     this.bg.y = this.H / 2 + Math.sin(this.elapsed * 0.0016) * 2 + this.marchBoost * this.H * 0.045
     this.applyZone(snap, ms)
-    this.drawFormation(snap.formation, snap.buffSkill, snap.buffPermanent)
+    this.drawFormation(snap.formation, snap.bodyBuffSkill ?? snap.buffSkill, snap.buffPermanent)
     this.drawHeroStates(snap)
     this.drawBattleStates(snap)
     this.layoutHero()
@@ -1620,6 +1645,80 @@ export class BattleScene {
     }, this.fieldLayer)
   }
 
+  /** 體能四招共用同一套盾陣語彙，再以層級增加陣線寬度與重量。 */
+  private spawnDefenseFormation(level: number, color: number) {
+    const fx = new Container() as TimedFx
+    const ground = new Graphics()
+    const wall = new Graphics()
+    const segments = 2 + level
+    ground.ellipse(0, 28, 58 + level * 24, 16 + level * 3)
+      .fill({ color: 0x18334a, alpha: 0.24 })
+      .stroke({ width: 2 + level * 0.5, color, alpha: 0.48 })
+    for (let i = 0; i < segments; i++) {
+      const x = (i - (segments - 1) / 2) * 28
+      const y = Math.abs(i - (segments - 1) / 2) * 3
+      wall.poly([x - 11, y - 25, x + 11, y - 25, x + 15, y - 5, x, y + 12, x - 15, y - 5])
+        .fill({ color: i % 2 === 0 ? 0x294a62 : 0x1b3448, alpha: 0.58 })
+        .stroke({ width: 2.2, color: i % 2 === 0 ? 0xf2f7fa : color, alpha: 0.82 })
+      wall.moveTo(x, y - 20).lineTo(x, y + 4)
+        .stroke({ width: 1.4, color: 0xffffff, alpha: 0.52 })
+    }
+    if (level >= 3) {
+      wall.moveTo(-segments * 16, 18).lineTo(segments * 16, 18)
+        .stroke({ width: 6, color, alpha: 0.42 })
+      wall.moveTo(-segments * 14, 18).lineTo(segments * 14, 18)
+        .stroke({ width: 2, color: 0xffffff, alpha: 0.72 })
+    }
+    fx.addChild(ground, wall)
+    fx.position.set(this.W / 2, this.H * 0.79)
+    const duration = 760 + level * 120
+    this.addTimedFx(fx, duration, (node, p) => {
+      const brace = 1 - (1 - Math.min(1, p / 0.24)) ** 3
+      const hold = p < 0.68 ? 1 : (1 - p) / 0.32
+      node.scale.set(0.72 + brace * (0.26 + level * 0.035), 1.22 - brace * 0.22)
+      node.alpha = Math.max(0, hold) * Math.min(1, p * 8)
+      wall.y = (1 - brace) * 22
+      ground.scale.x = 0.45 + brace * 0.55
+    }, this.fieldLayer)
+  }
+
+  private spawnRetaliationWave(target: { x: number; y: number }, skillId: SkillId, guards: number) {
+    this.spawnShieldWave(target)
+    const tier = skillId === 'bodyLegend' ? 4 : skillId === 'bodyCommand' ? 3 : skillId === 'bodyIronwall' ? 2 : 1
+    const lines = Math.max(1, Math.min(5, guards || 1))
+    const start = this.heroPoint()
+    for (let i = 0; i < lines; i++) {
+      const fx = new Container() as TimedFx
+      const g = new Graphics()
+      const width = 22 + tier * 3
+      g.poly([-width, -10, 4, -4, width, 0, 4, 4, -width, 10])
+        .fill({ color: i % 2 ? 0x8bc8ed : 0xe9f7ff, alpha: 0.64 })
+      g.moveTo(-width + 4, 0).lineTo(width - 2, 0)
+        .stroke({ width: 2.5, color: 0xffffff, alpha: 0.92 })
+      fx.addChild(g)
+      const offset = (i - (lines - 1) / 2) * 12
+      fx.position.set(start.x + offset, start.y + 12)
+      fx.rotation = Math.atan2(target.y - start.y, target.x - start.x)
+      const delay = i * 55
+      let impacted = false
+      this.addTimedFx(fx, 560 + delay, (node) => {
+        const local = Math.max(0, Math.min(1, (node._age - delay) / 560))
+        const travel = 1 - (1 - local) ** 3
+        node.visible = node._age >= delay
+        node.position.set(
+          start.x + offset + (target.x - start.x - offset) * travel,
+          start.y + 12 + (target.y - start.y - 12) * travel,
+        )
+        node.scale.set(0.45 + travel * (0.75 + tier * 0.1), 0.7 + travel * 0.3)
+        node.alpha = local > 0.8 ? (1 - local) / 0.2 : Math.min(1, local * 7)
+        if (!impacted && local >= 0.78) {
+          impacted = true
+          this.spawnImpact(target.x + offset * 0.35, target.y, 0.55 + tier * 0.12)
+        }
+      })
+    }
+  }
+
   private spawnHeroAura(color: number, intensity: number) {
     const fx = new Container() as TimedFx
     const g = new Graphics()
@@ -1688,11 +1787,11 @@ export class BattleScene {
 
   private armySlot(index: number) {
     const slots = [
-      { x: -0.12, y: 0.835 },
-      { x: 0.12, y: 0.835 },
-      { x: -0.22, y: 0.865 },
-      { x: 0.22, y: 0.865 },
-      { x: 0, y: 0.885 },
+      { x: -0.21, y: 0.845 },
+      { x: 0.21, y: 0.845 },
+      { x: -0.36, y: 0.88 },
+      { x: 0.36, y: 0.88 },
+      { x: 0, y: 0.91 },
     ]
     const slot = slots[index] ?? slots[0]
     return { x: this.W * (0.5 + slot.x), y: this.H * slot.y }
@@ -1702,6 +1801,8 @@ export class BattleScene {
     const baseScale = Math.min(this.W, this.H * 0.62) / 490
     for (let i = 0; i < this.armySprites.length; i++) {
       const unit = this.armySprites[i]
+      const desiredType = snap.armyFormation[i] === 'shieldGuard' ? 'shieldGuard' : 'vanguard'
+      if (this.armySpriteTypes[i] !== desiredType) this.setArmyIdle(unit, i, desiredType)
       const active = i < snap.armyUnits
       unit.visible = active
       if (!active) continue
@@ -1713,35 +1814,62 @@ export class BattleScene {
       unit.position.set(slot.x, slot.y + (1 - eased) * 34 + bob)
       unit.alpha = Math.min(1, eased * 2.5) * (i < 2 ? 0.94 : 0.86)
       const pop = entrance < 1 ? 1 + Math.sin(Math.min(1, entrance) * Math.PI) * 0.1 : 1
-      unit.scale.set(baseScale * pop)
+      unit.scale.set(baseScale * pop * (desiredType === 'shieldGuard' ? 0.8 : 0.92))
     }
   }
 
-  private playArmyCharge(unit: AnimatedSprite) {
-    unit.textures = this.assets.vanguardCharge
+  private armyIdleTextures(type: ArmyUnitType) {
+    return type === 'shieldGuard' ? this.assets.shieldGuardIdle : this.assets.vanguardIdle
+  }
+
+  private armyActionTextures(type: ArmyUnitType) {
+    return type === 'shieldGuard' ? this.assets.shieldGuardBrace : this.assets.vanguardCharge
+  }
+
+  private setArmyIdle(unit: AnimatedSprite, index: number, type: ArmyUnitType) {
+    this.armySpriteTypes[index] = type
+    unit.textures = this.armyIdleTextures(type)
+    unit.loop = true
+    unit.animationSpeed = frameSpeed(HERO_FRAME_MS)
+    unit.onComplete = undefined
+    unit.gotoAndPlay(0)
+  }
+
+  private playArmyAction(unit: AnimatedSprite, index: number, type: ArmyUnitType) {
+    this.armySpriteTypes[index] = type
+    unit.textures = this.armyActionTextures(type)
     unit.loop = false
-    unit.animationSpeed = frameSpeed(95)
+    unit.animationSpeed = frameSpeed(type === 'shieldGuard' ? 105 : 95)
     unit.onComplete = () => {
-      unit.textures = this.assets.vanguardIdle
-      unit.loop = true
-      unit.animationSpeed = frameSpeed(HERO_FRAME_MS)
-      unit.gotoAndPlay(0)
-      unit.onComplete = undefined
+      this.setArmyIdle(unit, index, this.armySpriteTypes[index])
     }
     unit.gotoAndPlay(0)
+  }
+
+  private playShieldGuardFormation(limit: number) {
+    const snap = this.getSnap()
+    let played = 0
+    for (let i = 0; i < Math.min(snap.armyUnits, this.armySprites.length); i++) {
+      if ((snap.armyFormation[i] ?? 'vanguard') !== 'shieldGuard') continue
+      this.playArmyAction(this.armySprites[i], i, 'shieldGuard')
+      played++
+      if (played >= limit) break
+    }
   }
 
   private spawnArmyCommand(target: { x: number; y: number }, count: number) {
     const total = Math.min(B.ARMY_UNIT_MAX, count)
     const scale = Math.min(this.W, this.H * 0.62) / 490
+    const snap = this.getSnap()
     for (let i = 0; i < total; i++) {
       const start = this.armySlot(i)
       const delay = i * 90
       const fx = new Container() as TimedFx
-      const unit = new AnimatedSprite(this.assets.vanguardCharge)
+      const type = snap.armyFormation[i] === 'shieldGuard' ? 'shieldGuard' : 'vanguard'
+      const unit = new AnimatedSprite(this.armyActionTextures(type))
       unit.anchor.set(0.5, 228 / 256)
       unit.animationSpeed = frameSpeed(90)
-      unit.scale.set(scale)
+      unit.scale.set(scale * (type === 'shieldGuard' ? 0.8 : 0.92))
       unit.play()
       fx.addChild(unit)
       fx.position.set(start.x, start.y)
@@ -2758,9 +2886,16 @@ export class BattleScene {
   /** 軍陣:套裝 2 件生效時腳下的方陣圈,讓「套裝真的在運作」看得見 */
   private drawFormation(active: boolean, buffSkill: SkillId | null, permanent: boolean) {
     this.formationFx.clear()
-    const shieldActive = buffSkill === 'shieldRush' || buffSkill === 'bulwark' || permanent
+    const shieldActive =
+      buffSkill === 'shieldRush' ||
+      buffSkill === 'bulwark' ||
+      buffSkill === 'bodyGuard' ||
+      buffSkill === 'bodyIronwall' ||
+      buffSkill === 'bodyCommand' ||
+      buffSkill === 'bodyLegend' ||
+      permanent
     this.formationLabel.visible = active || shieldActive
-    this.formationLabel.text = permanent ? '不退軍陣' : active ? '帝國軍陣' : '盾牆軍陣'
+    this.formationLabel.text = permanent ? '不退軍陣' : active ? '帝國軍陣' : ''
     this.formationLabel.alpha = permanent ? 0.95 : 0.72
     if (!active && !shieldActive) return
     const pulse = 1 + Math.sin(this.elapsed * 0.004) * 0.03

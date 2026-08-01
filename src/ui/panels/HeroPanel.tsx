@@ -17,6 +17,7 @@ import {
   skillEvolve,
   setProgress,
   skillCooldown,
+  unlockedArmyUnitTypes,
 } from '../../core/game'
 import { LEGENDS } from '../../core/legends'
 import { ALL_MERCS, unlockedMercs } from '../../core/mercs'
@@ -30,11 +31,13 @@ import {
   TRAINING_BRANCH_NAME,
   type TrainingNodeKind,
 } from '../../core/trainingTree'
-import type { SkillId } from '../../core/types'
+import type { ArmyUnitType, SkillId } from '../../core/types'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 import { BadgeIcon, GameIcon } from '../GameIcon'
 import TrackPanel from '../TrackPanel'
+import vanguardPreview from '../../../assets/visual/army/vanguard/idle/idle-1.png'
+import shieldGuardPreview from '../../../assets/visual/army/shield-guard/idle/idle-1.png'
 
 type HeroView = 'training' | 'blueprint' | 'mercs'
 
@@ -49,6 +52,11 @@ const NODE_KIND_NAME: Record<TrainingNodeKind, string> = {
   active: '主動技能',
   command: '軍團號令',
   legend: '傳奇技能',
+}
+
+const ARMY_UNIT_META: Record<ArmyUnitType, { name: string; role: string; image: string }> = {
+  vanguard: { name: '先鋒兵', role: '協同攻擊較高', image: vanguardPreview },
+  shieldGuard: { name: '盾衛兵', role: '強化體能反擊', image: shieldGuardPreview },
 }
 
 /** 二轉逐步揭露:輪廓 → 傾向亮起 → 揭露名稱 → 完整預覽 → 可轉職 */
@@ -263,7 +271,9 @@ void AbilitySections
 function SkillTreeBlueprint() {
   const s = useGameState()
   const toggleEquip = useGame((state) => state.toggleSkillEquip)
+  const setFormationSlot = useGame((state) => state.setArmyFormationSlot)
   const equipped = equippedSkills(s)
+  const armyTypes = unlockedArmyUnitTypes(s)
   const [replacementSkill, setReplacementSkill] = useState<SkillId | null>(null)
   const skillMeta = (id: SkillId) => TRAINING_BRANCHES
     .flatMap((branch) => branch.nodes.map((node, rowIndex) => ({ branch, node, rowIndex })))
@@ -325,6 +335,33 @@ function SkillTreeBlueprint() {
             </div>
           )
         })()}
+      </section>
+
+      <section className="army-formation-editor" aria-label="軍團編制">
+        <div className="skill-loadout-head">
+          <b>軍 團 編 制</b>
+          <span>點席位切換兵種・前 {s.armyUnits} 格已部署</span>
+        </div>
+        <div className="army-formation-slots">
+          {Array.from({ length: B.ARMY_UNIT_MAX }, (_, index) => {
+            const type = s.armyFormation[index] ?? 'vanguard'
+            const meta = ARMY_UNIT_META[type]
+            const next = armyTypes[(armyTypes.indexOf(type) + 1) % armyTypes.length] ?? type
+            return (
+              <button
+                key={index}
+                className={index < s.armyUnits ? 'deployed' : ''}
+                onClick={() => setFormationSlot(index, next)}
+                aria-label={`第 ${index + 1} 格 ${meta.name}，${index < s.armyUnits ? '已部署' : '待命'}；點擊切換`}
+              >
+                <img src={meta.image} alt="" />
+                <b>{index + 1}</b>
+                <span>{meta.name}</span>
+                <small>{index < s.armyUnits ? '已部署' : meta.role}</small>
+              </button>
+            )
+          })}
+        </div>
       </section>
 
       <div className="training-tree-scroll" aria-label="五系操練技能樹，可左右滑動">

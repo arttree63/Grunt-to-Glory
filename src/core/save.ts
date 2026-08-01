@@ -3,7 +3,7 @@ import { ARMY_MOMENTUM_MAX, ARMY_UNIT_MAX, COMBAT_NUMBER_SCALE, MP_MAX, MP_REGEN
 import { createInitialState, refillEndurance, SAVE_VERSION, spawnEnemy } from './game'
 import { emptyTechs } from './techs'
 import { reconcileDestiny } from './destiny'
-import type { TrackId, GameState } from './types'
+import type { ArmyUnitType, TrackId, GameState } from './types'
 
 /** 存檔格式:Decimal 一律轉字串 */
 export interface SaveData {
@@ -17,6 +17,7 @@ export interface SaveData {
   skillLoadout?: GameState['skillLoadout']
   armyMomentum?: number
   armyUnits?: number
+  armyFormation?: ArmyUnitType[]
   gold: string
   jobId: GameState['jobId']
   training?: GameState['training']
@@ -101,6 +102,7 @@ export function serialize(s: GameState): SaveData {
     skillLoadout: s.skillLoadout,
     armyMomentum: s.armyMomentum,
     armyUnits: s.armyUnits,
+    armyFormation: [...s.armyFormation],
     gold: s.gold.toString(),
     jobId: s.jobId,
     training: s.training,
@@ -402,7 +404,19 @@ function migrate(raw: SaveData): SaveData {
     d.armyUnits = d.armyUnits ?? 0
     d.version = 31
   }
+  // v31 → v32：五格軍團編制加入盾衛兵；舊軍團維持全先鋒，不改原本輸出習慣。
+  if (d.version < 32) {
+    d.armyFormation = d.armyFormation ?? ['vanguard', 'vanguard', 'vanguard', 'vanguard', 'vanguard']
+    d.version = 32
+  }
   return d
+}
+
+function sanitizeArmyFormation(value: unknown): ArmyUnitType[] {
+  const source = Array.isArray(value) ? value : []
+  return Array.from({ length: ARMY_UNIT_MAX }, (_, index) =>
+    source[index] === 'shieldGuard' ? 'shieldGuard' : 'vanguard',
+  )
 }
 
 export function deserialize(raw: SaveData | null | undefined): GameState {
@@ -423,6 +437,7 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     skillLoadout: d.skillLoadout ?? [],
     armyMomentum: Math.max(0, Math.min(ARMY_MOMENTUM_MAX, d.armyMomentum ?? 0)),
     armyUnits: Math.max(0, Math.min(ARMY_UNIT_MAX, Math.floor(d.armyUnits ?? 0))),
+    armyFormation: sanitizeArmyFormation(d.armyFormation),
     gold: D(d.gold ?? 0),
     jobId: d.jobId ?? 'rookie',
     training: d.training ?? [],
