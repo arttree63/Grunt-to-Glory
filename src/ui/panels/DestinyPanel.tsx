@@ -8,7 +8,7 @@ import {
 } from '../../core/destiny'
 import { QUALITY_NAME, SLOT_NAME } from '../../core/equipment'
 import * as B from '../../core/balance'
-import { heirloomCandidates, pendingMedals, pendingTrainingCount } from '../../core/game'
+import { heirloomCandidates, pendingMedals } from '../../core/game'
 import { LEGENDS } from '../../core/legends'
 import { SETS } from '../../core/sets'
 import { heirloomSlots, TECHS } from '../../core/techs'
@@ -28,7 +28,6 @@ export function PrestigeSection() {
   const [picked, setPicked] = useState<string[]>([])
   const gain = pendingMedals(s)
   const candidates = heirloomCandidates(s)
-  const pendingTraining = pendingTrainingCount(s)
   const slots = heirloomSlots(s.techs)
   // 再推幾層就多一枚勳章 —— 「差一點」比「你還早」有用得多
   const toNext = B.MEDAL_PER_FLOORS - (s.highestFloor % B.MEDAL_PER_FLOORS)
@@ -58,14 +57,6 @@ export function PrestigeSection() {
               現在退役只有 {gain} 枚,最便宜的科技要 {cheapest} 枚 —— 通常再推一段更划算。
             </div>
           )}
-        </div>
-      )}
-
-      {/* 訓練改成不阻斷之後,「帶著沒用的操練令轉生」變成正常路徑;
-          那 N 次選擇會隨轉生無聲消失,退役前一定要講 */}
-      {pendingTraining > 0 && (
-        <div className="affix" style={{ color: 'var(--gold)', marginBottom: 6 }}>
-          還有 {pendingTraining} 次操練沒分配,退役後會一起歸零 —— 先去「英雄」分頁用掉。
         </div>
       )}
 

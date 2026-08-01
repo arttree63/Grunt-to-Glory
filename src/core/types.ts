@@ -644,8 +644,6 @@ export interface GameEvent {
     | 'freezeCapped'
     | 'relicPrimed'
     | 'shellGain'
-    | 'trainingReady'
-    | 'trainingChosen'
     | 'mercUnlock'
   floor?: number
   gold?: Decimal
@@ -664,8 +662,6 @@ export interface GameEvent {
   achievementId?: string
   /** destinyDescend 事件:降臨的命運節點 id */
   destinyNodeId?: string
-  /** trainingChosen 事件:玩家這次投入的操練方向 */
-  trainingId?: TrainingId
   /** bossFail 事件:這場是怎麼輸的(逾時=輸出不夠 / 耐久=擋不住) */
   reason?: 'timeout' | 'endurance'
   mercId?: MercId

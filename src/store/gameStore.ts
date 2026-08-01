@@ -13,7 +13,6 @@ import type {
   SkillId,
   Slot,
   TechId,
-  TrainingId,
 } from '../core/types'
 import { gameEvents } from './events'
 import { loadGame, saveGame, wipeSave } from './persist'
@@ -44,7 +43,6 @@ interface Store {
   buy: (n: number | 'max') => void
   /** 主修:投入條會把點數投進這一科(v4.1 § 3) */
   setTrackFocus: (t: import('../core/types').TrackId) => void
-  chooseTraining: (id: TrainingId) => void
   promote: (job: JobId) => void
   chooseDestiny: (path: DestinyPathId) => void
   pickDestinyNode: (id: DestinyNodeId) => void
@@ -172,18 +170,9 @@ export const useGame = create<Store>((set, get) => ({
   buy(n) {
     const s = get().s
     const before = s.lv
-    const pendingBefore = G.pendingTrainingCount(s)
     if (n === 'max') G.buyMaxLevels(s)
     else G.buyLevels(s, n)
     if (s.lv !== before) gameEvents.emit({ type: 'levelUp' })
-    // 跨過操練里程碑不再彈窗打斷,改成戰場上一行——「發生了」看得見,要不要現在去選由玩家決定
-    const gained = G.pendingTrainingCount(s) - pendingBefore
-    if (gained > 0) gameEvents.emit({ type: 'trainingReady', count: gained })
-    bump(set, get)
-  },
-
-  chooseTraining(id) {
-    if (G.chooseTraining(get().s, id)) gameEvents.emit({ type: 'trainingChosen', trainingId: id })
     bump(set, get)
   },
 

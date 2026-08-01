@@ -3,7 +3,7 @@ import { isBossFloor } from './formulas'
 import { availableJobs, JOBS } from './jobs'
 import { MERCS } from './mercs'
 import { canBuyTech, TECHS } from './techs'
-import { bestFloorEver, isAwakened, pendingTrainingCount, runStalled } from './game'
+import { bestFloorEver, isAwakened, runStalled } from './game'
 import type { GameState } from './types'
 
 /**
@@ -31,16 +31,9 @@ export function nearGoal(s: GameState): Goal | null {
     return { text: '可以轉職了', tab: 'hero' }
   if (s.destinyPoints > 0) return { text: '有命運抉擇待決定', tab: 'destiny' }
   if (s.encounters.length > 0) return { text: '路上有際遇等著處理', tab: 'journal' }
-  // 排在際遇之後(際遇 cap 2,溢出直接丟掉,那個才會真的損失)、素材之前:
-  // 素材無上限、永遠成立,擺在它後面等於永遠不會亮。操練令一輪只有 5 次,
-  // 選完就不再佔位,不像素材會常駐餓死後面的目標。
-  const training = pendingTrainingCount(s)
-  if (training > 0)
-    return { text: training > 1 ? `有 ${training} 次操練待分配` : '有一次操練待分配', tab: 'hero' }
   if (s.materials >= B.FORGE_COST) return { text: '素材夠打造一次', tab: 'forge' }
   if (TECHS.some((t) => canBuyTech(s.techs, s.medals, t.id)) || s.medals >= B.ELITE_MEDAL_COST)
     return { text: '勳章夠買永久強化', tab: 'legacy' }
-  // 「金幣夠升級」不佔用下一步提示；玩家自行進英雄頁批次配點。
   return null
 }
 

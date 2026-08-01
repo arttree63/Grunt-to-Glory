@@ -1,6 +1,6 @@
+import { useState } from 'react'
 import * as B from '../../core/balance'
 import { fmt, fmtCombat } from '../../core/format'
-import { affordableLevels, bulkUpCost, upCost } from '../../core/formulas'
 import {
   activeLegends,
   availableSkills,
@@ -25,10 +25,16 @@ import { availableJobs, destinySuffix, JOBS, nextTierJobs } from '../../core/job
 import { SKILLS } from '../../core/skills'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
-import { useHold } from '../useHold'
 import { BadgeIcon, GameIcon } from '../GameIcon'
-import TrainingCard from '../TrainingChoice'
 import TrackPanel from '../TrackPanel'
+
+type HeroView = 'training' | 'blueprint' | 'mercs'
+
+const HERO_VIEWS: Array<{ id: HeroView; label: string; icon: 'hero' | 'judgement' | 'hound' }> = [
+  { id: 'training', label: '操練加點', icon: 'hero' },
+  { id: 'blueprint', label: '技能樹藍圖', icon: 'judgement' },
+  { id: 'mercs', label: '傭兵', icon: 'hound' },
+]
 
 /** 二轉逐步揭露:輪廓 → 傾向亮起 → 揭露名稱 → 完整預覽 → 可轉職 */
 function PromotionSection() {
@@ -228,10 +234,6 @@ function AbilitySections() {
         ))}
       </Section>
 
-      <Section title="傭兵" count={s.activeMerc ? 1 : 0}>
-        <MercSection />
-      </Section>
-
       <div className="affix" style={{ marginTop: 10 }}>
         天賦配點已由「命運」分頁取代——那裡的選擇是機制而不是數值。
       </div>
@@ -288,12 +290,7 @@ function MercSection() {
 
 export default function HeroPanel() {
   const s = useGameState()
-  const buy = useGame((st) => st.buy)
-
-  const cost1 = upCost(s.lv)
-  const cost10 = bulkUpCost(s.lv, 10)
-  const maxN = affordableLevels(s.lv, s.gold)
-  const hold1 = useHold(() => buy(1))
+  const [view, setView] = useState<HeroView>('training')
   const nextJobs = nextTierJobs(s.jobId)
   const canPromoteNow = availableJobs(s.jobId, s.lv, s.destinyPath).length > 0
 
@@ -301,74 +298,78 @@ export default function HeroPanel() {
     <div className="panel-page hero-page">
       <h3>英 雄</h3>
 
-      {/* 操練 = 等級(v4.1 § 3):五科分配是這一代最核心的決定,排在所有數值之前 */}
-      <TrackPanel />
-
-      {canPromoteNow && <PromotionSection />}
-
-      {/* 操練令是本輪構築的一部分,排在原始數值之前;版位固定不隨待辦數移動 */}
-      <TrainingCard />
-
-      <div className="hero-stats">
-        <div>
-          <small>DPS</small>
-          <b>{fmtCombat(currentDPS(s))}/s</b>
-        </div>
-        <div>
-          <small>暴擊率</small>
-          <b>{Math.round(critRate(s) * 100)}%</b>
-        </div>
-        <div>
-          <small>金幣收益</small>
-          <b>{fmt(goldPerSec(s))}/s</b>
-        </div>
-      </div>
-      <details style={{ margin: '2px 0 6px' }}>
-        <summary className="affix" style={{ cursor: 'pointer', padding: '4px 0' }}>
-          傷害來自哪裡?
-        </summary>
-        {dpsBreakdown(s).filter((p) => !p.label.startsWith('戰意')).map((p) => (
-          <div className="row" key={p.label} style={{ paddingLeft: 8 }}>
-            <span className="k">{p.label}</span>
-            <span className="v" style={{ color: p.mult > 1 ? 'var(--gold)' : 'var(--dim)' }}>
-              ×{p.mult < 100 ? p.mult.toFixed(2) : fmt(p.mult)}
-            </span>
-          </div>
+      <div className="hero-subtabs" role="tablist" aria-label="英雄功能">
+        {HERO_VIEWS.map((item) => (
+          <button
+            key={item.id}
+            className={view === item.id ? 'active' : ''}
+            role="tab"
+            aria-selected={view === item.id}
+            onClick={() => setView(item.id)}
+          >
+            <GameIcon name={item.icon} size={19} />
+            {item.label}
+          </button>
         ))}
-        <div className="affix" style={{ padding: '6px 0 0 8px' }}>
-          全部相乘 × 基礎 {B.BASE_DPS} = 目前 DPS
+      </div>
+
+      {view === 'training' && (
+        <div className="hero-tab-panel" role="tabpanel">
+          <TrackPanel />
+
+          <div className="hero-stats">
+            <div>
+              <small>DPS</small>
+              <b>{fmtCombat(currentDPS(s))}/s</b>
+            </div>
+            <div>
+              <small>暴擊率</small>
+              <b>{Math.round(critRate(s) * 100)}%</b>
+            </div>
+            <div>
+              <small>金幣收益</small>
+              <b>{fmt(goldPerSec(s))}/s</b>
+            </div>
+          </div>
+          <details style={{ margin: '2px 0 6px' }}>
+            <summary className="affix" style={{ cursor: 'pointer', padding: '4px 0' }}>
+              傷害來自哪裡?
+            </summary>
+            {dpsBreakdown(s).filter((p) => !p.label.startsWith('戰意')).map((p) => (
+              <div className="row" key={p.label} style={{ paddingLeft: 8 }}>
+                <span className="k">{p.label}</span>
+                <span className="v" style={{ color: p.mult > 1 ? 'var(--gold)' : 'var(--dim)' }}>
+                  ×{p.mult < 100 ? p.mult.toFixed(2) : fmt(p.mult)}
+                </span>
+              </div>
+            ))}
+            <div className="affix" style={{ padding: '6px 0 0 8px' }}>
+              全部相乘 × 基礎 {B.BASE_DPS} = 目前 DPS
+            </div>
+          </details>
+          <div className="medal-card">
+            <span>
+              <small>戰功勳章</small>
+              <b>{s.medals} 枚</b>
+            </span>
+            <span>到「傳承」分頁的軍需處購買科技</span>
+          </div>
         </div>
-      </details>
-      <div className="medal-card">
-        <span>
-          <small>戰功勳章</small>
-          <b>{s.medals} 枚</b>
-        </span>
-        <span>到「傳承」分頁的軍需處購買科技</span>
-      </div>
+      )}
 
-      <div className="btn-row upgrade-row">
-        <button className="btn primary" disabled={s.gold.lt(cost1)} {...hold1}>
-          升級 ×1
-          <br />
-          <small className="affix">{fmt(cost1)} 金</small>
-        </button>
-        <button className="btn" disabled={s.gold.lt(cost10)} onClick={() => buy(10)}>
-          ×10
-          <br />
-          <small className="affix">{fmt(cost10)} 金</small>
-        </button>
-        <button className="btn" disabled={maxN === 0} onClick={() => buy('max')}>
-          最大 ×{maxN}
-          <br />
-          <small className="affix">花光金幣</small>
-        </button>
-      </div>
+      {view === 'blueprint' && (
+        <div className="hero-tab-panel" role="tabpanel">
+          {canPromoteNow && <PromotionSection />}
+          <AbilitySections />
+          {nextJobs.length > 0 && !canPromoteNow && <PromotionSection />}
+        </div>
+      )}
 
-      <AbilitySections />
-
-      {/* 沒有可轉職時,轉職預覽留在底部(逐步揭露用) */}
-      {nextJobs.length > 0 && !canPromoteNow && <PromotionSection />}
+      {view === 'mercs' && (
+        <div className="hero-tab-panel merc-tab-panel" role="tabpanel">
+          <MercSection />
+        </div>
+      )}
     </div>
   )
 }

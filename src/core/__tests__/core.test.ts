@@ -58,7 +58,6 @@ import {
   mpRegen,
   chargeMult,
   chooseDestiny,
-  chooseTraining,
   isAwakened,
   revealStage,
   sigilCap,
@@ -91,8 +90,6 @@ import {
   equip,
   forge,
   pityLeft,
-  pendingTrainingCount,
-  pendingTrainingLevel,
   prestige,
   promote,
   retryBoss,
@@ -109,7 +106,6 @@ import {
   loreStage,
   setTactic,
   strongestResonance,
-  trainingCount,
   channelProgress,
   shellProgress,
   shellToNext,
@@ -668,102 +664,11 @@ describe('養成與經濟', () => {
     expect(s.gold.lt(1000)).toBe(true)
   })
 
-  it('推進到里程碑樓層可選操練，重擊與疾攻只改攻擊節奏', () => {
+  it('推進樓層不再產生本輪操練待辦', () => {
     const s = createInitialState()
-    const levelOneDps = currentDPS(s)
-    const baseInterval = attackInterval(s)
-    expect(pendingTrainingLevel(s)).toBe(null)
-
-    s.lv = 10
-    advanceToTraining(s, B.TRAINING_FLOORS[0])
-    const levelTenDps = currentDPS(s)
-    expect(levelTenDps.gt(levelOneDps)).toBe(true)
-    expect(pendingTrainingLevel(s)).toBe(B.TRAINING_FLOORS[0])
-    expect(chooseTraining(s, 'heavy')).toBe(true)
-    expect(trainingCount(s, 'heavy')).toBe(1)
-    expect(attackInterval(s)).toBeCloseTo(baseInterval * B.TRAINING_HEAVY_INTERVAL)
-    expect(currentDPS(s).eq(levelTenDps)).toBe(true)
-    expect(chooseTraining(s, 'rapid')).toBe(false)
-
-    advanceToTraining(s, B.TRAINING_FLOORS[1])
-    expect(chooseTraining(s, 'rapid')).toBe(true)
-    expect(attackInterval(s)).toBeCloseTo(
-      baseInterval * B.TRAINING_HEAVY_INTERVAL * B.TRAINING_RAPID_INTERVAL,
-    )
-  })
-
-  it('操練令可累積:跨多個里程碑不會漏,補選結果等同逐級選', () => {
-    // 不阻斷後玩家可能一路推到最後一個里程碑才回頭選,五筆一次補完不能少給
-    const banked = createInitialState()
-    // 時間閘只管釋出節奏,不吞次數:走到最後一個門檻、放著不選,最終仍會拿到全部五次
-    advanceToTraining(banked, B.TRAINING_FLOORS[B.TRAINING_FLOORS.length - 1], 900)
-    expect(pendingTrainingCount(banked)).toBe(B.TRAINING_FLOORS.length)
-
-    const stepwise = createInitialState()
-    for (const f of B.TRAINING_FLOORS) {
-      advanceToTraining(stepwise, f)
-      expect(pendingTrainingCount(stepwise)).toBe(1)
-      expect(chooseTraining(stepwise, 'rapid')).toBe(true)
-      expect(pendingTrainingCount(stepwise)).toBe(0)
-    }
-
-    for (let i = 0; i < B.TRAINING_FLOORS.length; i++) expect(chooseTraining(banked, 'rapid')).toBe(true)
-    expect(pendingTrainingCount(banked)).toBe(0)
-    expect(chooseTraining(banked, 'rapid')).toBe(false)
-    // 訓練沒有路徑相依:晚選不吃虧,所以不需要補償機制
-    expect(attackInterval(banked)).toBeCloseTo(attackInterval(stepwise))
-  })
-
-  it('操練令的時間閘:推進再快也不會一次收到三張,但一張都不會少', () => {
-    // ⚠️ 只綁樓層給不出穩定節奏——同一組樓層,不鍛造的玩家第 125 層要 60 分鐘以上,
-    // 會鍛造的模擬器只要 4.1 分。所以是「樓層 AND 最小間隔」的二維閘。
-    const rusher = createInitialState()
-    rusher.highestFloor = B.TRAINING_FLOORS[B.TRAINING_FLOORS.length - 1] // 一口氣衝到最後一個門檻
-    applyTick(rusher, 1000)
-    expect(pendingTrainingCount(rusher)).toBe(1) // 第一張立刻給,不必等
-
-    // 間隔沒到就不會有第二張
-    for (let i = 0; i < B.TRAINING_MIN_GAP_SEC - 5; i++) applyTick(rusher, 1000)
-    expect(pendingTrainingCount(rusher)).toBe(1)
-    // 過了間隔才給下一張
-    for (let i = 0; i < 10; i++) applyTick(rusher, 1000)
-    expect(pendingTrainingCount(rusher)).toBe(2)
-
-    // 放著不選也不會被吞掉:時間夠久最終拿滿
-    for (let i = 0; i < B.TRAINING_MIN_GAP_SEC * 5; i++) applyTick(rusher, 1000)
-    expect(pendingTrainingCount(rusher)).toBe(B.TRAINING_FLOORS.length)
-  })
-
-  it('待分配的操練令會出現在近期目標,但排在際遇之後', () => {
-    const s = createInitialState()
-    advanceToTraining(s, B.TRAINING_FLOORS[0])
-    expect(nearGoal(s)?.tab).toBe('hero')
-    expect(nearGoal(s)?.text).toContain('操練')
-
-    // 際遇會真的溢出丟失(cap 2),操練令不會過期 → 際遇優先
-    s.encounters = [{ id: 'wounded', floor: 5 }]
-    expect(nearGoal(s)?.tab).toBe('journal')
-
-    s.encounters = []
-    s.materials = B.FORGE_COST * 10
-    expect(nearGoal(s)?.tab).toBe('hero')
-    chooseTraining(s, 'heavy')
-    expect(nearGoal(s)?.tab).toBe('forge')
-  })
-
-  it('戰意訓練提高點擊累積並延長保留時間', () => {
-    const plain = createInitialState()
-    const trained = createInitialState()
-    advanceToTraining(trained, B.TRAINING_FLOORS[0])
-    expect(chooseTraining(trained, 'morale')).toBe(true)
-
-    click(plain)
-    click(trained)
-    expect(trained.morale).toBeCloseTo(plain.morale * B.TRAINING_MORALE_GAIN)
-
-    applyTick(plain, 500)
-    applyTick(trained, 500)
-    expect(trained.morale).toBeGreaterThan(plain.morale)
+    advanceToTraining(s, B.TRAINING_FLOORS[B.TRAINING_FLOORS.length - 1], 900)
+    expect(s.trainingShown).toBe(0)
+    expect(s.training).toEqual([])
   })
 
   it('Lv.20 才能轉職,且只能轉一次', () => {

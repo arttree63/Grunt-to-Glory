@@ -2214,94 +2214,6 @@ button {
   }
 }
 
-/* 操練令:改為英雄頁內嵌(不阻斷、可累積),遮罩版已移除。
-   ⚠️ 決策重量靠兩段式選中→確認,不靠遮罩;三張卡疊在面板裡所以高度要壓低。 */
-.training-badge {
-  color: var(--gold);
-  font-size: 11px;
-}
-
-.training-options {
-  display: grid;
-  gap: 8px;
-}
-
-.training-option {
-  position: relative;
-  min-height: 88px;
-  padding: 11px 12px;
-  border: 1px solid #44384f;
-  border-radius: 12px;
-  background: #261e30;
-  text-align: left;
-}
-
-.training-option:hover,
-.training-option:focus-visible {
-  border-color: #9c78af;
-  background: #2e2438;
-}
-
-/* 選中只是高亮,還要按確認才寫入——不可逆的決策不該一次誤觸就定案 */
-.training-option.selected {
-  border-color: var(--gold);
-  background: #322641;
-}
-
-.training-lead {
-  margin-bottom: 3px;
-  color: #f0e0c4;
-  font-size: 12px;
-}
-
-.training-option b,
-.training-option span {
-  display: block;
-}
-
-.training-option b {
-  margin: 5px 0;
-  color: #f2e9d9;
-  font-size: 16px;
-}
-
-.training-rank {
-  color: #9f90ab;
-  font-size: 10px;
-}
-
-.training-role {
-  position: absolute;
-  top: 12px;
-  right: 13px;
-  color: #d0a7dc;
-  font-size: 10px;
-}
-
-.training-desc {
-  padding-right: 4px;
-  color: #beb3c5;
-  font-size: 11px;
-  line-height: 1.55;
-}
-
-.training-result {
-  margin-top: 7px;
-  color: var(--gold);
-  font-size: 10px;
-}
-
-.training-option-heavy { box-shadow: inset 3px 0 #d06a54; }
-.training-option-rapid { box-shadow: inset 3px 0 #65c7d4; }
-.training-option-morale { box-shadow: inset 3px 0 #c197dc; }
-
-@media (max-height: 700px) {
-  .training-option {
-    min-height: 80px;
-    padding-block: 9px;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .destiny-card-pop,
   .destiny-card-pop.leaving,
@@ -2310,9 +2222,6 @@ button {
   .destiny-preview i,
   .destiny-card-timer {
     animation: none;
-  }
-  .training-option {
-    transition: none;
   }
 }
 
@@ -2323,6 +2232,43 @@ button {
   padding: 13px 48px 5px;
   font-size: 20px;
   letter-spacing: 8px;
+}
+.hero-subtabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin: 0 0 10px;
+}
+.hero-subtabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 4px 3px;
+  border: 6px solid transparent;
+  border-image: url('../../assets/visual/ui/library-20260801/button-secondary.png') 24 fill / 6px / 0 stretch;
+  background: #1d171f;
+  color: var(--dim2);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.hero-subtabs button.active {
+  border-image-source: url('../../assets/visual/ui/library-20260801/button-primary.png');
+  background: #b77a24;
+  color: #3b2209;
+  text-shadow: 0 1px #ffe5a0;
+}
+.hero-subtabs button img {
+  flex: 0 0 auto;
+}
+.hero-tab-panel {
+  padding-bottom: 10px;
+}
+.merc-tab-panel {
+  padding: 4px 2px 12px;
 }
 .track-panel {
   margin: 0 -2px 14px;

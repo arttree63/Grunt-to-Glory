@@ -75,7 +75,6 @@ import type {
   TechId,
   Techs,
   TrackId,
-  TrainingId,
 } from './types'
 
 /**
@@ -837,15 +836,11 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
   // 戰意衰減(重裝步兵衰減減半)。檢定窗口內不衰減:
   // Boss 是二元判定,玩家在那 30 秒裡的努力不該一邊被扣掉
   if (!inCheckWindow(s)) {
-    const decay =
-      B.MORALE_DECAY *
-      (1 - (JOBS[s.jobId].bonus.morale ?? 0)) *
-      Math.pow(B.TRAINING_MORALE_DECAY, trainingCount(s, 'morale'))
+    const decay = B.MORALE_DECAY * (1 - (JOBS[s.jobId].bonus.morale ?? 0))
     s.morale = Math.max(0, s.morale - decay * dtMs)
   }
 
   if (s.descentCooldown > 0) s.descentCooldown = Math.max(0, s.descentCooldown - dt)
-  releaseTraining(s, dt)
   s.destinyGapSec += dt
   tickThreat(s, dt, raw, rng)
   if (s.bossFailed && s.bossRetryFloor !== null && raw.some((e) => e.type === 'bossFail')) {
@@ -1456,11 +1451,10 @@ export function click(s: GameState, rng: Rng = Math.random): GameEvent[] {
 
   // clickDmg 詞綴只加戰意獲取——點擊「傷害」禁止有任何升級軸(GDD v3 § 1.4)
   const clickBonus = equipBonuses(s.equipped).clickDmg
-  const moraleTraining = trainingCount(s, 'morale')
   const moraleBefore = s.morale
   s.morale = Math.min(
     B.MORALE_MAX,
-    s.morale + B.MORALE_PER_CLICK * (1 + clickBonus) * Math.pow(B.TRAINING_MORALE_GAIN, moraleTraining),
+    s.morale + B.MORALE_PER_CLICK * (1 + clickBonus),
   )
   const moraleGained = s.morale - moraleBefore
 
@@ -1833,10 +1827,7 @@ export function attackInterval(s: GameState): number {
   const formation = ironwallActive(s) ? B.IRONWALL_INTERVAL : 1
   // 殘影(二轉進化):自己那招的視窗期間切得更細
   const echo = s.buffs.some((b) => evolved(s, b.skillId) && SKILLS[b.skillId].critAdd) ? B.EVOLVE_INTERVAL : 1
-  const training =
-    Math.pow(B.TRAINING_HEAVY_INTERVAL, trainingCount(s, 'heavy')) *
-    Math.pow(B.TRAINING_RAPID_INTERVAL, trainingCount(s, 'rapid'))
-  return (B.ATTACK_INTERVAL * mod * formation * echo * training) / (1 + s.morale * B.MORALE_ATTACK_SPEED)
+  return (B.ATTACK_INTERVAL * mod * formation * echo) / (1 + s.morale * B.MORALE_ATTACK_SPEED)
 }
 
 // ---------- 職業覺醒與印記 ----------
@@ -2423,47 +2414,6 @@ function tickSkills(s: GameState, dt: number, events: GameEvent[], rng: Rng = Ma
 }
 
 // ---------- 養成 ----------
-
-export function trainingCount(s: GameState, id: TrainingId): number {
-  return s.training.filter((picked) => picked === id).length
-}
-
-/** 已到達但尚未選擇的下一個訓練里程碑。 */
-export function pendingTrainingLevel(s: GameState): number | null {
-  const milestone = B.TRAINING_FLOORS[s.training.length]
-  return milestone !== undefined && pendingTrainingCount(s) > 0 ? milestone : null
-}
-
-/**
- * 還沒花掉的操練令數量。訓練不阻斷、不過期,可以累積著等玩家想選再選。
- * ⚠️ 這裡刻意不顯示「Lv.10 里程碑」——銀行式累積下最舊的那個數字會很怪
- * (Lv.50 才進來的玩家看到「Lv.10」)。對玩家只講「還有 N 次可選」。
- */
-export function pendingTrainingCount(s: GameState): number {
-  return s.trainingShown - s.training.length
-}
-
-/**
- * 釋出操練令:樓層到了、且距上次釋出夠久,才多給一次。
- * ⚠️ 釋出與「玩家有沒有去選」是兩件事——已釋出但沒選的會一直存著(銀行式),
- * 時間閘只管釋出的節奏,不會吞掉次數。
- */
-function releaseTraining(s: GameState, dt: number): void {
-  s.trainingGapSec += dt
-  if (s.trainingShown >= B.TRAINING_FLOORS.length) return
-  const nextFloor = B.TRAINING_FLOORS[s.trainingShown]
-  if (s.highestFloor < nextFloor) return
-  // 第一次不必等間隔:玩家剛走到門檻,沒有「上一次」可以隔
-  if (s.trainingShown > 0 && s.trainingGapSec < B.TRAINING_MIN_GAP_SEC) return
-  s.trainingShown++
-  s.trainingGapSec = 0
-}
-
-export function chooseTraining(s: GameState, id: TrainingId): boolean {
-  if (pendingTrainingLevel(s) === null) return false
-  s.training.push(id)
-  return true
-}
 
 export function buyLevels(s: GameState, count = 1): number {
   // 買等級會抬高耐久上限。⚠️ 絕對值不動的話,血條比例當場下掉——

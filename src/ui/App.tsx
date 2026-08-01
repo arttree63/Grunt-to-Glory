@@ -21,7 +21,6 @@ import {
   TACTICS,
   pendingMedals,
   ironwallActive,
-  pendingTrainingCount,
   setProgress,
   sigilCap,
   sigilName,
@@ -389,7 +388,6 @@ function Game() {
     : near?.tab
       ? near
       : { ...runGoal(s), tab: null as GoalTab | null }
-  const trainingPending = pendingTrainingCount(s)
   const zone = zoneOf(s.floor)
   const zp = zoneProgress(s.floor)
   const species = speciesPair(s.floor)
@@ -686,9 +684,6 @@ function Game() {
               <span><img src={NAV_ART[t.id]} alt="" aria-hidden="true" /></span>
               {t.label}
               {near?.tab === t.id && <i className="dot" />}
-              {/* 未花掉的操練令是玩家手上的資源,不是「差一點」目標:
-                  紅點單一來源由 nearGoal 決定,這裡另掛金色數字,際遇卡住 near 槽位時仍看得見 */}
-              {t.id === 'hero' && trainingPending > 0 && <i className="pip">{trainingPending}</i>}
             </button>
           ))}
         </div>

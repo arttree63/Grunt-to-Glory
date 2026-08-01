@@ -7,7 +7,7 @@ import { GameIcon } from './GameIcon'
 const KEY = 'little-soldier-tutorial'
 
 /**
- * 開局只講**現在就會用到**的兩件事。
+ * 開局只講**現在就會用到**的一件事。
  * ⚠️ 原本一次倒四張,第 3、4 張講的是 3~10 分鐘後才碰到的東西,新手記不住;
  * 那兩件改成情境式提示(見 TIPS),在真的遇到時才出現。
  */
@@ -17,14 +17,9 @@ const STEPS = [
     title: '點畫面就是攻擊',
     body: '每點一下就是一次揮砍,直接造成傷害。掛著不管也會自己推進。',
   },
-  {
-    icon: 'charge' as const,
-    title: '金幣拿去升級',
-    body: '到「英雄」分頁分配操練點數，可以選 ×1、×10 或 ×100 批次加點。',
-  },
 ]
 
-/** 開局只保留兩張必要說明；情境規則由 Boss 聚光燈負責。 */
+/** 開局只保留立即需要的說明；情境規則由 Boss 聚光燈負責。 */
 export default function Tutorial() {
   const [done, setDone] = useState(() => localStorage.getItem(KEY) === '1')
   const setUiLock = useGame((st) => st.setUiLock)

@@ -25,7 +25,6 @@ import type { GameEvent, SkillId } from '../core/types'
 import * as sfx from '../audio/sfx'
 import { useGame } from '../store/gameStore'
 import ResultReveal from './ResultReveal'
-import { TRAINING_NAME } from './TrainingChoice'
 
 const EVENT_REVEAL_ITEMS = ['金幣', '怪物素材', '菁英素材', '部位素材']
 
@@ -210,12 +209,6 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         // 用 skillHit 的大字而不是一行 notice:一輪只有 4 次,它是「拿到新東西」不是「+1 素材」
         scene.skillHit(`新 戰 友 ・ ${MERCS[e.mercId!].name}`)
         scene.notice(`到「英雄」分頁帶上他・${MERCS[e.mercId!].signature}`)
-      } else if (e.type === 'trainingReady') {
-        // 與 levelUp 同一幀觸發,靠 notice 的槽位堆疊錯開;字長要跟「升 級」同級,
-        // 去哪裡分配由分頁上的金色數字與下一步條負責,不塞進這一行
-        scene.notice(`操 練 令 +${e.count}`)
-      } else if (e.type === 'trainingChosen') {
-        scene.notice(`投入${TRAINING_NAME[e.trainingId!]}`)
       } else if (e.type === 'freezeCapped') {
         scene.notice('凍結上限・本場已用盡')
       } else if (e.type === 'relicPrimed') {
