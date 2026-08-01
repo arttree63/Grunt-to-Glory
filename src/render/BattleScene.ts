@@ -8,12 +8,18 @@ import slash1Url from '../../assets/visual/fx/slash-warm/slash-1.png'
 import slash2Url from '../../assets/visual/fx/slash-warm/slash-2.png'
 import slash3Url from '../../assets/visual/fx/slash-warm/slash-3.png'
 import slash4Url from '../../assets/visual/fx/slash-warm/slash-4.png'
-import armsHeavy1Url from '../../assets/visual/skills/arms-heavy-v4/attack-1.png'
-import armsHeavy2Url from '../../assets/visual/skills/arms-heavy-v4/attack-2.png'
-import armsHeavy3Url from '../../assets/visual/skills/arms-heavy-v4/attack-3.png'
-import armsHeavy4Url from '../../assets/visual/skills/arms-heavy-v4/attack-4.png'
-import armsHeavy5Url from '../../assets/visual/skills/arms-heavy-v4/attack-5.png'
-import armsHeavy6Url from '../../assets/visual/skills/arms-heavy-v4/attack-6.png'
+import armsHeavy1Url from '../../assets/visual/skills/arms-heavy-v5/attack-1.png'
+import armsHeavy2Url from '../../assets/visual/skills/arms-heavy-v5/attack-2.png'
+import armsHeavy3Url from '../../assets/visual/skills/arms-heavy-v5/attack-3.png'
+import armsHeavy4Url from '../../assets/visual/skills/arms-heavy-v5/attack-4.png'
+import armsHeavy5Url from '../../assets/visual/skills/arms-heavy-v5/attack-5.png'
+import armsHeavy6Url from '../../assets/visual/skills/arms-heavy-v5/attack-6.png'
+import armsHeavy7Url from '../../assets/visual/skills/arms-heavy-v5/attack-7.png'
+import armsHeavy8Url from '../../assets/visual/skills/arms-heavy-v5/attack-8.png'
+import armsHeavy9Url from '../../assets/visual/skills/arms-heavy-v5/attack-9.png'
+import armsHeavy10Url from '../../assets/visual/skills/arms-heavy-v5/attack-10.png'
+import armsHeavy11Url from '../../assets/visual/skills/arms-heavy-v5/attack-11.png'
+import armsHeavy12Url from '../../assets/visual/skills/arms-heavy-v5/attack-12.png'
 import armsCharge1Url from '../../assets/visual/skills/arms-charge-fx-v1/charge-1.png'
 import armsCharge2Url from '../../assets/visual/skills/arms-charge-fx-v1/charge-2.png'
 import armsCharge3Url from '../../assets/visual/skills/arms-charge-fx-v1/charge-3.png'
@@ -231,6 +237,8 @@ const EVENT_FRAME_MS = 180
 const SLASH_FRAME_MS = 70
 const HIT_FRAME_MS = 65
 const SKILL_FRAME_MS = 120
+// 蓄力較慢、斬擊加速，命中幀刻意多停一拍。
+const ARMS_HEAVY_FRAME_MS = [115, 90, 58, 48, 52, 58, 105, 82, 72, 80, 96, 125]
 
 interface VisualAssets {
   background: Texture
@@ -282,7 +290,10 @@ const textureGroups = {
   turret: [turret1Url, turret2Url, turret3Url, turret4Url],
   slash: [slash1Url, slash2Url, slash3Url, slash4Url],
   hit: [hit1Url, hit2Url, hit3Url, hit4Url],
-  armsHeavy: [armsHeavy1Url, armsHeavy2Url, armsHeavy3Url, armsHeavy4Url, armsHeavy5Url, armsHeavy6Url],
+  armsHeavy: [
+    armsHeavy1Url, armsHeavy2Url, armsHeavy3Url, armsHeavy4Url, armsHeavy5Url, armsHeavy6Url,
+    armsHeavy7Url, armsHeavy8Url, armsHeavy9Url, armsHeavy10Url, armsHeavy11Url, armsHeavy12Url,
+  ],
   armsCharge: [armsCharge1Url, armsCharge2Url, armsCharge3Url, armsCharge4Url, armsCharge5Url, armsCharge6Url, armsCharge7Url, armsCharge8Url],
   spellSword: cc0SpellSequence('sword-fire'),
   spellFireball: cc0SpellSequence('fireball'),
@@ -2397,14 +2408,15 @@ export class BattleScene {
   }
 
   private spawnSkillAnimation(textures: Texture[], target: { x: number; y: number }) {
-    const skill = new AnimatedSprite(textures)
+    const skill = new AnimatedSprite(
+      textures.map((texture, index) => ({ texture, time: ARMS_HEAVY_FRAME_MS[index] ?? 80 })),
+    )
     skill.anchor.set(0.5)
     skill.position.set(target.x, target.y + Math.min(28, this.H * 0.04))
     skill.scale.set(Math.min(this.W * 0.68, this.H * 0.45) / 256)
-    skill.animationSpeed = frameSpeed(SKILL_FRAME_MS)
     skill.loop = false
     skill.onFrameChange = (frame) => {
-      if (frame !== 3) return
+      if (frame !== 6) return
       if (this.boss) this.boss.flash()
       else if (this.eventView) this.eventView.flash()
       else this.frontMob()?.flash()
