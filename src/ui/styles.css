@@ -2311,45 +2311,59 @@ button {
 
 
 /* ── 操練 = 等級(v4.1 § 3)。五科分配卡 ── */
+.hero-page > h3:first-child {
+  border-bottom: 0;
+  padding: 13px 48px 5px;
+  font-size: 20px;
+  letter-spacing: 8px;
+}
 .track-panel {
-  margin-bottom: 12px;
+  margin: 0 -2px 14px;
 }
 .track-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 8px;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 12px;
 }
 .track-head span {
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 4px;
-  color: var(--text-strong);
+  letter-spacing: 2px;
+  color: var(--dim2);
 }
 .track-head small {
   font-size: 11px;
   color: var(--dim2);
 }
+.track-head.pending span,
+.track-head.pending small {
+  color: var(--gold);
+}
 .track-card {
-  display: block;
+  position: relative;
   width: 100%;
   text-align: left;
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
-  border-radius: 10px;
-  padding: 8px 10px;
-  margin-bottom: 6px;
-  min-height: 44px;
+  background: linear-gradient(100deg, rgba(32, 24, 41, .96), rgba(21, 18, 29, .96));
+  border: 1px solid #493543;
+  border-radius: 11px;
+  padding: 6px 52px 6px 10px;
+  margin-bottom: 5px;
+  min-height: 56px;
 }
-/* 主修一眼可辨:金框 + 標籤。不用只靠顏色,手機上色差看不出來 */
 .track-card.focused {
-  border-color: var(--gold);
-  background: #2f2545;
+  border-color: #735240;
+}
+.track-card.pending {
+  border-color: #d7a34f;
+  background: linear-gradient(100deg, rgba(55, 33, 79, .98), rgba(28, 24, 52, .98));
+  box-shadow: 0 0 13px rgba(219, 158, 52, .25), inset 0 0 18px rgba(133, 68, 183, .18);
 }
 .track-title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 13px;
 }
 .track-title b {
@@ -2360,12 +2374,24 @@ button {
   color: var(--gold);
   font-variant-numeric: tabular-nums;
 }
-.track-title .focus-tag {
-  font-size: 11px;
-  color: var(--gold);
-  border: 1px solid var(--gold);
-  border-radius: 6px;
-  padding: 0 4px;
+.track-plus {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid #9a724c;
+  background: radial-gradient(circle, #30263d 28%, #17131d 72%);
+  color: #dcb26b;
+  font: 26px/27px Georgia, serif;
+  box-shadow: inset 0 0 0 2px rgba(8, 6, 10, .75);
+}
+.track-card.pending .track-plus {
+  border-color: #f1ba4c;
+  color: #ffe3a0;
+  box-shadow: 0 0 10px rgba(255, 183, 48, .72), inset 0 0 0 2px rgba(8, 6, 10, .75);
 }
 .track-bar {
   height: 4px;
@@ -2380,30 +2406,41 @@ button {
   background: linear-gradient(90deg, #b8862c, #f2c14e);
 }
 .track-card small {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--dim2);
 }
-.track-invest {
-  width: 100%;
-  min-height: 44px;
-  margin: 4px 0 8px;
-}
-.track-stats .row {
+.track-confirm-row {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  padding: 3px 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-height: 49px;
+  margin-top: 3px;
+  padding: 4px 1px;
+  background: linear-gradient(90deg, transparent, rgba(16, 13, 22, .96) 24%);
 }
-.track-stats .row .k {
+.track-confirm-row > span {
+  font-size: 12px;
   color: var(--dim2);
 }
-.track-stats .row .v {
-  font-variant-numeric: tabular-nums;
+.track-confirm {
+  min-width: 142px;
+  min-height: 46px;
+  border: 8px solid transparent;
+  border-image: url('../../assets/visual/ui/library-20260801/button-primary.png') 24 fill / 8px / 0 stretch;
+  background: #5b4322;
+  color: #d0b780;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  opacity: .55;
 }
-.track-note {
-  display: block;
-  font-size: 11px;
-  color: var(--dim);
-  margin-top: 6px;
-  line-height: 1.6;
+.track-confirm.can {
+  color: #2b1a08;
+  text-shadow: 0 1px rgba(255, 240, 177, .72);
+  opacity: 1;
+  filter: drop-shadow(0 0 5px rgba(246, 174, 45, .62));
 }

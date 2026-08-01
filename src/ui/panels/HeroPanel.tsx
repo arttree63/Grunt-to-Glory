@@ -1,6 +1,3 @@
-import daggerUrl from '../../../assets/visual/weapons/base-set/dagger.png'
-import swordUrl from '../../../assets/visual/weapons/base-set/sword.png'
-import woodUrl from '../../../assets/visual/weapons/base-set/wood.png'
 import * as B from '../../core/balance'
 import { fmt, fmtCombat } from '../../core/format'
 import { affordableLevels, bulkUpCost, upCost } from '../../core/formulas'
@@ -32,12 +29,6 @@ import { useHold } from '../useHold'
 import { BadgeIcon, GameIcon } from '../GameIcon'
 import TrainingCard from '../TrainingChoice'
 import TrackPanel from '../TrackPanel'
-
-const WEAPON_ART = {
-  wood: woodUrl,
-  sword: swordUrl,
-  dagger: daggerUrl,
-}
 
 /** 二轉逐步揭露:輪廓 → 傾向亮起 → 揭露名稱 → 完整預覽 → 可轉職 */
 function PromotionSection() {
@@ -298,7 +289,6 @@ function MercSection() {
 export default function HeroPanel() {
   const s = useGameState()
   const buy = useGame((st) => st.buy)
-  const job = JOBS[s.jobId]
 
   const cost1 = upCost(s.lv)
   const cost10 = bulkUpCost(s.lv, 10)
@@ -306,37 +296,15 @@ export default function HeroPanel() {
   const hold1 = useHold(() => buy(1))
   const nextJobs = nextTierJobs(s.jobId)
   const canPromoteNow = availableJobs(s.jobId, s.lv, s.destinyPath).length > 0
-  const roleLabel = job.tier === 0 ? '巡守型' : job.tier === 1 ? '轉職兵種' : '進階兵種'
 
   return (
     <div className="panel-page hero-page">
       <h3>英 雄</h3>
-      <div className="hero-identity">
-        <img
-          className="hero-weapon"
-          src={WEAPON_ART[job.look.weapon]}
-          alt={`${job.name}武器`}
-          draggable={false}
-        />
-        <div className="hero-copy">
-          <small>目前職業</small>
-          <div className="hero-name-line">
-            <b>{job.name}</b>
-            <span className="role-chip">{roleLabel}</span>
-          </div>
-          <div className="hero-level-line">
-            <strong>總等級 {s.lv}</strong>
-            <span>下一級 {fmt(cost1)} 金</span>
-          </div>
-          <span>{job.desc.replace(',戰意衰減減半', '')}</span>
-        </div>
-      </div>
-      {/* ⚠️ 可轉職時置頂:曾經被四區能力+傭兵區推到兩屏之下,
-          玩家到 Lv.20 開英雄頁看不到轉職,回報成「20 級不能轉職」 */}
-      {canPromoteNow && <PromotionSection />}
 
       {/* 操練 = 等級(v4.1 § 3):五科分配是這一代最核心的決定,排在所有數值之前 */}
       <TrackPanel />
+
+      {canPromoteNow && <PromotionSection />}
 
       {/* 操練令是本輪構築的一部分,排在原始數值之前;版位固定不隨待辦數移動 */}
       <TrainingCard />

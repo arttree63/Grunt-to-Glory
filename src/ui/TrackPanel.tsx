@@ -1,15 +1,9 @@
-import * as B from '../core/balance'
+import { useState } from 'react'
 import { fmt } from '../core/format'
 import { upCost } from '../core/formulas'
 import {
   TRACKS,
   TRACK_NAME,
-  critRate,
-  currentDPS,
-  defenseCut,
-  dodgeRate,
-  enduranceMax,
-  enduranceRegen,
   trackMult,
   trackShare,
 } from '../core/game'
@@ -29,7 +23,7 @@ import { GameIcon } from './GameIcon'
  */
 const TRACK_DESC: Record<TrackId, { icon: 'hero' | 'legacy' | 'gale' | 'meteor' | 'judgement'; main: string; sub: string }> = {
   arms: { icon: 'hero', main: '攻擊力', sub: '防禦力(減少場上威脅的傷害)' },
-  body: { icon: 'legacy', main: '耐久上限', sub: '被動回血' },
+  body: { icon: 'legacy', main: '生命上限', sub: '被動回血' },
   agility: { icon: 'gale', main: '爆擊率(全域)', sub: '迴避(整下閃掉威脅)' },
   magic: { icon: 'meteor', main: '魔法攻擊力', sub: 'MP 回復速度' },
   faith: { icon: 'judgement', main: '回血量(觸發式)', sub: 'debuff 抗性' },
@@ -39,16 +33,22 @@ export default function TrackPanel() {
   const s = useGameState()
   const setFocus = useGame((st) => st.setTrackFocus)
   const buy = useGame((st) => st.buy)
+  const [pending, setPending] = useState<TrackId | null>(null)
   const cost = upCost(s.lv)
   const can = s.gold.gte(cost)
 
+  const confirm = () => {
+    if (!pending || !can) return
+    setFocus(pending)
+    buy(1)
+    setPending(null)
+  }
+
   return (
     <div className="track-panel">
-      <div className="track-head">
-        <span>操 練</span>
-        <small>
-          總等級 {s.lv}・投一點 {fmt(cost)} 金
-        </small>
+      <div className={`track-head${pending ? ' pending' : ''}`}>
+        <span>{pending ? '待 確 認' : '操 練 配 點'}</span>
+        <small>{pending ? `${TRACK_NAME[pending]} +1` : `每點 ${fmt(cost)} 金`}</small>
       </div>
 
       {TRACKS.map((t) => {
@@ -57,66 +57,44 @@ export default function TrackPanel() {
         const share = trackShare(s, t)
         const mult = trackMult(s, t)
         const focused = s.trackFocus === t
+        const queued = pending === t
         return (
-          <button
+          <div
             key={t}
-            className={`track-card${focused ? ' focused' : ''}`}
-            onClick={() => setFocus(t)}
+            className={`track-card${focused ? ' focused' : ''}${queued ? ' pending' : ''}`}
           >
             <div className="track-title">
               <GameIcon name={info.icon} size={16} />
               <b>{TRACK_NAME[t]}</b>
-              <span className="pts">{pts} 點</span>
-              {focused && <span className="focus-tag">主修</span>}
+              <span className="pts">{pts + (queued ? 1 : 0)} 點</span>
+              <button
+                className="track-plus"
+                onClick={() => setPending(queued ? null : t)}
+                aria-label={`${queued ? '取消' : '增加'}${TRACK_NAME[t]}一點`}
+              >
+                +
+              </button>
             </div>
             <div className="track-bar">
-              <i style={{ width: `${Math.round(share * 100)}%` }} />
+              <i style={{ width: `${queued ? Math.max(8, Math.round(share * 100)) : Math.round(share * 100)}%` }} />
             </div>
             <small>
               {info.main} ×{mult.toFixed(2)}・{info.sub}
             </small>
-          </button>
+          </div>
         )
       })}
 
-      <button
-        className={`btn primary track-invest${can ? ' can' : ''}`}
-        onClick={() => buy(1)}
-        disabled={!can}
-      >
-        投一點進「{TRACK_NAME[s.trackFocus]}」・{fmt(cost)} 金
-      </button>
-
-      <div className="track-stats">
-        <div className="row">
-          <span className="k">攻擊力</span>
-          <span className="v">{fmt(currentDPS(s))} / 秒</span>
-        </div>
-        <div className="row">
-          <span className="k">耐久上限</span>
-          <span className="v">{fmt(enduranceMax(s))}</span>
-        </div>
-        <div className="row">
-          <span className="k">爆擊率</span>
-          <span className="v">{Math.round(critRate(s) * 100)}%</span>
-        </div>
-        <div className="row">
-          <span className="k">防禦力</span>
-          <span className="v">減傷 {Math.round(defenseCut(s) * 100)}%</span>
-        </div>
-        <div className="row">
-          <span className="k">迴避</span>
-          <span className="v">{Math.round(dodgeRate(s) * 100)}%</span>
-        </div>
-        <div className="row">
-          <span className="k">被動回血</span>
-          <span className="v">每秒 {(enduranceRegen(s) * 100).toFixed(1)}%</span>
-        </div>
+      <div className="track-confirm-row">
+        <span>{pending ? `${fmt(cost)} 金` : '先選擇一項能力'}</span>
+        <button
+          className={`track-confirm${pending && can ? ' can' : ''}`}
+          onClick={confirm}
+          disabled={!pending || !can}
+        >
+          確認加點
+        </button>
       </div>
-      <small className="track-note">
-        全押一科 ×{(B.TRACK_MULT_BASE + B.TRACK_MULT_SPAN).toFixed(1)}、平均分配 ×1.0、完全不點 ×
-        {B.TRACK_MULT_BASE.toFixed(1)}。退役重練會把點數全部收回重分配。
-      </small>
     </div>
   )
 }
