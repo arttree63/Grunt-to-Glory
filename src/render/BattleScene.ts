@@ -991,6 +991,7 @@ export class BattleScene {
     ;(t as FloatText)._lifeMs = notice ? 1800 : 900
     ;(t as FloatText)._frozen = frozen
     ;(t as FloatText)._notice = notice
+    ;(t as FloatText)._minY = this.boss && !notice ? Math.max(128, this.H * 0.28) : -Infinity
     if (frozen) {
       t.tint = 0xb9edff
       t.alpha = 0.78
@@ -1091,7 +1092,7 @@ export class BattleScene {
     for (let i = this.dmgLayer.children.length - 1; i >= 0; i--) {
       const t = this.dmgLayer.children[i] as FloatText
       if (!t._frozen) {
-        t.y += t._vy
+        t.y = Math.max(t._minY, t.y + t._vy)
         t._vy += 0.06
         t._life -= ms / t._lifeMs
         t.alpha = t._life
@@ -2430,6 +2431,7 @@ interface FloatText extends Text {
   _lifeMs: number
   _frozen: boolean
   _notice: boolean
+  _minY: number
 }
 
 function frameSpeed(frameMs: number): number {
