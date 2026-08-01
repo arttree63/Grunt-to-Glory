@@ -1987,13 +1987,13 @@ export class BattleScene {
     const charge = new Container() as TimedFx
     const trail = new AnimatedSprite(this.assets.armsCharge)
     const heroTextures = this.assets.heroes[this.heroJob]
-    const riders = [0, 1, 2].map((index) => {
+    const riders = [0, 1, 2, 3, 4].map((index) => {
       const rider = new AnimatedSprite(heroTextures)
       rider.anchor.set(0.5, 233 / 256)
       rider.animationSpeed = frameSpeed(HERO_FRAME_MS)
       rider.scale.set(this.heroBody.scale.x, this.heroBody.scale.y)
       rider.alpha = index === 0 ? 1 : 0
-      rider.tint = index === 0 ? 0xffffff : index === 1 ? 0xff8a68 : 0xd94f76
+      rider.tint = index === 0 ? 0xffffff : index < 3 ? 0xff7657 : 0xb62b2b
       rider.play()
       return rider
     })
@@ -2009,28 +2009,44 @@ export class BattleScene {
     const startY = this.hero.y - this.H * 0.1
     const endX = target.x + this.W * 0.035
     const endY = target.y + Math.min(30, this.H * 0.045)
+    const distance = Math.hypot(endX - startX, endY - startY) || 1
+    const trailX = (startX - endX) / distance
+    const trailY = (startY - endY) / distance
     let impacted = false
+    this.heroBody.visible = false
 
     this.addTimedFx(charge, duration, (node, p) => {
-      const travel = Math.max(0, Math.min(1, (p - 0.2) / 0.58))
-      const eased = 1 - (1 - travel) ** 3
-      node.position.set(startX + (endX - startX) * eased, startY + (endY - startY) * eased)
+      const dash = Math.max(0, Math.min(1, (p - 0.2) / 0.52))
+      let travel = dash < 1 ? dash * dash * (3 - 2 * dash) : 1
+      if (p > 0.84) travel -= Math.sin(Math.min(1, (p - 0.84) / 0.16) * Math.PI) * 0.035
+      node.position.set(startX + (endX - startX) * travel, startY + (endY - startY) * travel)
 
-      const fade = p > 0.82 ? Math.max(0, 1 - (p - 0.82) / 0.18) : 1
-      riders[0].alpha = Math.min(1, p * 7) * fade
-      riders[1].alpha = p > 0.36 ? 0.38 * fade : 0
-      riders[2].alpha = p > 0.48 ? 0.24 * fade : 0
-      riders[0].position.set(14, 8)
-      riders[1].position.set(-18, 20)
-      riders[2].position.set(-46, 34)
+      const fade = p > 0.88 ? Math.max(0, 1 - (p - 0.88) / 0.12) : 1
+      const crouch = p < 0.2 ? p / 0.2 : 1
+      const stretch = p > 0.68 ? Math.max(0, 1 - (p - 0.68) / 0.16) : 1
+      riders.forEach((rider, index) => {
+        const wake = index * (12 + 5 * stretch)
+        rider.position.set(trailX * wake + 10, trailY * wake + 8)
+        rider.rotation = -0.1 * crouch
+        rider.scale.set(
+          this.heroBody.scale.x * (1 + 0.13 * crouch),
+          this.heroBody.scale.y * (1 - 0.15 * crouch),
+        )
+        rider.alpha = index === 0
+          ? Math.min(1, p * 8) * fade
+          : dash > index * 0.055 ? (0.44 - index * 0.075) * stretch * fade : 0
+      })
 
-      if (!impacted && p >= 0.75) {
+      if (!impacted && p >= 0.72) {
         impacted = true
+        this.spawnImpact(endX, endY, 1.35)
         if (this.boss) this.boss.flash()
         else if (this.eventView) this.eventView.flash()
         else this.frontMob()?.flash()
         this.shake = Math.max(this.shake, 15)
       }
+
+      if (p >= 0.96) this.heroBody.visible = true
     })
   }
 
