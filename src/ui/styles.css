@@ -750,14 +750,27 @@ button {
 }
 .tab:last-child { border-right: 0; }
 .tab.active {
-  background: linear-gradient(180deg, #28202c, #18131d);
+  padding: 2px 0 0;
+  border: 5px solid transparent;
+  border-image: url('../../assets/visual/ui/library-20260801/button-secondary.png') 24 fill / 5px / 0 stretch;
+  background: #18131d;
   color: #f0b742;
-  border-bottom: 2px solid #b87d2f;
   box-shadow: inset 0 0 14px #d79e3120;
 }
 .tab span {
-  display: block;
+  display: grid;
+  height: 27px;
+  place-items: center;
   margin-bottom: 1px;
+}
+.tab span img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  filter: saturate(.65) brightness(.85);
+}
+.tab.active span img {
+  filter: saturate(1.05) brightness(1.08) drop-shadow(0 1px 3px #000);
 }
 .dot {
   position: absolute;
@@ -1408,6 +1421,13 @@ button {
   background: radial-gradient(circle, #2c2328, #151116 70%);
   box-shadow: inset 0 0 0 3px #0d0a0e, 0 2px 5px #0008;
 }
+.next-icon img,
+.level-icon img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 2px #0009);
+}
 .next-copy {
   display: flex;
   flex: 1;
@@ -1437,14 +1457,14 @@ button {
 
 .next-step .go {
   min-width: 68px;
-  padding: 9px 10px;
+  padding: 7px 9px;
   color: #efb849;
   flex-shrink: 0;
   text-align: center;
-  border: 1px solid #7a5840;
-  border-radius: 6px;
+  border: 7px solid transparent;
+  border-image: url('../../assets/visual/ui/library-20260801/button-secondary.png') 24 fill / 7px / 0 stretch;
   background: #1d171d;
-  box-shadow: inset 0 0 0 2px #0e0b0f;
+  box-shadow: 0 2px 5px #0008;
 }
 
 /* 面板頂端把手:表示這是由下拉出的面板,點了可關 */
@@ -1566,20 +1586,21 @@ button {
 .lvl-max {
   min-width: 74px;
   min-height: 43px;
-  padding: 7px 13px;
-  border-radius: 7px;
-  background: linear-gradient(#49341f, #271d18);
-  border: 1px solid #74533b;
+  padding: 5px 11px;
+  border: 8px solid transparent;
+  border-image: url('../../assets/visual/ui/library-20260801/button-secondary.png') 24 fill / 8px / 0 stretch;
+  background: #251a22;
   color: #a9947e;
   font-size: 15px;
   font-weight: 800;
-  box-shadow: inset 0 0 0 2px #17100d, 0 2px 6px #0007;
+  box-shadow: 0 2px 6px #0007;
 }
 .lvl-max.can {
-  color: #fff0c6;
-  border-color: #d0913c;
-  background: linear-gradient(#b67128, #70431d);
-  box-shadow: inset 0 1px 0 #ffd68588, inset 0 0 0 2px #5b3218, 0 0 10px #d5893033;
+  color: #4a2c0d;
+  border-image-source: url('../../assets/visual/ui/library-20260801/button-primary.png');
+  background: #d9972a;
+  text-shadow: 0 1px #ffe7a2;
+  box-shadow: 0 0 10px #d5893055;
 }
 .lvl-max:active { transform: translateY(1px); }
 

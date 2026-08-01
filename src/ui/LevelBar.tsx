@@ -4,7 +4,7 @@ import { goldPerSec, TRACK_NAME } from '../core/game'
 import { useGame } from '../store/gameStore'
 import { useGameState } from './useGameState'
 import { useHold } from './useHold'
-import { GameIcon } from './GameIcon'
+import trainingIconUrl from '../../assets/visual/ui/library-20260801/nav-equip.png'
 
 /**
  * 主畫面常駐升級條。放置型的核心迴圈是「金幣漲 → 買得起 → 按下去」,
@@ -26,7 +26,7 @@ export default function LevelBar() {
 
   return (
     <div className="level-bar">
-      <span className="level-icon"><GameIcon name="hero" size={27} /></span>
+      <span className="level-icon"><img src={trainingIconUrl} alt="" aria-hidden="true" /></span>
       <div
         className={`lvl-main${can ? ' can' : ''}`}
       >

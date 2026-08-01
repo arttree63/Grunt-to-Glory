@@ -64,6 +64,12 @@ import goblinPortraitUrl from '../../assets/visual/ui/pixel-kit/goblin.png'
 import firePortraitUrl from '../../assets/visual/ui/pixel-kit/fire.png'
 import icePortraitUrl from '../../assets/visual/ui/pixel-kit/ice.png'
 import archerPortraitUrl from '../../assets/visual/ui/pixel-kit/archer.png'
+import heroNavUrl from '../../assets/visual/ui/library-20260801/nav-hero.png'
+import equipNavUrl from '../../assets/visual/ui/library-20260801/nav-equip.png'
+import forgeNavUrl from '../../assets/visual/ui/library-20260801/nav-forge.png'
+import destinyNavUrl from '../../assets/visual/ui/library-20260801/nav-destiny.png'
+import journalNavUrl from '../../assets/visual/ui/library-20260801/nav-journal.png'
+import legacyNavUrl from '../../assets/visual/ui/library-20260801/nav-legacy.png'
 
 type Tab = 'hero' | 'equip' | 'forge' | 'destiny' | 'journal' | 'legacy'
 
@@ -95,6 +101,15 @@ const MERC_ART: Record<string, string> = {
   icemage: icePortraitUrl,
   sapper: goblinPortraitUrl,
   pyro: firePortraitUrl,
+}
+
+const NAV_ART: Record<Tab, string> = {
+  hero: heroNavUrl,
+  equip: equipNavUrl,
+  forge: forgeNavUrl,
+  destiny: destinyNavUrl,
+  journal: journalNavUrl,
+  legacy: legacyNavUrl,
 }
 
 const STEP_DETAIL: Record<GoalTab, string> = {
@@ -655,7 +670,7 @@ function Game() {
             className={`next-step${stepGoal.tab ? '' : ' info'}`}
             onClick={() => stepGoal.tab && setTab(stepGoal.tab as Tab)}
           >
-            <span className="next-icon"><GameIcon name={(stepGoal.tab ?? 'journal') as Tab} size={25} /></span>
+            <span className="next-icon"><img src={NAV_ART[(stepGoal.tab ?? 'journal') as Tab]} alt="" aria-hidden="true" /></span>
             <span className="next-copy"><b>下一步：{stepGoal.text}</b><small>{stepGoal.tab ? STEP_DETAIL[stepGoal.tab] : '持續戰鬥，朝本輪目標推進。'}</small></span>
             {stepGoal.tab && <span className="go">前往 →</span>}
           </button>
@@ -667,7 +682,7 @@ function Game() {
               className={`tab${tab === t.id ? ' active' : ''}`}
               onClick={() => setTab(tab === t.id ? null : t.id)}
             >
-              <span><GameIcon name={t.id} size={19} /></span>
+              <span><img src={NAV_ART[t.id]} alt="" aria-hidden="true" /></span>
               {t.label}
               {near?.tab === t.id && <i className="dot" />}
               {/* 未花掉的操練令是玩家手上的資源,不是「差一點」目標:
