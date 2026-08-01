@@ -23,7 +23,6 @@ import {
   ironwallActive,
   pendingTrainingCount,
   setProgress,
-  shellToNext,
   sigilCap,
   sigilName,
 } from '../core/game'
@@ -399,7 +398,6 @@ function Game() {
     channel: s.isBoss && s.channelLeft > 0,
     perfect: s.perfectWindowLeft > 0 && s.sigils > 0 && !!JOBS[s.jobId].awakenSkill,
     totem: s.isBoss && s.totemHp.gt(0),
-    shell: s.isBoss && s.shellLeft > 0,
   }
   const primary: keyof typeof mech | null =
     spot && spot in mech && mech[spot as keyof typeof mech]
@@ -410,9 +408,7 @@ function Game() {
           ? 'perfect'
           : mech.totem
             ? 'totem'
-            : mech.shell
-              ? 'shell'
-              : null
+            : null
 
   const flagStatus =
     s.bannerStored > 0
@@ -502,13 +498,23 @@ function Game() {
             </div>
           </div>
         ) : s.isBoss ? (
-          <div className={`bossbar${spot === 'boss30' ? ' spotlit' : ''}`}>
+          <div className={`bossbar${spot === 'boss30' || spot === 'shell' ? ' spotlit' : ''}`}>
             <div className="name">
               第 {s.floor} 層 守關者
               {s.nemesis && !s.nemesis.resolved && s.nemesis.floor === s.floor && '・家 族 宿 敵'}
             </div>
             <div className="bar">
               <div className="fill" style={{ width: `${Math.max(0, hpRatio) * 100}%` }} />
+              {s.shellLeft > 0 && (
+                <div
+                  className={`shield-segments${s.tacticDelayLeft > 0 ? ' frozen' : ''}`}
+                  aria-label={`護盾剩餘 ${s.shellLeft} 層`}
+                >
+                  {Array.from({ length: B.SHELL_HITS }, (_, i) => (
+                    <i className={i < s.shellLeft ? 'on' : ''} key={i} />
+                  ))}
+                </div>
+              )}
             </div>
             <div className="enemy-meta">
               <span>{fmtCombat(s.enemyHp)} / {fmtCombat(s.enemyMaxHp)}</span>
@@ -598,19 +604,6 @@ function Game() {
               <div className="fill" style={{ width: `${s.totemHp.div(s.totemMaxHp).toNumber() * 100}%` }} />
             </div>
             <small className="affix">燃燒/背刺可直打本體</small>
-          </div>
-        )}
-        {primary === 'shell' && (
-          <div
-            className={`retry mechanic-card${spot === 'shell' ? ' spotlit' : ''}`}
-            style={{ top: 'auto', pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
-          >
-            護盾 ×{s.shellLeft}・還差 {shellToNext(s)} 點破下一層
-            {/* 戰術延遲期間投點凍結:盾條直接灰掉,不讓玩家以為還在推進 */}
-            <div className={`goal-bar${s.tacticDelayLeft > 0 ? ' frozen' : ''}`}>
-              <div className="fill" style={{ width: `${(1 - shellToNext(s) / B.SHIELD_VALUE_PER_LAYER) * 100}%` }} />
-            </div>
-            <small className="affix">一次命中 {B.SHIELD_HIT_VALUE} 點・燃燒等狀態 {B.SHIELD_TICK_VALUE} 點</small>
           </div>
         )}
 

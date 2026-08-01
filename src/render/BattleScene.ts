@@ -2360,18 +2360,6 @@ export class BattleScene {
         .stroke({ width: 4, color: 0x9beaff, alpha: 0.84 })
     }
 
-    if (snap.isBoss && snap.shellLeft > 0) {
-      const shellX = target.x
-      const shellY = target.y + 12
-      for (let i = 0; i < Math.min(6, snap.shellLeft); i++) {
-        const a = -2.65 + i * (2.15 / Math.max(1, Math.min(6, snap.shellLeft) - 1))
-        this.enemyStateFx.arc(shellX, shellY, 76 + i % 2 * 7, a - 0.15, a + 0.15)
-          .stroke({ width: 9, color: 0x96a7b4, alpha: 0.78 })
-      }
-      this.enemyStateFx.arc(shellX, shellY, 91, Math.PI * 0.08, Math.PI * (0.08 + 0.84 * snap.shellProgress))
-        .stroke({ width: 6, color: snap.shellProgress > 0.72 ? 0xffb45c : 0xe1edf3, alpha: 0.9 })
-    }
-
     if (snap.isBoss && snap.channelLeft > 0) {
       const barW = Math.min(260, this.W * 0.52)
       const x = (this.W - barW) / 2

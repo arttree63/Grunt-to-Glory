@@ -182,6 +182,7 @@ button {
   text-shadow: 0 2px 3px #000;
 }
 .bossbar .bar {
+  position: relative;
   height: 9px;
   padding: 2px;
   background: #151018d9;
@@ -194,6 +195,30 @@ button {
   height: 100%;
   background: linear-gradient(90deg, var(--boss-a), var(--boss-b));
   border-radius: 2px;
+}
+.shield-segments {
+  position: absolute;
+  z-index: 2;
+  inset: 1px 2px;
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 2px;
+  pointer-events: none;
+}
+.shield-segments i {
+  min-width: 0;
+  border: 1px solid #d7f7ff42;
+  border-radius: 1px;
+  background: #07151c66;
+}
+.shield-segments i.on {
+  border-color: #d8f8ff;
+  background: linear-gradient(180deg, #d5f7ff, #58b9d3);
+  box-shadow: 0 0 4px #73dfff;
+}
+.shield-segments.frozen {
+  filter: grayscale(1);
+  opacity: 0.45;
 }
 .enemy-meta {
   display: flex;
