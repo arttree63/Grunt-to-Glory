@@ -113,6 +113,7 @@ import {
   channelProgress,
   shellProgress,
   shellToNext,
+  gainArmyMomentum,
 } from '../game'
 import { legacyGoal, nearGoal, runGoal } from '../goals'
 import { titleFor } from '../chronicle'
@@ -4098,6 +4099,64 @@ describe('命運共鳴(顯示傾向與公開來源,不替玩家推薦)', () => {
     s.resonance.hunter = 9
     const next = prestige(s)!
     expect(next.resonance).toEqual({ artisan: 0, hunter: 0, tactician: 0 })
+  })
+})
+
+describe('軍勢系統', () => {
+  it('累積滿格會部署一名士兵，編隊最多五名', () => {
+    const s = createInitialState()
+    const events: ReturnType<typeof castSkill> = []
+    gainArmyMomentum(s, B.ARMY_MOMENTUM_MAX, events)
+    expect(s.armyUnits).toBe(1)
+    expect(s.armyMomentum).toBe(0)
+    expect(events.some((event) => event.type === 'armySummon' && event.count === 1)).toBe(true)
+
+    s.armyUnits = B.ARMY_UNIT_MAX
+    gainArmyMomentum(s, B.ARMY_MOMENTUM_MAX, events)
+    expect(s.armyUnits).toBe(B.ARMY_UNIT_MAX)
+    expect(s.armyMomentum).toBe(B.ARMY_MOMENTUM_MAX)
+  })
+
+  it('已部署士兵會定時支援，但支援攻擊不會自行累積軍勢', () => {
+    const s = createInitialState()
+    s.armyUnits = 3
+    s.armyMomentum = 25
+    s.armyAssistTimer = 0.01
+    s.enemyHp = D('1e100')
+    s.enemyMaxHp = s.enemyHp
+    const events = applyTick(s, 20, () => 0.5)
+    expect(events.some((event) => event.type === 'armyAssist' && event.count === 3)).toBe(true)
+    expect(s.armyMomentum).toBe(25)
+  })
+
+  it('先鋒號令消耗全隊，投入越多人傷害越高', () => {
+    const solo = createInitialState()
+    const squad = createInitialState()
+    solo.skillLoadout = ['armsCommand']
+    squad.skillLoadout = ['armsCommand']
+    solo.armyUnits = 0
+    squad.armyUnits = 4
+    const soloEvent = castSkill(solo, 'armsCommand').find((event) => event.type === 'skill')
+    const squadEvent = castSkill(squad, 'armsCommand').find((event) => event.type === 'skill')
+    expect(squad.armyUnits).toBe(0)
+    expect(squadEvent?.count).toBe(4)
+    expect(D(squadEvent?.damage ?? 0).gt(D(soloEvent?.damage ?? 0))).toBe(true)
+  })
+
+  it('軍勢存檔會保留並限制在合法範圍', () => {
+    const s = createInitialState()
+    s.armyMomentum = 73
+    s.armyUnits = 4
+    const out = deserialize(serialize(s))
+    expect(out.armyMomentum).toBe(73)
+    expect(out.armyUnits).toBe(4)
+
+    const raw = serialize(s) as unknown as Record<string, unknown>
+    raw.armyMomentum = 999
+    raw.armyUnits = 99
+    const clamped = deserialize(raw as never)
+    expect(clamped.armyMomentum).toBe(B.ARMY_MOMENTUM_MAX)
+    expect(clamped.armyUnits).toBe(B.ARMY_UNIT_MAX)
   })
 })
 

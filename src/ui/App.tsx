@@ -664,6 +664,15 @@ function Game() {
               <div className="status-track"><i style={{ width: `${Math.max(0, Math.min(100, (s.mp / B.MP_MAX) * 100))}%` }} /></div>
               <strong>{Math.floor(s.mp)} / {B.MP_MAX}</strong>
             </div>
+            <div className="status-line army-line">
+              <span className="status-label"><i>⚑</i> 軍勢</span>
+              <div className="army-track" aria-label={`軍勢 ${Math.floor(s.armyMomentum)}%`}>
+                {Array.from({ length: 10 }, (_, i) => (
+                  <i key={i} className={i < Math.ceil(s.armyMomentum / 10) ? 'filled' : ''} />
+                ))}
+              </div>
+              <strong>{s.armyUnits} / {B.ARMY_UNIT_MAX}</strong>
+            </div>
           </div>
           <div className={`merc-portrait${s.activeMerc ? '' : ' empty'}`}>
             {s.activeMerc ? <img src={MERC_ART[s.activeMerc]} alt="出戰傭兵" /> : <GameIcon name="hero" size={20} />}

@@ -38,7 +38,7 @@ export const TRAINING_BRANCHES: TrainingBranch[] = [
     nodes: [
       { level: 20, name: '重擊', kind: 'core', desc: '造成高額單次傷害，對格狀護盾有額外破盾值。', corps: '先鋒軍', skillId: 'armsHeavy' },
       { level: 50, name: '衝鋒', kind: 'active', desc: '英雄與先鋒軍一同發動三段突擊。', corps: '先鋒軍', skillId: 'armsCharge' },
-      { level: 100, name: '先鋒號令', kind: 'command', desc: '命令精銳先鋒發動五段協同攻擊。', corps: '精銳先鋒', skillId: 'armsCommand' },
+      { level: 100, name: '先鋒號令', kind: 'command', desc: '消耗所有已部署士兵發動總攻，每名士兵提高 12% 傷害。', corps: '精銳先鋒', skillId: 'armsCommand' },
       { level: 200, name: '武神姿態', kind: 'legend', desc: '進入總攻姿態，大幅強化本人與軍團。', corps: '皇家近衛軍', skillId: 'armsLegend' },
     ],
   },

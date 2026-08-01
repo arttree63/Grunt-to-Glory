@@ -94,6 +94,11 @@ export default function SkillBar() {
               每 {B.PASSIVE_KILLS_PER_SIGIL} 次擊殺自然獲得 1 枚；第一技能視窗、命運與傭兵可加速累積
             </small>
           )}
+          {detailSkill === 'armsCommand' && (
+            <small>
+              已部署 {s.armyUnits} / {B.ARMY_UNIT_MAX}；自動施放會等待滿編
+            </small>
+          )}
         </div>
       )}
       {/* 施放模式是戰鬥設定,不是技能:改扁平開關,不與技能格同視覺權重(UX 回饋 P1-6) */}
@@ -174,6 +179,9 @@ export default function SkillBar() {
               >
                 {s.sigils}
               </span>
+            )}
+            {id === 'armsCommand' && s.armyUnits > 0 && (
+              <span className="army-command-count" aria-hidden="true">{s.armyUnits}</span>
             )}
             {!ready && (
               <>

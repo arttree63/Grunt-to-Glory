@@ -476,6 +476,12 @@ export interface GameState {
   skillCd: Partial<Record<SkillId, number>>
   /** 玩家目前裝配的五系主動技能，最多五個。 */
   skillLoadout: SkillId[]
+  /** 下一名士兵的集結進度，0～100。 */
+  armyMomentum: number
+  /** 已部署在英雄身後的軍團士兵，最多五名。 */
+  armyUnits: number
+  /** 軍團下一次協同攻擊倒數。 */
+  armyAssistTimer: number
   /**
    * 生效中的技能 buff(多槽併存,v1.6 總攻改版)。
    * ⚠️ 單槽互斥是「開全套總攻」在結構上不存在的原因——爽感的本體是
@@ -663,6 +669,9 @@ export interface GameEvent {
     | 'destinyDescend'
     | 'afterimageSpawn'
     | 'sigilGain'
+    | 'armyGain'
+    | 'armySummon'
+    | 'armyAssist'
     | 'resonanceGain'
     | 'freezeCapped'
     | 'relicPrimed'
@@ -673,7 +682,7 @@ export interface GameEvent {
   /** attack 事件:這一擊實際造成的傷害 */
   damage?: Decimal
   equipment?: Equipment
-  /** kill 事件在單 tick 內合併的隻數;skill 事件則是消耗掉的印記層數 */
+  /** kill 事件合併數；skill 是消耗的戰鬥資源；army 事件是軍勢或士兵數。 */
   count?: number
   /** cooldownAdvance:這次推進了幾秒(演出用來讓冷卻條跳一格) */
   seconds?: number

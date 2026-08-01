@@ -89,6 +89,24 @@ export const MP_REGEN_BASE = 4
 /** 吃 MP 的技能仍有一個很短的保底 CD:防止 MP 一滿就同一招連續觸發好幾次 */
 export const MP_MIN_CD = 1.5
 
+// ── 軍勢與軍團(v4.2)──
+/** 軍勢以百分比累積；滿檔自動集結一名士兵。 */
+export const ARMY_MOMENTUM_MAX = 100
+/** 戰場同時可維持的士兵上限。 */
+export const ARMY_UNIT_MAX = 5
+/** 每次主角自動攻擊命中累積的軍勢。 */
+export const ARMY_MOMENTUM_PER_HIT = 12
+/** 玩家額外點擊攻擊的軍勢較低，避免點擊變成唯一正解。 */
+export const ARMY_MOMENTUM_PER_CLICK = 6
+/** 傷害技能每個獨立命中累積的軍勢。 */
+export const ARMY_MOMENTUM_PER_SKILL_HIT = 8
+/** 軍團協同出手間隔。 */
+export const ARMY_ASSIST_INTERVAL = 2.4
+/** 每名士兵一次協同攻擊折算的 DPS 秒數。 */
+export const ARMY_ASSIST_DPS_SECONDS = 0.2
+/** 先鋒號令每消耗一名士兵增加的傷害比例。 */
+export const ARMY_COMMAND_POWER_PER_UNIT = 0.12
+
 // ── 遠征耐久(生存檢定,v4.1)──
 /**
  * 耐久上限 = 玩家 DPS × 這個秒數。

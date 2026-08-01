@@ -38,7 +38,7 @@ export interface Skill {
 export const SKILLS: Record<SkillId, Skill> = {
   armsHeavy: { id: 'armsHeavy', name: '重擊', desc: '造成 8 秒份傷害，破盾值較高', cd: 14, burstSeconds: 8, hitCount: 2 },
   armsCharge: { id: 'armsCharge', name: '衝鋒', desc: '先鋒軍發動三段突擊，造成 12 秒份傷害', cd: 26, burstSeconds: 12, hitCount: 3 },
-  armsCommand: { id: 'armsCommand', name: '先鋒號令', desc: '精銳先鋒發動五段協同攻擊', cd: 44, burstSeconds: 22, hitCount: 5 },
+  armsCommand: { id: 'armsCommand', name: '先鋒號令', desc: '消耗所有已部署士兵發動總攻；每名士兵提高 12% 傷害', cd: 44, burstSeconds: 22, hitCount: 5 },
   armsLegend: { id: 'armsLegend', name: '武神姿態', desc: '12 秒內傷害 ×3', cd: 85, duration: 12, dmgMult: 3, apex: true },
 
   bodyGuard: { id: 'bodyGuard', name: '格擋', desc: '8 秒內承受威脅傷害 ×0.45', cd: 20, duration: 8, defenseMult: 0.45 },

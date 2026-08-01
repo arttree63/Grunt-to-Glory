@@ -28,6 +28,16 @@ import armsCharge5Url from '../../assets/visual/skills/arms-charge-fx-v1/charge-
 import armsCharge6Url from '../../assets/visual/skills/arms-charge-fx-v1/charge-6.png'
 import armsCharge7Url from '../../assets/visual/skills/arms-charge-fx-v1/charge-7.png'
 import armsCharge8Url from '../../assets/visual/skills/arms-charge-fx-v1/charge-8.png'
+import vanguardIdle1Url from '../../assets/visual/army/vanguard/idle/idle-1.png'
+import vanguardIdle2Url from '../../assets/visual/army/vanguard/idle/idle-2.png'
+import vanguardIdle3Url from '../../assets/visual/army/vanguard/idle/idle-3.png'
+import vanguardIdle4Url from '../../assets/visual/army/vanguard/idle/idle-4.png'
+import vanguardCharge1Url from '../../assets/visual/army/vanguard/charge/charge-1.png'
+import vanguardCharge2Url from '../../assets/visual/army/vanguard/charge/charge-2.png'
+import vanguardCharge3Url from '../../assets/visual/army/vanguard/charge/charge-3.png'
+import vanguardCharge4Url from '../../assets/visual/army/vanguard/charge/charge-4.png'
+import vanguardCharge5Url from '../../assets/visual/army/vanguard/charge/charge-5.png'
+import vanguardCharge6Url from '../../assets/visual/army/vanguard/charge/charge-6.png'
 import goblin1Url from '../../assets/visual/monsters/forest-goblin/idle/idle-1.png'
 import goblin2Url from '../../assets/visual/monsters/forest-goblin/idle/idle-2.png'
 import goblin3Url from '../../assets/visual/monsters/forest-goblin/idle/idle-3.png'
@@ -145,9 +155,12 @@ export interface BattleSnapshot {
   buffPermanent: boolean
   /** buff 剩餘秒數(常駐時為 Infinity) */
   buffLeft: number
-  /** 印記層數與上限 → 主角頭上的 pips */
+  /** 舊版印記層數與上限，保留給既有技能演出。 */
   sigils: number
   sigilMax: number
+  /** 軍勢進度與已部署士兵。 */
+  armyMomentum: number
+  armyUnits: number
   /** 連斬層數 → 腳下環狀刻度 */
   combo: number
   trackArms: number
@@ -254,6 +267,8 @@ interface VisualAssets {
   hit: Texture[]
   armsHeavy: Texture[]
   armsCharge: Texture[]
+  vanguardIdle: Texture[]
+  vanguardCharge: Texture[]
   spellSword: Texture[]
   spellFireball: Texture[]
   spellColumn: Texture[]
@@ -295,6 +310,8 @@ const textureGroups = {
     armsHeavy7Url, armsHeavy8Url, armsHeavy9Url, armsHeavy10Url, armsHeavy11Url, armsHeavy12Url,
   ],
   armsCharge: [armsCharge1Url, armsCharge2Url, armsCharge3Url, armsCharge4Url, armsCharge5Url, armsCharge6Url, armsCharge7Url, armsCharge8Url],
+  vanguardIdle: [vanguardIdle1Url, vanguardIdle2Url, vanguardIdle3Url, vanguardIdle4Url],
+  vanguardCharge: [vanguardCharge1Url, vanguardCharge2Url, vanguardCharge3Url, vanguardCharge4Url, vanguardCharge5Url, vanguardCharge6Url],
   spellSword: cc0SpellSequence('sword-fire'),
   spellFireball: cc0SpellSequence('fireball'),
   spellColumn: cc0SpellSequence('light-column'),
@@ -323,6 +340,8 @@ export const BATTLE_TEXTURE_URLS: string[] = [
   ...textureGroups.hit,
   ...textureGroups.armsHeavy,
   ...textureGroups.armsCharge,
+  ...textureGroups.vanguardIdle,
+  ...textureGroups.vanguardCharge,
   ...textureGroups.spellSword,
   ...textureGroups.spellFireball,
   ...textureGroups.spellColumn,
@@ -343,7 +362,7 @@ async function loadTextures(urls: string[]): Promise<Texture[]> {
 }
 
 async function loadVisualAssets(): Promise<VisualAssets> {
-  const [background, heroEntries, goblin, imp, boss, chest, goldenGoblin, mercEntries, turret, slash, hit, armsHeavy, armsCharge, spellSword, spellFireball, spellColumn, spellEnergy, spellDark] = await Promise.all([
+  const [background, heroEntries, goblin, imp, boss, chest, goldenGoblin, mercEntries, turret, slash, hit, armsHeavy, armsCharge, vanguardIdle, vanguardCharge, spellSword, spellFireball, spellColumn, spellEnergy, spellDark] = await Promise.all([
     Assets.load<Texture>(forestUrl),
     Promise.all(
       Object.entries(textureGroups.heroes).map(async ([jobId, urls]) => {
@@ -365,6 +384,8 @@ async function loadVisualAssets(): Promise<VisualAssets> {
     loadTextures(textureGroups.hit),
     loadTextures(textureGroups.armsHeavy),
     loadTextures(textureGroups.armsCharge),
+    loadTextures(textureGroups.vanguardIdle),
+    loadTextures(textureGroups.vanguardCharge),
     loadTextures(textureGroups.spellSword),
     loadTextures(textureGroups.spellFireball),
     loadTextures(textureGroups.spellColumn),
@@ -374,6 +395,7 @@ async function loadVisualAssets(): Promise<VisualAssets> {
   background.source.scaleMode = 'nearest'
   armsHeavy.forEach((texture) => { texture.source.scaleMode = 'linear' })
   armsCharge.forEach((texture) => { texture.source.scaleMode = 'linear' })
+  ;[vanguardIdle, vanguardCharge].flat().forEach((texture) => { texture.source.scaleMode = 'linear' })
   ;[spellSword, spellFireball, spellColumn, spellEnergy, spellDark]
     .flat()
     .forEach((texture) => { texture.source.scaleMode = 'linear' })
@@ -381,7 +403,7 @@ async function loadVisualAssets(): Promise<VisualAssets> {
   const mercenaries = Object.fromEntries(mercEntries) as Record<MercId, Texture[]>
   return {
     background, heroes, goblin, imp, boss, chest, goldenGoblin, mercenaries, turret, slash, hit,
-    armsHeavy, armsCharge, spellSword, spellFireball, spellColumn, spellEnergy, spellDark,
+    armsHeavy, armsCharge, vanguardIdle, vanguardCharge, spellSword, spellFireball, spellColumn, spellEnergy, spellDark,
   }
 }
 
@@ -395,6 +417,7 @@ export class BattleScene {
   private zoneCur = { r: 1, g: 1, b: 1, fog: 0 }
   private mobLayer = new Container()
   private fieldLayer = new Container()
+  private armyLayer = new Container()
   private impactLayer = new Container()
   private dmgLayer = new Container()
   private overlayLayer = new Container()
@@ -421,6 +444,8 @@ export class BattleScene {
   private heroJob: JobId = 'rookie'
   private slashFx: AnimatedSprite
   private mercSprite: AnimatedSprite
+  private armySprites: AnimatedSprite[] = []
+  private armyEntranceMs = [0, 0, 0, 0, 0]
   private mercId: MercId | null = null
   private turretSprite: AnimatedSprite
   private timedFx: TimedFx[] = []
@@ -506,12 +531,22 @@ export class BattleScene {
       this.mobLayer,
       this.enemyStateFx,
       this.impactLayer,
+      this.armyLayer,
       this.hero,
       this.mercSprite,
       this.dmgLayer,
       this.overlayLayer,
     )
     this.fieldLayer.addChild(this.fieldFx, this.turretSprite)
+    for (let i = 0; i < B.ARMY_UNIT_MAX; i++) {
+      const unit = new AnimatedSprite(this.assets.vanguardIdle)
+      unit.anchor.set(0.5, 228 / 256)
+      unit.animationSpeed = frameSpeed(HERO_FRAME_MS)
+      unit.visible = false
+      unit.play()
+      this.armySprites.push(unit)
+      this.armyLayer.addChild(unit)
+    }
     this.overlayLayer.addChild(this.overlayFx)
     this.formationLabel.anchor.set(0.5)
     this.formationLabel.position.set(0, 27)
@@ -579,13 +614,13 @@ export class BattleScene {
   /**
    * 技能命中:比普通攻擊更重的演出(震屏 + 大字)。
    * ⚠️ 目前三招共用同一組演出 —— 技能身分要靠 `skillId` 分流(視覺缺口清單 § 一)。
-   * `sigilsSpent` 是這一發吃掉的印記層數,可用來畫 N 道射線。
+   * `resourceSpent` 是這一發吃掉的印記或士兵數量。
    */
-  skillHit(text: string, skillId?: SkillId, sigilsSpent = 0, autoDetonate = false) {
+  skillHit(text: string, skillId?: SkillId, resourceSpent = 0) {
     if (this.destroyed) return
     const target = this.targetPoint()
     const sigilSkills: SkillId[] = ['rally', 'windMark', 'edict']
-    if (skillId && sigilSkills.includes(skillId)) this.spawnSigilRays(Math.min(10, sigilsSpent), target)
+    if (skillId && sigilSkills.includes(skillId)) this.spawnSigilRays(Math.min(10, resourceSpent), target)
 
     if (skillId === 'armsHeavy') {
       this.spawnSkillAnimation(this.assets.armsHeavy, target)
@@ -596,8 +631,8 @@ export class BattleScene {
       this.shake = 10
       this.zoom = 1.5
     } else if (skillId === 'armsCommand') {
-      this.spawnCommandCuts(target, 5, 0xff6b45)
-      this.spawnTextureBurst(this.assets.spellSword, target, 760, 1.05)
+      this.spawnArmyCommand(target, Math.max(1, resourceSpent))
+      this.spawnCommandCuts(target, Math.max(1, resourceSpent), 0xff6b45)
       this.shake = 13
       this.zoom = 1.7
     } else if (skillId === 'armsLegend') {
@@ -703,13 +738,13 @@ export class BattleScene {
 
     if (this.getSnap().legends.includes('lostbanner')) this.spawnBannerColumn(target)
     if (skillId === 'edict' && this.getSnap().legends.includes('codexpage')) {
-      this.spawnReturningSigils(Math.min(4, Math.ceil(sigilsSpent / 3)))
+      this.spawnReturningSigils(Math.min(4, Math.ceil(resourceSpent / 3)))
     }
     const damageY = this.boss ? target.y + 12 : target.y - 45
     this.damageNum(
       target.x,
       damageY,
-      autoDetonate ? `自動・${text}` : text,
+      text,
       true,
       skillId === 'judgement' || skillId === 'edict',
     )
@@ -876,6 +911,39 @@ export class BattleScene {
     this.afterimageSpawnLeft = 420
     this.afterimageExitLeft = 0
     this.spawnHeroBurst(0x77d9ff)
+  }
+
+  /** 每次命中只回收一顆小光點，不跳文字，讓累積原因可見但不吵。 */
+  onArmyGain() {
+    if (this.destroyed) return
+    const from = this.targetPoint()
+    const to = { x: this.W / 2, y: this.H * 0.82 }
+    const fx = new Container() as TimedFx
+    const spark = new Graphics()
+    spark.circle(0, 0, 3).fill({ color: 0xffd16a, alpha: 0.95 })
+    spark.circle(0, 0, 7).fill({ color: 0xf5a83d, alpha: 0.16 })
+    fx.addChild(spark)
+    this.addTimedFx(fx, 380, (node, p) => {
+      const q = 1 - (1 - p) ** 3
+      node.position.set(from.x + (to.x - from.x) * q, from.y + (to.y - from.y) * q)
+      node.alpha = 1 - p * 0.35
+    }, this.impactLayer)
+  }
+
+  onArmySummon(total: number) {
+    if (this.destroyed || total <= 0) return
+    const index = Math.min(B.ARMY_UNIT_MAX - 1, total - 1)
+    this.armyEntranceMs[index] = 520
+    const pos = this.armySlot(index)
+    this.spawnDeployPulse(pos.x, pos.y - 12, 0xe8b754)
+  }
+
+  onArmyAssist(count: number, damageText: string) {
+    if (this.destroyed || count <= 0) return
+    for (let i = 0; i < Math.min(count, this.armySprites.length); i++) this.playArmyCharge(this.armySprites[i])
+    const target = this.targetPoint()
+    this.spawnImpact(target.x, target.y, 0.52 + Math.min(0.32, count * 0.05))
+    if (damageText) this.damageNum(target.x, target.y - 42, damageText, false)
   }
 
   onDestinyDescend() {
@@ -1132,11 +1200,8 @@ export class BattleScene {
       else this.hitNum(x, y, txt, crit)
       return
     }
-    const label = source === 'clone'
-      ? this.afterimageVisualActive ? '殘影' : '分身'
-      : source === 'zone' ? '場地' : '傭兵'
     const offset = source === 'clone' ? -42 : source === 'zone' ? 42 : 0
-    this.damageNum(x + offset, y + 16, `${label} ${txt}`, false, false, 1, frozen)
+    this.damageNum(x + offset, y + 16, txt, false, false, 1, frozen)
   }
 
   private damageNum(
@@ -1253,6 +1318,7 @@ export class BattleScene {
     this.drawHeroStates(snap)
     this.drawBattleStates(snap)
     this.layoutHero()
+    this.layoutArmy(snap, ms)
     this.tickHeroSwing(ms)
     this.tickAfterimage(ms, snap)
 
@@ -1617,6 +1683,84 @@ export class BattleScene {
         node.scale.set(0.2 + local * 1.65, 0.65 + local * 0.35)
         node.alpha = Math.sin(local * Math.PI)
       })
+    }
+  }
+
+  private armySlot(index: number) {
+    const slots = [
+      { x: -0.12, y: 0.835 },
+      { x: 0.12, y: 0.835 },
+      { x: -0.22, y: 0.865 },
+      { x: 0.22, y: 0.865 },
+      { x: 0, y: 0.885 },
+    ]
+    const slot = slots[index] ?? slots[0]
+    return { x: this.W * (0.5 + slot.x), y: this.H * slot.y }
+  }
+
+  private layoutArmy(snap: BattleSnapshot, ms: number) {
+    const baseScale = Math.min(this.W, this.H * 0.62) / 490
+    for (let i = 0; i < this.armySprites.length; i++) {
+      const unit = this.armySprites[i]
+      const active = i < snap.armyUnits
+      unit.visible = active
+      if (!active) continue
+      this.armyEntranceMs[i] = Math.max(0, this.armyEntranceMs[i] - ms)
+      const slot = this.armySlot(i)
+      const entrance = 1 - this.armyEntranceMs[i] / 520
+      const eased = 1 - (1 - Math.max(0, entrance)) ** 3
+      const bob = Math.sin(this.elapsed * 0.008 + i * 1.3) * 1.5
+      unit.position.set(slot.x, slot.y + (1 - eased) * 34 + bob)
+      unit.alpha = Math.min(1, eased * 2.5) * (i < 2 ? 0.94 : 0.86)
+      const pop = entrance < 1 ? 1 + Math.sin(Math.min(1, entrance) * Math.PI) * 0.1 : 1
+      unit.scale.set(baseScale * pop)
+    }
+  }
+
+  private playArmyCharge(unit: AnimatedSprite) {
+    unit.textures = this.assets.vanguardCharge
+    unit.loop = false
+    unit.animationSpeed = frameSpeed(95)
+    unit.onComplete = () => {
+      unit.textures = this.assets.vanguardIdle
+      unit.loop = true
+      unit.animationSpeed = frameSpeed(HERO_FRAME_MS)
+      unit.gotoAndPlay(0)
+      unit.onComplete = undefined
+    }
+    unit.gotoAndPlay(0)
+  }
+
+  private spawnArmyCommand(target: { x: number; y: number }, count: number) {
+    const total = Math.min(B.ARMY_UNIT_MAX, count)
+    const scale = Math.min(this.W, this.H * 0.62) / 490
+    for (let i = 0; i < total; i++) {
+      const start = this.armySlot(i)
+      const delay = i * 90
+      const fx = new Container() as TimedFx
+      const unit = new AnimatedSprite(this.assets.vanguardCharge)
+      unit.anchor.set(0.5, 228 / 256)
+      unit.animationSpeed = frameSpeed(90)
+      unit.scale.set(scale)
+      unit.play()
+      fx.addChild(unit)
+      fx.position.set(start.x, start.y)
+      let impacted = false
+      this.addTimedFx(fx, 760 + delay, (node) => {
+        const local = Math.max(0, Math.min(1, (node._age - delay) / 760))
+        const travel = local * local * (3 - 2 * local)
+        node.visible = node._age >= delay
+        node.position.set(
+          start.x + (target.x - start.x) * travel,
+          start.y + (target.y + 20 - start.y) * travel,
+        )
+        node.alpha = local > 0.82 ? (1 - local) / 0.18 : Math.min(1, local * 8)
+        node.scale.set(1 + Math.sin(local * Math.PI) * 0.12)
+        if (!impacted && local >= 0.76) {
+          impacted = true
+          this.spawnImpact(target.x + (i - (total - 1) / 2) * 9, target.y + 12, 0.72)
+        }
+      }, this.impactLayer)
     }
   }
 
@@ -2650,20 +2794,6 @@ export class BattleScene {
 
   private drawHeroStates(snap: BattleSnapshot) {
     this.heroStateFx.clear()
-    const fullPulse = snap.sigils >= snap.sigilMax ? 0.72 + Math.sin(this.elapsed * 0.01) * 0.28 : 1
-    const retained = snap.legends.includes('codexpage')
-    const pipColor = retained ? 0xffd45d : 0x80dfef
-    const pipCount = Math.min(15, snap.sigilMax)
-    const shown = Math.min(pipCount, snap.sigils)
-    const pipW = Math.min(9, 124 / Math.max(1, pipCount))
-    for (let i = 0; i < pipCount; i++) {
-      const x = (i - (pipCount - 1) / 2) * (pipW + 2)
-      this.heroStateFx.roundRect(x - pipW / 2, -145, pipW, 8, 2)
-        .fill({ color: i < shown ? pipColor : 0x20252b, alpha: i < shown ? fullPulse : 0.64 })
-      this.heroStateFx.roundRect(x - pipW / 2, -145, pipW, 8, 2)
-        .stroke({ width: retained && i < shown ? 2 : 1, color: i < shown ? (retained ? 0xffeeac : 0xc4f8ff) : 0x697078, alpha: 0.8 })
-    }
-
     const comboCount = Math.min(12, snap.combo)
     for (let i = 0; i < 12; i++) {
       const a = -Math.PI + (i / 11) * Math.PI

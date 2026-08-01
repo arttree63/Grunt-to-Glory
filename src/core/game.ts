@@ -161,6 +161,9 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     autoCast: false, // 預設關:掛機玩家的基準不因新系統改變
     skillCd: {},
     skillLoadout: [],
+    armyMomentum: 0,
+    armyUnits: 0,
+    armyAssistTimer: B.ARMY_ASSIST_INTERVAL,
     buffs: [],
     zealStacks: 0,
     conquestLeft: 0,
@@ -236,7 +239,7 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
   return s
 }
 
-export const SAVE_VERSION = 30
+export const SAVE_VERSION = 31
 
 // ---------- 數值查詢 ----------
 
@@ -873,6 +876,7 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
   tickAutoCast(s, raw, rng)
   tickTactician(s, dt)
   tickMerc(s, dt, raw, rng)
+  tickArmy(s, dt, raw, rng)
   tickCombatStatus(s, dt, raw, rng)
   // 點擊傷害預算回充:每秒 CLICK_BUDGET_PER_SEC 秒份,存量上限同值(不可囤)
   s.clickBudget = Math.min(B.CLICK_BUDGET_PER_SEC, s.clickBudget + dt * B.CLICK_BUDGET_PER_SEC)
@@ -930,6 +934,7 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
   } else {
     raw.push({ type: 'attack', damage: dmg })
   }
+  gainArmyMomentum(s, B.ARMY_MOMENTUM_PER_HIT, raw)
   registerBossHits(s, 1, raw, 'hero')
   if (swingHits > 1) {
     // 分身是完整的第二個攻擊者;軍旗是弱化回音(傷害只有 15%),給 2 點
@@ -1486,6 +1491,7 @@ export function click(s: GameState, rng: Rng = Math.random): GameEvent[] {
     s.clickBudget -= spend
     const dmg = currentDPS(s).mul(spend)
     events.push({ type: 'attack', damage: dmg, source: 'click', count: moraleGained })
+    gainArmyMomentum(s, B.ARMY_MOMENTUM_PER_CLICK, events)
     registerBossHits(s, 1, events)
     dealDamage(s, dmg, events, rng, { source: 'hero' })
   } else {
@@ -1949,6 +1955,40 @@ export function gainSigil(s: GameState, n = 1, events?: GameEvent[], via?: GameE
       B.PERFECT_WINDOW_SEC * (hasNode(s, 'sigil_hunter') ? B.SIGIL_HUNTER_WINDOW_MULT : 1)
 }
 
+/**
+ * 攻擊累積軍勢；每滿一輪自動部署一名士兵。滿編後保留滿檔，
+ * 等號令讓部隊出擊後，下一次命中即可立刻補進一名士兵。
+ */
+export function gainArmyMomentum(s: GameState, amount: number, events: GameEvent[] = []) {
+  if (!Number.isFinite(amount) || amount <= 0) return
+  const before = s.armyMomentum
+  let momentum = Math.min(B.ARMY_MOMENTUM_MAX, s.armyMomentum + amount)
+  let summoned = false
+  if (s.armyUnits < B.ARMY_UNIT_MAX && momentum >= B.ARMY_MOMENTUM_MAX) {
+    s.armyUnits++
+    momentum = 0
+    summoned = true
+  }
+  s.armyMomentum = momentum
+  if (s.armyMomentum !== before || summoned) events.push({ type: 'armyGain', count: Math.round(amount) })
+  if (summoned) events.push({ type: 'armySummon', count: s.armyUnits })
+}
+
+/** 已部署士兵按固定節奏協同攻擊，不反向累積軍勢，避免自我循環。 */
+function tickArmy(s: GameState, dt: number, events: GameEvent[], rng: Rng) {
+  if (s.armyUnits <= 0) {
+    s.armyAssistTimer = B.ARMY_ASSIST_INTERVAL
+    return
+  }
+  s.armyAssistTimer -= dt
+  if (s.armyAssistTimer > 0) return
+  s.armyAssistTimer += B.ARMY_ASSIST_INTERVAL
+  const damage = currentDPS(s).mul(B.ARMY_ASSIST_DPS_SECONDS * s.armyUnits)
+  events.push({ type: 'armyAssist', count: s.armyUnits, damage })
+  registerBossHits(s, s.armyUnits, events, 'army')
+  dealDamage(s, damage, events, rng, { source: 'army' })
+}
+
 /** 命運對印記的改造說明,UI 直接顯示 */
 export function sigilModifier(s: GameState): string | null {
   if (!JOBS[s.jobId].awakenSkill) return null
@@ -2017,6 +2057,7 @@ export function skillCooldown(s: GameState, id: SkillId): number {
 export function skillReady(s: GameState, id: SkillId): boolean {
   if (!activeSkillPool(s).includes(id)) return false
   if ((s.skillCd[id] ?? 0) > 0) return false
+  if (id === 'armsCommand' && s.armyUnits <= 0 && !B.SKILL_LAB_MODE) return false
   if (isApexSkill(s, id)) return true
   if (B.SKILL_LAB_MODE) return true
   // 前三格吃 MP(v4.1 § 5)。⚠️ 指揮形態的附加成本要一起算進門檻:
@@ -2068,6 +2109,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
   let burstScale = 1
   let bonusHits = 0
   let healRatio = sk.healRatio ?? 0
+  let armyCommandUnits = 0
 
   if (id === 'armsHeavy') {
     const agile = fusionStage(s, 'arms', 'agility')
@@ -2076,6 +2118,11 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
     bonusHits += agile
     burstScale *= 1 + magic * 0.15
     healRatio += faith * 0.03
+  }
+  if (id === 'armsCommand') {
+    armyCommandUnits = s.armyUnits
+    s.armyUnits = 0
+    burstScale *= 1 + armyCommandUnits * B.ARMY_COMMAND_POWER_PER_UNIT
   }
   if (id === 'agilityRoll') healRatio += fusionStage(s, 'agility', 'faith') * 0.05
   if (id === 'magicBurst') bonusHits += fusionStage(s, 'agility', 'magic') * 2
@@ -2173,7 +2220,17 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
       applyBurn(s, emberBurn, B.EMBER_BURN_DURATION, events)
       dmg = dmg.mul(B.EMBER_IMMEDIATE)
     }
-    registerBossHits(s, (sk.hitCount ?? 1) + bonusHits, events, 'skill')
+    const hitCount = id === 'armsCommand'
+      ? Math.max(1, armyCommandUnits)
+      : (sk.hitCount ?? 1) + bonusHits
+    registerBossHits(s, hitCount, events, 'skill')
+    if (id !== 'armsCommand') {
+      gainArmyMomentum(
+        s,
+        B.ARMY_MOMENTUM_PER_SKILL_HIT * hitCount,
+        events,
+      )
+    }
     if (s.event) {
       s.event.hp = s.event.hp.sub(dmg)
     } else {
@@ -2206,7 +2263,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
     type: 'skill',
     skillId: id,
     damage: skillDamage.gt(0) ? skillDamage : undefined,
-    count: spent || undefined,
+    count: spent || armyCommandUnits || undefined,
     burnDamage: emberBurn,
   })
   return events
@@ -2280,6 +2337,7 @@ function tickAutoCast(s: GameState, raw: GameEvent[], rng: Rng = Math.random) {
   const normal = equipped.filter((id) => !isApexSkill(s, id))
   const castable = normal.filter((id) => {
     const sk = SKILLS[id]
+    if (id === 'armsCommand' && s.armyUnits < B.ARMY_UNIT_MAX) return false
     return !(sk.consumesSigils && s.sigils < sigilCap(s)) && skillReady(s, id)
   })
   // 先挑「不是上一次那招」的,都輪過了才允許重複
@@ -2292,6 +2350,7 @@ function tickAutoCast(s: GameState, raw: GameEvent[], rng: Rng = Math.random) {
   // 頂點技能不吃 MP,不參與輪替
   for (const id of apex) {
     const sk = SKILLS[id]
+    if (id === 'armsCommand' && s.armyUnits < B.ARMY_UNIT_MAX) continue
     if (sk.consumesSigils && s.sigils < sigilCap(s)) continue
     if (!skillReady(s, id)) continue
     raw.push(...castSkill(s, id, true, rng))

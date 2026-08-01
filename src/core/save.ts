@@ -1,5 +1,5 @@
 import { D } from './decimal'
-import { COMBAT_NUMBER_SCALE, MP_MAX, MP_REGEN_BASE } from './balance'
+import { ARMY_MOMENTUM_MAX, ARMY_UNIT_MAX, COMBAT_NUMBER_SCALE, MP_MAX, MP_REGEN_BASE } from './balance'
 import { createInitialState, refillEndurance, SAVE_VERSION, spawnEnemy } from './game'
 import { emptyTechs } from './techs'
 import { reconcileDestiny } from './destiny'
@@ -15,6 +15,8 @@ export interface SaveData {
   tracks?: Record<TrackId, number>
   trackFocus?: TrackId
   skillLoadout?: GameState['skillLoadout']
+  armyMomentum?: number
+  armyUnits?: number
   gold: string
   jobId: GameState['jobId']
   training?: GameState['training']
@@ -97,6 +99,8 @@ export function serialize(s: GameState): SaveData {
     tracks: { ...s.tracks },
     trackFocus: s.trackFocus,
     skillLoadout: s.skillLoadout,
+    armyMomentum: s.armyMomentum,
+    armyUnits: s.armyUnits,
     gold: s.gold.toString(),
     jobId: s.jobId,
     training: s.training,
@@ -392,6 +396,12 @@ function migrate(raw: SaveData): SaveData {
     d.skillLoadout = d.skillLoadout ?? []
     d.version = 30
   }
+  // v30 → v31：軍勢與五人軍團。舊印記不轉換，避免登入時憑空多出士兵。
+  if (d.version < 31) {
+    d.armyMomentum = d.armyMomentum ?? 0
+    d.armyUnits = d.armyUnits ?? 0
+    d.version = 31
+  }
   return d
 }
 
@@ -411,6 +421,8 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     tracks: { ...base.tracks, ...(d.tracks ?? {}) },
     trackFocus: d.trackFocus ?? 'arms',
     skillLoadout: d.skillLoadout ?? [],
+    armyMomentum: Math.max(0, Math.min(ARMY_MOMENTUM_MAX, d.armyMomentum ?? 0)),
+    armyUnits: Math.max(0, Math.min(ARMY_UNIT_MAX, Math.floor(d.armyUnits ?? 0))),
     gold: D(d.gold ?? 0),
     jobId: d.jobId ?? 'rookie',
     training: d.training ?? [],

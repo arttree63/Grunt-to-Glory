@@ -1693,12 +1693,12 @@ button {
   background: linear-gradient(90deg, #b72c3e, #df3c51);
 }
 
-/* 角色資訊卡:只顯示 HP 與 MP，耐久不作為玩家屬性呈現 */
+/* 角色資訊卡:HP、MP 與軍勢；耐久不作為額外屬性呈現 */
 .hero-status-card {
   display: flex;
   align-items: center;
   gap: 7px;
-  height: 50px;
+  height: 63px;
   margin-bottom: 3px;
   padding: 3px 5px;
   border: 5px solid transparent;
@@ -1769,6 +1769,42 @@ button {
 .status-label i { margin-right: 3px; font-style: normal; }
 .hp-line .status-label i { color: #e35153; }
 .mp-line .status-label i { color: #5a89e2; }
+.army-line .status-label i { color: #e8b851; }
+.army-track {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(2px, 1fr));
+  gap: 2px;
+  height: 7px;
+}
+.army-track i {
+  min-width: 0;
+  border: 1px solid #554839;
+  border-radius: 1px;
+  background: #211b1b;
+  box-shadow: inset 0 1px #090708;
+}
+.army-track i.filled {
+  border-color: #c4872d;
+  background: linear-gradient(#f1c55d, #ad6b22);
+  box-shadow: 0 0 4px #e4a53a88;
+}
+.army-command-count {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  z-index: 2;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border: 1px solid #e2ad49;
+  border-radius: 8px;
+  background: #2b1810dd;
+  color: #ffd77b;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 12px;
+  text-align: center;
+}
 .status-track {
   height: 7px;
   padding: 1px;
