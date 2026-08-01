@@ -88,6 +88,15 @@ button {
   height: 100%;
 }
 
+/* 戰場只保留血條、傷害數字與角色；所有說明卡、狀態框與進層提示退役。 */
+.stage .floor-toast,
+.stage .set-overview,
+.stage .retry,
+.stage .boss-challenge-wrap,
+.stage .status-chips {
+  display: none !important;
+}
+
 /* 頂欄 */
 .topbar {
   position: absolute;

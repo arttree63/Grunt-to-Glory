@@ -39,7 +39,7 @@ import BattleCanvas from './BattleCanvas'
 import { FloorToast } from './FloorProgress'
 import SkillBar from './SkillBar'
 import DestinyCard from './DestinyCard'
-import Tutorial, { SpotlightTeach } from './Tutorial'
+import Tutorial from './Tutorial'
 import TitleScreen from './TitleScreen'
 import * as sfx from '../audio/sfx'
 import EquipPanel from './panels/EquipPanel'
@@ -334,6 +334,7 @@ function Game() {
   const offline = useGame((st) => st.offline)
   const lastRun = useGame((st) => st.lastRun)
   const dismissOffline = useGame((st) => st.dismissOffline)
+  const retryBoss = useGame((st) => st.retryBoss)
   const spot = useGame((st) => st.spotlight)
   const setUiLock = useGame((st) => st.setUiLock)
 
@@ -382,7 +383,12 @@ function Game() {
    * ⚠️ run 目標刻意不帶 tab:它是「再推 N 層」這種靠打就會到的事,不該指去某個分頁,
    * 也不該亮紅點(紅點單一來源仍由 near 驅動)。
    */
-  const stepGoal = near?.tab ? near : { ...runGoal(s), tab: null as GoalTab | null }
+  const retryAvailable = s.bossFailed && s.bossRetryFloor !== null
+  const stepGoal = retryAvailable
+    ? { ...runGoal(s), tab: null as GoalTab | null }
+    : near?.tab
+      ? near
+      : { ...runGoal(s), tab: null as GoalTab | null }
   const trainingPending = pendingTrainingCount(s)
   const zone = zoneOf(s.floor)
   const zp = zoneProgress(s.floor)
@@ -627,11 +633,27 @@ function Game() {
           </div>
         )}
 
-        <SpotlightTeach />
       </BattleCanvas>
 
       <DestinyCard />
       <div className="bottom">
+        {/* 下一步放在角色狀態上方；Boss 失敗時同時接手重新挑戰入口。 */}
+        {stepVisible && (
+          <button
+            className={`next-step${stepGoal.tab || retryAvailable ? '' : ' info'}`}
+            onClick={() => {
+              if (retryAvailable) retryBoss()
+              else if (stepGoal.tab) setTab(stepGoal.tab as Tab)
+            }}
+          >
+            <span className="next-icon"><img src={NAV_ART[(stepGoal.tab ?? 'journal') as Tab]} alt="" aria-hidden="true" /></span>
+            <span className="next-copy">
+              <b>下一步：{stepGoal.text}</b>
+              <small>{retryAvailable ? '點此重新挑戰。' : stepGoal.tab ? STEP_DETAIL[stepGoal.tab] : '持續戰鬥，朝本輪目標推進。'}</small>
+            </span>
+            {(stepGoal.tab || retryAvailable) && <span className="go">{retryAvailable ? '再戰 →' : '前往 →'}</span>}
+          </button>
+        )}
         <div className="hero-status-card">
           <div className="portrait-frame">
             <img src={HERO_ART[s.jobId]} alt={job.name} />
@@ -654,17 +676,6 @@ function Game() {
           </div>
         </div>
         <SkillBar />
-        {/* 下一步行動提示:紅點只說「有事」,這條直接說「做什麼」,點了開正確分頁 */}
-        {stepVisible && (
-          <button
-            className={`next-step${stepGoal.tab ? '' : ' info'}`}
-            onClick={() => stepGoal.tab && setTab(stepGoal.tab as Tab)}
-          >
-            <span className="next-icon"><img src={NAV_ART[(stepGoal.tab ?? 'journal') as Tab]} alt="" aria-hidden="true" /></span>
-            <span className="next-copy"><b>下一步：{stepGoal.text}</b><small>{stepGoal.tab ? STEP_DETAIL[stepGoal.tab] : '持續戰鬥，朝本輪目標推進。'}</small></span>
-            {stepGoal.tab && <span className="go">前往 →</span>}
-          </button>
-        )}
         <div className="tabs">
           {TABS.map((t) => (
             <button
