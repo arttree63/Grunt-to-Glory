@@ -2295,6 +2295,118 @@ button {
   font-size: 10px;
   line-height: 1.55;
 }
+.skill-loadout {
+  margin-bottom: 10px;
+  padding: 9px;
+  border: 1px solid #73583b;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #201725, #100e14);
+  box-shadow: inset 0 0 20px #0008;
+}
+.skill-loadout-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+.skill-loadout-head b {
+  color: #efd8ad;
+  font-size: 12px;
+  letter-spacing: 3px;
+}
+.skill-loadout-head span {
+  color: #a89680;
+  font-size: 9px;
+}
+.skill-loadout-slots {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+.loadout-slot {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 72px;
+  padding: 4px 2px 3px;
+  border: 1px solid color-mix(in srgb, var(--branch-color) 72%, #705b42);
+  border-radius: 8px;
+  align-items: center;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--branch-color) 12%, #17131b);
+  color: #e9d6b5;
+  box-shadow: inset 0 0 12px #0008, 0 0 7px color-mix(in srgb, var(--branch-color) 25%, transparent);
+}
+.loadout-slot > b {
+  position: absolute;
+  top: 3px;
+  left: 5px;
+  z-index: 1;
+  color: #f5cf80;
+  font-size: 9px;
+  text-shadow: 0 1px 2px #000;
+}
+.loadout-slot > span:last-child {
+  max-width: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.loadout-slot.empty {
+  justify-content: center;
+  border-style: dashed;
+  border-color: #493c4c;
+  background: #110f14;
+  color: #655d69;
+  box-shadow: none;
+}
+.loadout-skill-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--branch-color) 55%, transparent));
+}
+.loadout-replace {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #d29a42;
+  border-radius: 8px;
+  background: #291b2cf5;
+  box-shadow: 0 0 14px #d6943540;
+}
+.loadout-replace > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #efd7a6;
+  font-size: 10px;
+}
+.loadout-replace > div:first-child span { color: #a99a8c; }
+.loadout-replace-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 7px;
+  overflow-x: auto;
+}
+.loadout-replace-actions button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 1px solid #8b6841;
+  border-radius: 6px;
+  background: #211820;
+  color: #e1c391;
+  font-size: 9px;
+}
+.loadout-replace-actions button.cancel {
+  border-color: #514553;
+  color: #9c909f;
+}
 .training-tree-scroll {
   max-width: 100%;
   overflow-x: auto;
@@ -2422,7 +2534,7 @@ button {
   position: relative;
   display: flex;
   min-height: 158px;
-  padding: 8px 6px 7px;
+  padding: 8px 6px 36px;
   align-items: center;
   flex-direction: column;
   background: linear-gradient(180deg, color-mix(in srgb, var(--branch-color) 7%, #101116), #0c0d11);
@@ -2434,6 +2546,11 @@ button {
   opacity: 1;
   box-shadow: inset 0 0 16px color-mix(in srgb, var(--branch-color) 14%, transparent);
 }
+.matrix-node.equipped {
+  outline: 2px solid var(--branch-color);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 22px color-mix(in srgb, var(--branch-color) 28%, transparent);
+}
 .tree-skill-icon {
   flex: 0 0 48px;
   width: 48px;
@@ -2441,6 +2558,8 @@ button {
   border: 1px solid #a47b3f;
   border-radius: 50%;
   box-shadow: 0 0 7px color-mix(in srgb, var(--branch-color) 40%, transparent);
+  background-position: center;
+  background-size: cover;
 }
 .combat-skill-glyph {
   display: block;
@@ -2448,31 +2567,31 @@ button {
   height: 40px;
   margin: auto;
   border-radius: 50%;
-  background-image: url('../../assets/visual/ui/skill-tree-20260801/sources/icon-library.jpg');
   background-repeat: no-repeat;
-  background-size: 640px 426.5px;
+  background-position: center;
+  background-size: cover;
   box-shadow: 0 0 8px #d39d4a55;
 }
-.skill-arms-0 { background-position: -50px -238px; }
-.skill-arms-1 { background-position: -85px -238px; }
-.skill-arms-2 { background-position: -120px -238px; }
-.skill-arms-3 { background-position: -155px -238px; }
-.skill-body-0 { background-position: -50px -268px; }
-.skill-body-1 { background-position: -85px -268px; }
-.skill-body-2 { background-position: -120px -268px; }
-.skill-body-3 { background-position: -155px -268px; }
-.skill-agility-0 { background-position: -50px -298px; }
-.skill-agility-1 { background-position: -85px -298px; }
-.skill-agility-2 { background-position: -120px -298px; }
-.skill-agility-3 { background-position: -155px -298px; }
-.skill-magic-0 { background-position: -50px -328px; }
-.skill-magic-1 { background-position: -85px -328px; }
-.skill-magic-2 { background-position: -120px -328px; }
-.skill-magic-3 { background-position: -155px -328px; }
-.skill-faith-0 { background-position: -50px -358px; }
-.skill-faith-1 { background-position: -85px -358px; }
-.skill-faith-2 { background-position: -120px -358px; }
-.skill-faith-3 { background-position: -155px -358px; }
+.skill-arms-0 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/arms-heavy.png'); }
+.skill-arms-1 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/arms-charge.png'); }
+.skill-arms-2 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/arms-command.png'); }
+.skill-arms-3 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/arms-legend.png'); }
+.skill-body-0 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/body-guard.png'); }
+.skill-body-1 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/body-ironwall.png'); }
+.skill-body-2 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/body-command.png'); }
+.skill-body-3 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/body-legend.png'); }
+.skill-agility-0 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/agility-roll.png'); }
+.skill-agility-1 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/agility-haste.png'); }
+.skill-agility-2 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/agility-command.png'); }
+.skill-agility-3 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/agility-legend.png'); }
+.skill-magic-0 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/magic-fireball.png'); }
+.skill-magic-1 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/magic-burst.png'); }
+.skill-magic-2 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/magic-command.png'); }
+.skill-magic-3 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/magic-legend.png'); }
+.skill-faith-0 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/faith-heal.png'); }
+.skill-faith-1 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/faith-blessing.png'); }
+.skill-faith-2 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/faith-command.png'); }
+.skill-faith-3 { background-image: url('../../assets/visual/ui/skill-tree-20260801/skill-icons/faith-legend.png'); }
 .matrix-node > small {
   margin-top: 3px;
   color: var(--branch-color);
@@ -2510,23 +2629,23 @@ button {
 }
 .node-equip {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  min-height: 20px;
-  padding: 2px 5px;
+  right: 6px;
+  bottom: 6px;
+  left: 6px;
+  min-height: 24px;
+  padding: 3px 5px;
   border: 1px solid #69543a;
   border-radius: 5px;
   background: #171319;
   color: #b8a58a;
-  font-size: 7px;
+  font-size: 8px;
+  font-weight: 700;
 }
 .node-equip.equipped {
   border-color: var(--branch-color);
-  color: #f0d79f;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--branch-color) 40%, transparent);
-}
-.node-equip:disabled {
-  color: #6f676b;
+  background: color-mix(in srgb, var(--branch-color) 22%, #171319);
+  color: #ffe2a8;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--branch-color) 55%, transparent);
 }
 .fusion-head {
   margin-top: 18px;

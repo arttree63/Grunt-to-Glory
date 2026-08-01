@@ -30,6 +30,7 @@ import {
   TRAINING_BRANCH_NAME,
   type TrainingNodeKind,
 } from '../../core/trainingTree'
+import type { SkillId } from '../../core/types'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 import { BadgeIcon, GameIcon } from '../GameIcon'
@@ -263,6 +264,17 @@ function SkillTreeBlueprint() {
   const s = useGameState()
   const toggleEquip = useGame((state) => state.toggleSkillEquip)
   const equipped = equippedSkills(s)
+  const [replacementSkill, setReplacementSkill] = useState<SkillId | null>(null)
+  const skillMeta = (id: SkillId) => TRAINING_BRANCHES
+    .flatMap((branch) => branch.nodes.map((node, rowIndex) => ({ branch, node, rowIndex })))
+    .find((item) => item.node.skillId === id)
+
+  const replaceEquipped = (current: SkillId) => {
+    if (!replacementSkill) return
+    toggleEquip(current)
+    toggleEquip(replacementSkill)
+    setReplacementSkill(null)
+  }
 
   return (
     <div className="training-tree">
@@ -270,6 +282,50 @@ function SkillTreeBlueprint() {
         <b>傳 奇 指 揮 官・操 練 樹</b>
         <span>單項達 20／50／100／200 解鎖。學會可以通吃，上場主動技能最多 5 個。</span>
       </div>
+
+      <section className="skill-loadout" aria-label="目前上場技能">
+        <div className="skill-loadout-head">
+          <b>上 場 技 能</b>
+          <span>{equipped.length}/5・點技能格可卸下</span>
+        </div>
+        <div className="skill-loadout-slots">
+          {Array.from({ length: 5 }, (_, index) => {
+            const id = equipped[index]
+            if (!id) return <div className="loadout-slot empty" key={index}><b>{index + 1}</b><span>空位</span></div>
+            const meta = skillMeta(id)!
+            return (
+              <button
+                className={`loadout-slot branch-${meta.branch.id}`}
+                style={{ '--branch-color': meta.branch.color } as React.CSSProperties}
+                onClick={() => toggleEquip(id)}
+                aria-label={`卸下第 ${index + 1} 格 ${meta.node.name}`}
+                key={id}
+              >
+                <span className={`loadout-skill-icon skill-${meta.branch.id}-${meta.rowIndex}`} aria-hidden="true" />
+                <b>{index + 1}</b>
+                <span>{meta.node.name}</span>
+              </button>
+            )
+          })}
+        </div>
+        {replacementSkill && (() => {
+          const incoming = skillMeta(replacementSkill)!
+          return (
+            <div className="loadout-replace" role="dialog" aria-label="選擇替換技能">
+              <div>
+                <b>替換成「{incoming.node.name}」</b>
+                <span>請選擇要換掉的技能</span>
+              </div>
+              <div className="loadout-replace-actions">
+                {equipped.map((id, index) => (
+                  <button onClick={() => replaceEquipped(id)} key={id}>{index + 1}・{skillMeta(id)!.node.name}</button>
+                ))}
+                <button className="cancel" onClick={() => setReplacementSkill(null)}>取消</button>
+              </div>
+            </div>
+          )
+        })()}
+      </section>
 
       <div className="training-tree-scroll" aria-label="五系操練技能樹，可左右滑動">
         <div className="training-matrix">
@@ -309,7 +365,7 @@ function SkillTreeBlueprint() {
                 const equipFull = equipped.length >= 5 && !isEquipped
                 return (
                   <article
-                    className={`matrix-node branch-${branch.id}${unlocked ? ' unlocked' : ''}`}
+                    className={`matrix-node branch-${branch.id}${unlocked ? ' unlocked' : ''}${isEquipped ? ' equipped' : ''}`}
                     style={{ '--branch-color': branch.color } as React.CSSProperties}
                     key={`${branch.id}-${level}`}
                   >
@@ -321,10 +377,16 @@ function SkillTreeBlueprint() {
                     {unlocked ? (
                       <button
                         className={`node-equip${isEquipped ? ' equipped' : ''}`}
-                        disabled={equipFull}
-                        onClick={() => toggleEquip(node.skillId)}
+                        onClick={() => {
+                          if (isEquipped || !equipFull) toggleEquip(node.skillId)
+                          else setReplacementSkill(node.skillId)
+                        }}
                       >
-                        {isEquipped ? '已裝備' : equipFull ? '五格已滿' : '裝備'}
+                        {isEquipped
+                          ? `第 ${equipped.indexOf(node.skillId) + 1} 格・卸下`
+                          : equipFull
+                            ? '選擇替換'
+                            : `裝備到第 ${equipped.length + 1} 格`}
                       </button>
                     ) : (
                       <span className="node-state">{points}/{node.level}</span>
