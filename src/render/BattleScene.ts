@@ -1960,12 +1960,12 @@ export class BattleScene {
   private layoutHero() {
     const { W, H } = this
     const s = Math.min(W, H * 0.62) / 300
-    this.heroBody.scale.set(s * 0.96)
+    this.heroBody.scale.set(s * 0.84)
     this.afterimages.forEach((ghost, i) => {
-      ghost.scale.set(s * 0.96)
+      ghost.scale.set(s * 0.84)
       if (i > 0) ghost.position.set(-20 - i * 14, 4 + i * 4)
     })
-    this.cloneSprite.scale.set(s * 0.88)
+    this.cloneSprite.scale.set(s * 0.77)
     this.cloneSprite.position.set(-W * 0.105, -H * 0.015)
     this.hero.position.set(W / 2, H * 0.86)
     this.slashFx.position.set(0, -H * 0.12)
@@ -2096,7 +2096,7 @@ export class BattleScene {
 
   private layoutCompanions() {
     const ds = Math.min(this.W, this.H * 0.62) / 760
-    const mercScale = this.mercId === 'hound' ? ds : ds * 2.6
+    const mercScale = this.mercId === 'hound' ? ds * 0.84 : ds * 2.2
     this.mercSprite.position.set(this.W / 2 - Math.min(this.W, this.H) * 0.24, this.H * 0.895)
     this.mercSprite.scale.set(mercScale)
     this.turretSprite.position.set(this.W * 0.72, this.H * 0.75)
@@ -2528,7 +2528,7 @@ class EventView {
   }
 }
 
-/** Boss:軀體超出畫面左右、上半屏俯壓 */
+/** Boss:比主角大一級，但完整留在戰場內，不遮住關卡與血條 */
 class BossView {
   view: AnimatedSprite
   private flashLeft = 0
@@ -2546,8 +2546,8 @@ class BossView {
     this.entryAge += ms
     const entry = Math.min(1, this.entryAge / 520)
     const eased = 1 - Math.pow(1 - entry, 3)
-    this.view.position.set(W / 2, H * (0.48 + 0.15 * eased))
-    this.view.scale.set((W / 200) * (0.38 + eased * 0.62))
+    this.view.position.set(W / 2, H * (0.47 + 0.13 * eased))
+    this.view.scale.set((W / 300) * (0.55 + eased * 0.45))
     if (this.frozen !== frozen) {
       this.frozen = frozen
       if (frozen) this.view.stop()
