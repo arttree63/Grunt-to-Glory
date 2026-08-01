@@ -4,6 +4,7 @@ import { goldPerSec, TRACK_NAME } from '../core/game'
 import { useGame } from '../store/gameStore'
 import { useGameState } from './useGameState'
 import { useHold } from './useHold'
+import { GameIcon } from './GameIcon'
 
 /**
  * 主畫面常駐升級條。放置型的核心迴圈是「金幣漲 → 買得起 → 按下去」,
@@ -25,28 +26,25 @@ export default function LevelBar() {
 
   return (
     <div className="level-bar">
-      <button
+      <span className="level-icon"><GameIcon name="hero" size={27} /></span>
+      <div
         className={`lvl-main${can ? ' can' : ''}`}
-        // ⚠️ 事件一律掛上,不要用 `can ? hold : {}`:長按到一半金幣用盡時 can 會翻成 false,
-        // React 把 onPointerUp/Leave 拆掉 → 連點的 interval 永遠停不下來,
-        // 之後金幣一夠就會自動把點數投進主修(玩家沒按任何東西)。買不起時 core 自己會擋
-        {...hold}
-        aria-label={`投一點進${TRACK_NAME[s.trackFocus]}`}
       >
         <span className="txt">
-          操練 <b>{TRACK_NAME[s.trackFocus]}</b> {s.tracks[s.trackFocus]} → {s.tracks[s.trackFocus] + 1}
+          <b>操練 {TRACK_NAME[s.trackFocus]} {s.tracks[s.trackFocus]} → {s.tracks[s.trackFocus] + 1}</b>
+          <small>提升主要戰鬥能力。</small>
         </span>
         <span className="cost">
           {fmt(cost)} 金
           {!can && wait > 0 && <small> ・約 {wait < 60 ? `${Math.ceil(wait)} 秒` : `${Math.ceil(wait / 60)} 分`}</small>}
         </span>
-      </button>
+      </div>
       <button
-        className={`lvl-max${s.gold.gte(cost) ? ' can' : ''}`}
-        onClick={() => buy('max')}
-        aria-label="用現有金幣把點數全部投進主修"
+        className={`lvl-max${can ? ' can' : ''}`}
+        {...hold}
+        aria-label={`強化${TRACK_NAME[s.trackFocus]}`}
       >
-        全投
+        強化
       </button>
     </div>
   )

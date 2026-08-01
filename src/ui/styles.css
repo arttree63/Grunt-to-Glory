@@ -1,15 +1,15 @@
 :root {
-  --bg-deep: #141018;
-  --bg-stage: #1a1522;
-  --bg-panel: #181320;
-  --bg-card: #241d31;
-  --border: #2c2438;
-  --border-card: #3a2f4d;
-  --text: #e8dcc8;
-  --text-strong: #f0e8d8;
-  --dim: #8d80a6;
-  --dim2: #9a8fb0;
-  --gold: #f2c14e;
+  --bg-deep: #0d0a12;
+  --bg-stage: #17111d;
+  --bg-panel: #151019;
+  --bg-card: #18131e;
+  --border: #3b2e43;
+  --border-card: #57404d;
+  --text: #eee0cc;
+  --text-strong: #fff0d6;
+  --dim: #8e8294;
+  --dim2: #aa9cab;
+  --gold: #e7ad43;
   --morale-a: #3fae9f;
   --morale-b: #a0ffe8;
   --boss-a: #c8384a;
@@ -25,7 +25,7 @@
   /* 底部操作區高度:面板要停在它上方,tab 才能一鍵切換。
      ⚠️ 每加一條常駐橫條就要同步加高,否則 tab 會被擠出畫面
      (升級條 44 + 8 margin = 52;下一步條 30 + 8 = 38) */
-  --bottom-h: 184px;
+  --bottom-h: 274px;
 }
 
 * {
@@ -64,14 +64,14 @@ button {
   flex-direction: column;
 }
 .wrap.no-skills {
-  --bottom-h: 130px;
+  --bottom-h: 216px;
 }
 /* 下一步提示條出現時,底部整體長高,面板/遮罩跟著 var 對齊 */
 .wrap.has-next {
-  --bottom-h: 222px;
+  --bottom-h: 336px;
 }
 .wrap.no-skills.has-next {
-  --bottom-h: 168px;
+  --bottom-h: 278px;
 }
 
 .stage {
@@ -93,79 +93,121 @@ button {
 /* 頂欄 */
 .topbar {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  top: 8px;
+  left: 8px;
+  right: 8px;
   z-index: 5;
-  padding: 10px 14px 22px;
+  height: 82px;
+  padding: 12px 0 11px 15px;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: stretch;
   pointer-events: none;
-  background: linear-gradient(#141018cc, transparent);
+  overflow: hidden;
+  border: 1px solid #5e4650;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #15111dde, #0f0c16e8);
+  box-shadow: inset 0 0 0 1px #161019, 0 5px 16px #0008;
 }
 .stage-label {
+  flex: 1;
   font-size: 13px;
   letter-spacing: 2px;
 }
 .stage-label b {
   display: block;
-  font-size: 20px;
+  margin-top: 3px;
+  color: #ffe6bc;
+  font-size: 28px;
+  line-height: 1;
   letter-spacing: 1px;
+  text-shadow: 0 2px 4px #000;
+}
+.stage-label b i {
+  margin-left: 8px;
+  color: #80604c;
+  font-size: 14px;
+  font-style: normal;
+  vertical-align: 6px;
 }
 .stage-label small {
-  color: var(--dim2);
-  font-size: 11px;
+  color: #cfbda8;
+  font-size: 12px;
   letter-spacing: 1px;
 }
 .gold-box {
+  min-width: 105px;
+  padding: 6px 14px 4px 12px;
+  border-left: 1px solid #352936;
   color: var(--gold);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 21px;
+  font-weight: 800;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.gold-box img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px #0008);
 }
 .gold-box small {
   display: block;
-  color: var(--dim2);
+  color: #cfbda8;
   font-weight: 400;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1px;
 }
 
 /* Boss 血條 */
 .bossbar {
   position: absolute;
-  top: 64px;
-  left: 24px;
-  right: 24px;
+  top: 108px;
+  left: 22%;
+  right: 22%;
   z-index: 5;
 }
 .bossbar .name {
-  color: #ffb0a0;
-  font-size: 13px;
-  letter-spacing: 3px;
-  margin-bottom: 4px;
+  color: #f2e8d8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
   text-align: center;
+  text-shadow: 0 2px 3px #000;
 }
 .bossbar .bar {
-  height: 10px;
-  background: #2a1f2f;
+  height: 11px;
+  padding: 2px;
+  background: #151018d9;
+  border: 1px solid #776058;
   border-radius: 5px;
   overflow: hidden;
-  box-shadow: 0 0 0 1px #000 inset;
+  box-shadow: 0 0 0 2px #08060a inset, 0 2px 4px #0008;
 }
 .bossbar .fill {
   height: 100%;
   background: linear-gradient(90deg, var(--boss-a), var(--boss-b));
+  border-radius: 2px;
 }
-.bossbar .timer {
-  text-align: center;
-  font-size: 18px;
+.enemy-meta {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  min-height: 15px;
+  margin-top: 3px;
+  color: #eadfd3;
+  font-size: 11px;
   font-weight: 700;
-  margin-top: 4px;
+  text-align: center;
+  text-shadow: 0 2px 3px #000;
   font-variant-numeric: tabular-nums;
 }
+.bossbar .timer { font-size: inherit; font-weight: inherit; }
 .bossbar .timer.danger {
   color: #ff6a5c;
 }
@@ -298,21 +340,21 @@ button {
 
 /* 底部操作區 */
 .bottom {
-  background: linear-gradient(180deg, #1b1524, #15101d);
-  border-top: 1px solid var(--border);
+  background: linear-gradient(180deg, #110d16, #0d0a11);
+  border-top: 0;
   /* iPhone 安全區:Home Indicator 不吃掉導覽的可點面積 */
-  padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+  padding: 7px 10px calc(8px + env(safe-area-inset-bottom, 0px));
   height: calc(var(--bottom-h) + env(safe-area-inset-bottom, 0px));
   z-index: 10;
 }
 .wrap.no-skills .bottom {
-  padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  padding: 7px 10px calc(8px + env(safe-area-inset-bottom, 0px));
 }
 .skills {
   display: flex;
   gap: 10px;
   justify-content: center;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   position: relative;
   border-radius: 14px;
   transition:
@@ -687,29 +729,35 @@ button {
 .quality-frame.q-crimson { box-shadow: inset 3px 0 0 var(--q-crimson), 0 0 10px #d34b4b35; }
 .tabs {
   display: flex;
-  gap: 6px;
+  gap: 0;
+  height: 54px;
+  overflow: hidden;
+  border: 1px solid #55404b;
+  border-radius: 8px;
+  background: #17121c;
+  box-shadow: inset 0 1px 0 #ffffff0a, 0 3px 10px #0008;
 }
 .tab {
   flex: 1;
-  padding: 9px 0 7px;
+  padding: 6px 0 4px;
   text-align: center;
-  min-height: 58px;
-  color: #9488a9;
-  font-size: 12px;
+  min-height: 52px;
+  color: #c2b4af;
+  font-size: 11px;
   letter-spacing: 1px;
-  border-radius: 10px;
+  border-right: 1px solid #322633;
   position: relative;
 }
+.tab:last-child { border-right: 0; }
 .tab.active {
-  background: linear-gradient(180deg, #4a306d, #2d2041);
-  color: #fff1df;
-  border: 1px solid #8f62be66;
-  box-shadow: 0 0 16px #9c59de30, inset 0 1px 0 #ffffff1c;
+  background: linear-gradient(180deg, #28202c, #18131d);
+  color: #f0b742;
+  border-bottom: 2px solid #b87d2f;
+  box-shadow: inset 0 0 14px #d79e3120;
 }
 .tab span {
   display: block;
-  font-size: 17px;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 .dot {
   position: absolute;
@@ -1332,29 +1380,70 @@ button {
 .next-step {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   width: 100%;
-  margin-bottom: 8px;
-  padding: 7px 12px;
+  height: 56px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
   font-size: 12px;
-  border-radius: 8px;
-  background: #241d31;
-  border: 1px solid var(--border-card, #3a2f4d);
-  color: var(--text-main, #e8dcc8);
+  text-align: left;
+  border-radius: 9px;
+  background: linear-gradient(100deg, #1b1621, #110e16);
+  border: 1px solid #62494c;
+  color: #eadcca;
   cursor: pointer;
+  box-shadow: inset 0 0 0 1px #0b080d, 0 3px 10px #0007;
+}
+.next-icon,
+.level-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  color: #cdb79e;
+  border: 2px solid #80634b;
+  border-radius: 50%;
+  background: radial-gradient(circle, #2c2328, #151116 70%);
+  box-shadow: inset 0 0 0 3px #0d0a0e, 0 2px 5px #0008;
+}
+.next-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.next-copy b {
+  overflow: hidden;
+  color: #f1dfc7;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.next-copy small {
+  overflow: hidden;
+  color: #988d98;
+  font-size: 10px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 /* 資訊型:near 沒東西時退回本輪里程碑。它不指去任何分頁,所以不該長得像可按的按鈕 */
 .next-step.info {
-  justify-content: center;
-  background: #1e1826;
-  color: var(--dim2, #9a8fb0);
+  background: linear-gradient(100deg, #19151e, #110e15);
   cursor: default;
 }
 
 .next-step .go {
-  color: var(--gold);
+  min-width: 68px;
+  padding: 9px 10px;
+  color: #efb849;
   flex-shrink: 0;
-  margin-left: 8px;
+  text-align: center;
+  border: 1px solid #7a5840;
+  border-radius: 6px;
+  background: #1d171d;
+  box-shadow: inset 0 0 0 2px #0e0b0f;
 }
 
 /* 面板頂端把手:表示這是由下拉出的面板,點了可關 */
@@ -1425,60 +1514,73 @@ button {
 /* 主畫面常駐升級條:放置型的核心迴圈要在主畫面按得到(對照組:點擊泰坦的商店即主畫面) */
 .level-bar {
   display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
+  align-items: center;
+  gap: 9px;
+  height: 62px;
+  margin-bottom: 6px;
+  padding: 7px 9px;
+  border: 1px solid #755346;
+  border-radius: 9px;
+  background: linear-gradient(100deg, #1c1721, #120f16);
+  box-shadow: inset 0 0 0 1px #0b090d, 0 3px 10px #0007;
 }
 .lvl-main {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 44px;
-  padding: 6px 12px;
-  border-radius: 10px;
-  background: #1d1728;
-  border: 1px solid var(--border, #2c2438);
-  color: var(--dim2, #9a8fb0);
-  font-size: 12px;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  min-width: 0;
+  color: #a99ca4;
+  font-size: 11px;
+}
+.lvl-main .txt {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
 }
 .lvl-main .txt b {
-  color: var(--text, #e8dcc8);
+  overflow: hidden;
+  color: #f0dfc7;
+  font-size: 14px;
   font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
+.lvl-main .txt small { color: #948891; }
 .lvl-main .cost {
+  flex-shrink: 0;
+  margin-left: 8px;
+  color: #e7b548;
+  font-size: 12px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .lvl-main .cost small {
-  color: var(--dim, #8d80a6);
-}
-/* 買得起就亮起來——這一下亮燈是整個放置迴圈的回饋點 */
-.lvl-main.can {
-  background: #2a2138;
-  border-color: var(--gold);
-  color: var(--text, #e8dcc8);
-}
-.lvl-main.can .cost {
-  color: var(--gold);
-  font-weight: 700;
-}
-.lvl-main.can:active {
-  transform: translateY(1px);
+  display: block;
+  color: #8c7e87;
+  font-size: 9px;
+  font-weight: 400;
 }
 .lvl-max {
-  min-width: 52px;
-  min-height: 44px;
-  padding: 6px 10px;
-  border-radius: 10px;
-  background: #1d1728;
-  border: 1px solid var(--border, #2c2438);
-  color: var(--dim2, #9a8fb0);
-  font-size: 12px;
+  min-width: 74px;
+  min-height: 43px;
+  padding: 7px 13px;
+  border-radius: 7px;
+  background: linear-gradient(#49341f, #271d18);
+  border: 1px solid #74533b;
+  color: #a9947e;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: inset 0 0 0 2px #17100d, 0 2px 6px #0007;
 }
 .lvl-max.can {
-  color: var(--text, #e8dcc8);
-  border-color: var(--border-card, #3a2f4d);
+  color: #fff0c6;
+  border-color: #d0913c;
+  background: linear-gradient(#b67128, #70431d);
+  box-shadow: inset 0 1px 0 #ffd68588, inset 0 0 0 2px #5b3218, 0 0 10px #d5893033;
 }
+.lvl-max:active { transform: translateY(1px); }
 
 /* 地帶進度。⚠️ 不可用 <b>:.stage-label b 是樓層數字的 display:block/20px,會把這段擠成獨立一行 */
 .stage-label .zone-at {
@@ -1491,7 +1593,7 @@ button {
 /* 本層敵種名:告訴玩家「這裡住著什麼」,換地帶時整組換掉 */
 .mobbar-wrap {
   position: absolute;
-  top: 62px;
+  top: 108px;
   left: 22%;
   right: 22%;
   z-index: 5;
@@ -1499,10 +1601,12 @@ button {
 }
 .mob-name {
   text-align: center;
-  font-size: 10px;
+  color: #f2e8d8;
+  font-size: 12px;
+  font-weight: 700;
   letter-spacing: 1px;
-  color: var(--dim2, #9a8fb0);
-  margin-bottom: 3px;
+  margin-bottom: 6px;
+  text-shadow: 0 2px 3px #000;
 }
 .mobbar-wrap .mobbar {
   position: static;
@@ -1510,6 +1614,106 @@ button {
   right: auto;
   top: auto;
 }
+.mobbar-wrap .mobbar {
+  height: 11px;
+  padding: 2px;
+  overflow: hidden;
+  border: 1px solid #776058;
+  border-radius: 5px;
+  background: #151018d9;
+  box-shadow: 0 0 0 2px #08060a inset, 0 2px 4px #0008;
+}
+.mobbar-wrap .mobbar .fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #b72c3e, #df3c51);
+}
+
+/* 角色資訊卡:只顯示 HP 與 MP，耐久不作為玩家屬性呈現 */
+.hero-status-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 70px;
+  margin-bottom: 6px;
+  padding: 7px 8px;
+  border: 1px solid #664c4f;
+  border-radius: 9px;
+  background: linear-gradient(105deg, #1b1620, #100d14);
+  box-shadow: inset 0 0 0 1px #09070a, 0 3px 10px #0008;
+}
+.portrait-frame,
+.merc-portrait {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 2px solid #80634b;
+  background: radial-gradient(circle at 50% 35%, #3c2c28, #141015 72%);
+  box-shadow: inset 0 0 0 3px #0e0b0e, 0 2px 5px #0009;
+}
+.portrait-frame {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px 12px 9px 9px;
+}
+.portrait-frame img {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+  object-position: center 28%;
+  image-rendering: pixelated;
+  transform: translateY(9px) scale(1.3);
+}
+.merc-portrait {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  color: #675b61;
+}
+.merc-portrait img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  transform: translateY(7px) scale(1.15);
+}
+.merc-portrait.empty { border-color: #453640; }
+.hero-status-main { flex: 1; min-width: 0; }
+.hero-status-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: #f0e1cc;
+  font-size: 13px;
+}
+.hero-status-title span { color: #d5a249; font-size: 11px; }
+.status-line {
+  display: grid;
+  grid-template-columns: 47px minmax(50px, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  height: 17px;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.status-label { color: #c9bbc1; }
+.status-label i { margin-right: 3px; font-style: normal; }
+.hp-line .status-label i { color: #e35153; }
+.mp-line .status-label i { color: #5a89e2; }
+.status-track {
+  height: 8px;
+  padding: 1px;
+  overflow: hidden;
+  border: 1px solid #55454f;
+  border-radius: 2px;
+  background: #0c0910;
+}
+.status-track > i { display: block; height: 100%; border-radius: 1px; }
+.hp-line .status-track > i { background: linear-gradient(90deg, #a9293a, #e4414e); }
+.mp-line .status-track > i { background: linear-gradient(90deg, #315ab8, #4f7edf); }
+.status-line strong { min-width: 67px; color: #e5d9cf; text-align: right; font-weight: 600; }
 
 /* 命運降臨小卡:戰場上的戰利品式揭示,不暫停遊戲(大抉擇才停) */
 .destiny-card-pop {

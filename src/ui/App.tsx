@@ -15,7 +15,6 @@ import {
   diagnoseBoss,
   DIAGNOSIS_NAME,
   enduranceMax,
-  isApexSkill,
   loreStage,
   BOSS_LORE_GLIMPSE,
   BOSS_LORE_MASTERY,
@@ -38,7 +37,7 @@ import { speciesPair } from '../core/enemies'
 import { gameEvents } from '../store/events'
 import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
-import { FloorDots, FloorToast } from './FloorProgress'
+import { FloorToast } from './FloorProgress'
 import SkillBar from './SkillBar'
 import LevelBar from './LevelBar'
 import DestinyCard from './DestinyCard'
@@ -53,6 +52,19 @@ import JournalPanel from './panels/JournalPanel'
 import LegacyPanel from './panels/LegacyPanel'
 import { useGameState } from './useGameState'
 import { BadgeIcon, GameIcon } from './GameIcon'
+import goldUrl from '../../assets/visual/items/core-resources/gold.png'
+import rookieUrl from '../../assets/visual/rookie-soldier/idle/idle-1.png'
+import infantryUrl from '../../assets/visual/heroes/infantry/idle/idle-1.png'
+import scoutUrl from '../../assets/visual/heroes/scout/idle/idle-1.png'
+import marshalUrl from '../../assets/visual/heroes/marshal/idle/idle-1.png'
+import paladinUrl from '../../assets/visual/heroes/paladin/idle/idle-1.png'
+import shadowUrl from '../../assets/visual/heroes/shadow/idle/idle-1.png'
+import archmageUrl from '../../assets/visual/heroes/archmage/idle/idle-1.png'
+import houndUrl from '../../assets/visual/mercenaries/old-hound/idle/idle-1.png'
+import rogueUrl from '../../assets/visual/mercenaries/rogue/idle/idle-1.png'
+import iceMageUrl from '../../assets/visual/mercenaries/ice-mage/idle/idle-1.png'
+import sapperUrl from '../../assets/visual/mercenaries/sapper/idle/idle-1.png'
+import pyroUrl from '../../assets/visual/mercenaries/pyromancer/idle/idle-1.png'
 
 type Tab = 'hero' | 'equip' | 'forge' | 'destiny' | 'journal' | 'legacy'
 
@@ -64,6 +76,36 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'journal', label: '旅途' },
   { id: 'legacy', label: '傳承' },
 ]
+
+const HERO_ART: Record<string, string> = {
+  rookie: rookieUrl,
+  infantry: infantryUrl,
+  scout: scoutUrl,
+  marshal: marshalUrl,
+  paladin: paladinUrl,
+  shadow: shadowUrl,
+  archmage: archmageUrl,
+  forgewarden: paladinUrl,
+  shadowvanguard: shadowUrl,
+  relicarbiter: archmageUrl,
+}
+
+const MERC_ART: Record<string, string> = {
+  hound: houndUrl,
+  rogue: rogueUrl,
+  icemage: iceMageUrl,
+  sapper: sapperUrl,
+  pyro: pyroUrl,
+}
+
+const STEP_DETAIL: Record<GoalTab, string> = {
+  hero: '前往英雄頁完成成長與轉職。',
+  equip: '整理裝備，換上更適合的組合。',
+  forge: '前往鐵匠鋪打造或強化裝備。',
+  destiny: '前往命運頁完成這次選擇。',
+  journal: '前往旅途查看新的事件與目標。',
+  legacy: '前往傳承頁安排下一代。',
+}
 
 
 
@@ -402,26 +444,27 @@ function Game() {
     chips.push({ key: 'conquest', text: `乘勝 ×${B.CONQUEST_MULT} ${s.conquestLeft.toFixed(0)}s`, gold: true })
 
   const hasSkills = availableSkills(s).length > 0
+  const job = JOBS[s.jobId]
+  const stepVisible = stepGoal && (!stepGoal.tab || tab !== stepGoal.tab)
 
   return (
     <div
       className={`wrap${hasSkills ? ' has-skills' : ' no-skills'}${tab ? ' panel-open' : ''}${
-        stepGoal && (!stepGoal.tab || tab !== stepGoal.tab) ? ' has-next' : ''
+        stepVisible ? ' has-next' : ''
       }`}
     >
       <BattleCanvas>
         <div className="topbar">
           <div className="stage-label">
             <small>
-              戰場・{zone.name}
+              戰場　{zone.name}
               <i className="zone-at">{zp.at}/{zp.span}</i>
             </small>
-            <b>第 {s.floor} 層</b>
-            <FloorDots />
+            <b>第 {s.floor} 層 <i aria-hidden="true">✦</i></b>
           </div>
           <div className="gold-box">
-            <small>金幣</small>
-            {fmt(s.gold)}
+            <img src={goldUrl} alt="" />
+            <span><small>金幣</small>{fmt(s.gold)}</span>
           </div>
         </div>
 
@@ -439,7 +482,10 @@ function Game() {
                 }}
               />
             </div>
-            <div className="timer danger">{s.event.timeLeft.toFixed(1)}</div>
+            <div className="enemy-meta">
+              <span>{fmtCombat(s.event.hp)} / {fmtCombat(s.event.maxHp)}</span>
+              <span className="timer danger">{s.event.timeLeft.toFixed(1)}s</span>
+            </div>
           </div>
         ) : s.isBoss ? (
           <div className={`bossbar${spot === 'boss30' ? ' spotlit' : ''}`}>
@@ -450,7 +496,10 @@ function Game() {
             <div className="bar">
               <div className="fill" style={{ width: `${Math.max(0, hpRatio) * 100}%` }} />
             </div>
-            <div className={`timer${s.bossTimeLeft < 5 ? ' danger' : ''}`}>{s.bossTimeLeft.toFixed(1)}</div>
+            <div className="enemy-meta">
+              <span>{fmtCombat(s.enemyHp)} / {fmtCombat(s.enemyMaxHp)}</span>
+              <span className={`timer${s.bossTimeLeft < 5 ? ' danger' : ''}`}>{s.bossTimeLeft.toFixed(1)}s</span>
+            </div>
           </div>
         ) : (
           <div className="mobbar-wrap">
@@ -459,6 +508,7 @@ function Game() {
             <div className="mobbar">
               <div className="fill" style={{ width: `${Math.max(0, hpRatio) * 100}%` }} />
             </div>
+            <div className="enemy-meta"><span>{fmtCombat(s.enemyHp)} / {fmtCombat(s.enemyMaxHp)}</span></div>
           </div>
         )}
 
@@ -571,39 +621,43 @@ function Game() {
           </div>
         )}
 
-        {/* MP:前三格技能的主要限制(v4.1 § 5)。頂點技能不吃它,所以這條不代表「能不能放大招」 */}
-        {availableSkills(s).some((id) => !isApexSkill(s, id)) && (
-          <div className="mana">
-            <div className="tag">法 力</div>
-            <div className="bar">
-              <div className="fill" style={{ width: `${Math.round((s.mp / B.MP_MAX) * 100)}%` }} />
-            </div>
-          </div>
-        )}
-
-        {/* 遠征耐久:單場容錯額度,每層滿血。放在主角正上方不遮臉 */}
-        <div className={`endurance${endurRatio <= 0.34 ? ' low' : ''}`}>
-          <div className="tag">耐 久</div>
-          <div className="bar">
-            <div className="fill" style={{ width: `${Math.max(0, endurRatio * 100)}%` }} />
-          </div>
-        </div>
-
         <SpotlightTeach />
       </BattleCanvas>
 
       <DestinyCard />
       <div className="bottom">
+        <div className="hero-status-card">
+          <div className="portrait-frame">
+            <img src={HERO_ART[s.jobId]} alt={job.name} />
+          </div>
+          <div className="hero-status-main">
+            <div className="hero-status-title"><b>{job.name}</b><span>Lv.{s.lv}</span></div>
+            <div className="status-line hp-line">
+              <span className="status-label"><i>♥</i> HP</span>
+              <div className="status-track"><i style={{ width: `${Math.max(0, endurRatio * 100)}%` }} /></div>
+              <strong>{fmtCombat(s.endurance)} / {fmtCombat(endurCap)}</strong>
+            </div>
+            <div className="status-line mp-line">
+              <span className="status-label"><i>◆</i> MP</span>
+              <div className="status-track"><i style={{ width: `${Math.max(0, Math.min(100, (s.mp / B.MP_MAX) * 100))}%` }} /></div>
+              <strong>{Math.floor(s.mp)} / {B.MP_MAX}</strong>
+            </div>
+          </div>
+          <div className={`merc-portrait${s.activeMerc ? '' : ' empty'}`}>
+            {s.activeMerc ? <img src={MERC_ART[s.activeMerc]} alt="出戰傭兵" /> : <GameIcon name="hero" size={20} />}
+          </div>
+        </div>
         {/* 核心成長迴圈要在主畫面上按得到:金幣漲→亮起→按(對照點擊泰坦的商店即主畫面) */}
-        <LevelBar />
         <SkillBar />
+        <LevelBar />
         {/* 下一步行動提示:紅點只說「有事」,這條直接說「做什麼」,點了開正確分頁 */}
-        {stepGoal && (!stepGoal.tab || tab !== stepGoal.tab) && (
+        {stepVisible && (
           <button
             className={`next-step${stepGoal.tab ? '' : ' info'}`}
             onClick={() => stepGoal.tab && setTab(stepGoal.tab as Tab)}
           >
-            <span>下一步:{stepGoal.text}</span>
+            <span className="next-icon"><GameIcon name={(stepGoal.tab ?? 'journal') as Tab} size={25} /></span>
+            <span className="next-copy"><b>下一步：{stepGoal.text}</b><small>{stepGoal.tab ? STEP_DETAIL[stepGoal.tab] : '持續戰鬥，朝本輪目標推進。'}</small></span>
             {stepGoal.tab && <span className="go">前往 →</span>}
           </button>
         )}
