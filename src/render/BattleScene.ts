@@ -2546,8 +2546,12 @@ class BossView {
     this.entryAge += ms
     const entry = Math.min(1, this.entryAge / 520)
     const eased = 1 - Math.pow(1 - entry, 3)
-    this.view.position.set(W / 2, H * (0.47 + 0.13 * eased))
-    this.view.scale.set((W / 300) * (0.55 + eased * 0.45))
+    const finalScale = Math.min(W / 410, 1)
+    const scale = finalScale * (0.62 + eased * 0.38)
+    const safeTop = Math.max(112, H * 0.24)
+    // 以素材腳底錨點反推位置，任何戰場高度都讓頭頂落在敵人資訊列下方。
+    this.view.position.set(W / 2, safeTop + 233 * scale)
+    this.view.scale.set(scale)
     if (this.frozen !== frozen) {
       this.frozen = frozen
       if (frozen) this.view.stop()

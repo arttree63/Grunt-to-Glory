@@ -558,8 +558,8 @@ function Game() {
             聚光燈教學的 .spotlit 掛在主要機制卡上,所以優先選 spot 對應的機制 */}
         {primary === 'channel' && (
           <div
-            className={`retry${spot === 'channel' ? ' spotlit' : ''}`}
-            style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--gold)', fontSize: 14 }}
+            className={`retry mechanic-card${spot === 'channel' ? ' spotlit' : ''}`}
+            style={{ top: 'auto', pointerEvents: 'none', color: 'var(--gold)', fontSize: 14 }}
           >
             {channelProgress(s) >= 0.75 ? '就差一點——現在放!' : '蓄力中'} {s.channelLeft.toFixed(1)}s・打斷{' '}
             {Math.floor(channelProgress(s) * 100)}%
@@ -573,8 +573,8 @@ function Game() {
         )}
         {primary === 'perfect' && (
           <div
-            className={`retry${spot === 'perfect' ? ' spotlit' : ''}`}
-            style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--gold)', fontSize: 14 }}
+            className={`retry mechanic-card${spot === 'perfect' ? ' spotlit' : ''}`}
+            style={{ top: 'auto', pointerEvents: 'none', color: 'var(--gold)', fontSize: 14 }}
           >
             金色窗口——現在引爆=完美!
             <div className="goal-bar">
@@ -590,8 +590,8 @@ function Game() {
         )}
         {primary === 'totem' && (
           <div
-            className={`retry${spot === 'totem' ? ' spotlit' : ''}`}
-            style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
+            className={`retry mechanic-card${spot === 'totem' ? ' spotlit' : ''}`}
+            style={{ top: 'auto', pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
           >
             圖騰 {Math.ceil(s.totemHp.div(s.totemMaxHp).toNumber() * 100)}%・倒數加速中
             <div className="goal-bar">
@@ -602,8 +602,8 @@ function Game() {
         )}
         {primary === 'shell' && (
           <div
-            className={`retry${spot === 'shell' ? ' spotlit' : ''}`}
-            style={{ top: 'auto', bottom: 214, pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
+            className={`retry mechanic-card${spot === 'shell' ? ' spotlit' : ''}`}
+            style={{ top: 'auto', pointerEvents: 'none', color: 'var(--boss-hp, #ff7a5c)', fontSize: 13 }}
           >
             護盾 ×{s.shellLeft}・還差 {shellToNext(s)} 點破下一層
             {/* 戰術延遲期間投點凍結:盾條直接灰掉,不讓玩家以為還在推進 */}

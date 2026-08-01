@@ -322,6 +322,13 @@ button {
   letter-spacing: 1px;
 }
 
+/* Boss 機制卡固定在軀幹區，不能因手機高度變短而上浮遮住頭部。 */
+.retry.mechanic-card {
+  top: auto;
+  bottom: 24%;
+  max-width: min(82%, 300px);
+}
+
 /* 目標梯度細條(Boss 打斷 / 破盾 / 圖騰):文字給數字,條給「還剩多少」的手感 */
 .goal-bar {
   height: 3px;
