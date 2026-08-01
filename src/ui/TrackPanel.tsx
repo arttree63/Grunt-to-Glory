@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { fmt } from '../core/format'
-import { bulkUpCost, upCost } from '../core/formulas'
+import { affordableLevels, bulkUpCost, upCost } from '../core/formulas'
 import {
   TRACKS,
   TRACK_NAME,
@@ -39,12 +39,15 @@ export default function TrackPanel() {
   const [pending, setPending] = useState<{ track: TrackId; count: number } | null>(null)
   const [addAmount, setAddAmount] = useState<AddAmount>(1)
   const cost = upCost(s.lv)
+  const maxAffordable = affordableLevels(s.lv, s.gold)
   const pendingCost = pending ? bulkUpCost(s.lv, pending.count) : cost
   const canConfirm = pending !== null && s.gold.gte(pendingCost)
 
   const addPoint = (track: TrackId) => {
-    const count = pending?.track === track ? pending.count + addAmount : addAmount
-    if (s.gold.lt(bulkUpCost(s.lv, count))) return
+    const queued = pending?.track === track ? pending.count : 0
+    const amount = Math.min(addAmount, Math.max(0, maxAffordable - queued))
+    if (amount === 0) return
+    const count = queued + amount
     setPending({ track, count })
   }
 
@@ -83,7 +86,8 @@ export default function TrackPanel() {
         const focused = s.trackFocus === t
         const queued = pending?.track === t
         const queuedCount = queued ? pending.count : 0
-        const canAdd = s.gold.gte(bulkUpCost(s.lv, queuedCount + addAmount))
+        const amount = Math.min(addAmount, Math.max(0, maxAffordable - queuedCount))
+        const canAdd = amount > 0
         return (
           <div
             key={t}
@@ -96,7 +100,7 @@ export default function TrackPanel() {
               <button
                 className="track-plus"
                 onClick={() => addPoint(t)}
-                aria-label={`增加${TRACK_NAME[t]}${addAmount}點`}
+                aria-label={`增加${TRACK_NAME[t]}${amount}點`}
                 disabled={!canAdd}
               >
                 +
