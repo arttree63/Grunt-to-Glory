@@ -528,9 +528,10 @@ export class BattleScene {
     if (skillId === 'edict' && this.getSnap().legends.includes('codexpage')) {
       this.spawnReturningSigils(Math.min(4, Math.ceil(sigilsSpent / 3)))
     }
+    const damageY = this.boss ? target.y + 12 : target.y - 45
     this.damageNum(
       target.x,
-      target.y - 45,
+      damageY,
       autoDetonate ? `自動・${text}` : text,
       true,
       skillId === 'judgement' || skillId === 'edict',
@@ -1270,7 +1271,7 @@ export class BattleScene {
 
   private targetPoint() {
     if (this.eventView) return { x: this.eventView.view.x, y: this.eventView.view.y - this.eventView.view.height * 0.5 }
-    if (this.boss) return { x: this.boss.view.x, y: this.H * 0.3 }
+    if (this.boss) return { x: this.boss.view.x, y: Math.max(176, this.H * 0.38) }
     const mob = this.frontMob()
     return mob?.hitPoint() ?? { x: this.W / 2, y: this.H * 0.48 }
   }

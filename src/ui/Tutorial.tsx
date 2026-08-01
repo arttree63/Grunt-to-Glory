@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
 import * as B from '../core/balance'
-import { availableSkills, sigilName } from '../core/game'
 import { useGame } from '../store/gameStore'
 import { useGameState } from './useGameState'
 import { GameIcon } from './GameIcon'
 
 const KEY = 'little-soldier-tutorial'
-const TIP_KEY = 'little-soldier-tips'
 
 /**
  * 開局只講**現在就會用到**的兩件事。
@@ -26,52 +24,10 @@ const STEPS = [
   },
 ]
 
-/** 情境提示:條件成立時出現一次,看過就不再出現 */
-const TIPS: Array<{ id: string; when: (s: ReturnType<typeof useGameState>) => boolean; text: string }> = [
-  // 'boss' 提示改走聚光燈教學(SpotlightTeach 的 boss30),不再用角落文字講規則
-  {
-    // 長按查說明是操作可發現性,不是遊戲規則,用一次性 tip(規則類走聚光燈)
-    id: 'skillhold',
-    when: (s) => availableSkills(s).length > 0,
-    text: '技能點一下施放;長按可以查看完整說明(格子角落的 i)。',
-  },
-  {
-    id: 'forge',
-    when: (s) => s.materials >= B.FORGE_COST,
-    text: '素材夠了。怪只掉素材,裝備一律到「鐵匠鋪」自己鍛;投入部位素材就能鎖你要的部位。',
-  },
-  {
-    id: 'destiny',
-    when: (s) => s.destinyPoints > 0,
-    text: '拿到命運抉擇了。重大抉擇會進入命運之間；其他選擇可到「命運」分頁決定。',
-  },
-  {
-    id: 'sigil',
-    when: (s) => s.sigils > 0,
-    text: '戰鬥開始累積印記。第二個技能隨時能用；第一個技能、命運與傭兵會加速累積,疊越多爆得越重。',
-  },
-  {
-    id: 'legend',
-    when: (s) => [...s.inventory, ...Object.values(s.equipped)].some((e) => e && (e.legend || e.setTag)),
-    text: '你拿到會改變玩法的裝備了。傳說特性與套裝標籤不可重鑄,強度差不多,差別在「怎麼打」。',
-  },
-]
-
-function seenTips(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(TIP_KEY) ?? '[]')
-  } catch {
-    return []
-  }
-}
-
-/** 開局兩張說明 + 情境提示。都存 localStorage,不佔存檔 */
+/** 開局只保留兩張必要說明；情境規則由 Boss 聚光燈負責。 */
 export default function Tutorial() {
-  const s = useGameState()
   const [done, setDone] = useState(() => localStorage.getItem(KEY) === '1')
-  const [seen, setSeen] = useState<string[]>(seenTips)
   const setUiLock = useGame((st) => st.setUiLock)
-  const spotlight = useGame((st) => st.spotlight)
 
   useEffect(() => {
     setUiLock('modal:tutorial', !done)
@@ -109,32 +65,7 @@ export default function Tutorial() {
     )
   }
 
-  // ⚠️ 聚光燈進行中不出 TIP:`.spot-dim`(z20)蓋過 `.retry`(z6)且會 stopPropagation,
-  // 兩張一起出的話 TIP 看得到卻點不掉,玩家得先關聚光燈才能關它。
-  // 教學一次只能有一個焦點——這正是聚光燈存在的理由。
-  const tip = spotlight ? undefined : TIPS.find((t) => !seen.includes(t.id) && t.when(s))
-  if (!tip) return null
-
-  const dismiss = () => {
-    const next = [...seen, tip.id]
-    localStorage.setItem(TIP_KEY, JSON.stringify(next))
-    setSeen(next)
-  }
-
-  return (
-    <div
-      className="retry"
-      style={{ top: 'auto', bottom: 220, maxWidth: 300, cursor: 'pointer', whiteSpace: 'normal' }}
-      onPointerDown={dismiss}
-    >
-      <div style={{ fontSize: 12, lineHeight: 1.6 }}>
-        {tip.id === 'sigil' ? tip.text.replaceAll('印記', sigilName(s)) : tip.text}
-      </div>
-      <div className="tier3" style={{ marginTop: 4 }}>
-        點一下關閉
-      </div>
-    </div>
-  )
+  return null
 }
 
 const SPOT_KEY = 'little-soldier-spotlights'
