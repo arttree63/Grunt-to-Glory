@@ -203,7 +203,7 @@ const BOSS_FRAME_MS = 180
 const EVENT_FRAME_MS = 180
 const SLASH_FRAME_MS = 70
 const HIT_FRAME_MS = 65
-const SKILL_FRAME_MS = 90
+const SKILL_FRAME_MS = 120
 
 interface VisualAssets {
   background: Texture
