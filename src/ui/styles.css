@@ -25,7 +25,7 @@
   /* 底部操作區高度:面板要停在它上方,tab 才能一鍵切換。
      ⚠️ 每加一條常駐橫條就要同步加高,否則 tab 會被擠出畫面
      (升級條 44 + 8 margin = 52;下一步條 30 + 8 = 38) */
-  --bottom-h: 274px;
+  --bottom-h: 196px;
 }
 
 * {
@@ -64,14 +64,14 @@ button {
   flex-direction: column;
 }
 .wrap.no-skills {
-  --bottom-h: 216px;
+  --bottom-h: 148px;
 }
 /* 下一步提示條出現時,底部整體長高,面板/遮罩跟著 var 對齊 */
 .wrap.has-next {
-  --bottom-h: 336px;
+  --bottom-h: 239px;
 }
 .wrap.no-skills.has-next {
-  --bottom-h: 278px;
+  --bottom-h: 191px;
 }
 
 .stage {
@@ -97,50 +97,51 @@ button {
   left: 8px;
   right: 8px;
   z-index: 5;
-  height: 82px;
-  padding: 12px 0 11px 15px;
+  height: 56px;
+  padding: 6px 0 6px 12px;
   display: flex;
   justify-content: space-between;
   align-items: stretch;
   pointer-events: none;
   overflow: hidden;
-  border: 1px solid #5e4650;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #15111dde, #0f0c16e8);
-  box-shadow: inset 0 0 0 1px #161019, 0 5px 16px #0008;
+  border: 7px solid transparent;
+  border-image: url('../../assets/visual/ui/pixel-kit/panel-9slice.png') 33 33 fill / 7px / 0 stretch;
+  border-radius: 4px;
+  background: #151018e8;
+  box-shadow: 0 4px 12px #0008;
 }
 .stage-label {
   flex: 1;
-  font-size: 13px;
-  letter-spacing: 2px;
+  font-size: 10px;
+  letter-spacing: 1px;
 }
 .stage-label b {
   display: block;
-  margin-top: 3px;
+  margin-top: 1px;
   color: #ffe6bc;
-  font-size: 28px;
+  font-size: 22px;
   line-height: 1;
   letter-spacing: 1px;
   text-shadow: 0 2px 4px #000;
 }
 .stage-label b i {
-  margin-left: 8px;
+  margin-left: 5px;
   color: #80604c;
-  font-size: 14px;
+  font-size: 11px;
   font-style: normal;
-  vertical-align: 6px;
+  vertical-align: 4px;
 }
 .stage-label small {
   color: #cfbda8;
-  font-size: 12px;
+  font-size: 10px;
   letter-spacing: 1px;
 }
 .gold-box {
-  min-width: 105px;
-  padding: 6px 14px 4px 12px;
+  min-width: 94px;
+  padding: 1px 9px 1px 8px;
   border-left: 1px solid #352936;
   color: var(--gold);
-  font-size: 21px;
+  font-size: 17px;
   font-weight: 800;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -150,8 +151,8 @@ button {
   gap: 8px;
 }
 .gold-box img {
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   filter: drop-shadow(0 2px 4px #0008);
 }
@@ -159,29 +160,29 @@ button {
   display: block;
   color: #cfbda8;
   font-weight: 400;
-  font-size: 12px;
+  font-size: 10px;
   letter-spacing: 1px;
 }
 
 /* Boss 血條 */
 .bossbar {
   position: absolute;
-  top: 108px;
-  left: 22%;
-  right: 22%;
+  top: 72px;
+  left: 19%;
+  right: 19%;
   z-index: 5;
 }
 .bossbar .name {
   color: #f2e8d8;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 1px;
-  margin-bottom: 6px;
+  margin-bottom: 3px;
   text-align: center;
   text-shadow: 0 2px 3px #000;
 }
 .bossbar .bar {
-  height: 11px;
+  height: 9px;
   padding: 2px;
   background: #151018d9;
   border: 1px solid #776058;
@@ -199,9 +200,9 @@ button {
   justify-content: center;
   gap: 10px;
   min-height: 15px;
-  margin-top: 3px;
+  margin-top: 2px;
   color: #eadfd3;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   text-align: center;
   text-shadow: 0 2px 3px #000;
@@ -343,18 +344,19 @@ button {
   background: linear-gradient(180deg, #110d16, #0d0a11);
   border-top: 0;
   /* iPhone 安全區:Home Indicator 不吃掉導覽的可點面積 */
-  padding: 7px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  padding: 3px 10px calc(3px + env(safe-area-inset-bottom, 0px));
   height: calc(var(--bottom-h) + env(safe-area-inset-bottom, 0px));
   z-index: 10;
 }
 .wrap.no-skills .bottom {
-  padding: 7px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  padding: 3px 10px calc(3px + env(safe-area-inset-bottom, 0px));
 }
 .skills {
   display: flex;
+  height: 45px;
   gap: 10px;
   justify-content: center;
-  margin-bottom: 6px;
+  margin-bottom: 3px;
   position: relative;
   border-radius: 14px;
   transition:
@@ -376,9 +378,9 @@ button {
   }
 }
 .skill {
-  width: 52px;
-  height: 52px;
-  border-radius: 12px;
+  width: 45px;
+  height: 45px;
+  border-radius: 9px;
   background: var(--bg-card);
   border: 1px solid var(--border-card);
   display: flex;
@@ -730,7 +732,7 @@ button {
 .tabs {
   display: flex;
   gap: 0;
-  height: 54px;
+  height: 44px;
   overflow: hidden;
   border: 1px solid #55404b;
   border-radius: 8px;
@@ -739,33 +741,33 @@ button {
 }
 .tab {
   flex: 1;
-  padding: 6px 0 4px;
+  padding: 3px 0 2px;
   text-align: center;
-  min-height: 52px;
+  min-height: 42px;
   color: #c2b4af;
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 1px;
   border-right: 1px solid #322633;
   position: relative;
 }
 .tab:last-child { border-right: 0; }
 .tab.active {
-  padding: 2px 0 0;
-  border: 5px solid transparent;
-  border-image: url('../../assets/visual/ui/library-20260801/button-secondary.png') 24 fill / 5px / 0 stretch;
+  padding: 0;
+  border: 4px solid transparent;
+  border-image: url('../../assets/visual/ui/library-20260801/button-secondary.png') 24 fill / 4px / 0 stretch;
   background: #18131d;
   color: #f0b742;
   box-shadow: inset 0 0 14px #d79e3120;
 }
 .tab span {
   display: grid;
-  height: 27px;
+  height: 23px;
   place-items: center;
   margin-bottom: 1px;
 }
 .tab span img {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
   filter: saturate(.65) brightness(.85);
 }
@@ -1393,16 +1395,16 @@ button {
 .next-step {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
   width: 100%;
-  height: 56px;
-  margin-bottom: 6px;
-  padding: 6px 10px;
+  height: 40px;
+  margin-bottom: 3px;
+  padding: 3px 7px;
   font-size: 12px;
   text-align: left;
   border-radius: 9px;
-  border: 7px solid transparent;
-  border-image: url('../../assets/visual/ui/pixel-kit/panel-9slice.png') 33 33 fill / 7px / 0 stretch;
+  border: 5px solid transparent;
+  border-image: url('../../assets/visual/ui/pixel-kit/panel-9slice.png') 33 33 fill / 5px / 0 stretch;
   background: #151018;
   color: #eadcca;
   cursor: pointer;
@@ -1412,9 +1414,9 @@ button {
 .level-icon {
   display: grid;
   place-items: center;
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
   color: #cdb79e;
   border: 2px solid #80634b;
   border-radius: 50%;
@@ -1423,8 +1425,8 @@ button {
 }
 .next-icon img,
 .level-icon img {
-  width: 34px;
-  height: 34px;
+  width: 25px;
+  height: 25px;
   object-fit: contain;
   filter: drop-shadow(0 2px 2px #0009);
 }
@@ -1433,19 +1435,19 @@ button {
   flex: 1;
   min-width: 0;
   flex-direction: column;
-  gap: 3px;
+  gap: 1px;
 }
 .next-copy b {
   overflow: hidden;
   color: #f1dfc7;
-  font-size: 13px;
+  font-size: 11px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 .next-copy small {
   overflow: hidden;
   color: #988d98;
-  font-size: 10px;
+  font-size: 8px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1456,13 +1458,13 @@ button {
 }
 
 .next-step .go {
-  min-width: 68px;
-  padding: 7px 9px;
+  min-width: 60px;
+  padding: 4px 7px;
   color: #efb849;
   flex-shrink: 0;
   text-align: center;
-  border: 7px solid transparent;
-  border-image: url('../../assets/visual/ui/library-20260801/button-secondary.png') 24 fill / 7px / 0 stretch;
+  border: 5px solid transparent;
+  border-image: url('../../assets/visual/ui/library-20260801/button-secondary.png') 24 fill / 5px / 0 stretch;
   background: #1d171d;
   box-shadow: 0 2px 5px #0008;
 }
@@ -1511,7 +1513,8 @@ button {
   justify-content: center;
   gap: 2px;
   width: 44px;
-  min-height: 44px;
+  height: 45px;
+  min-height: 45px;
   padding: 4px 2px;
   border-radius: 10px;
   background: #1d1728;
@@ -1536,10 +1539,10 @@ button {
 .level-bar {
   display: flex;
   align-items: center;
-  gap: 9px;
-  height: 62px;
-  margin-bottom: 6px;
-  padding: 7px 9px;
+  gap: 7px;
+  height: 42px;
+  margin-bottom: 3px;
+  padding: 3px 6px;
   border: 1px solid #755346;
   border-radius: 9px;
   background: linear-gradient(100deg, #1c1721, #120f16);
@@ -1552,18 +1555,18 @@ button {
   justify-content: space-between;
   min-width: 0;
   color: #a99ca4;
-  font-size: 11px;
+  font-size: 9px;
 }
 .lvl-main .txt {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 4px;
+  gap: 1px;
 }
 .lvl-main .txt b {
   overflow: hidden;
   color: #f0dfc7;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1571,27 +1574,27 @@ button {
 .lvl-main .txt small { color: #948891; }
 .lvl-main .cost {
   flex-shrink: 0;
-  margin-left: 8px;
+  margin-left: 5px;
   color: #e7b548;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .lvl-main .cost small {
   display: block;
   color: #8c7e87;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 400;
 }
 .lvl-max {
-  min-width: 74px;
-  min-height: 43px;
-  padding: 5px 11px;
-  border: 8px solid transparent;
-  border-image: url('../../assets/visual/ui/library-20260801/button-secondary.png') 24 fill / 8px / 0 stretch;
+  min-width: 66px;
+  min-height: 34px;
+  padding: 3px 8px;
+  border: 6px solid transparent;
+  border-image: url('../../assets/visual/ui/library-20260801/button-secondary.png') 24 fill / 6px / 0 stretch;
   background: #251a22;
   color: #a9947e;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
   box-shadow: 0 2px 6px #0007;
 }
@@ -1615,19 +1618,19 @@ button {
 /* 本層敵種名:告訴玩家「這裡住著什麼」,換地帶時整組換掉 */
 .mobbar-wrap {
   position: absolute;
-  top: 108px;
-  left: 22%;
-  right: 22%;
+  top: 72px;
+  left: 19%;
+  right: 19%;
   z-index: 5;
   pointer-events: none;
 }
 .mob-name {
   text-align: center;
   color: #f2e8d8;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 1px;
-  margin-bottom: 6px;
+  margin-bottom: 3px;
   text-shadow: 0 2px 3px #000;
 }
 .mobbar-wrap .mobbar {
@@ -1637,7 +1640,7 @@ button {
   top: auto;
 }
 .mobbar-wrap .mobbar {
-  height: 11px;
+  height: 9px;
   padding: 2px;
   overflow: hidden;
   border: 1px solid #776058;
@@ -1655,12 +1658,12 @@ button {
 .hero-status-card {
   display: flex;
   align-items: center;
-  gap: 9px;
-  height: 70px;
-  margin-bottom: 6px;
-  padding: 7px 8px;
-  border: 7px solid transparent;
-  border-image: url('../../assets/visual/ui/pixel-kit/panel-9slice.png') 33 33 fill / 7px / 0 stretch;
+  gap: 7px;
+  height: 50px;
+  margin-bottom: 3px;
+  padding: 3px 5px;
+  border: 5px solid transparent;
+  border-image: url('../../assets/visual/ui/pixel-kit/panel-9slice.png') 33 33 fill / 5px / 0 stretch;
   border-radius: 4px;
   background: #151018;
   box-shadow: inset 0 0 0 1px #09070a, 0 3px 10px #0008;
@@ -1677,21 +1680,21 @@ button {
   box-shadow: 0 2px 5px #0009;
 }
 .portrait-frame {
-  width: 54px;
-  height: 54px;
+  width: 40px;
+  height: 40px;
   border-radius: 12px 12px 9px 9px;
 }
 .portrait-frame img {
   display: block;
   width: 100%;
   height: 100%;
-  padding: 5px;
+  padding: 4px;
   object-fit: contain;
   object-position: center;
 }
 .merc-portrait {
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
   color: #675b61;
 }
@@ -1708,19 +1711,19 @@ button {
 .hero-status-title {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: 6px;
+  margin-bottom: 1px;
   color: #f0e1cc;
-  font-size: 13px;
+  font-size: 11px;
 }
-.hero-status-title span { color: #d5a249; font-size: 11px; }
+.hero-status-title span { color: #d5a249; font-size: 9px; }
 .status-line {
   display: grid;
-  grid-template-columns: 47px minmax(50px, 1fr) auto;
+  grid-template-columns: 41px minmax(48px, 1fr) auto;
   align-items: center;
   gap: 5px;
-  height: 17px;
-  font-size: 9px;
+  height: 13px;
+  font-size: 8px;
   font-variant-numeric: tabular-nums;
 }
 .status-label { color: #c9bbc1; }
@@ -1728,7 +1731,7 @@ button {
 .hp-line .status-label i { color: #e35153; }
 .mp-line .status-label i { color: #5a89e2; }
 .status-track {
-  height: 8px;
+  height: 7px;
   padding: 1px;
   overflow: hidden;
   border: 1px solid #55454f;
@@ -1738,7 +1741,7 @@ button {
 .status-track > i { display: block; height: 100%; border-radius: 1px; }
 .hp-line .status-track > i { background: linear-gradient(90deg, #a9293a, #e4414e); }
 .mp-line .status-track > i { background: linear-gradient(90deg, #315ab8, #4f7edf); }
-.status-line strong { min-width: 67px; color: #e5d9cf; text-align: right; font-weight: 600; }
+.status-line strong { min-width: 60px; color: #e5d9cf; text-align: right; font-weight: 600; }
 
 /* 命運降臨小卡:戰場上的戰利品式揭示,不暫停遊戲(大抉擇才停) */
 .destiny-card-pop {
