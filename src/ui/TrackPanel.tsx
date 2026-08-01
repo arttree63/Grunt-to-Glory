@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { fmt } from '../core/format'
-import { upCost } from '../core/formulas'
+import { bulkUpCost, upCost } from '../core/formulas'
 import {
   TRACKS,
   TRACK_NAME,
@@ -33,14 +33,21 @@ export default function TrackPanel() {
   const s = useGameState()
   const setFocus = useGame((st) => st.setTrackFocus)
   const buy = useGame((st) => st.buy)
-  const [pending, setPending] = useState<TrackId | null>(null)
+  const [pending, setPending] = useState<{ track: TrackId; count: number } | null>(null)
   const cost = upCost(s.lv)
-  const can = s.gold.gte(cost)
+  const pendingCost = pending ? bulkUpCost(s.lv, pending.count) : cost
+  const canConfirm = pending !== null && s.gold.gte(pendingCost)
+
+  const addPoint = (track: TrackId) => {
+    const count = pending?.track === track ? pending.count + 1 : 1
+    if (s.gold.lt(bulkUpCost(s.lv, count))) return
+    setPending({ track, count })
+  }
 
   const confirm = () => {
-    if (!pending || !can) return
-    setFocus(pending)
-    buy(1)
+    if (!pending || !canConfirm) return
+    setFocus(pending.track)
+    buy(pending.count)
     setPending(null)
   }
 
@@ -48,7 +55,7 @@ export default function TrackPanel() {
     <div className="track-panel">
       <div className={`track-head${pending ? ' pending' : ''}`}>
         <span>{pending ? '待 確 認' : '操 練 配 點'}</span>
-        <small>{pending ? `${TRACK_NAME[pending]} +1` : `每點 ${fmt(cost)} 金`}</small>
+        <small>{pending ? `${TRACK_NAME[pending.track]} +${pending.count}` : `每點 ${fmt(cost)} 金`}</small>
       </div>
 
       {TRACKS.map((t) => {
@@ -57,7 +64,9 @@ export default function TrackPanel() {
         const share = trackShare(s, t)
         const mult = trackMult(s, t)
         const focused = s.trackFocus === t
-        const queued = pending === t
+        const queued = pending?.track === t
+        const queuedCount = queued ? pending.count : 0
+        const canAdd = s.gold.gte(bulkUpCost(s.lv, queuedCount + 1))
         return (
           <div
             key={t}
@@ -66,11 +75,12 @@ export default function TrackPanel() {
             <div className="track-title">
               <GameIcon name={info.icon} size={16} />
               <b>{TRACK_NAME[t]}</b>
-              <span className="pts">{pts + (queued ? 1 : 0)} 點</span>
+              <span className="pts">{pts + queuedCount} 點</span>
               <button
                 className="track-plus"
-                onClick={() => setPending(queued ? null : t)}
-                aria-label={`${queued ? '取消' : '增加'}${TRACK_NAME[t]}一點`}
+                onClick={() => addPoint(t)}
+                aria-label={`增加${TRACK_NAME[t]}一點`}
+                disabled={!canAdd}
               >
                 +
               </button>
@@ -85,16 +95,18 @@ export default function TrackPanel() {
         )
       })}
 
-      <div className="track-confirm-row">
-        <span>{pending ? `${fmt(cost)} 金` : '先選擇一項能力'}</span>
-        <button
-          className={`track-confirm${pending && can ? ' can' : ''}`}
-          onClick={confirm}
-          disabled={!pending || !can}
-        >
-          確認加點
-        </button>
-      </div>
+      {pending && (
+        <div className="track-confirm-row">
+          <span>{fmt(pendingCost)} 金</span>
+          <button
+            className={`track-confirm${canConfirm ? ' can' : ''}`}
+            onClick={confirm}
+            disabled={!canConfirm}
+          >
+            確認加點 ×{pending.count}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
