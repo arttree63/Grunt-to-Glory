@@ -37,14 +37,12 @@ import { useGame } from '../store/gameStore'
 import BattleCanvas from './BattleCanvas'
 import { FloorToast } from './FloorProgress'
 import SkillBar from './SkillBar'
-import DestinyCard from './DestinyCard'
 import Tutorial from './Tutorial'
 import TitleScreen from './TitleScreen'
 import * as sfx from '../audio/sfx'
 import EquipPanel from './panels/EquipPanel'
 import ForgePanel from './panels/ForgePanel'
 import HeroPanel from './panels/HeroPanel'
-import DestinyPanel from './panels/DestinyPanel'
 import JournalPanel from './panels/JournalPanel'
 import LegacyPanel from './panels/LegacyPanel'
 import { useGameState } from './useGameState'
@@ -74,7 +72,6 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'hero', label: '英雄' },
   { id: 'equip', label: '裝備' },
   { id: 'forge', label: '鍛造' },
-  { id: 'destiny', label: '命運' },
   { id: 'journal', label: '旅途' },
   { id: 'legacy', label: '傳承' },
 ]
@@ -458,7 +455,7 @@ function Game() {
 
   const hasSkills = equippedSkills(s).length > 0
   const job = JOBS[s.jobId]
-  const stepVisible = stepGoal && (!stepGoal.tab || tab !== stepGoal.tab)
+  const stepVisible = stepGoal && stepGoal.tab !== 'destiny' && (!stepGoal.tab || tab !== stepGoal.tab)
 
   return (
     <div
@@ -633,7 +630,6 @@ function Game() {
 
       </BattleCanvas>
 
-      <DestinyCard />
       <div className="bottom">
         {/* 下一步放在角色狀態上方；Boss 失敗時同時接手重新挑戰入口。 */}
         {stepVisible && (
@@ -703,7 +699,6 @@ function Game() {
             {tab === 'hero' && <HeroPanel />}
             {tab === 'equip' && <EquipPanel />}
             {tab === 'forge' && <ForgePanel />}
-            {tab === 'destiny' && <DestinyPanel />}
             {tab === 'journal' && <JournalPanel />}
             {tab === 'legacy' && <LegacyPanel />}
           </div>

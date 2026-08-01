@@ -517,7 +517,7 @@ export default function LegacyPanel() {
       <LegendCodex />
 
       <h3 style={{ marginTop: 16 }}>命 運 × 職 業</h3>
-      <JobMatrix />
+      {false && <JobMatrix />}
 
       <h3 style={{ marginTop: 16 }}>設 定</h3>
       <SettingsSection />

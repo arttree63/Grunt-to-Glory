@@ -24,6 +24,7 @@ export default function JournalPanel() {
     s.destinyPoints < B.DESTINY_POINT_CAP
 
   const near = nearGoal(s)
+  const visibleNear = near?.tab === 'destiny' ? null : near
 
   return (
     <div>
@@ -31,7 +32,7 @@ export default function JournalPanel() {
       {/* 「差一點」三層收斂:近期/本輪/跨輪各一個,其餘的「還差 N」留在各自面板裡 */}
       <div className="row">
         <span className="k">現在</span>
-        <span className="v">{near ? near.text : '繼續推進,守關者見真章'}</span>
+        <span className="v">{visibleNear ? visibleNear.text : '繼續推進,守關者見真章'}</span>
       </div>
       <div className="row">
         <span className="k">本輪</span>
@@ -88,7 +89,7 @@ export default function JournalPanel() {
         )
       })}
 
-      {hasNode(s, 'hunter_2b') && (
+      {false && hasNode(s, 'hunter_2b') && (
         <>
           <h3 style={{ marginTop: 16 }}>命 運 交 易</h3>
           <div className="card">

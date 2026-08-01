@@ -27,6 +27,7 @@ import { useGame } from '../store/gameStore'
 import ResultReveal from './ResultReveal'
 
 const EVENT_REVEAL_ITEMS = ['金幣', '怪物素材', '菁英素材', '部位素材']
+const PAUSED_DESTINY_EVENTS = new Set<GameEvent['type']>(['destinyDescend', 'destinyPoint', 'resonanceGain'])
 
 /**
  * 事件 → 音效對照(GDD § 10.5 六層優先序)。
@@ -70,6 +71,26 @@ const EVENT_SFX: Partial<Record<GameEvent['type'], sfx.SfxName>> = {
 
 /** 三系技能的音色。第二技能(引爆)另走 burst,因為那是機制成功層不是身分層 */
 const SKILL_SFX: Partial<Record<SkillId, sfx.SfxName>> = {
+  armsHeavy: 'skillGale',
+  armsCharge: 'skillGale',
+  armsCommand: 'skillGale',
+  armsLegend: 'skillShield',
+  bodyGuard: 'skillShield',
+  bodyIronwall: 'skillShield',
+  bodyCommand: 'skillShield',
+  bodyLegend: 'skillShield',
+  agilityRoll: 'skillGale',
+  agilityHaste: 'skillGale',
+  agilityCommand: 'skillGale',
+  agilityLegend: 'skillGale',
+  magicFireball: 'skillHoly',
+  magicBurst: 'skillHoly',
+  magicCommand: 'skillHoly',
+  magicLegend: 'skillHoly',
+  faithHeal: 'skillHoly',
+  faithBlessing: 'skillHoly',
+  faithCommand: 'skillHoly',
+  faithLegend: 'skillHoly',
   shieldRush: 'skillShield',
   bulwark: 'skillShield',
   rally: 'skillShield',
@@ -102,6 +123,11 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         sigils: s.sigils,
         sigilMax: sigilCap(s),
         combo: s.combo,
+        trackArms: s.tracks.arms,
+        trackBody: s.tracks.body,
+        trackAgility: s.tracks.agility,
+        trackMagic: s.tracks.magic,
+        trackFaith: s.tracks.faith,
         charging: s.charging,
         chargeStacks: s.chargeStacks,
         relicLeft: s.relicLeft,
@@ -162,6 +188,7 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
     const off = gameEvents.on((e) => {
       const scene = sceneRef.current
       if (!scene) return
+      if (PAUSED_DESTINY_EVENTS.has(e.type)) return
       // 音效走對照表統一派送,不散進下面三十個分支(漏一個就少一個音,對不出來)
       const named = EVENT_SFX[e.type]
       if (named) sfx.play(named)

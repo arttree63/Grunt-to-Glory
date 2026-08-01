@@ -102,6 +102,20 @@ import hero4Url from '../../assets/visual/rookie-soldier/idle/idle-4.png'
 import forestUrl from '../../assets/visual/scenes/forest-border-v1.png'
 import type { BossKind, JobId, LegendId, MercId, SkillId } from '../core/types'
 
+const cc0SpellModules = import.meta.glob('../../assets/visual/vfx/cc0-spells/**/*.png', {
+  eager: true,
+  import: 'default',
+  query: '?url',
+}) as Record<string, string>
+
+function cc0SpellSequence(folder: string): string[] {
+  const frameNumber = (path: string) => Number(path.match(/_(\d+)\.png$/)?.[1] ?? 0)
+  return Object.entries(cc0SpellModules)
+    .filter(([path]) => path.includes(`/cc0-spells/${folder}/`))
+    .sort(([a], [b]) => frameNumber(a) - frameNumber(b))
+    .map(([, url]) => url)
+}
+
 /**
  * 戰鬥演出層。只讀 snapshot 做畫面,不 import React / store 邏輯。
  * 構圖與回饋規格見 .claude/skills/clicker-ui/SKILL.md。
@@ -130,6 +144,11 @@ export interface BattleSnapshot {
   sigilMax: number
   /** 連斬層數 → 腳下環狀刻度 */
   combo: number
+  trackArms: number
+  trackBody: number
+  trackAgility: number
+  trackMagic: number
+  trackFaith: number
   /** 蓄勢中 / 已累積層數 → 武器蓄光 */
   charging: boolean
   chargeStacks: number
@@ -227,6 +246,11 @@ interface VisualAssets {
   hit: Texture[]
   armsHeavy: Texture[]
   armsCharge: Texture[]
+  spellSword: Texture[]
+  spellFireball: Texture[]
+  spellColumn: Texture[]
+  spellEnergy: Texture[]
+  spellDark: Texture[]
 }
 
 const textureGroups = {
@@ -260,6 +284,11 @@ const textureGroups = {
   hit: [hit1Url, hit2Url, hit3Url, hit4Url],
   armsHeavy: [armsHeavy1Url, armsHeavy2Url, armsHeavy3Url, armsHeavy4Url, armsHeavy5Url, armsHeavy6Url],
   armsCharge: [armsCharge1Url, armsCharge2Url, armsCharge3Url, armsCharge4Url, armsCharge5Url, armsCharge6Url, armsCharge7Url, armsCharge8Url],
+  spellSword: cc0SpellSequence('sword-fire'),
+  spellFireball: cc0SpellSequence('fireball'),
+  spellColumn: cc0SpellSequence('light-column'),
+  spellEnergy: cc0SpellSequence('energy-ball'),
+  spellDark: cc0SpellSequence('dark-burst'),
 }
 
 /**
@@ -283,6 +312,11 @@ export const BATTLE_TEXTURE_URLS: string[] = [
   ...textureGroups.hit,
   ...textureGroups.armsHeavy,
   ...textureGroups.armsCharge,
+  ...textureGroups.spellSword,
+  ...textureGroups.spellFireball,
+  ...textureGroups.spellColumn,
+  ...textureGroups.spellEnergy,
+  ...textureGroups.spellDark,
 ]
 
 export function warmBattleTextures(onProgress?: (ratio: number) => void): Promise<unknown> {
@@ -298,7 +332,7 @@ async function loadTextures(urls: string[]): Promise<Texture[]> {
 }
 
 async function loadVisualAssets(): Promise<VisualAssets> {
-  const [background, heroEntries, goblin, imp, boss, chest, goldenGoblin, mercEntries, turret, slash, hit, armsHeavy, armsCharge] = await Promise.all([
+  const [background, heroEntries, goblin, imp, boss, chest, goldenGoblin, mercEntries, turret, slash, hit, armsHeavy, armsCharge, spellSword, spellFireball, spellColumn, spellEnergy, spellDark] = await Promise.all([
     Assets.load<Texture>(forestUrl),
     Promise.all(
       Object.entries(textureGroups.heroes).map(async ([jobId, urls]) => {
@@ -320,13 +354,24 @@ async function loadVisualAssets(): Promise<VisualAssets> {
     loadTextures(textureGroups.hit),
     loadTextures(textureGroups.armsHeavy),
     loadTextures(textureGroups.armsCharge),
+    loadTextures(textureGroups.spellSword),
+    loadTextures(textureGroups.spellFireball),
+    loadTextures(textureGroups.spellColumn),
+    loadTextures(textureGroups.spellEnergy),
+    loadTextures(textureGroups.spellDark),
   ])
   background.source.scaleMode = 'nearest'
   armsHeavy.forEach((texture) => { texture.source.scaleMode = 'linear' })
   armsCharge.forEach((texture) => { texture.source.scaleMode = 'linear' })
+  ;[spellSword, spellFireball, spellColumn, spellEnergy, spellDark]
+    .flat()
+    .forEach((texture) => { texture.source.scaleMode = 'linear' })
   const heroes = Object.fromEntries(heroEntries) as Record<JobId, Texture[]>
   const mercenaries = Object.fromEntries(mercEntries) as Record<MercId, Texture[]>
-  return { background, heroes, goblin, imp, boss, chest, goldenGoblin, mercenaries, turret, slash, hit, armsHeavy, armsCharge }
+  return {
+    background, heroes, goblin, imp, boss, chest, goldenGoblin, mercenaries, turret, slash, hit,
+    armsHeavy, armsCharge, spellSword, spellFireball, spellColumn, spellEnergy, spellDark,
+  }
 }
 
 export class BattleScene {
@@ -539,6 +584,92 @@ export class BattleScene {
       this.spawnChargeAnimation(target)
       this.shake = 10
       this.zoom = 1.5
+    } else if (skillId === 'armsCommand') {
+      this.spawnCommandCuts(target, 5, 0xff6b45)
+      this.spawnTextureBurst(this.assets.spellSword, target, 760, 1.05)
+      this.shake = 13
+      this.zoom = 1.7
+    } else if (skillId === 'armsLegend') {
+      this.spawnHeroAura(0xd94a32, 4)
+      this.shake = 12
+      this.zoom = 1.8
+    } else if (skillId === 'bodyGuard') {
+      this.spawnHeroWard(1, 0x82c8ff)
+      this.shake = 5
+      this.zoom = 0.8
+    } else if (skillId === 'bodyIronwall') {
+      this.spawnHeroWard(2, 0x6fa9db)
+      this.spawnHeroAura(0x7fc7ff, 1)
+      this.shake = 7
+      this.zoom = 1
+    } else if (skillId === 'bodyCommand') {
+      this.spawnHeroWard(3, 0x9edcff)
+      this.spawnTextureBurst(this.assets.spellColumn, this.heroPoint(), 760, 0.78, 0xa8d8ff)
+      this.shake = 9
+      this.zoom = 1.2
+    } else if (skillId === 'bodyLegend') {
+      this.spawnHeroWard(4, 0xd8efff)
+      this.spawnHeroAura(0x75bde8, 4)
+      this.shake = 13
+      this.zoom = 1.6
+    } else if (skillId === 'agilityRoll') {
+      this.spawnHeroDash(2, 0x84e4a7)
+      this.shake = 4
+      this.zoom = 0.8
+    } else if (skillId === 'agilityHaste') {
+      this.spawnHeroDash(3, 0x56d989)
+      this.spawnHeroAura(0x67df98, 1)
+      this.shake = 5
+      this.zoom = 1
+    } else if (skillId === 'agilityCommand') {
+      this.spawnCommandCuts(target, 8, 0x7cf0bc)
+      this.spawnGaleCuts(target)
+      this.shake = 9
+      this.zoom = 1.3
+    } else if (skillId === 'agilityLegend') {
+      this.spawnHeroDash(5, 0x4fe58a)
+      this.spawnCommandCuts(target, 12, 0xb3ffd3)
+      this.shake = 11
+      this.zoom = 1.5
+    } else if (skillId === 'magicFireball') {
+      this.spawnMagicProjectile(this.assets.spellFireball, target, 0xff8a35)
+      this.shake = 8
+      this.zoom = 1.2
+    } else if (skillId === 'magicBurst') {
+      this.spawnTextureBurst(this.assets.spellEnergy, target, 820, 1.65, 0xc676ff)
+      this.spawnElementBursts(target, 3)
+      this.shake = 11
+      this.zoom = 1.6
+    } else if (skillId === 'magicCommand') {
+      this.spawnElementBursts(target, 5)
+      this.spawnTextureBurst(this.assets.spellColumn, target, 920, 1.05, 0xb996ff)
+      this.shake = 13
+      this.zoom = 1.8
+    } else if (skillId === 'magicLegend') {
+      this.spawnTextureBurst(this.assets.spellDark, target, 1100, 2.7, 0xc56cff)
+      this.spawnTextureBurst(this.assets.spellColumn, target, 1050, 1.35, 0xe6c8ff, 130)
+      this.shake = 17
+      this.zoom = 2.2
+    } else if (skillId === 'faithHeal') {
+      this.spawnTextureBurst(this.assets.spellColumn, this.heroPoint(), 760, 0.72, 0xffdf74)
+      this.spawnHeroBurst(0xffe28a)
+      this.shake = 4
+      this.zoom = 0.8
+    } else if (skillId === 'faithBlessing') {
+      this.spawnSanctuary(1)
+      this.spawnHeroAura(0xffd86e, 2)
+      this.shake = 5
+      this.zoom = 1
+    } else if (skillId === 'faithCommand') {
+      this.spawnSanctuary(2)
+      this.spawnJudgement(target)
+      this.shake = 11
+      this.zoom = 1.6
+    } else if (skillId === 'faithLegend') {
+      this.spawnSanctuary(4)
+      this.spawnTextureBurst(this.assets.spellColumn, this.heroPoint(), 1100, 1.1, 0xffe490)
+      this.shake = 13
+      this.zoom = 1.8
     } else if (skillId === 'shieldRush' || skillId === 'bulwark') {
       this.spawnShieldWave(target)
       this.shake = 15
@@ -556,6 +687,8 @@ export class BattleScene {
       this.shake = 9
       this.zoom = 1.6
     }
+
+    if (skillId) this.spawnFusionAccents(skillId, target)
 
     if (this.getSnap().legends.includes('lostbanner')) this.spawnBannerColumn(target)
     if (skillId === 'edict' && this.getSnap().legends.includes('codexpage')) {
@@ -1310,6 +1443,10 @@ export class BattleScene {
     return mob?.hitPoint() ?? { x: this.W / 2, y: this.H * 0.48 }
   }
 
+  private heroPoint() {
+    return { x: this.hero.x, y: this.hero.y - this.H * 0.075 }
+  }
+
   private addTimedFx(
     fx: TimedFx,
     duration: number,
@@ -1334,6 +1471,215 @@ export class BattleScene {
         this.timedFx.splice(i, 1)
       }
     }
+  }
+
+  private spawnTextureBurst(
+    textures: Texture[],
+    point: { x: number; y: number },
+    duration: number,
+    scale: number,
+    tint = 0xffffff,
+    delay = 0,
+  ) {
+    const fx = new Container() as TimedFx
+    const sprite = new AnimatedSprite(textures)
+    sprite.anchor.set(0.5)
+    sprite.tint = tint
+    sprite.scale.set(scale * Math.min(1.12, this.W / 390))
+    sprite.gotoAndStop(0)
+    fx.addChild(sprite)
+    fx.position.set(point.x, point.y)
+    this.addTimedFx(fx, duration + delay, (node) => {
+      const local = Math.max(0, Math.min(1, (node._age - delay) / duration))
+      sprite.visible = node._age >= delay
+      sprite.gotoAndStop(Math.min(textures.length - 1, Math.floor(local * textures.length)))
+      node.alpha = local > 0.82 ? (1 - local) / 0.18 : Math.min(1, local * 8)
+    })
+  }
+
+  private spawnMagicProjectile(textures: Texture[], target: { x: number; y: number }, tint: number) {
+    const start = this.heroPoint()
+    const fx = new Container() as TimedFx
+    const sprite = new AnimatedSprite(textures)
+    sprite.anchor.set(0.5)
+    sprite.tint = tint
+    sprite.scale.set(Math.min(1.05, this.W / 420))
+    sprite.gotoAndStop(0)
+    fx.addChild(sprite)
+    fx.position.set(start.x, start.y)
+    fx.rotation = Math.atan2(target.y - start.y, target.x - start.x)
+    let impacted = false
+    this.addTimedFx(fx, 760, (node, p) => {
+      const travel = 1 - (1 - p) ** 3
+      node.position.set(start.x + (target.x - start.x) * travel, start.y + (target.y - start.y) * travel)
+      node.scale.set(0.72 + p * 0.45)
+      sprite.gotoAndStop(Math.min(textures.length - 1, Math.floor(p * textures.length)))
+      node.alpha = p > 0.86 ? (1 - p) / 0.14 : 1
+      if (!impacted && p >= 0.76) {
+        impacted = true
+        this.spawnImpact(target.x, target.y, 1.15)
+      }
+    })
+  }
+
+  private spawnHeroWard(level: number, color: number) {
+    const fx = new Container() as TimedFx
+    const g = new Graphics()
+    for (let i = 0; i < Math.min(4, level + 1); i++) {
+      const radius = 48 + i * 13
+      g.arc(0, 0, radius, Math.PI * 1.03, Math.PI * 1.97)
+        .stroke({ width: Math.max(2, 8 - i * 1.5), color, alpha: 0.82 - i * 0.12 })
+    }
+    g.poly([-25, -45, 25, -45, 36, -12, 0, 26, -36, -12])
+      .fill({ color, alpha: 0.15 + level * 0.035 })
+      .stroke({ width: 3, color: 0xffffff, alpha: 0.7 })
+    fx.addChild(g)
+    const point = this.heroPoint()
+    fx.position.set(point.x, point.y + 18)
+    this.addTimedFx(fx, 900 + level * 90, (node, p) => {
+      const intro = 1 - (1 - Math.min(1, p * 5)) ** 3
+      node.scale.set(0.45 + intro * (0.72 + level * 0.08))
+      node.alpha = p < 0.7 ? 1 : (1 - p) / 0.3
+    }, this.fieldLayer)
+  }
+
+  private spawnHeroAura(color: number, intensity: number) {
+    const fx = new Container() as TimedFx
+    const g = new Graphics()
+    for (let i = 0; i < 8 + intensity * 2; i++) {
+      const a = (i / (8 + intensity * 2)) * Math.PI * 2
+      g.moveTo(Math.cos(a) * 30, Math.sin(a) * 18)
+        .lineTo(Math.cos(a) * (66 + intensity * 9), Math.sin(a) * (42 + intensity * 6))
+        .stroke({ width: 2 + (i % 3), color, alpha: 0.5 + (i % 2) * 0.18 })
+    }
+    g.ellipse(0, 18, 58 + intensity * 8, 18 + intensity * 2)
+      .stroke({ width: 4, color: 0xffffff, alpha: 0.65 })
+    fx.addChild(g)
+    const point = this.heroPoint()
+    fx.position.set(point.x, point.y + 14)
+    this.addTimedFx(fx, 940, (node, p) => {
+      node.scale.set(0.35 + p * 1.25)
+      node.rotation = p * 0.32
+      node.alpha = Math.sin(p * Math.PI)
+    }, this.fieldLayer)
+  }
+
+  private spawnHeroDash(copies: number, color: number) {
+    const fx = new Container() as TimedFx
+    const textures = this.assets.heroes[this.heroJob]
+    for (let i = copies; i >= 0; i--) {
+      const rider = new AnimatedSprite(textures)
+      rider.anchor.set(0.5, 233 / 256)
+      rider.animationSpeed = frameSpeed(HERO_FRAME_MS)
+      rider.scale.set(this.heroBody.scale.x, this.heroBody.scale.y)
+      rider.tint = i === 0 ? 0xffffff : color
+      rider.alpha = i === 0 ? 1 : 0.36 - i * 0.035
+      rider.position.set((i - copies / 2) * 22, Math.abs(i - copies / 2) * 5)
+      rider.play()
+      fx.addChild(rider)
+    }
+    const point = this.heroPoint()
+    fx.position.set(point.x, point.y + this.H * 0.075)
+    this.addTimedFx(fx, 700, (node, p) => {
+      node.x = point.x + Math.sin(p * Math.PI * 2) * (22 + copies * 8)
+      node.scale.set(1 + Math.sin(p * Math.PI) * 0.12, 1 - Math.sin(p * Math.PI) * 0.08)
+      node.alpha = p > 0.75 ? (1 - p) / 0.25 : 1
+    })
+  }
+
+  private spawnCommandCuts(target: { x: number; y: number }, count: number, color: number) {
+    for (let i = 0; i < count; i++) {
+      const fx = new Container() as TimedFx
+      const g = new Graphics()
+      const length = 54 + (i % 4) * 14
+      g.moveTo(-length / 2, 0).lineTo(length / 2, 0)
+        .stroke({ width: 5, color, alpha: 0.78 })
+      g.moveTo(-length / 3, -3).lineTo(length / 2, -3)
+        .stroke({ width: 2, color: 0xffffff, alpha: 0.9 })
+      fx.addChild(g)
+      fx.position.set(target.x - 34 + (i % 4) * 22, target.y - 52 + (i % 5) * 24)
+      fx.rotation = -0.9 + (i % 5) * 0.38
+      const delay = i * 42
+      this.addTimedFx(fx, 500 + delay, (node) => {
+        const local = Math.max(0, Math.min(1, (node._age - delay) / 500))
+        node.visible = node._age >= delay
+        node.scale.set(0.2 + local * 1.65, 0.65 + local * 0.35)
+        node.alpha = Math.sin(local * Math.PI)
+      })
+    }
+  }
+
+  private spawnElementBursts(target: { x: number; y: number }, count: number) {
+    const colors = [0xff774a, 0x7bdcff, 0xc57cff, 0xf6d86b, 0x76e3a2]
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 - Math.PI / 2
+      this.spawnTextureBurst(
+        this.assets.spellEnergy,
+        { x: target.x + Math.cos(angle) * 48, y: target.y + Math.sin(angle) * 36 },
+        650,
+        0.75 + (i % 2) * 0.18,
+        colors[i % colors.length],
+        i * 70,
+      )
+    }
+  }
+
+  private spawnSanctuary(level: number) {
+    const fx = new Container() as TimedFx
+    const g = new Graphics()
+    for (let i = 0; i < 2 + level; i++) {
+      g.ellipse(0, 16, 42 + i * 17, 14 + i * 5)
+        .stroke({ width: Math.max(2, 6 - i * 0.7), color: i % 2 ? 0xffffff : 0xffd867, alpha: 0.82 - i * 0.09 })
+    }
+    g.moveTo(0, -62 - level * 8).lineTo(0, 42)
+      .stroke({ width: 7 + level * 2, color: 0xffefae, alpha: 0.5 })
+    g.moveTo(-20, -18).lineTo(20, -18)
+      .stroke({ width: 5, color: 0xffffff, alpha: 0.82 })
+    fx.addChild(g)
+    const point = this.heroPoint()
+    fx.position.set(point.x, point.y + 22)
+    this.addTimedFx(fx, 980 + level * 100, (node, p) => {
+      const intro = Math.min(1, p * 5)
+      node.scale.set(0.35 + intro * (0.72 + level * 0.08))
+      node.alpha = p < 0.72 ? 1 : (1 - p) / 0.28
+      node.rotation = Math.sin(p * Math.PI * 2) * 0.035
+    }, this.fieldLayer)
+  }
+
+  private fusionVisualStage(a: number, b: number) {
+    const level = Math.min(a, b)
+    return level >= 200 ? 3 : level >= 100 ? 2 : level >= 50 ? 1 : 0
+  }
+
+  private spawnFusionAccents(skillId: SkillId, target: { x: number; y: number }) {
+    const snap = this.getSnap()
+    const armsBody = this.fusionVisualStage(snap.trackArms, snap.trackBody)
+    const armsAgility = this.fusionVisualStage(snap.trackArms, snap.trackAgility)
+    const armsMagic = this.fusionVisualStage(snap.trackArms, snap.trackMagic)
+    const armsFaith = this.fusionVisualStage(snap.trackArms, snap.trackFaith)
+    const bodyAgility = this.fusionVisualStage(snap.trackBody, snap.trackAgility)
+    const bodyMagic = this.fusionVisualStage(snap.trackBody, snap.trackMagic)
+    const bodyFaith = this.fusionVisualStage(snap.trackBody, snap.trackFaith)
+    const agilityMagic = this.fusionVisualStage(snap.trackAgility, snap.trackMagic)
+    const agilityFaith = this.fusionVisualStage(snap.trackAgility, snap.trackFaith)
+    const magicFaith = this.fusionVisualStage(snap.trackMagic, snap.trackFaith)
+
+    if (skillId === 'armsHeavy') {
+      if (armsAgility) this.spawnCommandCuts(target, armsAgility, 0x8ef0bf)
+      if (armsMagic) this.spawnTextureBurst(this.assets.spellEnergy, target, 520, 0.55 + armsMagic * 0.12, 0xba7cff)
+      if (armsFaith) this.spawnHeroBurst(0xffdc78)
+    }
+    if (skillId === 'armsLegend' && armsBody) this.spawnHeroWard(armsBody, 0x9bd7ff)
+    if (skillId === 'bodyGuard' && bodyMagic)
+      this.spawnTextureBurst(this.assets.spellEnergy, target, 560, 0.5 + bodyMagic * 0.12, 0x82d5ff)
+    if (skillId === 'agilityRoll') {
+      if (bodyAgility) this.spawnHeroWard(bodyAgility, 0x91d4ff)
+      if (agilityFaith) this.spawnHeroBurst(0xffdf7d)
+    }
+    if (skillId === 'magicBurst' && agilityMagic)
+      this.spawnCommandCuts(target, agilityMagic * 2, 0x95f5d0)
+    if (skillId.startsWith('magic') && magicFaith) this.spawnHeroBurst(0xffe38c)
+    if (skillId.startsWith('faith') && bodyFaith) this.spawnHeroWard(bodyFaith, 0xffe5a0)
   }
 
   private spawnShieldWave(target: { x: number; y: number }) {
