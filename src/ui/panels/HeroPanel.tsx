@@ -360,7 +360,7 @@ function SkillTreeBlueprint() {
               {TRAINING_BRANCHES.map((branch) => {
                 const node = branch.nodes[rowIndex]
                 const points = s.tracks[branch.id]
-                const unlocked = points >= node.level
+                const unlocked = B.SKILL_LAB_MODE || points >= node.level
                 const isEquipped = equipped.includes(node.skillId)
                 const equipFull = equipped.length >= 5 && !isEquipped
                 return (

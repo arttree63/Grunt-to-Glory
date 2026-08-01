@@ -838,6 +838,7 @@ const MAX_KILLS_PER_TICK = 500
 
 /** 固定 tick;dtMs 由外部 game loop 提供。rng 可注入以便模擬可重現 */
 export function applyTick(s: GameState, dtMs: number, rng: Rng = Math.random): GameEvent[] {
+  if (B.SKILL_LAB_MODE) s.mp = B.MP_MAX
   const events = tickBattle(s, dtMs, rng)
   // 軍功記錄:tickBattle 有三個 return 點,所以判定放在外層一次做完。
   // 只掃還沒拿到的,全拿完就整段跳過
@@ -1873,18 +1874,24 @@ export function availableSkills(s: GameState): SkillId[] {
   return list
 }
 
-/** 依單項操練點數解鎖的五系技能。 */
-export function unlockedTrainingSkills(s: GameState): SkillId[] {
+function progressionUnlockedTrainingSkills(s: GameState): SkillId[] {
   return TRAINING_BRANCHES.flatMap((branch) =>
     branch.nodes.filter((node) => s.tracks[branch.id] >= node.level).map((node) => node.skillId),
   )
+}
+
+/** 依單項操練點數解鎖的五系技能。 */
+export function unlockedTrainingSkills(s: GameState): SkillId[] {
+  if (B.SKILL_LAB_MODE) return TRAINING_BRANCHES.flatMap((branch) => branch.nodes.map((node) => node.skillId))
+  return progressionUnlockedTrainingSkills(s)
 }
 
 /** 戰鬥列實際裝配技能。未自訂時自動採用最早解鎖的五招。 */
 export function equippedSkills(s: GameState): SkillId[] {
   const unlocked = unlockedTrainingSkills(s)
   const valid = s.skillLoadout.filter((id) => unlocked.includes(id)).slice(0, 5)
-  return valid.length > 0 ? valid : unlocked.slice(0, 5)
+  const fallback = B.SKILL_LAB_MODE ? progressionUnlockedTrainingSkills(s) : unlocked
+  return valid.length > 0 ? valid : fallback.slice(0, 5)
 }
 
 /** 裝配或卸下技能；超過五格時拒絕新增。 */
@@ -2011,6 +2018,7 @@ export function skillReady(s: GameState, id: SkillId): boolean {
   if (!activeSkillPool(s).includes(id)) return false
   if ((s.skillCd[id] ?? 0) > 0) return false
   if (isApexSkill(s, id)) return true
+  if (B.SKILL_LAB_MODE) return true
   // 前三格吃 MP(v4.1 § 5)。⚠️ 指揮形態的附加成本要一起算進門檻:
   // 不算的話自動施放會在 MP 剛好等於成本時就放,附加成本被 clamp 成 0 → ×1.6 變純白送
   const extra = s.commandReady ? mpCost(s, id) * (B.COMMANDER_CD - 1) : 0
@@ -2028,7 +2036,8 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
     s.skillCd[id] = skillCooldown(s, id)
   } else {
     // 吃 MP 的招:成本是 MP,CD 只是防連發的保底
-    s.mp = Math.max(0, s.mp - mpCost(s, id))
+    if (!B.SKILL_LAB_MODE) s.mp = Math.max(0, s.mp - mpCost(s, id))
+    else s.mp = B.MP_MAX
     s.skillCd[id] = B.MP_MIN_CD
   }
   s.runStats.skillCasts++
@@ -2052,7 +2061,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
     } else {
       // ⚠️ MP 招的 CD 只有 1.5 秒,乘 1.15 等於代價蒸發(0.225 秒換 ×1.6 傷害)。
       // 代價改由 MP 承擔,交換才真的成立
-      s.mp = Math.max(0, s.mp - mpCost(s, id) * (B.COMMANDER_CD - 1))
+      if (!B.SKILL_LAB_MODE) s.mp = Math.max(0, s.mp - mpCost(s, id) * (B.COMMANDER_CD - 1))
     }
   }
   const skillDmg = (1 + bonus.skillDmg) * (command ? B.COMMANDER_POWER : 1)
