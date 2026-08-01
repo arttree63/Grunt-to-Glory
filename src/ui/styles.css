@@ -1644,6 +1644,7 @@ button {
 }
 .portrait-frame,
 .merc-portrait {
+  position: relative;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
@@ -1658,12 +1659,13 @@ button {
   border-radius: 12px 12px 9px 9px;
 }
 .portrait-frame img {
-  width: 76px;
-  height: 76px;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 2px;
   object-fit: contain;
-  object-position: center 28%;
+  object-position: center;
   image-rendering: pixelated;
-  transform: translateY(9px) scale(1.3);
 }
 .merc-portrait {
   width: 42px;
@@ -1672,11 +1674,13 @@ button {
   color: #675b61;
 }
 .merc-portrait img {
-  width: 56px;
-  height: 56px;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 2px;
   object-fit: contain;
+  object-position: center;
   image-rendering: pixelated;
-  transform: translateY(7px) scale(1.15);
 }
 .merc-portrait.empty { border-color: #453640; }
 .hero-status-main { flex: 1; min-width: 0; }

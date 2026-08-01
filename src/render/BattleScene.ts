@@ -340,7 +340,7 @@ export class BattleScene {
   private heroJob: JobId = 'rookie'
   private slashFx: AnimatedSprite
   private mercSprite: AnimatedSprite
-  private mercId: MercId = 'hound'
+  private mercId: MercId | null = null
   private turretSprite: AnimatedSprite
   private timedFx: TimedFx[] = []
 
@@ -2083,10 +2083,15 @@ export class BattleScene {
 
   private syncMerc(mercId: MercId | null) {
     this.mercSprite.visible = !!mercId
-    if (!mercId || mercId === this.mercId) return
+    if (!mercId) {
+      this.mercId = null
+      return
+    }
+    if (mercId === this.mercId) return
     this.mercId = mercId
     this.mercSprite.textures = this.assets.mercenaries[mercId]
     this.mercSprite.gotoAndPlay(0)
+    this.layoutCompanions()
   }
 
   private layoutCompanions() {
