@@ -2295,184 +2295,222 @@ button {
   font-size: 10px;
   line-height: 1.55;
 }
-.training-branches {
+.training-tree-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0 0 6px;
+  overscroll-behavior-x: contain;
+  scrollbar-color: #80623d #151116;
+  scrollbar-width: thin;
+}
+.training-matrix {
   display: grid;
-  gap: 9px;
-}
-.training-branch {
+  grid-template-columns: 64px repeat(5, minmax(136px, 1fr));
+  min-width: 744px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--branch-color) 45%, #352b38);
-  border-radius: 12px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--branch-color) 10%, #1d1723), #151219 65%);
-  box-shadow: inset 3px 0 color-mix(in srgb, var(--branch-color) 80%, transparent);
+  border: 1px solid #6f5434;
+  border-radius: 8px;
+  background: #0c0d11;
+  box-shadow: inset 0 0 30px #000;
 }
-.training-branch > header {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 74px;
-  padding: 5px 10px 3px 5px;
+.matrix-corner,
+.matrix-level,
+.matrix-branch,
+.matrix-node {
+  border-right: 1px solid #433426;
+  border-bottom: 1px solid #433426;
 }
-.tree-portrait {
-  flex: 0 0 66px;
-  width: 66px;
-  height: 66px;
-  border: 2px solid color-mix(in srgb, var(--branch-color) 70%, #e3c681);
-  border-radius: 50%;
-  background-image: url('../../assets/visual/ui/skill-tree-20260801/sources/characters-front.jpg');
-  background-repeat: no-repeat;
-  background-size: 480px 640px;
-  box-shadow: inset 0 0 0 2px #151018, 0 2px 8px #0008;
-}
-.portrait-arms { background-position: -92px -42px; }
-.portrait-body { background-position: -92px -487px; }
-.portrait-agility { background-position: -317px -47px; }
-.portrait-magic { background-position: -307px -322px; }
-.portrait-faith { background-position: -307px -487px; }
-.branch-copy {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  gap: 3px;
-}
-.branch-copy b {
-  color: #f1dfc5;
-  font-size: 18px;
-  letter-spacing: 4px;
-}
-.branch-copy small {
-  color: color-mix(in srgb, var(--branch-color) 65%, #d9cfc7);
+.matrix-corner {
+  display: grid;
+  place-items: center;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  color: #a68a62;
+  background: #101014;
   font-size: 10px;
+  letter-spacing: 2px;
 }
-.training-branch > header strong {
+.matrix-branch {
+  display: flex;
+  min-height: 116px;
+  padding: 7px 5px 6px;
+  flex-direction: column;
+  align-items: center;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--branch-color) 18%, #151419), #0d0e12);
+  text-align: center;
+}
+.tree-branch-icon,
+.tree-skill-icon,
+.mini-branch {
+  background-image: url('../../assets/visual/ui/skill-tree-20260801/sources/icon-library.jpg');
+  background-repeat: no-repeat;
+  background-size: 640px 426.5px;
+}
+.tree-branch-icon {
+  width: 54px;
+  height: 54px;
+  border: 1px solid #a98247;
+  border-radius: 50%;
+  box-shadow: 0 0 9px color-mix(in srgb, var(--branch-color) 45%, transparent);
+}
+.branch-icon-arms { background-position: -21px -68px; }
+.branch-icon-body { background-position: -83px -68px; }
+.branch-icon-agility { background-position: -146px -68px; }
+.branch-icon-magic { background-position: -208px -68px; }
+.branch-icon-faith { background-position: -266px -68px; }
+.matrix-branch b {
+  margin-top: 3px;
+  color: #ead6b8;
+  font-size: 14px;
+  letter-spacing: 2px;
+}
+.matrix-branch small {
+  color: color-mix(in srgb, var(--branch-color) 68%, #d5c9b9);
+  font-size: 8px;
+}
+.matrix-branch strong {
+  margin-top: 2px;
   color: var(--branch-color);
-  font-size: 20px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
-.branch-progress {
-  height: 5px;
-  margin: 0 10px;
+.matrix-branch .branch-progress {
+  width: calc(100% - 12px);
+  height: 3px;
+  margin-top: 3px;
   overflow: hidden;
-  border-radius: 999px;
-  background: #08070a;
-  box-shadow: inset 0 1px 2px #000;
+  border-radius: 99px;
+  background: #030406;
 }
-.branch-progress i {
+.matrix-branch .branch-progress i {
   display: block;
   height: 100%;
-  border-radius: inherit;
   background: var(--branch-color);
-  box-shadow: 0 0 8px var(--branch-color);
+  box-shadow: 0 0 6px var(--branch-color);
 }
-.branch-next {
-  padding: 5px 11px 8px;
-  color: var(--dim2);
-  font-size: 9px;
-  text-align: right;
+.matrix-branch em {
+  margin-top: 2px;
+  color: #7f7467;
+  font-size: 7px;
+  font-style: normal;
 }
-.training-nodes {
-  display: grid;
-  gap: 1px;
-  background: #0005;
+.matrix-level {
+  display: flex;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-height: 158px;
+  padding: 8px 3px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  background: #101014;
+  text-align: center;
 }
-.training-node {
+.matrix-level b {
+  color: #d4b27b;
+  font-size: 11px;
+}
+.matrix-level span {
+  margin-top: 4px;
+  color: #7e7161;
+  font-size: 7px;
+  line-height: 1.35;
+}
+.matrix-node {
   position: relative;
-  display: grid;
-  grid-template-columns: 50px minmax(0, 1fr);
-  gap: 9px;
-  min-height: 84px;
-  padding: 8px 9px 8px 65px;
-  background: #17131acc;
-  opacity: .62;
+  display: flex;
+  min-height: 158px;
+  padding: 8px 6px 7px;
+  align-items: center;
+  flex-direction: column;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--branch-color) 7%, #101116), #0c0d11);
+  text-align: center;
+  opacity: .56;
 }
-.training-node.unlocked {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--branch-color) 14%, #1d1820), #17131acc);
+.matrix-node.unlocked {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--branch-color) 17%, #15151a), #0d0e12);
   opacity: 1;
-}
-.node-level {
-  position: absolute;
-  top: 6px;
-  left: 5px;
-  z-index: 1;
-  padding: 1px 5px;
-  border: 1px solid #594b56;
-  border-radius: 5px;
-  background: #141116;
-  color: #cdbfae;
-  font-size: 9px;
-  font-weight: 700;
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--branch-color) 14%, transparent);
 }
 .tree-skill-icon {
-  position: absolute;
-  top: 22px;
-  left: 7px;
-  width: 52px;
-  height: 52px;
-  overflow: hidden;
-  border: 2px solid color-mix(in srgb, var(--branch-color) 65%, #b9985d);
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #a47b3f;
   border-radius: 50%;
-  background-image: url('../../assets/visual/ui/skill-tree-20260801/sources/icons.jpg');
-  background-repeat: no-repeat;
-  background-size: 480px 640px;
-  box-shadow: inset 0 0 8px #0005, 0 2px 5px #0008;
+  box-shadow: 0 0 7px color-mix(in srgb, var(--branch-color) 40%, transparent);
 }
-.skill-arms { background-position: -36px -222px; }
-.skill-body { background-position: -124px -222px; }
-.skill-agility { background-position: -216px -222px; }
-.skill-magic { background-position: -299px -222px; }
-.skill-faith { background-position: -384px -222px; }
-.training-node > div {
-  min-width: 0;
-}
-.training-node small,
-.training-node b,
-.training-node p,
-.training-node em {
-  display: block;
-}
-.training-node small {
+.skill-arms-0 { background-position: -50px -238px; }
+.skill-arms-1 { background-position: -85px -238px; }
+.skill-arms-2 { background-position: -120px -238px; }
+.skill-arms-3 { background-position: -155px -238px; }
+.skill-body-0 { background-position: -50px -268px; }
+.skill-body-1 { background-position: -85px -268px; }
+.skill-body-2 { background-position: -120px -268px; }
+.skill-body-3 { background-position: -155px -268px; }
+.skill-agility-0 { background-position: -50px -298px; }
+.skill-agility-1 { background-position: -85px -298px; }
+.skill-agility-2 { background-position: -120px -298px; }
+.skill-agility-3 { background-position: -155px -298px; }
+.skill-magic-0 { background-position: -50px -328px; }
+.skill-magic-1 { background-position: -85px -328px; }
+.skill-magic-2 { background-position: -120px -328px; }
+.skill-magic-3 { background-position: -155px -328px; }
+.skill-faith-0 { background-position: -50px -358px; }
+.skill-faith-1 { background-position: -85px -358px; }
+.skill-faith-2 { background-position: -120px -358px; }
+.skill-faith-3 { background-position: -155px -358px; }
+.matrix-node > small {
+  margin-top: 3px;
   color: var(--branch-color);
-  font-size: 9px;
+  font-size: 7px;
 }
-.training-node b {
+.matrix-node > b {
   margin: 1px 0 3px;
-  color: #eadcc9;
-  font-size: 14px;
+  color: #e6d3b5;
+  font-size: 11px;
   letter-spacing: 1px;
 }
-.training-node p {
+.matrix-node p {
   margin: 0;
-  color: #a99eaa;
-  font-size: 10px;
-  line-height: 1.45;
+  color: #9c9295;
+  font-size: 8px;
+  line-height: 1.4;
 }
-.training-node em {
-  margin-top: 3px;
-  color: #cfb06f;
-  font-size: 9px;
+.matrix-node > em {
+  margin-top: auto;
+  padding-top: 3px;
+  color: #bd9b61;
+  font-size: 7px;
   font-style: normal;
 }
 .node-state {
   position: absolute;
-  top: 8px;
-  right: 9px;
-  color: #837985;
-  font-size: 9px;
+  top: 5px;
+  right: 5px;
+  color: #776d72;
+  font-size: 7px;
   font-variant-numeric: tabular-nums;
 }
-.training-node.unlocked .node-state {
+.matrix-node.unlocked .node-state {
   color: var(--branch-color);
 }
 .fusion-head {
   margin-top: 18px;
 }
 .fusion-grid {
-  display: grid;
+  display: flex;
   gap: 7px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  overscroll-behavior-x: contain;
 }
 .fusion-card {
   position: relative;
+  flex: 0 0 168px;
   padding: 9px 10px 8px;
   border: 1px solid #403443;
   border-radius: 10px;
@@ -2493,6 +2531,7 @@ button {
   display: flex;
   align-items: center;
   gap: 4px;
+  justify-content: center;
   margin-bottom: 5px;
 }
 .fusion-pair i {
@@ -2501,16 +2540,17 @@ button {
   font-style: normal;
 }
 .mini-branch {
-  padding: 2px 6px;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  font-size: 9px;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #9b7742;
+  border-radius: 50%;
+  box-shadow: 0 0 5px currentColor;
 }
-.branch-dot-arms { color: #c85b45; }
-.branch-dot-body { color: #6197c7; }
-.branch-dot-agility { color: #5baa75; }
-.branch-dot-magic { color: #9a69c4; }
-.branch-dot-faith { color: #d1ad50; }
+.branch-dot-arms { color: #c85b45; background-position: -29px -76px; }
+.branch-dot-body { color: #6197c7; background-position: -91px -76px; }
+.branch-dot-agility { color: #5baa75; background-position: -154px -76px; }
+.branch-dot-magic { color: #9a69c4; background-position: -216px -76px; }
+.branch-dot-faith { color: #d1ad50; background-position: -274px -76px; }
 .fusion-card > b {
   display: block;
   color: #ead9bf;
@@ -2546,12 +2586,9 @@ button {
   font-size: 11px;
   letter-spacing: 1px;
 }
-@media (min-width: 760px) {
-  .training-branches {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .fusion-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (min-width: 900px) {
+  .training-matrix {
+    min-width: 100%;
   }
 }
 .track-panel {

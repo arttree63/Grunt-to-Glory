@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import * as B from '../../core/balance'
 import { fmt, fmtCombat } from '../../core/format'
 import {
@@ -260,57 +260,62 @@ function SkillTreeBlueprint() {
   return (
     <div className="training-tree">
       <div className="tree-intro">
-        <b>五 大 操 練</b>
+        <b>傳 奇 指 揮 官・操 練 樹</b>
         <span>單項達 20／50／100／200 解鎖。學會可以通吃，上場主動技能最多 5 個。</span>
       </div>
 
-      <div className="training-branches">
-        {TRAINING_BRANCHES.map((branch) => {
-          const points = s.tracks[branch.id]
-          const next = branch.nodes.find((node) => points < node.level)
-          return (
-            <section
-              className={`training-branch branch-${branch.id}`}
-              style={{ '--branch-color': branch.color } as React.CSSProperties}
-              key={branch.id}
-            >
-              <header>
-                <span className={`tree-portrait portrait-${branch.id}`} aria-hidden="true" />
-                <span className="branch-copy">
-                  <b>{branch.name}</b>
-                  <small>{branch.role}・{branch.resource}</small>
-                </span>
-                <strong>{points}</strong>
+      <div className="training-tree-scroll" aria-label="五系操練技能樹，可左右滑動">
+        <div className="training-matrix">
+          <div className="matrix-corner">階級</div>
+          {TRAINING_BRANCHES.map((branch) => {
+            const points = s.tracks[branch.id]
+            const next = branch.nodes.find((node) => points < node.level)
+            return (
+              <header
+                className={`matrix-branch branch-${branch.id}`}
+                style={{ '--branch-color': branch.color } as React.CSSProperties}
+                key={branch.id}
+              >
+                <span className={`tree-branch-icon branch-icon-${branch.id}`} aria-hidden="true" />
+                <b>{branch.name}</b>
+                <small>{branch.role}</small>
+                <strong>{points} 點</strong>
+                <div className="branch-progress" aria-label={`${branch.name} ${points} 點`}>
+                  <i style={{ width: `${Math.min(100, (points / 200) * 100)}%` }} />
+                </div>
+                <em>{next ? `差 ${next.level - points} 點` : '已完成'}</em>
               </header>
+            )
+          })}
 
-              <div className="branch-progress" aria-label={`${branch.name} ${points} 點`}>
-                <i style={{ width: `${Math.min(100, (points / 200) * 100)}%` }} />
+          {[20, 50, 100, 200].map((level, rowIndex) => (
+            <Fragment key={level}>
+              <div className="matrix-level">
+                <b>Lv.{level}</b>
+                <span>{rowIndex === 0 ? '基礎解鎖' : rowIndex === 1 ? '進階強化' : rowIndex === 2 ? '軍團號令' : '傳奇覺醒'}</span>
               </div>
-              <div className="branch-next">
-                {next ? `距離 ${next.name} 還差 ${next.level - points} 點` : '皇家職業線已完成'}
-              </div>
-
-              <div className="training-nodes">
-                {branch.nodes.map((node) => {
-                  const unlocked = points >= node.level
-                  return (
-                    <article className={`training-node${unlocked ? ' unlocked' : ''}`} key={node.level}>
-                      <span className="node-level">Lv.{node.level}</span>
-                      <span className={`tree-skill-icon skill-${branch.id}`} aria-hidden="true" />
-                      <div>
-                        <small>{NODE_KIND_NAME[node.kind]}</small>
-                        <b>{node.name}</b>
-                        <p>{node.desc}</p>
-                        <em>{node.level === 20 ? '解鎖' : '進化'}：{node.corps}</em>
-                      </div>
-                      <span className="node-state">{unlocked ? '已解鎖' : `${points}/${node.level}`}</span>
-                    </article>
-                  )
-                })}
-              </div>
-            </section>
-          )
-        })}
+              {TRAINING_BRANCHES.map((branch) => {
+                const node = branch.nodes[rowIndex]
+                const points = s.tracks[branch.id]
+                const unlocked = points >= node.level
+                return (
+                  <article
+                    className={`matrix-node branch-${branch.id}${unlocked ? ' unlocked' : ''}`}
+                    style={{ '--branch-color': branch.color } as React.CSSProperties}
+                    key={`${branch.id}-${level}`}
+                  >
+                    <span className={`tree-skill-icon skill-${branch.id}-${rowIndex}`} aria-hidden="true" />
+                    <small>{NODE_KIND_NAME[node.kind]}</small>
+                    <b>{node.name}</b>
+                    <p>{node.desc}</p>
+                    <em>{node.level === 20 ? '解鎖' : '進化'}：{node.corps}</em>
+                    <span className="node-state">{unlocked ? '已解鎖' : `${points}/${node.level}`}</span>
+                  </article>
+                )
+              })}
+            </Fragment>
+          ))}
+        </div>
       </div>
 
       <div className="fusion-head">
@@ -325,9 +330,9 @@ function SkillTreeBlueprint() {
           return (
             <article className={`fusion-card stage-${stage}`} key={fusion.name}>
               <div className="fusion-pair">
-                <span className={`mini-branch branch-dot-${fusion.tracks[0]}`}>{TRAINING_BRANCH_NAME[fusion.tracks[0]]}</span>
+                <span className={`mini-branch branch-dot-${fusion.tracks[0]}`} aria-label={TRAINING_BRANCH_NAME[fusion.tracks[0]]} />
                 <i>＋</i>
-                <span className={`mini-branch branch-dot-${fusion.tracks[1]}`}>{TRAINING_BRANCH_NAME[fusion.tracks[1]]}</span>
+                <span className={`mini-branch branch-dot-${fusion.tracks[1]}`} aria-label={TRAINING_BRANCH_NAME[fusion.tracks[1]]} />
               </div>
               <b>{fusion.name}</b>
               <p>{fusion.desc}</p>
