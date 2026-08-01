@@ -40,8 +40,7 @@ export function nearGoal(s: GameState): Goal | null {
   if (s.materials >= B.FORGE_COST) return { text: '素材夠打造一次', tab: 'forge' }
   if (TECHS.some((t) => canBuyTech(s.techs, s.medals, t.id)) || s.medals >= B.ELITE_MEDAL_COST)
     return { text: '勳章夠買永久強化', tab: 'legacy' }
-  // ⚠️「金幣夠升級」不再是 near 目標:主畫面已有常駐升級條,直接按就好,
-  // 再指路去英雄頁反而多繞一圈(LevelBar,2026-07-31)
+  // 「金幣夠升級」不佔用下一步提示；玩家自行進英雄頁批次配點。
   return null
 }
 

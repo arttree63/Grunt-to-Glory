@@ -22,10 +22,8 @@
   --q-gold: #f2c14e;
   --q-crimson: #c8384a;
 
-  /* 底部操作區高度:面板要停在它上方,tab 才能一鍵切換。
-     ⚠️ 每加一條常駐橫條就要同步加高,否則 tab 會被擠出畫面
-     (升級條 44 + 8 margin = 52;下一步條 30 + 8 = 38) */
-  --bottom-h: 196px;
+  /* 底部操作區高度:面板要停在它上方,tab 才能一鍵切換。 */
+  --bottom-h: 151px;
 }
 
 * {
@@ -64,14 +62,14 @@ button {
   flex-direction: column;
 }
 .wrap.no-skills {
-  --bottom-h: 148px;
+  --bottom-h: 103px;
 }
 /* 下一步提示條出現時,底部整體長高,面板/遮罩跟著 var 對齊 */
 .wrap.has-next {
-  --bottom-h: 239px;
+  --bottom-h: 194px;
 }
 .wrap.no-skills.has-next {
-  --bottom-h: 191px;
+  --bottom-h: 146px;
 }
 
 .stage {
@@ -2340,6 +2338,28 @@ button {
 .track-head.pending span,
 .track-head.pending small {
   color: var(--gold);
+}
+.track-multipliers {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: -5px 0 9px;
+}
+.track-multipliers button {
+  min-width: 43px;
+  height: 24px;
+  border: 1px solid #5b4551;
+  border-radius: 7px;
+  background: #19141e;
+  color: var(--dim2);
+  font-size: 11px;
+  font-weight: 700;
+}
+.track-multipliers button.active {
+  border-color: #d4a04c;
+  background: #37253d;
+  color: #f5ce80;
+  box-shadow: 0 0 7px rgba(221, 158, 47, .24);
 }
 .track-card {
   position: relative;

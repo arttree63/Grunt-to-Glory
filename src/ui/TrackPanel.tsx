@@ -29,17 +29,21 @@ const TRACK_DESC: Record<TrackId, { icon: 'hero' | 'legacy' | 'gale' | 'meteor' 
   faith: { icon: 'judgement', main: '回血量(觸發式)', sub: 'debuff 抗性' },
 }
 
+const ADD_AMOUNTS = [1, 10, 100] as const
+type AddAmount = (typeof ADD_AMOUNTS)[number]
+
 export default function TrackPanel() {
   const s = useGameState()
   const setFocus = useGame((st) => st.setTrackFocus)
   const buy = useGame((st) => st.buy)
   const [pending, setPending] = useState<{ track: TrackId; count: number } | null>(null)
+  const [addAmount, setAddAmount] = useState<AddAmount>(1)
   const cost = upCost(s.lv)
   const pendingCost = pending ? bulkUpCost(s.lv, pending.count) : cost
   const canConfirm = pending !== null && s.gold.gte(pendingCost)
 
   const addPoint = (track: TrackId) => {
-    const count = pending?.track === track ? pending.count + 1 : 1
+    const count = pending?.track === track ? pending.count + addAmount : addAmount
     if (s.gold.lt(bulkUpCost(s.lv, count))) return
     setPending({ track, count })
   }
@@ -58,6 +62,19 @@ export default function TrackPanel() {
         <small>{pending ? `${TRACK_NAME[pending.track]} +${pending.count}` : `每點 ${fmt(cost)} 金`}</small>
       </div>
 
+      <div className="track-multipliers" aria-label="每次加點數量">
+        {ADD_AMOUNTS.map((amount) => (
+          <button
+            key={amount}
+            className={addAmount === amount ? 'active' : ''}
+            onClick={() => setAddAmount(amount)}
+            aria-pressed={addAmount === amount}
+          >
+            ×{amount}
+          </button>
+        ))}
+      </div>
+
       {TRACKS.map((t) => {
         const info = TRACK_DESC[t]
         const pts = s.tracks[t]
@@ -66,7 +83,7 @@ export default function TrackPanel() {
         const focused = s.trackFocus === t
         const queued = pending?.track === t
         const queuedCount = queued ? pending.count : 0
-        const canAdd = s.gold.gte(bulkUpCost(s.lv, queuedCount + 1))
+        const canAdd = s.gold.gte(bulkUpCost(s.lv, queuedCount + addAmount))
         return (
           <div
             key={t}
@@ -79,7 +96,7 @@ export default function TrackPanel() {
               <button
                 className="track-plus"
                 onClick={() => addPoint(t)}
-                aria-label={`增加${TRACK_NAME[t]}一點`}
+                aria-label={`增加${TRACK_NAME[t]}${addAmount}點`}
                 disabled={!canAdd}
               >
                 +
