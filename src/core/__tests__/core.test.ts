@@ -18,6 +18,7 @@ import { fmt, fmtCombat, fmtTime } from '../format'
 import { bossHP, critMultiplier, goldDrop, heroDPS, isBossFloor, medalsFromFloor, mobHP, upCost } from '../formulas'
 import { availableJobs, destinyJobs, JOBS } from '../jobs'
 import { SKILLS } from '../skills'
+import { FUSION_SKILLS, TRAINING_BRANCHES } from '../trainingTree'
 import { pendingChoice } from '../destiny'
 import { emptyTechs, heirloomSlots, techFineForges, techOfflineHours } from '../techs'
 import { ACHIEVEMENTS } from '../achievements'
@@ -2587,6 +2588,21 @@ describe('存檔', () => {
   it('壞存檔回退成新局而不是崩潰', () => {
     expect(deserialize(null).lv).toBe(1)
     expect(deserialize({ foo: 1 } as never).floor).toBe(1)
+  })
+})
+
+describe('五系操練技能樹', () => {
+  it('五條路線都有四個共同門檻，並覆蓋十種雙屬性組合', () => {
+    expect(TRAINING_BRANCHES.map((branch) => branch.id).sort()).toEqual(
+      ['agility', 'arms', 'body', 'faith', 'magic'],
+    )
+    for (const branch of TRAINING_BRANCHES) {
+      expect(branch.nodes.map((node) => node.level)).toEqual([20, 50, 100, 200])
+    }
+
+    const pairs = FUSION_SKILLS.map((fusion) => [...fusion.tracks].sort().join('+'))
+    expect(FUSION_SKILLS).toHaveLength(10)
+    expect(new Set(pairs).size).toBe(10)
   })
 })
 

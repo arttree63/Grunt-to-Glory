@@ -23,6 +23,12 @@ import { SETS } from '../../core/sets'
 import { DESTINY_PATHS } from '../../core/destiny'
 import { availableJobs, destinySuffix, JOBS, nextTierJobs } from '../../core/jobs'
 import { SKILLS } from '../../core/skills'
+import {
+  FUSION_SKILLS,
+  TRAINING_BRANCHES,
+  TRAINING_BRANCH_NAME,
+  type TrainingNodeKind,
+} from '../../core/trainingTree'
 import { useGame } from '../../store/gameStore'
 import { useGameState } from '../useGameState'
 import { BadgeIcon, GameIcon } from '../GameIcon'
@@ -35,6 +41,13 @@ const HERO_VIEWS: Array<{ id: HeroView; label: string; icon: 'hero' | 'judgement
   { id: 'blueprint', label: '技能樹藍圖', icon: 'judgement' },
   { id: 'mercs', label: '傭兵', icon: 'hound' },
 ]
+
+const NODE_KIND_NAME: Record<TrainingNodeKind, string> = {
+  core: '核心技能',
+  active: '主動技能',
+  command: '軍團號令',
+  legend: '傳奇技能',
+}
 
 /** 二轉逐步揭露:輪廓 → 傾向亮起 → 揭露名稱 → 完整預覽 → 可轉職 */
 function PromotionSection() {
@@ -241,6 +254,94 @@ function AbilitySections() {
   )
 }
 
+function SkillTreeBlueprint() {
+  const s = useGameState()
+
+  return (
+    <div className="training-tree">
+      <div className="tree-intro">
+        <b>五 大 操 練</b>
+        <span>單項達 20／50／100／200 解鎖。學會可以通吃，上場主動技能最多 5 個。</span>
+      </div>
+
+      <div className="training-branches">
+        {TRAINING_BRANCHES.map((branch) => {
+          const points = s.tracks[branch.id]
+          const next = branch.nodes.find((node) => points < node.level)
+          return (
+            <section
+              className={`training-branch branch-${branch.id}`}
+              style={{ '--branch-color': branch.color } as React.CSSProperties}
+              key={branch.id}
+            >
+              <header>
+                <span className={`tree-portrait portrait-${branch.id}`} aria-hidden="true" />
+                <span className="branch-copy">
+                  <b>{branch.name}</b>
+                  <small>{branch.role}・{branch.resource}</small>
+                </span>
+                <strong>{points}</strong>
+              </header>
+
+              <div className="branch-progress" aria-label={`${branch.name} ${points} 點`}>
+                <i style={{ width: `${Math.min(100, (points / 200) * 100)}%` }} />
+              </div>
+              <div className="branch-next">
+                {next ? `距離 ${next.name} 還差 ${next.level - points} 點` : '皇家職業線已完成'}
+              </div>
+
+              <div className="training-nodes">
+                {branch.nodes.map((node) => {
+                  const unlocked = points >= node.level
+                  return (
+                    <article className={`training-node${unlocked ? ' unlocked' : ''}`} key={node.level}>
+                      <span className="node-level">Lv.{node.level}</span>
+                      <span className={`tree-skill-icon skill-${branch.id}`} aria-hidden="true" />
+                      <div>
+                        <small>{NODE_KIND_NAME[node.kind]}</small>
+                        <b>{node.name}</b>
+                        <p>{node.desc}</p>
+                        <em>{node.level === 20 ? '解鎖' : '進化'}：{node.corps}</em>
+                      </div>
+                      <span className="node-state">{unlocked ? '已解鎖' : `${points}/${node.level}`}</span>
+                    </article>
+                  )
+                })}
+              </div>
+            </section>
+          )
+        })}
+      </div>
+
+      <div className="fusion-head">
+        <b>共 鳴 技 能</b>
+        <span>兩項各達 50 解鎖、100 進化、200 完成最終共鳴；不占主動技能格。</span>
+      </div>
+      <div className="fusion-grid">
+        {FUSION_SKILLS.map((fusion) => {
+          const level = Math.min(s.tracks[fusion.tracks[0]], s.tracks[fusion.tracks[1]])
+          const stage = level >= 200 ? 3 : level >= 100 ? 2 : level >= 50 ? 1 : 0
+          const nextLevel = stage === 0 ? 50 : stage === 1 ? 100 : stage === 2 ? 200 : null
+          return (
+            <article className={`fusion-card stage-${stage}`} key={fusion.name}>
+              <div className="fusion-pair">
+                <span className={`mini-branch branch-dot-${fusion.tracks[0]}`}>{TRAINING_BRANCH_NAME[fusion.tracks[0]]}</span>
+                <i>＋</i>
+                <span className={`mini-branch branch-dot-${fusion.tracks[1]}`}>{TRAINING_BRANCH_NAME[fusion.tracks[1]]}</span>
+              </div>
+              <b>{fusion.name}</b>
+              <p>{fusion.desc}</p>
+              {stage >= 2 && <small>進化：{fusion.evolved}</small>}
+              {stage >= 3 && <small className="final">最終：{fusion.final}</small>}
+              <em>{nextLevel ? `兩項各 ${nextLevel} 解鎖下一階・目前 ${level}` : '最終共鳴已完成'}</em>
+            </article>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 /**
  * 傭兵區(v1.5 § 五):同時 1 隻、招牌行為 8~15 秒一次、傷害占比 ≤15%。
  * 解鎖走歷代最高層(跨轉生)——推進本身就是收集傭兵的進度。
@@ -359,9 +460,13 @@ export default function HeroPanel() {
 
       {view === 'blueprint' && (
         <div className="hero-tab-panel" role="tabpanel">
-          {canPromoteNow && <PromotionSection />}
-          <AbilitySections />
-          {nextJobs.length > 0 && !canPromoteNow && <PromotionSection />}
+          <SkillTreeBlueprint />
+          <details className="current-ability-details" open={canPromoteNow}>
+            <summary>目前已生效的職業能力與轉職</summary>
+            {canPromoteNow && <PromotionSection />}
+            <AbilitySections />
+            {nextJobs.length > 0 && !canPromoteNow && <PromotionSection />}
+          </details>
         </div>
       )}
 

@@ -2270,6 +2270,290 @@ button {
 .merc-tab-panel {
   padding: 4px 2px 12px;
 }
+.training-tree {
+  margin: 0 -2px 12px;
+}
+.tree-intro,
+.fusion-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0 10px;
+  text-align: center;
+}
+.tree-intro b,
+.fusion-head b {
+  color: #f0ddbd;
+  font-size: 15px;
+  letter-spacing: 5px;
+}
+.tree-intro span,
+.fusion-head span {
+  max-width: 500px;
+  color: var(--dim2);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.training-branches {
+  display: grid;
+  gap: 9px;
+}
+.training-branch {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--branch-color) 45%, #352b38);
+  border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--branch-color) 10%, #1d1723), #151219 65%);
+  box-shadow: inset 3px 0 color-mix(in srgb, var(--branch-color) 80%, transparent);
+}
+.training-branch > header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 74px;
+  padding: 5px 10px 3px 5px;
+}
+.tree-portrait {
+  flex: 0 0 66px;
+  width: 66px;
+  height: 66px;
+  border: 2px solid color-mix(in srgb, var(--branch-color) 70%, #e3c681);
+  border-radius: 50%;
+  background-image: url('../../assets/visual/ui/skill-tree-20260801/sources/characters-front.jpg');
+  background-repeat: no-repeat;
+  background-size: 480px 640px;
+  box-shadow: inset 0 0 0 2px #151018, 0 2px 8px #0008;
+}
+.portrait-arms { background-position: -92px -42px; }
+.portrait-body { background-position: -92px -487px; }
+.portrait-agility { background-position: -317px -47px; }
+.portrait-magic { background-position: -307px -322px; }
+.portrait-faith { background-position: -307px -487px; }
+.branch-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.branch-copy b {
+  color: #f1dfc5;
+  font-size: 18px;
+  letter-spacing: 4px;
+}
+.branch-copy small {
+  color: color-mix(in srgb, var(--branch-color) 65%, #d9cfc7);
+  font-size: 10px;
+}
+.training-branch > header strong {
+  color: var(--branch-color);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.branch-progress {
+  height: 5px;
+  margin: 0 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #08070a;
+  box-shadow: inset 0 1px 2px #000;
+}
+.branch-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--branch-color);
+  box-shadow: 0 0 8px var(--branch-color);
+}
+.branch-next {
+  padding: 5px 11px 8px;
+  color: var(--dim2);
+  font-size: 9px;
+  text-align: right;
+}
+.training-nodes {
+  display: grid;
+  gap: 1px;
+  background: #0005;
+}
+.training-node {
+  position: relative;
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 9px;
+  min-height: 84px;
+  padding: 8px 9px 8px 65px;
+  background: #17131acc;
+  opacity: .62;
+}
+.training-node.unlocked {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--branch-color) 14%, #1d1820), #17131acc);
+  opacity: 1;
+}
+.node-level {
+  position: absolute;
+  top: 6px;
+  left: 5px;
+  z-index: 1;
+  padding: 1px 5px;
+  border: 1px solid #594b56;
+  border-radius: 5px;
+  background: #141116;
+  color: #cdbfae;
+  font-size: 9px;
+  font-weight: 700;
+}
+.tree-skill-icon {
+  position: absolute;
+  top: 22px;
+  left: 7px;
+  width: 52px;
+  height: 52px;
+  overflow: hidden;
+  border: 2px solid color-mix(in srgb, var(--branch-color) 65%, #b9985d);
+  border-radius: 50%;
+  background-image: url('../../assets/visual/ui/skill-tree-20260801/sources/icons.jpg');
+  background-repeat: no-repeat;
+  background-size: 480px 640px;
+  box-shadow: inset 0 0 8px #0005, 0 2px 5px #0008;
+}
+.skill-arms { background-position: -36px -222px; }
+.skill-body { background-position: -124px -222px; }
+.skill-agility { background-position: -216px -222px; }
+.skill-magic { background-position: -299px -222px; }
+.skill-faith { background-position: -384px -222px; }
+.training-node > div {
+  min-width: 0;
+}
+.training-node small,
+.training-node b,
+.training-node p,
+.training-node em {
+  display: block;
+}
+.training-node small {
+  color: var(--branch-color);
+  font-size: 9px;
+}
+.training-node b {
+  margin: 1px 0 3px;
+  color: #eadcc9;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+.training-node p {
+  margin: 0;
+  color: #a99eaa;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.training-node em {
+  margin-top: 3px;
+  color: #cfb06f;
+  font-size: 9px;
+  font-style: normal;
+}
+.node-state {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  color: #837985;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.training-node.unlocked .node-state {
+  color: var(--branch-color);
+}
+.fusion-head {
+  margin-top: 18px;
+}
+.fusion-grid {
+  display: grid;
+  gap: 7px;
+}
+.fusion-card {
+  position: relative;
+  padding: 9px 10px 8px;
+  border: 1px solid #403443;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #201927, #151218);
+  opacity: .65;
+}
+.fusion-card.stage-1,
+.fusion-card.stage-2,
+.fusion-card.stage-3 {
+  opacity: 1;
+  border-color: #725b40;
+}
+.fusion-card.stage-3 {
+  border-color: #d1a14d;
+  box-shadow: inset 0 0 14px #b7782220, 0 0 8px #d19a3430;
+}
+.fusion-pair {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+.fusion-pair i {
+  color: #796f79;
+  font-size: 9px;
+  font-style: normal;
+}
+.mini-branch {
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 9px;
+}
+.branch-dot-arms { color: #c85b45; }
+.branch-dot-body { color: #6197c7; }
+.branch-dot-agility { color: #5baa75; }
+.branch-dot-magic { color: #9a69c4; }
+.branch-dot-faith { color: #d1ad50; }
+.fusion-card > b {
+  display: block;
+  color: #ead9bf;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+.fusion-card p,
+.fusion-card small,
+.fusion-card em {
+  display: block;
+  margin: 4px 0 0;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.fusion-card p { color: #b1a5b2; }
+.fusion-card small { color: #d0b671; }
+.fusion-card small.final { color: #f0c86b; }
+.fusion-card em {
+  color: #776d79;
+  font-size: 9px;
+  font-style: normal;
+}
+.current-ability-details {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid #493b4d;
+  border-radius: 10px;
+  background: #171319;
+}
+.current-ability-details > summary {
+  color: #cbbda8;
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+@media (min-width: 760px) {
+  .training-branches {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fusion-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .track-panel {
   margin: 0 -2px 14px;
 }
