@@ -2546,8 +2546,8 @@ class BossView {
     this.entryAge += ms
     const entry = Math.min(1, this.entryAge / 520)
     const eased = 1 - Math.pow(1 - entry, 3)
-    this.view.position.set(W / 2, H * (0.47 + 0.13 * eased))
-    this.view.scale.set((W / 300) * (0.55 + eased * 0.45))
+    this.view.position.set(W / 2, H * (0.47 + 0.11 * eased))
+    this.view.scale.set((W / 400) * (0.55 + eased * 0.45))
     if (this.frozen !== frozen) {
       this.frozen = frozen
       if (frozen) this.view.stop()
