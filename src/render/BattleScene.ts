@@ -8,6 +8,12 @@ import slash1Url from '../../assets/visual/fx/slash-warm/slash-1.png'
 import slash2Url from '../../assets/visual/fx/slash-warm/slash-2.png'
 import slash3Url from '../../assets/visual/fx/slash-warm/slash-3.png'
 import slash4Url from '../../assets/visual/fx/slash-warm/slash-4.png'
+import armsHeavy1Url from '../../assets/visual/skills/arms-heavy-v1/attack-1.png'
+import armsHeavy2Url from '../../assets/visual/skills/arms-heavy-v1/attack-2.png'
+import armsHeavy3Url from '../../assets/visual/skills/arms-heavy-v1/attack-3.png'
+import armsHeavy4Url from '../../assets/visual/skills/arms-heavy-v1/attack-4.png'
+import armsHeavy5Url from '../../assets/visual/skills/arms-heavy-v1/attack-5.png'
+import armsHeavy6Url from '../../assets/visual/skills/arms-heavy-v1/attack-6.png'
 import goblin1Url from '../../assets/visual/monsters/forest-goblin/idle/idle-1.png'
 import goblin2Url from '../../assets/visual/monsters/forest-goblin/idle/idle-2.png'
 import goblin3Url from '../../assets/visual/monsters/forest-goblin/idle/idle-3.png'
@@ -197,6 +203,7 @@ const BOSS_FRAME_MS = 180
 const EVENT_FRAME_MS = 180
 const SLASH_FRAME_MS = 70
 const HIT_FRAME_MS = 65
+const SKILL_FRAME_MS = 90
 
 interface VisualAssets {
   background: Texture
@@ -210,6 +217,7 @@ interface VisualAssets {
   turret: Texture[]
   slash: Texture[]
   hit: Texture[]
+  armsHeavy: Texture[]
 }
 
 const textureGroups = {
@@ -241,6 +249,7 @@ const textureGroups = {
   turret: [turret1Url, turret2Url, turret3Url, turret4Url],
   slash: [slash1Url, slash2Url, slash3Url, slash4Url],
   hit: [hit1Url, hit2Url, hit3Url, hit4Url],
+  armsHeavy: [armsHeavy1Url, armsHeavy2Url, armsHeavy3Url, armsHeavy4Url, armsHeavy5Url, armsHeavy6Url],
 }
 
 /**
@@ -262,6 +271,7 @@ export const BATTLE_TEXTURE_URLS: string[] = [
   ...textureGroups.turret,
   ...textureGroups.slash,
   ...textureGroups.hit,
+  ...textureGroups.armsHeavy,
 ]
 
 export function warmBattleTextures(onProgress?: (ratio: number) => void): Promise<unknown> {
@@ -277,7 +287,7 @@ async function loadTextures(urls: string[]): Promise<Texture[]> {
 }
 
 async function loadVisualAssets(): Promise<VisualAssets> {
-  const [background, heroEntries, goblin, imp, boss, chest, goldenGoblin, mercEntries, turret, slash, hit] = await Promise.all([
+  const [background, heroEntries, goblin, imp, boss, chest, goldenGoblin, mercEntries, turret, slash, hit, armsHeavy] = await Promise.all([
     Assets.load<Texture>(forestUrl),
     Promise.all(
       Object.entries(textureGroups.heroes).map(async ([jobId, urls]) => {
@@ -297,11 +307,13 @@ async function loadVisualAssets(): Promise<VisualAssets> {
     loadTextures(textureGroups.turret),
     loadTextures(textureGroups.slash),
     loadTextures(textureGroups.hit),
+    loadTextures(textureGroups.armsHeavy),
   ])
   background.source.scaleMode = 'nearest'
+  armsHeavy.forEach((texture) => { texture.source.scaleMode = 'linear' })
   const heroes = Object.fromEntries(heroEntries) as Record<JobId, Texture[]>
   const mercenaries = Object.fromEntries(mercEntries) as Record<MercId, Texture[]>
-  return { background, heroes, goblin, imp, boss, chest, goldenGoblin, mercenaries, turret, slash, hit }
+  return { background, heroes, goblin, imp, boss, chest, goldenGoblin, mercenaries, turret, slash, hit, armsHeavy }
 }
 
 export class BattleScene {
@@ -506,7 +518,11 @@ export class BattleScene {
     const sigilSkills: SkillId[] = ['rally', 'windMark', 'edict']
     if (skillId && sigilSkills.includes(skillId)) this.spawnSigilRays(Math.min(10, sigilsSpent), target)
 
-    if (skillId === 'shieldRush' || skillId === 'bulwark') {
+    if (skillId === 'armsHeavy') {
+      this.spawnSkillAnimation(this.assets.armsHeavy, target)
+      this.shake = 14
+      this.zoom = 1.8
+    } else if (skillId === 'shieldRush' || skillId === 'bulwark') {
       this.spawnShieldWave(target)
       this.shake = 15
       this.zoom = 1.8
@@ -1947,6 +1963,25 @@ export class BattleScene {
     impact.onComplete = () => impact.destroy()
     this.impactLayer.addChild(impact)
     impact.play()
+  }
+
+  private spawnSkillAnimation(textures: Texture[], target: { x: number; y: number }) {
+    const skill = new AnimatedSprite(textures)
+    skill.anchor.set(0.5)
+    skill.position.set(target.x, target.y + Math.min(28, this.H * 0.04))
+    skill.scale.set(Math.min(this.W * 0.68, this.H * 0.45) / 256)
+    skill.animationSpeed = frameSpeed(SKILL_FRAME_MS)
+    skill.loop = false
+    skill.onFrameChange = (frame) => {
+      if (frame !== 3) return
+      if (this.boss) this.boss.flash()
+      else if (this.eventView) this.eventView.flash()
+      else this.frontMob()?.flash()
+      this.shake = Math.max(this.shake, 16)
+    }
+    skill.onComplete = () => skill.destroy()
+    this.impactLayer.addChild(skill)
+    skill.play()
   }
 
   private drawStatic() {
