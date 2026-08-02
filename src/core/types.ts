@@ -143,7 +143,11 @@ export type BossKind = 'shell' | 'channel' | 'totem'
 export type TacticId = 'delay' | 'keepSigils' | 'mercFirst'
 export type TrackId = 'arms' | 'body' | 'agility' | 'magic' | 'faith'
 
-export type TrainingId = 'heavy' | 'rapid' | 'morale'
+/**
+ * ⚠️ 'momentum' 原本是 'morale'(戰意)。戰意於 2026-08-02 完全移除,
+ * 該選項改為累積**軍勢**——一樣是「節奏而非強度」,而且直接餵指揮官的循環
+ */
+export type TrainingId = 'heavy' | 'rapid' | 'momentum'
 /** 留存事件:不限時,保留在「旅途紀錄」等玩家回來處理,不會因掛機錯過 */
 export type EncounterId =
   | 'blacksmith'
@@ -399,7 +403,6 @@ export interface GameState {
     resolvedGen?: number
   } | null
 
-  morale: number
   /** 爐火層數的素材基準:距上次打造累積了多少素材(神匠起始節點) */
   forgeHeatMaterials: number
   /** 傳承圖鑑:歷代登錄過的裝備(跨轉生保留) */
@@ -495,7 +498,6 @@ export interface GameState {
   /** 印記層數(軍勢 / 追風印記 / 法令,三職業共用同一個計數) */
   sigils: number
   /** 戰意昂揚:本輪滿層引爆的累積層數(輪內永久乘算,轉生歸零) */
-  zealStacks: number
   /** 乘勝推進:Boss 擊破後的加速剩餘秒數(暫態) */
   conquestLeft: number
 
@@ -645,7 +647,6 @@ export interface GameEvent {
     | 'destinyPoint'
     | 'attack'
     | 'runReset'
-    | 'moraleBurst'
     | 'clickFeedback'
     | 'clickMaterial'
     | 'weaponEvolve'
@@ -661,7 +662,6 @@ export interface GameEvent {
     | 'burnMax'
     | 'perfectBurst'
     | 'nemesisResolved'
-    | 'zealGain'
     | 'shellBreak'
     | 'channelStart'
     | 'interrupted'
@@ -720,7 +720,6 @@ export interface GameEvent {
    *             hunter(尋寶獵人事件)/ edict(聖光施放留印)/ rogue(盜賊背刺破綻)/
    *             battle(固定擊殺自然累積)
    * cooldownAdvance — windboots / hourglass / reload(引爆回轉)
-   * moraleBurst — lostbanner(失落軍旗釋放,跳字別再寫成普通戰意爆發)
    * skill — ironwall(帝國鐵壁 3 件自動引爆,非玩家手動)
    */
   via?:

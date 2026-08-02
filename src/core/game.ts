@@ -138,7 +138,6 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     resonanceSrc: { salvage: 0, forge: 0, event: 0, encounter: 0, combo: 0, skill: 0 },
     runBossFails: {},
     nemesis: null,
-    morale: 0,
     forgeHeatMaterials: 0,
     codex: [],
     chronicle: [],
@@ -167,7 +166,6 @@ export function createInitialState(medals = 0, runs = 0, techs: Techs = emptyTec
     armyFormation: ['vanguard', 'vanguard', 'vanguard', 'vanguard', 'vanguard'],
     armyAssistTimer: B.ARMY_ASSIST_INTERVAL,
     buffs: [],
-    zealStacks: 0,
     conquestLeft: 0,
     sigils: 0,
     castOrder: [],
@@ -410,8 +408,6 @@ export function currentDPS(s: GameState): Decimal {
     lv: s.lv,
     techMult: techDamageMult(s.techs),
     equipBonus: bonus.dmg + (job.dmg ?? 0),
-    morale: s.morale,
-    moraleBoosted: inCheckWindow(s),
     critMult: critMultiplier(critRate(s), critDamageBonus(s)),
     // 武藝主屬性:攻擊力(v4.1 § 3)。有界乘區,不動指數
     buffMult:
@@ -420,7 +416,6 @@ export function currentDPS(s: GameState): Decimal {
     .mul(equipPower(s.equipped)) // 每件裝備獨立乘區
     .mul(s.isBoss ? 1 + bonus.bossDmg : 1)
     .mul(s.relicLeft > 0 ? B.RELIC_MULT : 1) // 貪婪之眼的遺物弱點
-    .mul(Math.pow(1 + B.ZEAL_PER_FULL, s.zealStacks)) // 戰意昂揚(輪內疊乘)
     .mul(!s.isBoss && s.conquestLeft > 0 ? B.CONQUEST_MULT : 1) // 乘勝推進(不影響下一場檢定)
 }
 
@@ -442,10 +437,6 @@ export function dpsBreakdown(s: GameState): DpsPart[] {
     { label: '裝備品質', mult: equipPower(s.equipped) },
     { label: '裝備詞條', mult: 1 + bonus.dmg },
     { label: '暴擊期望', mult: critMultiplier(critRate(s), critDamageBonus(s)) },
-    { label: '戰意', mult: 1 + s.morale * B.MORALE_DMG_PER_POINT },
-    ...(s.zealStacks > 0
-      ? [{ label: `戰意昂揚 ×${s.zealStacks}`, mult: Math.pow(1 + B.ZEAL_PER_FULL, s.zealStacks) }]
-      : []),
     ...(s.isBoss && bonus.bossDmg > 0 ? [{ label: '對 Boss', mult: 1 + bonus.bossDmg }] : []),
   ]
 }
@@ -863,8 +854,6 @@ function tickBattle(s: GameState, dtMs: number, rng: Rng): GameEvent[] {
   // 戰意衰減(重裝步兵衰減減半)。檢定窗口內不衰減:
   // Boss 是二元判定,玩家在那 30 秒裡的努力不該一邊被扣掉
   if (!inCheckWindow(s)) {
-    const decay = B.MORALE_DECAY * (1 - (JOBS[s.jobId].bonus.morale ?? 0))
-    s.morale = Math.max(0, s.morale - decay * dtMs)
   }
 
   if (s.descentCooldown > 0) s.descentCooldown = Math.max(0, s.descentCooldown - dt)
@@ -1495,41 +1484,26 @@ export function click(s: GameState, rng: Rng = Math.random): GameEvent[] {
     events.push({ type: 'clickMaterial' })
   }
 
-  // clickDmg 詞綴只加戰意獲取——點擊「傷害」禁止有任何升級軸(GDD v3 § 1.4)
+  // ⚠️ 戰意已完全移除(2026-08-02 裁決)。點擊的回報改為**軍勢**——
+  // 那是看得見的、而且直接餵指揮官的循環(軍勢滿 → 號令)。
+  // 舊的戰意是隱形乘區:主畫面早就不顯示,卻仍在暗中乘進 DPS,
+  // 玩家永遠不知道自己的點擊有一部分回報從哪來。
+  // clickDmg 詞綴改為加成軍勢獲取——點擊「傷害」禁止有任何升級軸(GDD v3 § 1.4)
   const clickBonus = equipBonuses(s.equipped).clickDmg
-  const moraleBefore = s.morale
-  s.morale = Math.min(
-    B.MORALE_MAX,
-    s.morale + B.MORALE_PER_CLICK * (1 + clickBonus),
-  )
-  const moraleGained = s.morale - moraleBefore
+  const momentum = B.ARMY_MOMENTUM_PER_CLICK * (1 + clickBonus)
 
-  // 點擊直接傷害:受每秒預算約束。預算盡了仍給戰意/素材,只是這一下不追加傷害
+  // 點擊直接傷害:受每秒預算約束。預算盡了仍給軍勢/素材,只是這一下不追加傷害
   const spend = Math.min(B.CLICK_DMG_SEC, s.clickBudget)
   if (spend > 0) {
     s.clickBudget -= spend
     const dmg = currentDPS(s).mul(spend)
-    events.push({ type: 'attack', damage: dmg, source: 'click', count: moraleGained })
-    gainArmyMomentum(s, B.ARMY_MOMENTUM_PER_CLICK, events)
+    events.push({ type: 'attack', damage: dmg, source: 'click' })
+    gainArmyMomentum(s, momentum, events)
     registerBossHits(s, 1, events)
     dealDamage(s, dmg, events, rng, { source: 'hero' })
   } else {
-    events.push({ type: 'clickFeedback', count: moraleGained })
-  }
-
-  // 戰意滿檔爆發:填補 10~30 秒的期待層(「快滿了」)
-  if (s.morale >= B.MORALE_MAX) {
-    s.morale = 0
-    // 失落軍旗:不當場炸掉,存進軍旗等下一個技能一起放(總量不變,節奏變了)
-    if (hasLegend(s, 'lostbanner')) {
-      s.bannerStored += B.MORALE_BURST_SEC * B.BANNER_STORE
-      events.push({ type: 'bannerStore' })
-    } else {
-      const burst = currentDPS(s).mul(B.MORALE_BURST_SEC)
-      events.push({ type: 'moraleBurst', damage: burst })
-      registerBossHits(s, 1, events)
-      dealDamage(s, burst, events, rng, { source: 'burst' })
-    }
+    gainArmyMomentum(s, momentum, events)
+    events.push({ type: 'clickFeedback' })
   }
   return events
 }
@@ -1875,7 +1849,7 @@ export function attackInterval(s: GameState): number {
   // 殘影(二轉進化):自己那招的視窗期間切得更細
   const echo = s.buffs.some((b) => evolved(s, b.skillId) && SKILLS[b.skillId].critAdd) ? B.EVOLVE_INTERVAL : 1
   const skillSpeed = s.buffs.reduce((mult, buff) => mult * (SKILLS[buff.skillId].attackSpeedMult ?? 1), 1)
-  return (B.ATTACK_INTERVAL * mod * formation * echo * skillSpeed) / (1 + s.morale * B.MORALE_ATTACK_SPEED)
+  return B.ATTACK_INTERVAL * mod * formation * echo * skillSpeed
 }
 
 // ---------- 職業覺醒與印記 ----------
@@ -2210,7 +2184,8 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
     if (s.event) s.event.hp = s.event.hp.sub(stored)
     else dealSkillToBoss(s, stored, events, rng)
     s.bannerStored = 0
-    events.push({ type: 'moraleBurst', damage: stored, via: 'lostbanner' })
+    // ⚠️ 原本借用 moraleBurst 事件;戰意移除後改走 attack 的爆發來源
+    events.push({ type: 'attack', damage: stored, source: 'hero', via: 'lostbanner' })
   }
 
   if (sk.consumesSigils) {
@@ -2251,20 +2226,13 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
       else s.skillCd[other] = next
       events.push({ type: 'cooldownAdvance', skillId: other, seconds: advance, via: 'reload' })
     }
-    // 戰意昂揚(輪內疊乘):滿層引爆才算——保留「現在引爆還是再疊」的決策
-    if (wasFull && s.zealStacks < B.ZEAL_MAX_STACKS) {
-      s.zealStacks++
-      events.push({ type: 'zealGain', count: s.zealStacks })
-    }
-    // 完美引爆:滿層後金色窗口內「手動」引爆。獎勵放操作感不放傷害
-    // (士氣/傭兵推進/昂揚再 +1);掛機自動引爆走不進這裡=沒有完美獎勵
+    // 完美引爆:滿層後金色窗口內「手動」引爆。獎勵放操作感不放傷害;
+    // 掛機自動引爆走不進這裡 = 沒有完美獎勵。
+    // ⚠️ 原本的獎勵是「士氣 + 戰意昂揚」,兩者於 2026-08-02 隨戰意一起移除。
+    // 改給**軍勢**——獎勵留在指揮官自己的循環裡,而且看得見
     if (wasFull && !auto && s.perfectWindowLeft > 0) {
-      s.morale = Math.min(100, s.morale + B.PERFECT_MORALE)
       if (s.activeMerc) s.mercTimer = Math.max(0, s.mercTimer - B.PERFECT_MERC_ADVANCE)
-      if (s.zealStacks < B.ZEAL_MAX_STACKS) {
-        s.zealStacks++
-        events.push({ type: 'zealGain', count: s.zealStacks })
-      }
+      gainArmyMomentum(s, B.ARMY_MOMENTUM_PER_SKILL_HIT * 2, events)
       // 回響裝填:引爆變成下一輪的起點,不是循環的終點
       if (hasNode(s, 'sigil_reload')) advanceCooldowns(s, B.SIGIL_RELOAD_SEC, events)
       events.push({ type: 'perfectBurst' })

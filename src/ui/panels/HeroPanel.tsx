@@ -557,7 +557,7 @@ export default function HeroPanel() {
             <summary className="affix" style={{ cursor: 'pointer', padding: '4px 0' }}>
               傷害來自哪裡?
             </summary>
-            {dpsBreakdown(s).filter((p) => !p.label.startsWith('戰意')).map((p) => (
+            {dpsBreakdown(s).map((p) => (
               <div className="row" key={p.label} style={{ paddingLeft: 8 }}>
                 <span className="k">{p.label}</span>
                 <span className="v" style={{ color: p.mult > 1 ? 'var(--gold)' : 'var(--dim)' }}>

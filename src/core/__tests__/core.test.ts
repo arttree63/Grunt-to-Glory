@@ -92,7 +92,6 @@ import {
   fineForgesLeft,
   currentDPS,
   inscribeHeirloom,
-  inCheckWindow,
   equip,
   forge,
   pityLeft,
@@ -153,12 +152,6 @@ describe('formulas', () => {
     expect(upCost(1).toNumber()).toBeCloseTo(20)
     expect(upCost(11).toNumber()).toBeCloseTo(20 * 1.09 ** 10, 6)
     expect(heroDPS({ lv: 1 }).toNumber()).toBeCloseTo(B.BASE_DPS)
-  })
-
-  it('科技與戰意乘區', () => {
-    expect(heroDPS({ lv: 1, techMult: 1.5 }).toNumber()).toBeCloseTo(B.BASE_DPS * 1.5)
-    expect(heroDPS({ lv: 1, morale: 100 }).toNumber()).toBeCloseTo(B.BASE_DPS * 1.4)
-    expect(medalsFromFloor(87)).toBe(8)
   })
 
   it('暴擊真的進傷害公式,不再只是跳字', () => {
@@ -691,16 +684,6 @@ describe('戰鬥循環', () => {
     expect(s.isBoss).toBe(false)
   })
 
-  it('點擊疊戰意並提升 DPS,不點會衰減', () => {
-    const s = createInitialState()
-    const base = currentDPS(s)
-    click(s)
-    click(s)
-    expect(s.morale).toBe(B.MORALE_PER_CLICK * 2)
-    expect(currentDPS(s).gt(base)).toBe(true)
-    applyTick(s, 5000)
-    expect(s.morale).toBe(0)
-  })
 })
 
 
@@ -804,51 +787,12 @@ describe('養成與經濟', () => {
 })
 
 describe('點擊的價值(不放在常數乘區)', () => {
-  it('D:Boss 檢定與限時事件內戰意效果加倍', () => {
-    const s = createInitialState()
-    s.morale = 100
-    const normal = currentDPS(s)
-
-    s.floor = 10
-    spawnEnemy(s)
-    expect(inCheckWindow(s)).toBe(true)
-    const inBoss = currentDPS(s)
-    // 戰意的加成部分變兩倍(1+0.4 → 1+0.8)
-    expect(inBoss.div(normal).toNumber()).toBeCloseTo(1.8 / 1.4, 3)
-  })
-
-  it('D:檢定窗口內戰意不衰減,窗口外照常衰減', () => {
-    const s = createInitialState()
-    s.floor = 10
-    spawnEnemy(s)
-    s.morale = 100
-    applyTick(s, 2000)
-    expect(s.morale).toBe(100) // Boss 戰中不掉
-
-    const s2 = createInitialState()
-    s2.morale = 100
-    applyTick(s2, 2000)
-    expect(s2.morale).toBeLessThan(100)
-  })
-
   it('D 不懲罰掛機:戰意 0 時加倍毫無影響', () => {
     const s = createInitialState()
     const before = currentDPS(s)
     s.floor = 10
     spawnEnemy(s)
     expect(currentDPS(s).toString()).toBe(before.toString())
-  })
-
-  it('C:戰意滿檔觸發爆發並歸零', () => {
-    const s = createInitialState()
-    s.lv = 30
-    s.morale = B.MORALE_MAX - B.MORALE_PER_CLICK
-
-    const events = click(s)
-    expect(events.some((e) => e.type === 'moraleBurst')).toBe(true)
-    expect(s.morale).toBe(0)
-    // 這一擊在低層會直接把怪打死 → 敵人已換下一隻,所以驗的是「有打出傷害」而不是血量變低
-    expect(events.some((e) => e.type === 'attack' || e.type === 'kill')).toBe(true)
   })
 
   it('點擊會自己出一次手:一次點擊 = 一個 attack 事件 = 一次扣血', () => {
@@ -1287,7 +1231,7 @@ describe('命運樹', () => {
     s.materials = 0
     s.medals = 0
     s.destinyPoints = 0
-    s.training = ['heavy', 'rapid', 'morale', 'heavy', 'rapid']
+    s.training = ['heavy', 'rapid', 'momentum', 'heavy', 'rapid']
     s.trainingShown = 5
     expect(nearGoal(s)).toBe(null) // near 這一層確實空了
     const run = runGoal(s)
@@ -2429,7 +2373,7 @@ describe('存檔', () => {
     s.floor = 43
     s.highestFloor = 47
     s.materials = 10
-    s.training = ['heavy', 'morale']
+    s.training = ['heavy', 'momentum']
     const e = forge(s)!
     equip(s, e.id)
 
@@ -2438,7 +2382,7 @@ describe('存檔', () => {
     expect(back.lv).toBe(88)
     expect(back.floor).toBe(43)
     expect(back.equipped[e.slot]?.id).toBe(e.id)
-    expect(back.training).toEqual(['heavy', 'morale'])
+    expect(back.training).toEqual(['heavy', 'momentum'])
   })
 
   it('v1 存檔可遷移到 v2(缺的欄位補預設,進度不掉)', () => {
@@ -2743,25 +2687,6 @@ describe('裝備四層架構(基底 / 詞綴分類 / 傳說)', () => {
     applyTick(s, 60_000) // 遠超過原本 10 秒視窗
     expect(s.buffs.length).toBeGreaterThan(0)
     expect(buffMult(s)).toBeCloseTo(avg, 5)
-  })
-
-  it('失落軍旗:滿戰意改為儲存,下次施放技能時一起釋放', () => {
-    const s = createInitialState()
-    s.lv = 20
-    promote(s, 'infantry')
-    s.equipped.weapon = gold({ slot: 'weapon', legend: 'lostbanner' })
-    for (let i = 0; i < 30; i++) click(s)
-    expect(s.bannerStored).toBeGreaterThan(0)
-
-    const stored = s.bannerStored
-    s.enemyMaxHp = D(1e12)
-    s.enemyHp = D(1e12)
-    const hpBefore = s.enemyHp
-    castSkill(s, 'shieldRush')
-    expect(s.bannerStored).toBe(0)
-    expect(s.enemyHp.lt(hpBefore)).toBe(true)
-    // 每次滿檔存一份,總量是原本爆發秒數的 BANNER_STORE 倍
-    expect(stored % (B.MORALE_BURST_SEC * B.BANNER_STORE)).toBeCloseTo(0, 5)
   })
 
   it('倒轉沙漏:把手上的技能各放過一輪就推進冷卻,觸發後上鎖', () => {
@@ -3360,30 +3285,6 @@ describe('總攻 loop(v1.6:buff 併存 / 引爆回轉 / 戰意昂揚 / 乘勝推
     expect(ev.filter((e) => e.type === 'cooldownAdvance').length).toBeGreaterThan(0)
   })
 
-  it('戰意昂揚:滿層引爆 +1 層輪內乘算;沒滿層不給(保留引爆時機的決策)', () => {
-    const s = twoSkillHero()
-    s.highestFloor = B.AWAKEN_FLOOR
-    chooseDestiny(s, 'tactician')
-    s.destinyNodes.push('tactician_1a')
-    s.enemyMaxHp = D('1e30')
-    s.enemyHp = D('1e30')
-
-    s.sigils = 3 // 未滿
-    castSkill(s, 'rally')
-    expect(s.zealStacks).toBe(0)
-
-    s.skillCd.rally = 0
-    s.sigils = sigilCap(s) // 滿層
-    const dpsBefore = currentDPS(s)
-    const ev = castSkill(s, 'rally')
-    expect(s.zealStacks).toBe(1)
-    expect(ev.some((e) => e.type === 'zealGain')).toBe(true)
-    expect(currentDPS(s).gt(dpsBefore)).toBe(true) // 輪內永久變強
-
-    const next = prestige({ ...s, highestFloor: 50 } as typeof s)
-    if (next) expect(next.zealStacks).toBe(0) // 轉生歸零,不跨輪失控
-  })
-
   it('乘勝推進:擊破 Boss 後清怪加速,但不影響下一場 Boss 檢定', () => {
     const s = createInitialState()
     s.lv = 200
@@ -3547,7 +3448,7 @@ describe('讀檔與 Boss 行為原型', () => {
 })
 
 describe('GDD v3 封版三項(2026-07-30)', () => {
-  it('點擊預算制:每秒 0.2 秒份 DPS,預算盡的點擊只給戰意不給傷害', () => {
+  it('點擊預算制:每秒 0.2 秒份 DPS,預算盡的點擊只給軍勢不給傷害', () => {
     const s = createInitialState()
     s.enemyMaxHp = D(1e12)
     s.enemyHp = D(1e12)
@@ -3560,14 +3461,16 @@ describe('GDD v3 封版三項(2026-07-30)', () => {
     expect(hits).toBeGreaterThanOrEqual(4)
     expect(hits).toBeLessThanOrEqual(5)
     expect(s.clickBudget).toBeLessThan(1e-6) // 預算耗盡
-    expect(s.morale).toBeGreaterThan(0) // 戰意照給
+    // ⚠️ 戰意 2026-08-02 完全移除。點擊的回報改為**軍勢**——
+    // 預算盡的那幾下仍然要給,否則連點到一半會變成完全沒有回饋
+    expect(s.armyMomentum).toBeGreaterThan(0)
 
     // 過一秒回充,又能打
     applyTick(s, 1000)
     expect(click(s).some((e) => e.type === 'attack')).toBe(true)
   })
 
-  it('clickDmg 詞綴只加戰意,不加點擊傷害(禁止點擊傷害成長軸)', () => {
+  it('clickDmg 詞綴只加軍勢,不加點擊傷害(禁止點擊傷害成長軸)', () => {
     const plain = createInitialState()
     // ⚠️ 對照組同品質(品質乘區 ×1.5 會污染比值,ember 測試踩過同一坑)
     plain.equipped.trinket = { id: 'p', slot: 'trinket', quality: 'gold', affixes: [] }
@@ -3583,10 +3486,11 @@ describe('GDD v3 封版三項(2026-07-30)', () => {
 
     const d1 = click(plain).find((e) => e.type === 'attack')!.damage!
     const d2 = click(withAffix).find((e) => e.type === 'attack')!.damage!
-    // 用「傷害 ÷ 當下 DPS = 消耗秒份」比——戰意會墊高 DPS,直接比傷害會被污染
+    // 用「傷害 ÷ 當下 DPS = 消耗秒份」比,不直接比傷害
     expect(d1.div(currentDPS(plain)).toNumber()).toBeCloseTo(B.CLICK_DMG_SEC, 4)
     expect(d2.div(currentDPS(withAffix)).toNumber()).toBeCloseTo(B.CLICK_DMG_SEC, 4) // 同樣 0.05,詞綴沒放大
-    expect(withAffix.morale).toBeGreaterThan(plain.morale) // 戰意較多
+    // ⚠️ clickDmg 詞綴的去處由「戰意」改為「軍勢」(戰意 2026-08-02 移除)
+    expect(withAffix.armyMomentum).toBeGreaterThan(plain.armyMomentum)
   })
 
   it('精工每輪 3 次;轉生重置', () => {
@@ -4074,7 +3978,7 @@ describe('完美引爆窗口(過載引爆的簡化版,籃 C 第二階段)', () =
     return s
   }
 
-  it('疊滿印記開限時窗口;窗口內手動引爆=士氣+傭兵推進+昂揚再一層', () => {
+  it('疊滿印記開限時窗口;窗口內手動引爆=軍勢+傭兵推進(戰意移除後的獎勵)', () => {
     const s = awakened()
     s.mercBestFloor = 200
     setActiveMerc(s, 'rogue')
@@ -4089,13 +3993,13 @@ describe('完美引爆窗口(過載引爆的簡化版,籃 C 第二階段)', () =
     // 視窗內擊殺會擲骰給印記;改直接呼叫私有路徑不可行,設滿層+手動開窗等價
     s.sigils = sigilCap(s)
     s.perfectWindowLeft = B.PERFECT_WINDOW_SEC
-    const morale0 = s.morale
-    const zeal0 = s.zealStacks
+    const momentum0 = s.armyMomentum
     const ev = castSkill(s, 'rally')
     expect(ev.some((e) => e.type === 'perfectBurst')).toBe(true)
-    expect(s.morale).toBe(Math.min(100, morale0 + B.PERFECT_MORALE))
+    // ⚠️ 完美引爆的獎勵原本是「士氣 + 戰意昂揚」,兩者隨戰意於 2026-08-02 移除。
+    // 改給**軍勢**——獎勵留在指揮官自己的循環裡,而且玩家看得見
+    expect(s.armyMomentum).toBeGreaterThan(momentum0)
     expect(s.mercTimer).toBeCloseTo(10 - B.PERFECT_MERC_ADVANCE, 5)
-    expect(s.zealStacks).toBe(zeal0 + 2) // 滿層昂揚 +1、完美再 +1
     expect(s.perfectWindowLeft).toBe(0)
   })
 

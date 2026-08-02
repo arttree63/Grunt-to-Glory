@@ -30,7 +30,6 @@ export interface SaveData {
   bossTimeLeft: number
   bossFailed: boolean
   bossRetryFloor: number | null
-  morale: number
   forgeHeatMaterials: number
   codex: GameState['codex']
   chronicle: GameState['chronicle']
@@ -53,7 +52,6 @@ export interface SaveData {
   mercBestFloor: number
   legendsSeen: GameState['legendsSeen']
   achieved: GameState['achieved']
-  zealStacks: number
   combo: number
   valiantStacks: number
   destinyPath: GameState['destinyPath']
@@ -115,7 +113,6 @@ export function serialize(s: GameState): SaveData {
     bossTimeLeft: s.bossTimeLeft,
     bossFailed: s.bossFailed,
     bossRetryFloor: s.bossRetryFloor,
-    morale: s.morale,
     forgeHeatMaterials: s.forgeHeatMaterials,
     codex: s.codex,
     chronicle: s.chronicle,
@@ -138,7 +135,6 @@ export function serialize(s: GameState): SaveData {
     mercBestFloor: s.mercBestFloor,
     legendsSeen: s.legendsSeen,
     achieved: s.achieved,
-    zealStacks: s.zealStacks,
     combo: s.combo,
     valiantStacks: s.valiantStacks,
     destinyPath: s.destinyPath,
@@ -309,7 +305,6 @@ function migrate(raw: SaveData): SaveData {
   }
   // v18 → v19:總攻改版(buff 多槽是暫態不進檔;戰意昂揚的輪內疊乘要進檔)
   if (d.version < 19) {
-    d.zealStacks = d.zealStacks ?? 0
     d.version = 19
   }
   // v19 → v20:GDD v3 封版三項——雙保底 + 精工每輪 3 次(舊長保底計數直接沿用)
@@ -450,7 +445,6 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     bossTimeLeft: d.bossTimeLeft ?? 30,
     bossFailed: !!d.bossFailed,
     bossRetryFloor: d.bossRetryFloor ?? null,
-    morale: d.morale ?? 0,
     forgeHeatMaterials: d.forgeHeatMaterials ?? 0,
     codex: d.codex ?? [],
     chronicle: d.chronicle ?? [],
@@ -473,7 +467,6 @@ export function deserialize(raw: SaveData | null | undefined): GameState {
     mercBestFloor: d.mercBestFloor ?? 1,
     legendsSeen: d.legendsSeen ?? [],
     achieved: d.achieved ?? [],
-    zealStacks: d.zealStacks ?? 0,
     combo: d.combo ?? 0,
     valiantStacks: d.valiantStacks ?? 0,
     destinyPath: d.destinyPath ?? null,

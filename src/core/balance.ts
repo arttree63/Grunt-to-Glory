@@ -133,10 +133,6 @@ export const BOSS_THREAT_MULT = 1.5
 export const THREAT_INTERVAL = 1.5
 
 // 戰意(點擊 buff)
-export const MORALE_PER_CLICK = 7
-export const MORALE_DECAY = 0.008 // 每 ms
-export const MORALE_MAX = 100
-export const MORALE_DMG_PER_POINT = 0.004 // 滿層 +40% DPS
 
 /**
  * 點擊的價值不放在常數乘區(那必然被 1.16^層 貶值),而是放在三個地方:
@@ -147,7 +143,6 @@ export const MORALE_DMG_PER_POINT = 0.004 // 滿層 +40% DPS
  * ⚠️ 調校原則:點擊要把「差一點過不了」變成「過」,而不是「不點就過不了」。
  * 掛機玩家戰意為 0,加倍對他們毫無影響,所以這條天然不懲罰掛機。
  */
-export const MORALE_CHECK_BOOST = 2
 /**
  * 點擊直接造成的傷害,折算成幾秒份 DPS(受每秒預算約束,見 CLICK_BUDGET_PER_SEC)。
  * 玩家要的是「點了有打到」,所以點擊必須自己出一次手、自己扣一次血。
@@ -162,7 +157,6 @@ export const CLICK_DMG_SEC = 0.05
  * ⚠️ 歷史錯誤:單次 0.3 無上限時,4 點/秒 = +120% DPS,手速會變成最強成長軸。
  */
 export const CLICK_BUDGET_PER_SEC = 0.2
-export const MORALE_BURST_SEC = 4
 /** 每個事件最多能用點擊換到幾個素材 */
 export const EVENT_CLICK_MAT_CAP = 12
 
@@ -455,14 +449,14 @@ export const TRAINING_FLOORS = [25, 40, 65, 95, 125] as const
 export const TRAINING_MIN_GAP_SEC = 100
 export const TRAINING_HEAVY_INTERVAL = 1.12
 export const TRAINING_RAPID_INTERVAL = 0.9
-export const TRAINING_MORALE_GAIN = 1.12
-export const TRAINING_MORALE_DECAY = 0.9
+/** ⚠️ 原為 TRAINING_MORALE_*(戰意)。戰意 2026-08-02 完全移除,
+ * 該操練改為加速**軍勢**累積——一樣是節奏不是強度,而且餵指揮官的循環 */
+export const TRAINING_MOMENTUM_GAIN = 1.18
 /**
  * 戰意縮短攻擊間隔:滿戰意時攻擊頻率翻倍。
  * 這是傷害中性的——每擊傷害 = DPS × 累積時間,打得快只是切得細。
  * 但它讓「點擊強化自動攻擊」在畫面上真的看得見。
  */
-export const MORALE_ATTACK_SPEED = 0.02
 
 export const TICK_HZ = 10 // 邏輯固定 tick
 export const CRIT_RATE = 0.18
@@ -595,7 +589,6 @@ export const TACTIC_KEEP_SIGILS = 3
 /** 印記疊滿後的金色窗口秒數;窗口內手動引爆=完美 */
 export const PERFECT_WINDOW_SEC = 4
 /** 完美引爆獎勵:士氣(獎勵放操作感,不放傷害) */
-export const PERFECT_MORALE = 15
 /** 完美引爆獎勵:傭兵行動提早秒數 */
 export const PERFECT_MERC_ADVANCE = 1
 
@@ -635,8 +628,6 @@ export const RELOAD_PER_SIGIL = 0.4
  * 轉生歸零——所以它製造「這輪再 loop 一下」的癮,而不會像舊勳章那樣跨輪失控。
  * 滿層才算:保留「現在引爆還是再疊」的決策,不會變成無腦速引。
  */
-export const ZEAL_PER_FULL = 0.02
-export const ZEAL_MAX_STACKS = 30
 /**
  * 乘勝推進(破牆 spike):擊破 Boss 後短暫的清怪加速,把擊破做成節奏高點。
  * 只對非 Boss 目標生效——不影響下一場檢定,也不進 power-neutral 的裝備預算。

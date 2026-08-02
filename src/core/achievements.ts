@@ -57,7 +57,9 @@ export const ACHIEVEMENTS: Achievement[] = [
     group: '戰鬥',
     done: (s) => s.bossLore.shell.handled > 0 && s.bossLore.channel.handled > 0 && s.bossLore.totem.handled > 0,
   },
-  { id: 'zeal', name: '越戰越勇', desc: '單輪把戰意昂揚疊到 10 層', group: '戰鬥', done: (s) => s.zealStacks >= 10 },
+  // ⚠️ 原為「戰意昂揚疊到 10 層」。戰意 2026-08-02 完全移除,改判軍團規模——
+  // 軍功記錄要指向**還存在**的系統,否則會變成永遠達不成的死條目
+  { id: 'zeal', name: '全軍待命', desc: '單場把軍團部署到滿編', group: '戰鬥', done: (s) => s.armyUnits >= 5 },
   {
     id: 'nemesis',
     name: '宿怨終結',

@@ -9,7 +9,7 @@ export interface Job {
   from: JobId | null
   desc: string
   /** 被動:乘入對應乘區 */
-  bonus: { dmg?: number; crit?: number; gold?: number; morale?: number }
+  bonus: { dmg?: number; crit?: number; gold?: number }
   /** 轉職即解鎖的主動技能 */
   skills: SkillId[]
   /** 職業覺醒後解鎖的第二技能(消耗印記型) */
@@ -45,7 +45,7 @@ export const JOBS: Record<JobId, Job> = {
     reqLv: 20,
     from: 'rookie',
     desc: '傷害 +20%,戰意衰減減半。適合掛機推進。',
-    bonus: { dmg: 0.2, morale: 0.5 },
+    bonus: { dmg: 0.2 },
     skills: ['shieldRush'],
     awakenSkill: 'rally',
     look: { cape: 0x2f4a7a, weapon: 'sword' },
@@ -81,7 +81,7 @@ export const JOBS: Record<JobId, Job> = {
     reqLv: 100,
     from: 'infantry',
     desc: '傷害 +60%,戰意衰減減半。',
-    bonus: { dmg: 0.6, morale: 0.5 },
+    bonus: { dmg: 0.6 },
     skills: ['shieldRush', 'bulwark'],
     awakenSkill: 'rally',
     evolve: { skill: 'shieldRush', name: '盾牆突擊・堅陣', desc: '視窗期間的擊殺累積雙倍軍勢' },
@@ -124,7 +124,7 @@ export const JOBS: Record<JobId, Job> = {
     from: 'infantry',
     requiresDestiny: 'artisan',
     desc: '傷害 +50%,戰意衰減減半。軍勢上限再提高,鍛造品質更好。',
-    bonus: { dmg: 0.5, morale: 0.5 },
+    bonus: { dmg: 0.5 },
     skills: ['shieldRush', 'bulwark'],
     awakenSkill: 'rally',
     evolve: { skill: 'shieldRush', name: '盾牆突擊・堅陣', desc: '視窗期間的擊殺累積雙倍軍勢' },

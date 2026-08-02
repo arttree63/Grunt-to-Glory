@@ -53,7 +53,6 @@ const EVENT_SFX: Partial<Record<GameEvent['type'], sfx.SfxName>> = {
   destinyPoint: 'achievement',
   perfectBurst: 'perfect',
   burnMax: 'burst',
-  moraleBurst: 'burst',
   freezeStart: 'freeze',
   freezeBurst: 'shellBreak',
   forge: 'forge',
@@ -208,8 +207,6 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.swing(fmtCombat(shown), crit, e.source ?? 'hero')
       } else if (e.type === 'clickFeedback') {
         return
-      } else if (e.type === 'moraleBurst') {
-        scene.swing(fmtCombat(e.damage!), true)
       } else if (e.type === 'skill') {
         // 技能直傷原本完全沒有演出:血條瞬空但畫面什麼都沒發生
         // 三系各有自己的音色:關掉技能名稱也要聽得出剛剛放的是哪一招(GDD § 10.5 身分層)
@@ -273,8 +270,6 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         scene.notice('圖騰出現・倒數加速')
       } else if (e.type === 'totemDown') {
         scene.notice('圖騰擊破')
-      } else if (e.type === 'zealGain') {
-        return
       } else if (e.type === 'mercAct') {
         scene.onMercAct(e.mercId!)
       } else if (e.type === 'freezeStart') {
