@@ -65,6 +65,43 @@ description: 視覺與演出的唯一規範:動畫節奏(預備/命中/頓格/�
 
 ---
 
+## 一之二、Juice 檢查清單(每個演出都跑一遍)
+
+「遊戲手感」由兩層組成:**game feel**(操作即時、回饋可讀)與 **juice**(擠壓、震屏、粒子、音效)。
+這份清單來自兩場業界公認的講座——*Juice it or Lose it*(把同一個打磚塊逐層加料到活起來)
+與 Vlambeer 的 *The Art of Screenshake*(讓 Nuclear Throne 打起來兇狠的三十個技巧),
+兩場都在文末列出。
+
+| 元素 | 作用 | 本專案現況 |
+|---|---|---|
+| 震屏 screenshake | 力量的第一訊號 | ✅ 已有 |
+| Zoom punch | 強調「這一下不一樣」 | ✅ 已有 |
+| 受擊閃白 | 命中確認 | ✅ 已有(70ms) |
+| 命中粒子 | 力量的方向與量 | ✅ 已有 |
+| **頓格 hit stop** | **打擊感的最大單一來源** | ❌ 未實作 |
+| **擠壓拉伸 squash & stretch** | 重量與彈性 | ❌ 未實作 |
+| **殘影拖尾 trail** | 速度 | ❌ 未實作 |
+| **腳邊塵土 dust** | 落地與衝刺的重量 | ❌ 未實作(clicker-ui 已規定要有) |
+| **全屏閃光 flash** | 大招的臨界點 | ❌ 未實作 |
+
+⚠️ **五個缺的裡面有四個是程式,不是美術。**
+覺得「卡在美術」時先回來看這張表——很多時候缺的是這幾行補間,不是新圖。
+
+## 一之三、VFX 三階段
+
+任何特效都是 **醞釀 → 爆發 → 消散**,三段缺一就會「怪」:
+
+| 階段 | 佔比 | 做法 |
+|---|---|---|
+| **醞釀** anticipation / fade-in | 前 25% | 元素由小變大、脈動蓄力。**施法前就要有前兆**,那是力量的說服力來源 |
+| **爆發** climax / impact | 中 15% | 元素數量最多、對比最強、彩度最高。**全場最亮的一瞬** |
+| **消散** dissipation / fade-out | 後 60% | 低對比、低不透明度、**快速淡出**。⚠️ 不可以硬切消失(會顯得廉價),但也不能久留(會擋畫面) |
+
+**次要形狀**:主要元素之外加一層碎屑/火星/餘煙,複雜度立刻上一階——
+這是「看起來精緻」與「看起來簡化」最便宜的分界。
+
+---
+
 ## 二、素材規格與驗收
 
 ### 分類決定用哪把尺
@@ -102,6 +139,44 @@ description: 視覺與演出的唯一規範:動畫節奏(預備/命中/頓格/�
 `check.py` **不信任 meta 的自評**,從實際 PNG 重新量,因此對任何來源都適用
 (自產 / mflux / 外購)。同時標出「未被 `src` 引用」的死素材。
 每個素材目錄必留 `prompt-used.txt`——沒有 prompt 紀錄的素材視同**不可重製**。
+
+---
+
+## 二之二、給製作者:目前缺什麼(依投報比排序)
+
+⚠️ 這張表會隨進度變動,做掉一項就劃掉一項並補新的。判準是
+**「一單位工時買到多少手感」**,不是「哪個看起來酷」。
+
+### A. 不需要美術,純程式(先做完這些再開圖)
+
+| 項目 | 用途 | 呈現方式 | 為什麼優先 |
+|---|---|---|---|
+| **頓格 hit stop** | 每次命中 | 命中當幀暫停演出 1~2 幀(16~33ms),**傷害照常即時結算** | 打擊感的最大單一來源,而且零素材成本 |
+| **擠壓拉伸** | 主角揮擊、怪物受擊、按鈕按下 | 出手瞬間 scale(1.12, 0.9) → 收招回 1.0,ease-out | 重量感;UI 也適用,整體質感一起上 |
+| **揮擊拖尾** | 主角每次出手 | 武器路徑上 3~4 個遞減透明度的殘影,120ms 內淡出 | 速度感;現有 slashFx 只有一道弧光,加尾巴就有速度 |
+| **預備動作加長** | 主角揮擊 | 55ms → 120ms(見 § 一的對照表) | 「太快」的直接解方 |
+
+### B. 需要素材,小而通用(一次做完長期受用)
+
+| 素材 | 建議尺寸 | 用途 | 呈現方式 |
+|---|---|---|---|
+| **腳邊塵土** dust puff | 128×64,6~8 幀 | 主角出手/落地/衝鋒起步、怪物落地 | 貼地播放、只在主角腳下 y=233 附近;**偏白單色**以便 tint 成各地帶色 |
+| **命中火花** hit spark | 96×96,**≥8 幀** | 每一次命中(取代現有 4 幀的 `fx/hit-impact`) | 現有只有 4 幀 ≈ 260ms,快到看不清;補到 8 幀並用不等長幀表 |
+| **斬擊軌跡** slash arc | 192×96,6 幀 | 揮擊、多段技的每一段 | 白色單色,靠 tint 分職業;弧線方向要能水平翻轉 |
+| **全屏閃光** | 純程式或 1 張漸層 | 大招/傳奇技的臨界點 | 2~3 幀白場後快速淡出,**一輪只給最重的那幾招**,濫用就失效 |
+
+### C. 補齊角色缺口(有具體對象才做)
+
+| 素材 | 尺寸 | 用途 | 備註 |
+|---|---|---|---|
+| **游擊兵 skirmisher** idle + attack | 256×256,主體 140~210px | 技能描述寫「游擊兵發動八段攻擊」,但畫面上沒有游擊兵 | 詞語與畫面對不上的兩個缺口之一 |
+| **法師團詠唱單位** | 同上 | 「法師團共同詠唱」同樣沒有對應單位 | 短期可用 archmage 染色影代替 |
+| **重做**:盜賊 / 冰法師 / 衝鋒 | 主體拉到 140~210px | 現況 101~110px,比主角小三成 | **這是「過於簡化」的量化來源**,重切或重生成 |
+
+### D. 場景與長期
+
+地帶場景圖(現有 1 張 `forest-border-v1`,8 個地帶)、Boss 專屬構圖、
+UI 九宮格框(可用 CC0 包)。這些不影響手感,排最後。
 
 ---
 
@@ -177,6 +252,14 @@ CC0 = 無限制;CC-BY = 必須署名;其他授權可能禁止商用或要求同�
 - [Animation Gameplay Essentials — Attacks](https://www.animotionx.com/en/post/animation-gameplay-essentials-episode-4-5-attacks)
 - [The 12 animation principles adapted for pixel art sprites](https://www.sprite-ai.art/guides/animation-principles)
 - [Animation Timing in 2D Games: The FPS Science Behind Snappy Pixel Art](https://spritesheetgenerator.online/blog/animation-timing-fps-pixel-art)
+
+手感與 VFX:
+
+- [Juice it or Lose it — Martin Jonasson & Petri Purho](https://gamejuice.co.uk/resources/juice-it-or-lose-it)
+- [The Art of Screenshake — Jan Willem Nijman / Vlambeer](https://www.gamedeveloper.com/design/squeezing-more-juice-out-of-your-game-design-)
+- [VFX Staples: Shape, Color, and Motion — 80.lv](https://80.lv/articles/vfx-staples-shape-color-and-motion)
+- [The Must-Know Artistic Principles of Video Game VFX](https://www.vfxapprentice.com/blog/five-artistic-principles-gaming-vfx)
+- [How to master good timing in VFX and animation](https://www.vfxapprentice.com/blog/the-soul-of-effects-what-is-timing-in-vfx)
 
 素材來源與套件:
 
