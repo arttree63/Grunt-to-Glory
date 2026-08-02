@@ -254,6 +254,23 @@ const BOSS_FRAME_MS = 180
 const EVENT_FRAME_MS = 180
 const SLASH_FRAME_MS = 70
 const HIT_FRAME_MS = 65
+/**
+ * 主角揮擊的五拍(ms)。⚠️ **刻意不等長**——等距播放是好動畫的天敵。
+ * 依 game-visual skill § 一的業界規格:
+ *   預備 100~200 / 加速 40~60 / 命中 20~40(全程最短,定格)/ 收招 60~100
+ * 舊版是 230ms 用比例切(預備只有 55ms),打擊「沒有來由」,只感覺一閃而過。
+ */
+const SWING_WINDUP_MS = 120
+const SWING_ACCEL_MS = 50
+const SWING_CONTACT_MS = 30
+const SWING_RECOVER_MS = 100
+const SWING_TOTAL_MS = SWING_WINDUP_MS + SWING_ACCEL_MS + SWING_CONTACT_MS + SWING_RECOVER_MS
+/** 命中頓格:演出暫停 1~2 幀。⚠️ 只凍結畫面,傷害在 core 早已即時結算 */
+const HIT_STOP_MS = 28
+/** 揮擊拖尾:幾道殘影、總共多久淡完 */
+const SWING_TRAIL_COUNT = 4
+const SWING_TRAIL_FADE_MS = 120
+
 const SKILL_FRAME_MS = 120
 // 蓄力較慢、斬擊加速，命中幀刻意多停一拍。
 const ARMS_HEAVY_FRAME_MS = [115, 90, 58, 48, 52, 58, 105, 82, 72, 80, 96, 125]
@@ -457,6 +474,8 @@ export class BattleScene {
   private cloneSprite: AnimatedSprite
   private heroJob: JobId = 'rookie'
   private slashFx: AnimatedSprite
+  /** 揮擊拖尾層。放在 slashFx 之下,本體那道弧光永遠最亮 */
+  private swingTrailFx = new Graphics()
   private mercSprite: AnimatedSprite
   private armySprites: AnimatedSprite[] = []
   private armySpriteTypes: ArmyUnitType[] = Array(B.ARMY_UNIT_MAX).fill('vanguard')
@@ -505,8 +524,16 @@ export class BattleScene {
   private bossIntroLeft = 0
   private eventIntroLeft = 0
   private heroSwingLeft = 0
-  private heroSwingDuration = 230
+  private heroSwingDuration = SWING_TOTAL_MS
   private heroSwingSide = -1
+  /** 主角基準縮放(由 layoutHero 依螢幕算)。擠壓拉伸是乘在它上面的相對值 */
+  private heroBaseScale = 1
+  /** 命中頓格剩餘毫秒。>0 時 frame() 直接 return,演出定住 */
+  private hitStopLeft = 0
+  /** 這次揮擊是否已經觸發過頓格(一次揮擊只頓一次) */
+  private swingStruck = false
+  /** 揮擊拖尾:記錄揮擊過程的角度,畫成遞減透明度的殘影 */
+  private swingTrail: { rot: number; life: number }[] = []
   private afterimageVisualActive = false
   private afterimageSpawnLeft = 0
   private afterimageExitLeft = 0
@@ -585,7 +612,7 @@ export class BattleScene {
     this.cloneSprite.visible = false
     this.cloneSprite.play()
     this.hero.addChild(this.cloneSprite)
-    this.hero.addChild(this.heroBody, this.slashFx)
+    this.hero.addChild(this.heroBody, this.swingTrailFx, this.slashFx)
     this.heroBody.addChild(this.heroSprite)
 
     this.heroSprite.anchor.set(0.5, 233 / 256)
@@ -1087,10 +1114,17 @@ export class BattleScene {
     if (this.destroyed) return
     const snap = this.getSnap()
     if (source === 'hero' || source === 'click') {
+      // 疾風/盾擊仍然改變節奏,但整體以五拍表為基準等比縮放(見 tickHeroSwing)
       this.heroSwingDuration =
-        snap.buffSkill === 'shieldRush' ? 320 : snap.buffSkill === 'gale' ? 145 : 230
+        snap.buffSkill === 'shieldRush'
+          ? SWING_TOTAL_MS * 1.28
+          : snap.buffSkill === 'gale'
+            ? SWING_TOTAL_MS * 0.62
+            : SWING_TOTAL_MS
       this.heroSwingLeft = this.heroSwingDuration
       this.heroSwingSide *= -1
+      this.swingStruck = false
+      this.swingTrail.length = 0
       this.slashFx.visible = true
       this.slashFx.alpha = snap.buffSkill === 'gale' ? 0.72 : 1
       this.slashFx.tint = 0xffffff
@@ -1272,6 +1306,13 @@ export class BattleScene {
 
   private frame(ms: number) {
     if (this.destroyed) return
+    // 命中頓格:凍結**演出**時間 1~2 幀,給大腦一瞬間登記這一擊。
+    // ⚠️ 只影響畫面——core 的 tick 在 store 端獨立跑,傷害早已即時結算,
+    // 不會重演「延遲傷害害倒數判定失敗」那個坑
+    if (this.hitStopLeft > 0) {
+      this.hitStopLeft = Math.max(0, this.hitStopLeft - ms)
+      return
+    }
     const snap = this.getSnap()
     this.elapsed += ms
     this.goldNumCooldown -= ms
@@ -2716,7 +2757,10 @@ export class BattleScene {
   private layoutHero() {
     const { W, H } = this
     const s = Math.min(W, H * 0.62) / 300
-    this.heroBody.scale.set(s * 0.84)
+    // ⚠️ 這是主角的**基準縮放**(隨螢幕大小)。揮擊的擠壓拉伸必須乘在它上面,
+    // 不可以直接 scale.set 覆蓋——那會讓揮擊期間主角尺寸整個跑掉
+    this.heroBaseScale = s * 0.84
+    this.heroBody.scale.set(this.heroBaseScale)
     this.afterimages.forEach((ghost, i) => {
       ghost.scale.set(s * 0.84)
       if (i > 0) ghost.position.set(-20 - i * 14, 4 + i * 4)
@@ -2789,39 +2833,101 @@ export class BattleScene {
       this.heroBody.position.set(idleX, idleY)
       this.heroBody.rotation = 0
       this.heroBody.skew.x = 0
+      this.heroBody.scale.set(this.heroBaseScale) // 擠壓拉伸要還原,否則會殘留
       this.slashFx.rotation = 0
+      this.swingTrailFx.clear()
       return
     }
 
     this.heroSwingLeft = Math.max(0, this.heroSwingLeft - ms)
-    const progress = 1 - this.heroSwingLeft / this.heroSwingDuration
     const side = this.heroSwingSide
+    // 五拍用**絕對毫秒**切,不用比例——比例會讓預備動作隨總長縮到看不見。
+    // 疾風那類短揮擊等比壓縮,但命中拍有下限(低於 20ms 就讀不到定格)
+    const k = this.heroSwingDuration / SWING_TOTAL_MS
+    const windup = SWING_WINDUP_MS * k
+    const accel = SWING_ACCEL_MS * k
+    const contact = Math.max(20, SWING_CONTACT_MS * k)
+    const done = this.heroSwingDuration - this.heroSwingLeft // 這次揮擊已經過了多久
+
+    // 命中姿勢(全程最強的一格)
+    const PEAK_TURN = 0.34
+    const PEAK_LUNGE = 20
+    const PEAK_LEAN = 10
     let turn = 0
     let lunge = 0
     let lean = 0
+    let squash = 0 // >0 壓扁(蓄力)、<0 拉長(出擊)
 
-    if (progress < 0.24) {
-      const t = progress / 0.24
-      turn = -0.16 * t
-      lean = -4 * t
-    } else if (progress < 0.58) {
-      const t = 1 - (1 - (progress - 0.24) / 0.34) ** 3
-      turn = -0.16 + 0.48 * t
-      lunge = 18 * t
-      lean = -4 + 13 * t
+    if (done < windup) {
+      // ① 預備:後拉、重心下沉。慢,而且**保持速度**不減速地接進加速拍
+      const p = done / windup
+      turn = -0.20 * p
+      lean = -5 * p
+      squash = 0.06 * p
+    } else if (done < windup + accel) {
+      // ② 加速:全速切入,cubic ease-out 讓末端最快
+      const p = (done - windup) / accel
+      const e = 1 - (1 - p) ** 3
+      turn = -0.20 + (PEAK_TURN + 0.20) * e
+      lunge = PEAK_LUNGE * e
+      lean = -5 + (PEAK_LEAN + 5) * e
+      squash = 0.06 - 0.14 * e
+    } else if (done < windup + accel + contact) {
+      // ③ 命中:**定格**在最強的姿勢,完全不補間。
+      // 最短的一拍讀起來最重——時間被壓縮就是力量
+      turn = PEAK_TURN
+      lunge = PEAK_LUNGE
+      lean = PEAK_LEAN
+      squash = -0.08
+      if (!this.swingStruck) {
+        this.swingStruck = true
+        this.hitStopLeft = HIT_STOP_MS
+      }
     } else {
-      const t = (progress - 0.58) / 0.42
-      const recover = (1 - t) ** 2
-      turn = 0.32 * recover
-      lunge = 18 * recover
-      lean = 9 * recover
+      // ④ 收招:緩速回待機。減速的過程在傳達重量
+      const p = Math.min(1, (done - windup - accel - contact) / (this.heroSwingDuration - windup - accel - contact))
+      const back = (1 - p) ** 2
+      turn = PEAK_TURN * back
+      lunge = PEAK_LUNGE * back
+      lean = PEAK_LEAN * back
+      squash = -0.08 * back
     }
 
     this.heroBody.position.set(idleX + side * lean, idleY - lunge)
     this.heroBody.rotation = side * turn
     this.heroBody.skew.x = side * turn * 0.14
-    this.slashFx.rotation = side * (0.18 - progress * 0.42)
+    // 擠壓拉伸:蓄力時壓扁、出擊時拉長。體積守恆(一軸放大另一軸縮小)才不會像變形
+    this.heroBody.scale.set(this.heroBaseScale * (1 - squash), this.heroBaseScale * (1 + squash))
+
+    const rot = side * (0.18 - (done / this.heroSwingDuration) * 0.42)
+    this.slashFx.rotation = rot
     this.slashFx.x += side * 10
+    this.tickSwingTrail(ms, rot)
+  }
+
+  /**
+   * 揮擊拖尾:把武器掃過的角度留成幾道遞減透明度的殘影。
+   * ⚠️ 用同一張 slash 貼圖疊畫,不另外開素材——速度感是補間買得到的,不必畫新圖。
+   */
+  private tickSwingTrail(ms: number, rot: number) {
+    for (const g of this.swingTrail) g.life -= ms
+    this.swingTrail = this.swingTrail.filter((g) => g.life > 0)
+    if (this.heroSwingLeft > 0) this.swingTrail.push({ rot, life: SWING_TRAIL_FADE_MS })
+    if (this.swingTrail.length > SWING_TRAIL_COUNT * 3) this.swingTrail.splice(0, this.swingTrail.length - SWING_TRAIL_COUNT * 3)
+
+    this.swingTrailFx.clear()
+    if (!this.slashFx.visible) return
+    // 只取最舊的幾道畫,越舊越淡:近的那道由 slashFx 本體負責
+    const step = Math.max(1, Math.floor(this.swingTrail.length / SWING_TRAIL_COUNT))
+    for (let i = 0; i < this.swingTrail.length; i += step) {
+      const g = this.swingTrail[i]
+      const a = (g.life / SWING_TRAIL_FADE_MS) * 0.3
+      if (a <= 0.02) continue
+      const r = 46 + i * 1.5
+      this.swingTrailFx
+        .arc(this.slashFx.x, this.slashFx.y, r, g.rot - 0.5, g.rot + 0.5)
+        .stroke({ width: 5 - i * 0.5, color: 0xfff0c0, alpha: a })
+    }
   }
 
   private syncHeroJob(jobId: JobId) {
