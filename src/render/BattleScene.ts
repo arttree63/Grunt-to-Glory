@@ -681,7 +681,7 @@ export class BattleScene {
    * @param hits 實際段數(core 的 skill 事件帶過來,含融合加段)。技能描述寫幾段就要看到幾段
    * @param auto 自動施放:走濃縮節奏、不給頓格與 zoom(那是「玩家自己出手」的獎勵)
    */
-  skillHit(text: string, skillId?: SkillId, resourceSpent = 0, hits = 1, auto = false) {
+  skillHit(text: string, skillId?: SkillId, resourceSpent = 0, hits = 1, auto = false, hitText = '') {
     if (this.destroyed) return
     const target = this.targetPoint()
     const sigilSkills: SkillId[] = ['rally', 'windMark', 'edict']
@@ -692,7 +692,7 @@ export class BattleScene {
       this.shake = 14
       this.zoom = 1.8
     } else if (skillId === 'armsCharge') {
-      this.spawnChargeAnimation(target, hits, auto)
+      this.spawnChargeAnimation(target, hits, auto, hitText)
       this.shake = 10
       this.zoom = 1.5
     } else if (skillId === 'armsCommand') {
@@ -815,7 +815,10 @@ export class BattleScene {
       // 技能傷害走**藍字**,和普攻的白字、暴擊的金字分開。
       // 聖光系(judgement / edict)維持白金大字——那是它們的身分色,不併進藍色
       const holy = skillId === 'judgement' || skillId === 'edict'
-      this.damageNum(target.x, damageY, text, true, holy, 1, false, false, holy ? 'default' : 'skill')
+      // ⚠️ 多段技的數字由各段自己跳(見 spawnChargeAnimation),這裡不可以再印一次總額——
+      // 否則畫面會是 100 / 100 / 100 再加一個 300,看起來像重複計算
+      if (!(hitText && hits > 1))
+        this.damageNum(target.x, damageY, text, true, holy, 1, false, false, holy ? 'default' : 'skill')
     }
   }
 
@@ -1865,16 +1868,17 @@ export class BattleScene {
   }
 
   private armySlot(index: number) {
-    // ⚠️ 第 5 槽原本是 { x: 0, y: 0.91 }——**與主角同一條中線**(hero 在 W/2, H*0.86),
-    // 只差 0.05H,所以第五個士兵直接疊在主角身上。主角是畫面焦點,
-    // 任何單位都不可以站在他的中線上(clicker-ui § 一:主角背影永遠是焦點,不得遮擋)。
-    // 改成偏右後方,並與傭兵(在左後方 -0.24)左右分開。
+    // 三排左右對稱,每排一對。⚠️ **沒有任何一槽在 x = 0**:
+    // 主角站正中央(W/2, H*0.86),中線上的單位會直接疊在他身上,
+    // 而 clicker-ui § 一 明訂主角背影永遠是焦點、不得遮擋。
+    // 這也是士兵數定 6 不是 5 的原因——奇數在對稱構圖下必然有一隻沒地方站。
     const slots = [
-      { x: -0.21, y: 0.845 },
-      { x: 0.21, y: 0.845 },
-      { x: -0.36, y: 0.88 },
-      { x: 0.36, y: 0.88 },
-      { x: 0.29, y: 0.925 },
+      { x: -0.20, y: 0.845 },
+      { x: 0.20, y: 0.845 },
+      { x: -0.35, y: 0.878 },
+      { x: 0.35, y: 0.878 },
+      { x: -0.27, y: 0.925 },
+      { x: 0.27, y: 0.925 },
     ]
     const slot = slots[index] ?? slots[0]
     return { x: this.W * (0.5 + slot.x), y: this.H * slot.y }
@@ -1942,7 +1946,10 @@ export class BattleScene {
       const from = { x: unit.position.x, y: unit.position.y }
       const index = this.armySprites.indexOf(unit)
       this.armyCharging.add(index)
-      this.playArmyAction(unit, index, 'vanguard')
+      // ⚠️ 用**該席位實際的兵種**,不要寫死 vanguard——盾衛兵會播成先鋒的衝鋒動作。
+      // 之後新增兵種時,這裡是它們「各自發動自己的能力」的接點
+      const type = this.getSnap().armyFormation[index] === 'shieldGuard' ? 'shieldGuard' : 'vanguard'
+      this.playArmyAction(unit, index, type)
       let arrived = false
       const node = new Container() as TimedFx
       this.addTimedFx(node, delay + run + 260 * tempo, (n) => {
@@ -2788,7 +2795,7 @@ export class BattleScene {
    *   2. 只在 p>=0.72 觸發**一次** impact,但 hitCount 是 3 → 詞語與畫面對不上
    *   3. 五個「騎士」是主角自己的染色複製,已部署的先鋒軍站在原地完全沒動
    */
-  private spawnChargeAnimation(target: { x: number; y: number }, hits = 1, auto = false) {
+  private spawnChargeAnimation(target: { x: number; y: number }, hits = 1, auto = false, hitText = '') {
     const tempo = auto ? AUTO_TEMPO : 1
     const hitCount = Math.max(1, Math.min(6, hits))
     const gap = MULTI_HIT_GAP_MS * tempo
@@ -2842,6 +2849,21 @@ export class BattleScene {
       struck++
       const power = 0.8 + 0.5 * (struck / hitCount) // 力道遞增才有 crescendo
       this.spawnImpact(endX, endY, 1.35 * power)
+      // 每一段自己跳一個數字:「三段突擊」要看得到三個數字,不是一個總額。
+      // 最後一段放大,前面幾段小一點——大小也在講 crescendo
+      if (hitText) {
+        this.damageNum(
+          endX + (struck - (hitCount + 1) / 2) * 34,
+          endY - 40 - struck * 6,
+          hitText,
+          last,
+          false,
+          last ? 1 : 0.78,
+          false,
+          false,
+          'skill',
+        )
+      }
       if (this.boss) this.boss.flash()
       else if (this.eventView) this.eventView.flash()
       else this.frontMob()?.flash()

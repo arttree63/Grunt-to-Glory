@@ -4157,12 +4157,13 @@ describe('命運共鳴(顯示傾向與公開來源,不替玩家推薦)', () => {
 })
 
 describe('軍勢系統', () => {
-  it('五格編制可切換兵種，非法席位與兵種會被拒絕', () => {
+  it('編制可切換兵種，非法席位與兵種會被拒絕', () => {
+    // ⚠️ 席位數綁 ARMY_UNIT_MAX,不要寫死——2026-08-02 由 5 改 6(構圖要左右對稱)
     const s = createInitialState()
     expect(setArmyFormationSlot(s, 1, 'shieldGuard')).toBe(true)
     expect(s.armyFormation[1]).toBe('shieldGuard')
     expect(setArmyFormationSlot(s, -1, 'vanguard')).toBe(false)
-    expect(setArmyFormationSlot(s, 5, 'vanguard')).toBe(false)
+    expect(setArmyFormationSlot(s, B.ARMY_UNIT_MAX, 'vanguard')).toBe(false)
     expect(setArmyFormationSlot(s, 0, 'mage' as never)).toBe(false)
   })
 
@@ -4217,11 +4218,23 @@ describe('軍勢系統', () => {
     const s = createInitialState()
     s.armyMomentum = 73
     s.armyUnits = 4
-    s.armyFormation = ['shieldGuard', 'vanguard', 'shieldGuard', 'vanguard', 'shieldGuard']
+    s.armyFormation = Array.from({ length: B.ARMY_UNIT_MAX }, (_, i) =>
+      i % 2 === 0 ? 'shieldGuard' : 'vanguard',
+    )
     const out = deserialize(serialize(s))
     expect(out.armyMomentum).toBe(73)
     expect(out.armyUnits).toBe(4)
     expect(out.armyFormation).toEqual(s.armyFormation)
+
+    // ⚠️ 席位數 2026-08-02 由 5 擴到 6。舊存檔只有 5 格,補齊到 6 且不得丟資料
+    // (只擴不縮)。缺的那格補預設兵種
+    const legacy = serialize(s) as unknown as Record<string, unknown>
+    legacy.armyFormation = ['shieldGuard', 'vanguard', 'shieldGuard', 'vanguard', 'shieldGuard']
+    const migrated = deserialize(legacy as never)
+    expect(migrated.armyFormation).toHaveLength(B.ARMY_UNIT_MAX)
+    expect(migrated.armyFormation.slice(0, 5)).toEqual([
+      'shieldGuard', 'vanguard', 'shieldGuard', 'vanguard', 'shieldGuard',
+    ])
 
     const raw = serialize(s) as unknown as Record<string, unknown>
     raw.armyMomentum = 999
@@ -4230,7 +4243,11 @@ describe('軍勢系統', () => {
     const clamped = deserialize(raw as never)
     expect(clamped.armyMomentum).toBe(B.ARMY_MOMENTUM_MAX)
     expect(clamped.armyUnits).toBe(B.ARMY_UNIT_MAX)
-    expect(clamped.armyFormation).toEqual(['shieldGuard', 'vanguard', 'vanguard', 'vanguard', 'vanguard'])
+    // 髒資料(hacker / null / {})一律退回預設兵種;長度永遠等於 ARMY_UNIT_MAX
+    expect(clamped.armyFormation).toHaveLength(B.ARMY_UNIT_MAX)
+    expect(clamped.armyFormation.slice(0, 5)).toEqual([
+      'shieldGuard', 'vanguard', 'vanguard', 'vanguard', 'vanguard',
+    ])
   })
 
   it('體能技能受擊才反擊，盾衛兵會提高反擊且不累積軍勢', () => {
