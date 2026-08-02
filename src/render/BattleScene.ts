@@ -545,6 +545,12 @@ export class BattleScene {
   private hitStopLeft = 0
   /** 這次揮擊是否已經觸發過頓格(一次揮擊只頓一次) */
   private swingStruck = false
+  /**
+   * 正在衝鋒的士兵索引。⚠️ `layoutArmy` 每幀都會把士兵設回陣線槽位,
+   * 不讓位的話衝鋒座標會被立刻蓋掉——士兵看起來只抖了 2~3px。
+   * 這是「同一個值兩個算法」的第三次現形(前兩次:主角 scale、主角 scale 還原)。
+   */
+  private armyCharging = new Set<number>()
   /** 揮擊拖尾:記錄揮擊過程的角度,畫成遞減透明度的殘影 */
   private swingTrail: { rot: number; life: number }[] = []
   private afterimageVisualActive = false
@@ -806,13 +812,10 @@ export class BattleScene {
     }
     if (text) {
       const damageY = this.boss ? target.y + 12 : target.y - 45
-      this.damageNum(
-        target.x,
-        damageY,
-        text,
-        true,
-        skillId === 'judgement' || skillId === 'edict',
-      )
+      // 技能傷害走**藍字**,和普攻的白字、暴擊的金字分開。
+      // 聖光系(judgement / edict)維持白金大字——那是它們的身分色,不併進藍色
+      const holy = skillId === 'judgement' || skillId === 'edict'
+      this.damageNum(target.x, damageY, text, true, holy, 1, false, false, holy ? 'default' : 'skill')
     }
   }
 
@@ -1292,7 +1295,7 @@ export class BattleScene {
     fontScale = 1,
     frozen = false,
     notice = false,
-    tone: 'default' | 'retaliate' = 'default',
+    tone: 'default' | 'retaliate' | 'skill' = 'default',
   ) {
     // 同屏跳字上限,超過先移除最舊的
     while (this.dmgLayer.children.length >= 12) this.dmgLayer.children[0].destroy()
@@ -1302,8 +1305,22 @@ export class BattleScene {
         fontFamily: 'Arial Black, PingFang TC, sans-serif',
         fontSize: (holy ? 40 : crit ? 34 : 24) * fontScale,
         fontWeight: '900',
-        fill: holy ? 0xffffff : tone === 'retaliate' ? 0xbfeaff : crit ? 0xffd23e : 0xffffff,
-        stroke: { color: holy ? 0xc78b18 : tone === 'retaliate' ? 0x17384f : 0x000000, width: holy ? 7 : 5 },
+        // 顏色分工:白=普攻 / 金=暴擊 / 淺藍=反擊 / **亮藍=技能** / 白金=聖光大字。
+        // ⚠️ 技能是玩家主動按出來的,要能一眼從普攻的白字裡挑出來——
+        // 同屏跳字上限只有 12,顏色是唯一分得開的維度
+        fill: holy
+          ? 0xffffff
+          : tone === 'retaliate'
+            ? 0xbfeaff
+            : tone === 'skill'
+              ? 0x7ec8ff
+              : crit
+                ? 0xffd23e
+                : 0xffffff,
+        stroke: {
+          color: holy ? 0xc78b18 : tone === 'retaliate' ? 0x17384f : tone === 'skill' ? 0x0b2c4d : 0x000000,
+          width: holy ? 7 : 5,
+        },
       },
     })
     t.anchor.set(0.5)
@@ -1873,6 +1890,8 @@ export class BattleScene {
       unit.visible = active
       if (!active) continue
       this.armyEntranceMs[i] = Math.max(0, this.armyEntranceMs[i] - ms)
+      // 衝鋒中的士兵由 chargeArmyAlong 掌管位置,這裡不可以再寫
+      if (this.armyCharging.has(i)) continue
       const slot = this.armySlot(i)
       const entrance = 1 - this.armyEntranceMs[i] / 520
       const eased = 1 - (1 - Math.max(0, entrance)) ** 3
@@ -1902,28 +1921,58 @@ export class BattleScene {
   }
 
   /**
-   * 衝鋒時讓已部署的先鋒軍跟著往前衝。
-   * ⚠️ 技能描述是「**先鋒軍**發動三段突擊」,但演出裡的五個騎士是主角自己的染色複製,
-   * 畫面上那幾個站著的先鋒軍完全沒動——詞語與畫面對不上的兩個缺口之一,
-   * 而修它不需要任何新素材:vanguardCharge 幀本來就有。
+   * 衝鋒:先鋒軍**真的衝到目標**,不是在原地往前壓一下。
+   *
+   * ⚠️ 這是第二版。第一版讓士兵前後晃 5% 螢幕高就回位,而三段命中**全部還是主角**
+   * 在目標點打的——技能描述是「英雄與先鋒軍**一同**發動三段突擊」,
+   * 那個版本實際上是「主角打三段、士兵在後面動一下」,詞語仍然對不上。
+   *
+   * 現在:每個士兵各自衝到目標、抵達時各自落一段命中,主角是楔形的尖端(第一段)。
+   * @returns 每個士兵抵達目標的時間(ms),讓命中串照這個排
    */
-  private chargeArmyAlong(tempo: number) {
-    for (let i = 0; i < this.armySprites.length; i++) {
-      const unit = this.armySprites[i]
-      if (!unit.visible) continue
-      // 前排先動、後排跟上:同時起跑會像一堵牆在平移
-      const delay = i * 55 * tempo
+  private chargeArmyAlong(tempo: number, target: { x: number; y: number }, onArrive: (i: number) => void) {
+    const arrivals: number[] = []
+    const active = this.armySprites.filter((u) => u.visible)
+    active.forEach((unit, i) => {
+      // 前排先出發、後排跟上:同時起跑會像一堵牆在平移
+      // ⚠️ 要把預備拍算進去:不加的話士兵會比主角早到,「楔形尖端」就反過來了
+      const delay = CHARGE_WINDUP_MS * tempo + (140 + i * 90) * tempo
+      const run = 380 * tempo
+      arrivals.push(delay + run)
       const from = { x: unit.position.x, y: unit.position.y }
-      this.playArmyAction(unit, i, 'vanguard')
+      const index = this.armySprites.indexOf(unit)
+      this.armyCharging.add(index)
+      this.playArmyAction(unit, index, 'vanguard')
+      let arrived = false
       const node = new Container() as TimedFx
-      this.addTimedFx(node, delay + 460 * tempo, (_n, p) => {
-        const t = Math.max(0, (p * (delay + 460 * tempo) - delay) / (460 * tempo))
-        if (t <= 0) return
-        // 衝出去再回位:先鋒軍不會離開陣線,只是往前壓一段
-        const push = Math.sin(Math.min(1, t) * Math.PI)
-        unit.position.set(from.x, from.y - push * this.H * 0.055)
+      this.addTimedFx(node, delay + run + 260 * tempo, (n) => {
+        const age = n._age
+        if (age < delay) return
+        const t = (age - delay) / run
+        if (t <= 1) {
+          // 衝過去:ease-out,越接近目標越快
+          const e = t * t * (3 - 2 * t)
+          unit.position.set(
+            from.x + (target.x - from.x) * e,
+            from.y + (target.y + 24 - from.y) * e,
+          )
+          if (!arrived && t >= 0.92) {
+            arrived = true
+            onArrive(i)
+          }
+        } else {
+          // 撤回陣線:衝完要回去,不然下一秒陣型是空的
+          const back = Math.min(1, (age - delay - run) / (260 * tempo))
+          const e = back * back
+          unit.position.set(
+            target.x + (from.x - target.x) * e,
+            target.y + 24 + (from.y - target.y - 24) * e,
+          )
+          if (back >= 1) this.armyCharging.delete(index) // 歸位後把位置交還 layoutArmy
+        }
       })
-    }
+    })
+    return arrivals
   }
 
   private playArmyAction(unit: AnimatedSprite, index: number, type: ArmyUnitType) {
@@ -1981,6 +2030,35 @@ export class BattleScene {
         }
       }, this.impactLayer)
     }
+
+    // ── 收尾:主角的最後一斬 ──
+    // ⚠️ 沒有這一下,大招就是「一群兵衝出去然後結束」——沒有句點。
+    // VFX 三階段的「爆發」要落在最亮的一瞬,而那一瞬應該是主角本人。
+    // 時間排在最後一名士兵撞上之後,不然會被淹沒在人堆裡。
+    const finaleAt = 760 * 0.76 + (total - 1) * 90 + 90
+    const finale = new Container() as TimedFx
+    let finished = false
+    this.addTimedFx(finale, finaleAt + 420, (node) => {
+      if (finished || node._age < finaleAt) return
+      finished = true
+      // 主角自己揮一刀:走既有的揮擊管線,連五拍與頓格一起拿到
+      this.heroSwingDuration = SWING_TOTAL_MS
+      this.heroSwingLeft = this.heroSwingDuration
+      this.heroSwingSide *= -1
+      this.swingStruck = false
+      this.swingTrail.length = 0
+      this.slashFx.visible = true
+      this.slashFx.alpha = 1
+      this.slashFx.tint = 0xffe6a0
+      this.slashFx.scale.set(1.5)
+      this.slashFx.gotoAndPlay(0)
+      this.spawnImpact(target.x, target.y + 6, 2.1) // 全場最大的一擊
+      if (this.boss) this.boss.flash()
+      else if (this.eventView) this.eventView.flash()
+      else this.frontMob()?.flash()
+      this.shake = 18
+      this.zoom = 2.1
+    })
   }
 
   private spawnElementBursts(target: { x: number; y: number }, count: number) {
@@ -2748,10 +2826,33 @@ export class BattleScene {
     const distance = Math.hypot(endX - startX, endY - startY) || 1
     const trailX = (startX - endX) / distance
     const trailY = (startY - endY) / distance
-    let struck = 0 // 已經打出幾段
+    let struck = 0 // 已經打出幾段(總計,決定力道遞增與哪一段是最後一段)
+    let heroStruck = 0 // ⚠️ 主角的排程要獨立計數:與士兵共用 struck 的話,
+    // 誰先打誰就把額度吃光——實測時主角那一段就這樣整個消失了
     this.heroBody.visible = false
-    // 「先鋒軍發動突擊」——已部署的士兵要真的跟著衝,不能只有主角的染色複製在動
-    this.chargeArmyAlong(tempo)
+
+    // ── 誰打哪一段 ──
+    // 「英雄與先鋒軍**一同**發動三段突擊」:主角是楔形的尖端(第一段),
+    // 其餘各段由抵達的先鋒軍落下。士兵不夠時主角補打,總段數永遠等於 hits。
+    const soldierCount = this.armySprites.filter((u) => u.visible).length
+    const soldierHits = Math.min(hitCount - 1, soldierCount)
+    const heroHits = hitCount - soldierHits
+    const strike = () => {
+      const last = struck === hitCount - 1
+      struck++
+      const power = 0.8 + 0.5 * (struck / hitCount) // 力道遞增才有 crescendo
+      this.spawnImpact(endX, endY, 1.35 * power)
+      if (this.boss) this.boss.flash()
+      else if (this.eventView) this.eventView.flash()
+      else this.frontMob()?.flash()
+      this.shake = Math.max(this.shake, last ? 15 : 8)
+      if (last && !auto) this.hitStopLeft = HIT_STOP_MS // 頓格只給最後一段
+    }
+    if (soldierHits > 0) {
+      this.chargeArmyAlong(tempo, { x: endX, y: endY }, (i) => {
+        if (i < soldierHits) strike()
+      })
+    }
 
     // 四拍用**絕對毫秒**換算成進度,總長會隨段數變長,拍子本身不會被壓扁
     const pWindup = windup / duration
@@ -2782,20 +2883,11 @@ export class BattleScene {
           : dash > index * 0.055 ? (0.44 - index * 0.075) * stretch * fade : 0
       })
 
-      // ③ 命中串:desc 承諾幾段就打幾段,段間 MULTI_HIT_GAP_MS(> 閃白 70ms 才看得到分段)
-      const dueHits = Math.min(hitCount, Math.floor((p * duration - windup - travel) / gap) + 1)
-      while (struck < dueHits) {
-        const last = struck === hitCount - 1
-        struck++
-        // 最後一段最重:力道遞增才有 crescendo,不是三下一樣大
-        const power = 0.8 + 0.5 * (struck / hitCount)
-        this.spawnImpact(endX, endY, 1.35 * power)
-        if (this.boss) this.boss.flash()
-        else if (this.eventView) this.eventView.flash()
-        else this.frontMob()?.flash()
-        this.shake = Math.max(this.shake, last ? 15 : 8)
-        // 頓格只給最後一段:每段都頓會變成慢動作
-        if (last && !auto) this.hitStopLeft = HIT_STOP_MS
+      // ③ 主角負責的段數(楔形尖端先到)。士兵那幾段由 chargeArmyAlong 的抵達回呼觸發
+      const heroDue = Math.min(heroHits, Math.floor((p * duration - windup - travel) / gap) + 1)
+      while (heroStruck < heroDue) {
+        heroStruck++
+        strike()
       }
 
       if (p >= 0.96) this.heroBody.visible = true
