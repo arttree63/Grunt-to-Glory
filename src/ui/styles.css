@@ -1695,6 +1695,7 @@ button {
 
 /* 角色資訊卡:HP、MP 與軍勢；耐久不作為額外屬性呈現 */
 .hero-status-card {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1706,6 +1707,27 @@ button {
   border-radius: 4px;
   background: #151018;
   box-shadow: inset 0 0 0 1px #09070a, 0 3px 10px #0008;
+}
+.hp-damage-pop {
+  position: absolute;
+  z-index: 8;
+  top: -8px;
+  left: 52%;
+  pointer-events: none;
+  color: #ff7d87;
+  font-family: "Arial Black", "PingFang TC", sans-serif;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.3px;
+  text-shadow: -1px -1px 0 #2b0710, 1px -1px 0 #2b0710, -1px 1px 0 #2b0710, 1px 1px 0 #2b0710, 0 2px 5px #000;
+  animation: hp-damage-rise 820ms ease-out both;
+}
+@keyframes hp-damage-rise {
+  0% { opacity: 0; transform: translate(-50%, 8px) scale(0.72); }
+  16% { opacity: 1; transform: translate(-50%, 0) scale(1.12); }
+  62% { opacity: 1; transform: translate(-50%, -5px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -15px) scale(0.94); }
 }
 .portrait-frame,
 .merc-portrait {

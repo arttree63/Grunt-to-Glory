@@ -977,7 +977,10 @@ export class BattleScene {
     this.playShieldGuardFormation(Math.max(1, guards))
     const target = this.targetPoint()
     this.spawnRetaliationWave(target, skillId, guards)
-    if (damageText) this.damageNum(target.x, target.y - 44, damageText, false)
+    if (damageText) {
+      const numberX = target.x + Math.min(64, this.W * 0.14)
+      this.damageNum(numberX, target.y + 8, `↯ ${damageText}`, false, false, 1, false, false, 'retaliate')
+    }
     this.shake = Math.max(this.shake, 5 + Math.min(5, guards))
     this.zoom = Math.max(this.zoom, 0.8 + guards * 0.12)
   }
@@ -1238,6 +1241,7 @@ export class BattleScene {
     fontScale = 1,
     frozen = false,
     notice = false,
+    tone: 'default' | 'retaliate' = 'default',
   ) {
     // 同屏跳字上限,超過先移除最舊的
     while (this.dmgLayer.children.length >= 12) this.dmgLayer.children[0].destroy()
@@ -1247,8 +1251,8 @@ export class BattleScene {
         fontFamily: 'Arial Black, PingFang TC, sans-serif',
         fontSize: (holy ? 40 : crit ? 34 : 24) * fontScale,
         fontWeight: '900',
-        fill: holy ? 0xffffff : crit ? 0xffd23e : 0xffffff,
-        stroke: { color: holy ? 0xc78b18 : 0x000000, width: holy ? 7 : 5 },
+        fill: holy ? 0xffffff : tone === 'retaliate' ? 0xbfeaff : crit ? 0xffd23e : 0xffffff,
+        stroke: { color: holy ? 0xc78b18 : tone === 'retaliate' ? 0x17384f : 0x000000, width: holy ? 7 : 5 },
       },
     })
     t.anchor.set(0.5)

@@ -327,6 +327,7 @@ function nextGoal(s: ReturnType<typeof useGameState>): string {
 function Game() {
   const s = useGameState()
   const [tab, setTab] = useState<Tab | null>(null)
+  const [incomingHit, setIncomingHit] = useState<{ id: number; text: string } | null>(null)
   const offline = useGame((st) => st.offline)
   const lastRun = useGame((st) => st.lastRun)
   const dismissOffline = useGame((st) => st.dismissOffline)
@@ -343,6 +344,20 @@ function Game() {
     setUiLock('modal:app', !!offline || !!lastRun)
     return () => setUiLock('modal:app', false)
   }, [lastRun, offline, setUiLock])
+
+  useEffect(() => {
+    let clearHit: ReturnType<typeof setTimeout> | undefined
+    const off = gameEvents.on((event) => {
+      if (event.type !== 'threatHit' || !event.damage) return
+      if (clearHit) clearTimeout(clearHit)
+      setIncomingHit({ id: Date.now(), text: `-${fmtCombat(event.damage)}` })
+      clearHit = setTimeout(() => setIncomingHit(null), 820)
+    })
+    return () => {
+      off()
+      if (clearHit) clearTimeout(clearHit)
+    }
+  }, [])
 
   const hpRatio = s.enemyMaxHp.gt(0) ? s.enemyHp.div(s.enemyMaxHp).toNumber() : 0
   // 耐久比例:上限只有 enduranceMax 一支算法(game-balance 硬規則),UI 不自己算
@@ -649,6 +664,11 @@ function Game() {
           </button>
         )}
         <div className="hero-status-card">
+          {incomingHit && (
+            <span className="hp-damage-pop" key={incomingHit.id} aria-label={`受到傷害 ${incomingHit.text}`}>
+              {incomingHit.text}
+            </span>
+          )}
           <div className="portrait-frame">
             <img src={HERO_ART[s.jobId]} alt={job.name} />
           </div>
