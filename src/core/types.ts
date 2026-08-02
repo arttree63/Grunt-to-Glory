@@ -694,6 +694,16 @@ export interface GameEvent {
   slot?: Slot
   kind?: EventKind
   skillId?: SkillId
+  /**
+   * skill 事件:這一招實際打出幾段(含融合加段 / 號令的士兵數)。
+   * ⚠️ 演出用來把命中回饋排成一串——技能描述寫「三段突擊」「八段攻擊」,
+   * 但傷害是同一 tick 一次結算的;不把段數送過來,畫面上就只會有一下,
+   * 詞語與畫面就對不起來。傷害本身**不分段**(禁止 deferred damage buffer,
+   * 見 dealDamage 的凍結註解),分拍的只有數字、閃白、震屏、音效。
+   */
+  hits?: number
+  /** skill 事件:自動施放。演出走濃縮節奏;完整四拍與 zoom 只給手動 */
+  auto?: boolean
   encounterId?: EncounterId
   /** achievement 事件:達成的軍功記錄 id */
   achievementId?: string

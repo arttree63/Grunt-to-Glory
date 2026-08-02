@@ -2144,6 +2144,10 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
   let skillDamage = D(0)
   // 裁決餘燼:轉入燃燒的份額,回填給 skill 事件(玩家要知道傷害沒少,是慢燒)
   let emberBurn: Decimal | undefined
+  // 實際段數,回填給 skill 事件供演出排命中串。
+  // ⚠️ hitCount 原本只活在 burstSeconds 分支裡餵 registerBossHits(破盾值),
+  // 出了分支就丟了 —— 演出層因此永遠不知道「三段突擊」有三段
+  let performedHits = 1
 
   const bonus = equipBonuses(s.equipped)
   // 演出要知道「這一發吃了幾層」,才畫得出 N 道射線
@@ -2278,6 +2282,7 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
     const hitCount = id === 'armsCommand'
       ? Math.max(1, armyCommandUnits)
       : (sk.hitCount ?? 1) + bonusHits
+    performedHits = hitCount
     registerBossHits(s, hitCount, events, 'skill')
     if (id !== 'armsCommand') {
       gainArmyMomentum(
@@ -2319,6 +2324,8 @@ export function castSkill(s: GameState, id: SkillId, auto = false, rng: Rng = Ma
     skillId: id,
     damage: skillDamage.gt(0) ? skillDamage : undefined,
     count: spent || armyCommandUnits || undefined,
+    hits: performedHits,
+    auto,
     burnDamage: emberBurn,
   })
   return events

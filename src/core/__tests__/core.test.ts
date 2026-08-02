@@ -216,6 +216,58 @@ describe('戰鬥循環', () => {
     expect(kill?.count).toBeGreaterThan(1) // 事件已合併,演出層不會被灌爆
   })
 
+  it('skill 事件要帶實際段數與 auto,否則演出對不上技能描述的詞語', () => {
+    // ⚠️ 技能描述寫「三段突擊」「八段攻擊」,但傷害是同一 tick 一次結算的。
+    // hitCount 原本只活在 burstSeconds 分支裡餵破盾值,出了分支就丟了,
+    // 演出層永遠不知道有幾段 → 畫面上只會有一下。這條釘住它有送出來。
+    const cases: Array<[Parameters<typeof castSkill>[1], number]> = [
+      ['armsCharge', SKILLS.armsCharge.hitCount!],
+      ['agilityCommand', SKILLS.agilityCommand.hitCount!],
+      ['magicBurst', SKILLS.magicBurst.hitCount!],
+    ]
+    /**
+     * 技能由訓練樹的 tracks 等級解鎖(trainingTree.ts),而且**只有裝配上的五格能放**
+     * (equippedSkills 的 slice(0,5))——受測技能一定要自己裝上去,不能只解鎖
+     */
+    const ready = (equip: Parameters<typeof castSkill>[1]) => {
+      const s = createInitialState()
+      s.lv = 200
+      for (const b of TRAINING_BRANCHES) s.tracks[b.id] = 200
+      s.skillLoadout = [equip]
+      s.mp = B.MP_MAX
+      return s
+    }
+    for (const [id, want] of cases) {
+      const s = ready(id)
+      const ev = castSkill(s, id).find((e) => e.type === 'skill')
+      expect(ev, `${id} 應該發出 skill 事件`).toBeTruthy()
+      // ⚠️ 帶的是**實際**段數,不是 SKILLS 表上的宣告值:
+      // 融合會加段(magicBurst 吃 agility×magic 每階 +2,armsCharge 吃 arms×agility)。
+      // 演出要的正是實際值——否則融合玩家的畫面會少幾段
+      expect(ev!.hits, `${id} 的段數不得低於宣告值`).toBeGreaterThanOrEqual(want)
+      expect(ev!.auto).toBe(false)
+    }
+
+    // 沒有融合時,段數就等於技能表的宣告值(tracks 只點單一分支)
+    const pure = createInitialState()
+    pure.lv = 200
+    pure.tracks.magic = 200
+    pure.skillLoadout = ['magicBurst']
+    pure.mp = B.MP_MAX
+    expect(castSkill(pure, 'magicBurst').find((e) => e.type === 'skill')!.hits).toBe(
+      SKILLS.magicBurst.hitCount,
+    )
+
+    // 自動施放要標記出來:完整四拍與 zoom 只給手動
+    const auto = ready('armsCharge')
+    expect(castSkill(auto, 'armsCharge', true).find((e) => e.type === 'skill')!.auto).toBe(true)
+
+    // buff 型沒有段數,維持 1(hits=1 等於現況,零回歸)
+    const buff = ready('agilityHaste')
+    const bev = castSkill(buff, 'agilityHaste').find((e) => e.type === 'skill')
+    expect(bev!.hits).toBe(1)
+  })
+
   it('MP 制:前三格吃 MP + 保底 CD,頂點技能維持正常 CD(v4.1 § 5)', () => {
     const s = createInitialState()
     s.lv = 20
