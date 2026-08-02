@@ -271,9 +271,22 @@ const HIT_STOP_MS = 28
 const SWING_TRAIL_COUNT = 4
 const SWING_TRAIL_FADE_MS = 120
 
-const SKILL_FRAME_MS = 120
 // 蓄力較慢、斬擊加速，命中幀刻意多停一拍。
 const ARMS_HEAVY_FRAME_MS = [115, 90, 58, 48, 52, 58, 105, 82, 72, 80, 96, 125]
+/**
+ * 衝鋒軌跡的逐幀時間。⚠️ 原本用一個等長常數平均分(每幀 120ms),
+ * **等長 = 沒有輕重**,這正是「衝鋒感覺比重擊平」的原因。
+ * 形狀抄重擊那條調好的曲線:蓄力慢 → 切入快 → 命中最短 → 拖尾放慢。
+ */
+const ARMS_CHARGE_FRAME_MS = [140, 100, 58, 44, 50, 78, 120, 150]
+/** 衝鋒四拍(ms)。推進拍比揮擊長很多——那是「衝過去」這件事本身 */
+const CHARGE_WINDUP_MS = 140
+const CHARGE_TRAVEL_MS = 420
+const CHARGE_RECOVER_MS = 200
+/** 多段技的段間距。⚠️ 受擊閃白是 70ms,段間必須大於它才看得到「閃-恢復-再閃」 */
+const MULTI_HIT_GAP_MS = 120
+/** 自動施放的節奏濃縮倍率:zoom 與完整四拍是「玩家自己出手」的獎勵 */
+const AUTO_TEMPO = 0.62
 
 interface VisualAssets {
   background: Texture
@@ -658,7 +671,11 @@ export class BattleScene {
    * ⚠️ 目前三招共用同一組演出 —— 技能身分要靠 `skillId` 分流(視覺缺口清單 § 一)。
    * `resourceSpent` 是這一發吃掉的印記或士兵數量。
    */
-  skillHit(text: string, skillId?: SkillId, resourceSpent = 0) {
+  /**
+   * @param hits 實際段數(core 的 skill 事件帶過來,含融合加段)。技能描述寫幾段就要看到幾段
+   * @param auto 自動施放:走濃縮節奏、不給頓格與 zoom(那是「玩家自己出手」的獎勵)
+   */
+  skillHit(text: string, skillId?: SkillId, resourceSpent = 0, hits = 1, auto = false) {
     if (this.destroyed) return
     const target = this.targetPoint()
     const sigilSkills: SkillId[] = ['rally', 'windMark', 'edict']
@@ -669,7 +686,7 @@ export class BattleScene {
       this.shake = 14
       this.zoom = 1.8
     } else if (skillId === 'armsCharge') {
-      this.spawnChargeAnimation(target)
+      this.spawnChargeAnimation(target, hits, auto)
       this.shake = 10
       this.zoom = 1.5
     } else if (skillId === 'armsCommand') {
@@ -1831,12 +1848,16 @@ export class BattleScene {
   }
 
   private armySlot(index: number) {
+    // ⚠️ 第 5 槽原本是 { x: 0, y: 0.91 }——**與主角同一條中線**(hero 在 W/2, H*0.86),
+    // 只差 0.05H,所以第五個士兵直接疊在主角身上。主角是畫面焦點,
+    // 任何單位都不可以站在他的中線上(clicker-ui § 一:主角背影永遠是焦點,不得遮擋)。
+    // 改成偏右後方,並與傭兵(在左後方 -0.24)左右分開。
     const slots = [
       { x: -0.21, y: 0.845 },
       { x: 0.21, y: 0.845 },
       { x: -0.36, y: 0.88 },
       { x: 0.36, y: 0.88 },
-      { x: 0, y: 0.91 },
+      { x: 0.29, y: 0.925 },
     ]
     const slot = slots[index] ?? slots[0]
     return { x: this.W * (0.5 + slot.x), y: this.H * slot.y }
@@ -1878,6 +1899,31 @@ export class BattleScene {
     unit.animationSpeed = frameSpeed(HERO_FRAME_MS)
     unit.onComplete = undefined
     unit.gotoAndPlay(0)
+  }
+
+  /**
+   * 衝鋒時讓已部署的先鋒軍跟著往前衝。
+   * ⚠️ 技能描述是「**先鋒軍**發動三段突擊」,但演出裡的五個騎士是主角自己的染色複製,
+   * 畫面上那幾個站著的先鋒軍完全沒動——詞語與畫面對不上的兩個缺口之一,
+   * 而修它不需要任何新素材:vanguardCharge 幀本來就有。
+   */
+  private chargeArmyAlong(tempo: number) {
+    for (let i = 0; i < this.armySprites.length; i++) {
+      const unit = this.armySprites[i]
+      if (!unit.visible) continue
+      // 前排先動、後排跟上:同時起跑會像一堵牆在平移
+      const delay = i * 55 * tempo
+      const from = { x: unit.position.x, y: unit.position.y }
+      this.playArmyAction(unit, i, 'vanguard')
+      const node = new Container() as TimedFx
+      this.addTimedFx(node, delay + 460 * tempo, (_n, p) => {
+        const t = Math.max(0, (p * (delay + 460 * tempo) - delay) / (460 * tempo))
+        if (t <= 0) return
+        // 衝出去再回位:先鋒軍不會離開陣線,只是往前壓一段
+        const push = Math.sin(Math.min(1, t) * Math.PI)
+        unit.position.set(from.x, from.y - push * this.H * 0.055)
+      })
+    }
   }
 
   private playArmyAction(unit: AnimatedSprite, index: number, type: ArmyUnitType) {
@@ -2656,10 +2702,26 @@ export class BattleScene {
     impact.play()
   }
 
-  private spawnChargeAnimation(target: { x: number; y: number }) {
-    const duration = this.assets.armsCharge.length * SKILL_FRAME_MS
+  /**
+   * 衝鋒。技能描述是「先鋒軍發動**三段**突擊」,所以畫面上要有三段、而且先鋒軍要真的一起衝。
+   *
+   * ⚠️ 改前的三個問題(全部不需要新素材):
+   *   1. 軌跡用等長幀(每幀 120ms)→ 沒有輕重,所以「比重擊平」
+   *   2. 只在 p>=0.72 觸發**一次** impact,但 hitCount 是 3 → 詞語與畫面對不上
+   *   3. 五個「騎士」是主角自己的染色複製,已部署的先鋒軍站在原地完全沒動
+   */
+  private spawnChargeAnimation(target: { x: number; y: number }, hits = 1, auto = false) {
+    const tempo = auto ? AUTO_TEMPO : 1
+    const hitCount = Math.max(1, Math.min(6, hits))
+    const gap = MULTI_HIT_GAP_MS * tempo
+    const windup = CHARGE_WINDUP_MS * tempo
+    const travel = CHARGE_TRAVEL_MS * tempo
+    // 命中串從推進結束開始排,最後一段之後才收招
+    const duration = windup + travel + gap * (hitCount - 1) + CHARGE_RECOVER_MS * tempo
     const charge = new Container() as TimedFx
-    const trail = new AnimatedSprite(this.assets.armsCharge)
+    const trail = new AnimatedSprite(
+      this.assets.armsCharge.map((texture, i) => ({ texture, time: (ARMS_CHARGE_FRAME_MS[i] ?? 90) * tempo })),
+    )
     const heroTextures = this.assets.heroes[this.heroJob]
     const riders = [0, 1, 2, 3, 4].map((index) => {
       const rider = new AnimatedSprite(heroTextures)
@@ -2673,7 +2735,7 @@ export class BattleScene {
     })
 
     trail.anchor.set(0.5)
-    trail.animationSpeed = frameSpeed(SKILL_FRAME_MS)
+    // ⚠️ 用逐幀 time 就不可以再設 animationSpeed,那會把幀表覆蓋回等速
     trail.scale.set(Math.min(this.W * 0.62, this.H * 0.42) / 256)
     trail.loop = false
     trail.play()
@@ -2686,18 +2748,27 @@ export class BattleScene {
     const distance = Math.hypot(endX - startX, endY - startY) || 1
     const trailX = (startX - endX) / distance
     const trailY = (startY - endY) / distance
-    let impacted = false
+    let struck = 0 // 已經打出幾段
     this.heroBody.visible = false
+    // 「先鋒軍發動突擊」——已部署的士兵要真的跟著衝,不能只有主角的染色複製在動
+    this.chargeArmyAlong(tempo)
+
+    // 四拍用**絕對毫秒**換算成進度,總長會隨段數變長,拍子本身不會被壓扁
+    const pWindup = windup / duration
+    const pTravelEnd = (windup + travel) / duration
+    const pLastHit = (windup + travel + gap * (hitCount - 1)) / duration
 
     this.addTimedFx(charge, duration, (node, p) => {
-      const dash = Math.max(0, Math.min(1, (p - 0.2) / 0.52))
-      let travel = dash < 1 ? dash * dash * (3 - 2 * dash) : 1
-      if (p > 0.84) travel -= Math.sin(Math.min(1, (p - 0.84) / 0.16) * Math.PI) * 0.035
-      node.position.set(startX + (endX - startX) * travel, startY + (endY - startY) * travel)
+      // ① 預備:原地下蹲蓄力,還不移動 ② 推進:衝過去 ③④ 命中串與收招:停在目標前
+      const dash = Math.max(0, Math.min(1, (p - pWindup) / (pTravelEnd - pWindup)))
+      let travelT = dash < 1 ? dash * dash * (3 - 2 * dash) : 1
+      // 撞上去的頓挫:命中串期間車身微微後坐
+      if (p > pTravelEnd) travelT -= Math.sin(Math.min(1, (p - pTravelEnd) / 0.2) * Math.PI) * 0.035
+      node.position.set(startX + (endX - startX) * travelT, startY + (endY - startY) * travelT)
 
-      const fade = p > 0.88 ? Math.max(0, 1 - (p - 0.88) / 0.12) : 1
-      const crouch = p < 0.2 ? p / 0.2 : 1
-      const stretch = p > 0.68 ? Math.max(0, 1 - (p - 0.68) / 0.16) : 1
+      const fade = p > pLastHit ? Math.max(0, 1 - (p - pLastHit) / Math.max(0.02, 1 - pLastHit)) : 1
+      const crouch = p < pWindup ? p / pWindup : 1
+      const stretch = p > pTravelEnd ? Math.max(0, 1 - (p - pTravelEnd) / 0.16) : 1
       riders.forEach((rider, index) => {
         const wake = index * (12 + 5 * stretch)
         rider.position.set(trailX * wake + 10, trailY * wake + 8)
@@ -2711,13 +2782,20 @@ export class BattleScene {
           : dash > index * 0.055 ? (0.44 - index * 0.075) * stretch * fade : 0
       })
 
-      if (!impacted && p >= 0.72) {
-        impacted = true
-        this.spawnImpact(endX, endY, 1.35)
+      // ③ 命中串:desc 承諾幾段就打幾段,段間 MULTI_HIT_GAP_MS(> 閃白 70ms 才看得到分段)
+      const dueHits = Math.min(hitCount, Math.floor((p * duration - windup - travel) / gap) + 1)
+      while (struck < dueHits) {
+        const last = struck === hitCount - 1
+        struck++
+        // 最後一段最重:力道遞增才有 crescendo,不是三下一樣大
+        const power = 0.8 + 0.5 * (struck / hitCount)
+        this.spawnImpact(endX, endY, 1.35 * power)
         if (this.boss) this.boss.flash()
         else if (this.eventView) this.eventView.flash()
         else this.frontMob()?.flash()
-        this.shake = Math.max(this.shake, 15)
+        this.shake = Math.max(this.shake, last ? 15 : 8)
+        // 頓格只給最後一段:每段都頓會變成慢動作
+        if (last && !auto) this.hitStopLeft = HIT_STOP_MS
       }
 
       if (p >= 0.96) this.heroBody.visible = true

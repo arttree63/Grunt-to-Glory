@@ -215,7 +215,7 @@ export default function BattleCanvas({ children }: { children?: ReactNode }) {
         // 三系各有自己的音色:關掉技能名稱也要聽得出剛剛放的是哪一招(GDD § 10.5 身分層)
         sfx.play((e.count ?? 0) > 0 ? 'burst' : SKILL_SFX[e.skillId!] ?? 'skillShield')
         // count = 消耗掉的印記層數,演出可以據此畫 N 道射線
-        scene.skillHit(e.damage ? fmtCombat(e.damage) : '', e.skillId!, e.count ?? 0)
+        scene.skillHit(e.damage ? fmtCombat(e.damage) : '', e.skillId!, e.count ?? 0, e.hits ?? 1, e.auto ?? false)
       } else if (e.type === 'cooldownAdvance') {
         scene.onCooldownAdvance(e.skillId!, e.seconds ?? 0, e.via)
       } else if (e.type === 'zoneEnter') {
