@@ -279,6 +279,10 @@ const ARMS_HEAVY_FRAME_MS = [115, 90, 58, 48, 52, 58, 105, 82, 72, 80, 96, 125]
  * 形狀抄重擊那條調好的曲線:蓄力慢 → 切入快 → 命中最短 → 拖尾放慢。
  */
 const ARMS_CHARGE_FRAME_MS = [140, 100, 58, 44, 50, 78, 120, 150]
+/** 會自己逐段跳字的招。不在這裡的招,總額大字要照印,否則會變成無聲的一擊 */
+const SELF_NUMBERED_SKILLS = new Set<SkillId>(['armsCharge'])
+/** 全屏閃光時長。只給大招的臨界點 */
+const SCREEN_FLASH_MS = 220
 /** 衝鋒四拍(ms)。推進拍比揮擊長很多——那是「衝過去」這件事本身 */
 const CHARGE_WINDUP_MS = 140
 const CHARGE_TRAVEL_MS = 420
@@ -454,6 +458,13 @@ async function loadVisualAssets(): Promise<VisualAssets> {
 export class BattleScene {
   private app = new Application()
   private world = new Container()
+  /**
+   * 全屏閃光。⚠️ 掛在 stage 而不是 world:它是「畫面本身」的效果,
+   * 不該跟著震屏與 zoom 一起晃。
+   * 依 game-visual § 二之二 保留給**大招的臨界點**——一輪只給最重的那幾招,濫用就失效。
+   */
+  private screenFlash = new Graphics()
+  private screenFlashLeft = 0
   private bg: Sprite
   /** 地帶霧層:疊在底圖上的同色薄霧,越深的地帶越濃 */
   private zoneFog: Graphics
@@ -582,7 +593,7 @@ export class BattleScene {
 
   private setup() {
     const { app, world } = this
-    app.stage.addChild(world)
+    app.stage.addChild(world, this.screenFlash)
     this.mobLayer.sortableChildren = true
     world.addChild(
       this.bg,
@@ -815,9 +826,12 @@ export class BattleScene {
       // 技能傷害走**藍字**,和普攻的白字、暴擊的金字分開。
       // 聖光系(judgement / edict)維持白金大字——那是它們的身分色,不併進藍色
       const holy = skillId === 'judgement' || skillId === 'edict'
-      // ⚠️ 多段技的數字由各段自己跳(見 spawnChargeAnimation),這裡不可以再印一次總額——
-      // 否則畫面會是 100 / 100 / 100 再加一個 300,看起來像重複計算
-      if (!(hitText && hits > 1))
+      // ⚠️ 只有**自己會逐段跳字的招**才可以擋掉這裡的總額,否則畫面上會是
+      // 100 / 100 / 100 再加一個 300,像重複計算。
+      // ⚠️⚠️ 但擋錯了更慘:我第一版用 `hitText && hits > 1` 一概擋掉,
+      // 結果大招(armsCommand,走的是 spawnArmyCommand)**完全沒有傷害數字**——
+      // 全遊戲最重的一擊變成無聲。判斷要綁「誰負責跳字」,不是綁「是不是多段」
+      if (!(hitText && hits > 1 && SELF_NUMBERED_SKILLS.has(skillId as SkillId)))
         this.damageNum(target.x, damageY, text, true, holy, 1, false, false, holy ? 'default' : 'skill')
     }
   }
@@ -1352,6 +1366,14 @@ export class BattleScene {
     }
     const snap = this.getSnap()
     this.elapsed += ms
+    if (this.screenFlashLeft > 0) {
+      this.screenFlashLeft = Math.max(0, this.screenFlashLeft - ms)
+      // 快速淡出:VFX 三階段的「消散」不可硬切,但也不能久留擋畫面
+      const a = (this.screenFlashLeft / SCREEN_FLASH_MS) ** 1.6
+      this.screenFlash.clear().rect(0, 0, this.W, this.H).fill({ color: 0xfff4d0, alpha: a * 0.55 })
+    } else if (this.screenFlash.visible) {
+      this.screenFlash.clear()
+    }
     this.goldNumCooldown -= ms
     this.hitNumCooldown -= ms
     this.critNumCooldown -= ms
@@ -2033,7 +2055,9 @@ export class BattleScene {
         node.scale.set(1 + Math.sin(local * Math.PI) * 0.12)
         if (!impacted && local >= 0.76) {
           impacted = true
-          this.spawnImpact(target.x + (i - (total - 1) / 2) * 9, target.y + 12, 0.72)
+          // 遞增:每個都 0.72 的話,大招的每一下都比衝鋒最弱的一段(1.31)還小,
+          // 段數多但看起來更弱 —— 那正是「大招沒有比較厲害」的成因
+          this.spawnImpact(target.x + (i - (total - 1) / 2) * 9, target.y + 12, 0.9 + 0.6 * (i / Math.max(1, total - 1)))
         }
       }, this.impactLayer)
     }
@@ -2065,6 +2089,7 @@ export class BattleScene {
       else this.frontMob()?.flash()
       this.shake = 18
       this.zoom = 2.1
+      this.screenFlashLeft = SCREEN_FLASH_MS // 全屏閃光只給大招的臨界點
     })
   }
 
