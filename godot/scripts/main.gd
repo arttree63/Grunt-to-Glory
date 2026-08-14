@@ -2,6 +2,7 @@ extends Control
 
 const FIXED_STEP := 1.0 / 60.0
 const PAGE_NAMES := {"combat": "戰鬥", "character": "角色", "skills": "技能", "equipment": "裝備", "shop": "商店"}
+const UI_FONT := preload("res://assets/fonts/NotoSansTC-Variable.ttf")
 
 var model := CombatModel.new()
 var accumulator := 0.0
@@ -60,10 +61,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _build_ui() -> void:
 	var ui_theme := Theme.new()
-	var ui_font := SystemFont.new()
-	ui_font.font_names = PackedStringArray(["PingFang TC", "Noto Sans CJK TC", "Arial Unicode MS"])
-	ui_font.font_weight = 600
-	ui_theme.default_font = ui_font
+	ui_theme.default_font = UI_FONT
 	theme = ui_theme
 
 	battlefield = Battlefield.new()
