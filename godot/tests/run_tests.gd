@@ -16,6 +16,13 @@ func _run_tests() -> void:
 	_test_execute_slash_condition()
 	_test_martial_branches()
 	_test_boss_spawn()
+	_test_return_blade_auto_counter()
+	_test_immovable_layers()
+	_test_borrow_force_and_collapse_counter()
+	_test_physique_branches()
+	_test_heaven_return()
+	_test_momentum_and_immovable_coexist()
+	_test_physique_playable_pace()
 	_test_ultimate_priority()
 	_test_auto_slot_configuration()
 	_test_playable_pace()
@@ -24,11 +31,12 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 13")
+		print("Godot tests passed: 20")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
 	var model = CombatModelScript.new()
+	model.training.martial = 1
 	model.enemy_hp = 999.0
 	var before: float = model.momentum
 	var events: Array[Dictionary] = model.step(CombatModelScript.AUTO_ATTACK_INTERVAL + 0.01)
@@ -141,6 +149,107 @@ func _test_boss_spawn() -> void:
 	model._spawn_enemy()
 	_expect(model.enemy_is_boss and model.enemy_armor >= CombatModelScript.HIGH_ARMOR_THRESHOLD, "每 10 戰首領必須具備高護甲並啟用破甲需求")
 
+func _test_return_blade_auto_counter() -> void:
+	var model = CombatModelScript.new()
+	model.training.physique = 10
+	model.auto_skill_slots[0] = "return_blade"
+	model.enemy_hp = 9999.0
+	model.enemy_attack_remaining = 0.0
+	model.auto_attack_remaining = 999.0
+	var events: Array[Dictionary] = model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "return_blade"), "敵人即將攻擊時 AUTO 必須準備返刃")
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "block" or event.type == "perfect_block"), "返刃必須保證下一次攻擊被格擋")
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "counter"), "返刃格擋後必須立即反擊")
+
+func _test_immovable_layers() -> void:
+	var model = CombatModelScript.new()
+	model.training.physique = 30
+	model.enemy_hp = 99999.0
+	model._events.clear()
+	model._enemy_attack("block")
+	_expect(model.immovable == 1, "普通格擋必須累積 1 層不動")
+	model._enemy_attack("perfect")
+	_expect(model.immovable == 3, "完美格擋必須累積 2 層不動且最高為 3")
+	model._enemy_attack("none")
+	_expect(model.immovable == 2, "未格擋攻擊必須失去 1 層不動")
+
+func _test_borrow_force_and_collapse_counter() -> void:
+	var model = CombatModelScript.new()
+	model.training.physique = 100
+	model.enemy_hp = 99999.0
+	model._events.clear()
+	model._enemy_attack("perfect")
+	var counters: Array = model._events.filter(func(event: Dictionary) -> bool: return event.type == "counter")
+	_expect(not counters.is_empty() and float(counters[0].borrowed) > 0.0, "借力必須把格擋減免量轉為反擊傷害")
+	model.immovable = 3
+	model.auto_skill_slots[0] = "collapse_counter"
+	var events: Array[Dictionary] = model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "collapse_counter"), "滿 3 層不動時 AUTO 必須施放不動崩返")
+	_expect(model.immovable == 0, "不動崩返必須消耗全部不動")
+
+func _test_physique_branches() -> void:
+	var iron = CombatModelScript.new()
+	iron.training.physique = 150
+	iron.select_physique_branch("iron_wall")
+	iron.immovable = 3
+	iron.enemy_hp = 99999.0
+	iron._events.clear()
+	iron._enemy_attack("block")
+	_expect(iron._events.any(func(event: Dictionary) -> bool: return event.type == "perfect_block"), "鐵壁必須把滿層時的普通格擋提升為完美格擋")
+	var shock = CombatModelScript.new()
+	shock.training.physique = 150
+	shock.select_physique_branch("shock_return")
+	shock.enemy_hp = 99999.0
+	shock.enemy_attack_count = 4
+	shock._events.clear()
+	shock._enemy_attack("block")
+	_expect(shock._events.any(func(event: Dictionary) -> bool: return event.type == "shock_return"), "震返必須反制敵方重擊")
+	var inch = CombatModelScript.new()
+	inch.training.physique = 150
+	inch.select_physique_branch("inch_power")
+	inch.enemy_hp = 99999.0
+	inch._events.clear()
+	inch._enemy_attack("perfect")
+	var first_damage := float(inch._events.filter(func(event: Dictionary) -> bool: return event.type == "counter")[0].damage)
+	inch._events.clear()
+	inch._enemy_attack("perfect")
+	var second_damage := float(inch._events.filter(func(event: Dictionary) -> bool: return event.type == "counter")[0].damage)
+	_expect(second_damage > first_damage, "寸勁必須讓連續反擊逐次增傷")
+
+func _test_heaven_return() -> void:
+	var model = CombatModelScript.new()
+	model.training.physique = 200
+	model.immovable = 3
+	model.enemy_hp = 99999.0
+	model.enemy_attack_count = 4
+	model._events.clear()
+	model._enemy_attack()
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "heaven_return"), "滿層不動承受重擊時必須觸發不動返天")
+	_expect(model.immovable == 0 and model.hero_hp > 0.0, "不動返天必須消耗不動並避免被重擊擊倒")
+
+func _test_momentum_and_immovable_coexist() -> void:
+	var model = CombatModelScript.new()
+	model.training.martial = 100
+	model.training.physique = 100
+	model.momentum = 40.0
+	model.immovable = 2
+	model.auto_attack_remaining = 999.0
+	model.enemy_attack_remaining = 999.0
+	model.step(1.0)
+	var snapshot: Dictionary = model.snapshot()
+	_expect(float(snapshot.momentum) > 40.0 and int(snapshot.immovable) == 2, "勢與不動必須能同時存在且各自獨立運作")
+
+func _test_physique_playable_pace() -> void:
+	var model = CombatModelScript.new()
+	var elapsed := 0.0
+	while elapsed < 90.0 and int(model.training.physique) < 10:
+		if model.training_points > 0:
+			model.spend_training("physique")
+		model.step(1.0 / 60.0)
+		elapsed += 1.0 / 60.0
+	print("Immovable unlock pace: %.1f seconds" % elapsed)
+	_expect(int(model.training.physique) >= 10, "體術核心返刃應在 90 秒內解鎖")
+
 func _test_ultimate_priority() -> void:
 	var model = CombatModelScript.new()
 	model.training.martial = 200
@@ -182,6 +291,12 @@ func _test_navigation() -> void:
 	_expect(scene.auto_slot_buttons.size() == 5, "戰鬥 HUD 必須顯示五格 AUTO 優先序")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")
 	_expect(is_instance_valid(scene.section_scroll), "功能頁內容必須可捲動")
+	scene.model.training.martial = 10
+	scene.model.training.physique = 30
+	scene.model.momentum = 45.0
+	scene.model.immovable = 2
+	scene._update_hud(scene.model.snapshot())
+	_expect(scene.momentum_head.visible and scene.immovable_hud.visible, "勢與不動同時存在時，HUD 必須同時顯示充能條與盾印")
 	scene._switch_page("character")
 	await process_frame
 	_expect(scene.current_page == "character" and scene.section_overlay.visible, "角色頁必須能開啟並暫停戰鬥")

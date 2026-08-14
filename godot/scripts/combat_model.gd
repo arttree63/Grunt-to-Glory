@@ -6,10 +6,11 @@ const MAX_MOMENTUM := 100.0
 const AUTO_ATTACK_INTERVAL := 0.96
 const AUTO_SLOT_COUNT := 5
 const HIGH_ARMOR_THRESHOLD := 18.0
+const MAX_IMMOVABLE := 3
 const TRAINING_ORDER := ["martial", "physique", "agility", "magic", "faith", "command"]
 const TRAINING_DEFS := {
 	"martial": {"name": "武藝", "style": "一刀流", "implemented": true, "special": "攻擊、爆發、破甲"},
-	"physique": {"name": "體術", "style": "格擋流", "implemented": false, "special": "生命、防禦、反擊"},
+	"physique": {"name": "體術", "style": "不動流", "implemented": true, "special": "生命、防禦、格擋、反擊"},
 	"agility": {"name": "敏捷", "style": "閃避流", "implemented": false, "special": "攻速、閃避、追擊"},
 	"magic": {"name": "魔法", "style": "魔劍流", "implemented": false, "special": "魔力、元素、異常"},
 	"faith": {"name": "信仰", "style": "聖劍流", "implemented": false, "special": "治療、護盾、聖傷"},
@@ -59,11 +60,38 @@ const SKILL_DEFS := {
 		"condition": "勢已滿", "damage_multiplier": 12.0, "armor_ignore": 0.5,
 		"tags": ["ONE_SLASH", "EXECUTE"], "implemented": true,
 	},
+	"return_blade": {
+		"name": "返刃", "short": "返刃", "type": "active", "track": "physique", "level": 10,
+		"cooldown": 4.0, "resource": "none", "cost": 0.0,
+		"condition": "敵人即將攻擊", "tags": ["BLOCK", "COUNTER"], "implemented": true,
+	},
+	"immovable_form": {
+		"name": "不動", "short": "不動", "type": "passive", "track": "physique", "level": 30,
+		"condition": "格擋累積不動，最高 3 層", "tags": ["BLOCK", "STANCE"], "implemented": true,
+	},
+	"borrow_force": {
+		"name": "借力", "short": "借力", "type": "passive", "track": "physique", "level": 50,
+		"condition": "格擋減免量的 35% 轉為反擊傷害", "tags": ["BLOCK", "COUNTER"], "implemented": true,
+	},
+	"collapse_counter": {
+		"name": "不動崩返", "short": "崩返", "type": "active", "track": "physique", "level": 100,
+		"cooldown": 5.0, "resource": "immovable", "cost": 3.0,
+		"condition": "不動達 3 層", "tags": ["COUNTER", "BURST"], "implemented": true,
+	},
+	"heaven_return": {
+		"name": "奧義・不動返天", "short": "返天", "type": "ultimate", "track": "physique", "level": 200,
+		"condition": "滿層不動承受重擊或致命攻擊時自動發動", "tags": ["BLOCK", "COUNTER", "ULTIMATE"], "implemented": true, "reactive": true,
+	},
 }
 const MARTIAL_BRANCHES := {
 	"no_beat": {"name": "無拍子", "description": "擊殺後額外獲得 28 勢，適合連續清怪"},
 	"spirit_focus": {"name": "氣合", "description": "對同一敵人戰鬥越久，蓄勢速度越快"},
 	"first_strike": {"name": "先之先", "description": "敵人出手前消耗 70 勢先斬並中斷攻擊"},
+}
+const PHYSIQUE_BRANCHES := {
+	"shock_return": {"name": "震返", "description": "格擋重擊時震退敵人並強化該次反擊"},
+	"inch_power": {"name": "寸勁", "description": "連續反擊會逐次提高反擊傷害，破防時重置"},
+	"iron_wall": {"name": "鐵壁", "description": "滿層不動時，下一次普通格擋提升為完美格擋"},
 }
 
 var stage := 1
@@ -73,17 +101,27 @@ var enemy_max_hp := 52.0
 var enemy_armor := 5.8
 var enemy_is_boss := false
 var enemy_engagement_time := 0.0
+var enemy_attack_count := 0
 var kills := 0
 var training_points := 5
 var training := {"martial": 0, "physique": 0, "agility": 0, "magic": 0, "faith": 0, "command": 0}
 var martial_branch := ""
+var physique_branch := ""
 var momentum := 0.0
+var immovable := 0
+var return_blade_ready := false
+var recent_prevented_damage := 0.0
+var counter_chain := 0
+var rng := RandomNumberGenerator.new()
 var auto_skill_slots: Array[String] = ["", "", "", "", ""]
 var skill_cooldowns := {}
 var auto_attack_remaining := AUTO_ATTACK_INTERVAL
 var enemy_attack_remaining := 2.25
 var _momentum_was_full := false
 var _events: Array[Dictionary] = []
+
+func _init() -> void:
+	rng.seed = 1337
 
 func step(delta: float) -> Array[Dictionary]:
 	_events.clear()
@@ -92,7 +130,8 @@ func step(delta: float) -> Array[Dictionary]:
 	var passive_gain := 5.0
 	if martial_branch == "spirit_focus":
 		passive_gain += minf(6.0, enemy_engagement_time * 0.08)
-	_add_momentum(delta * passive_gain, "time")
+	if int(training.martial) > 0:
+		_add_momentum(delta * passive_gain, "time")
 	auto_attack_remaining -= delta
 	enemy_attack_remaining -= delta
 	if not _try_auto_skill() and auto_attack_remaining <= 0.0:
@@ -121,10 +160,13 @@ func spend_training(track: String) -> Array[Dictionary]:
 	for unlock: Dictionary in _new_unlocks(track, previous, previous + 1):
 		_events.append(unlock)
 		var skill_id := String(unlock.skill_id)
-		if bool(SKILL_DEFS[skill_id].get("implemented", false)) and String(SKILL_DEFS[skill_id].type) != "passive":
+		var skill_type := String(SKILL_DEFS[skill_id].type)
+		if bool(SKILL_DEFS[skill_id].get("implemented", false)) and (skill_type == "active" or (skill_type == "ultimate" and not bool(SKILL_DEFS[skill_id].get("reactive", false)))):
 			_auto_equip(skill_id, skill_id == "two_cut")
 	if track == "martial" and previous < 150 and int(training.martial) >= 150:
 		_events.append({"type": "branch_unlocked", "name": "一刀流分支", "description": "前往技能頁選擇無拍子、氣合或先之先"})
+	if track == "physique" and previous < 150 and int(training.physique) >= 150:
+		_events.append({"type": "branch_unlocked", "name": "不動流分支", "description": "前往技能頁選擇震返、寸勁或鐵壁"})
 	return _events.duplicate(true)
 
 func select_martial_branch(branch_id: String) -> bool:
@@ -133,11 +175,18 @@ func select_martial_branch(branch_id: String) -> bool:
 	martial_branch = branch_id
 	return true
 
+func select_physique_branch(branch_id: String) -> bool:
+	if int(training.physique) < 150 or not PHYSIQUE_BRANCHES.has(branch_id):
+		return false
+	physique_branch = branch_id
+	return true
+
 func equip_auto_skill(skill_id: String, slot_index := -1) -> bool:
 	if not skill_is_unlocked(skill_id):
 		return false
 	var definition: Dictionary = SKILL_DEFS[skill_id]
-	if not bool(definition.get("implemented", false)) or String(definition.type) == "passive":
+	var skill_type := String(definition.type)
+	if not bool(definition.get("implemented", false)) or (skill_type != "active" and (skill_type != "ultimate" or bool(definition.get("reactive", false)))):
 		return false
 	if auto_skill_slots.has(skill_id):
 		return false
@@ -176,8 +225,11 @@ func snapshot() -> Dictionary:
 		"attack": _attack_power(), "defense": _defense(),
 		"enemy_hp": enemy_hp, "enemy_max_hp": enemy_max_hp, "enemy_armor": enemy_armor,
 		"enemy_is_boss": enemy_is_boss, "enemy_name": "重甲哥布林王" if enemy_is_boss else "林地哥布林",
+		"enemy_attack_type": _next_enemy_attack_type(), "enemy_attack_remaining": enemy_attack_remaining,
 		"kills": kills, "training_points": training_points, "training": training.duplicate(true),
 		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch,
+		"immovable": immovable, "max_immovable": MAX_IMMOVABLE, "physique_branch": physique_branch,
+		"return_blade_ready": return_blade_ready, "counter_chain": counter_chain,
 		"auto_skill_slots": auto_skill_slots.duplicate(), "skill_cooldowns": skill_cooldowns.duplicate(true),
 		"attack_interval": _current_attack_interval(), "engagement_time": enemy_engagement_time,
 	}
@@ -188,6 +240,8 @@ func training_hint(track: String) -> String:
 	var definition: Dictionary = TRAINING_DEFS[track]
 	if not bool(definition.implemented):
 		return "%s · 後續開放" % String(definition.style)
+	if track == "physique":
+		return physique_hint()
 	var level := int(training[track])
 	if level < 10: return "Lv.10 重斬"
 	if level < 30: return "Lv.30 殘心"
@@ -196,6 +250,16 @@ func training_hint(track: String) -> String:
 	if level < 150: return "Lv.150 斷首＋分支"
 	if level < 200: return "Lv.200 一刀兩斷"
 	return "一刀流已達純流派極致"
+
+func physique_hint() -> String:
+	var level := int(training.physique)
+	if level < 10: return "Lv.10 返刃"
+	if level < 30: return "Lv.30 不動"
+	if level < 50: return "Lv.50 借力"
+	if level < 100: return "Lv.100 不動崩返"
+	if level < 150: return "Lv.150 不動流分支"
+	if level < 200: return "Lv.200 不動返天"
+	return "不動流已達純流派極致"
 
 func _try_auto_skill() -> bool:
 	for skill_id: String in auto_skill_slots:
@@ -208,18 +272,33 @@ func _can_cast(skill_id: String) -> bool:
 	if not skill_is_unlocked(skill_id):
 		return false
 	var definition: Dictionary = SKILL_DEFS[skill_id]
-	if not bool(definition.get("implemented", false)) or String(definition.type) == "passive":
+	var skill_type := String(definition.type)
+	if not bool(definition.get("implemented", false)) or (skill_type != "active" and (skill_type != "ultimate" or bool(definition.get("reactive", false)))):
 		return false
-	if float(skill_cooldowns.get(skill_id, 0.0)) > 0.0 or momentum < float(definition.cost):
+	if float(skill_cooldowns.get(skill_id, 0.0)) > 0.0:
+		return false
+	if String(definition.resource) == "momentum" and momentum < float(definition.cost):
+		return false
+	if String(definition.resource) == "immovable" and immovable < int(definition.cost):
 		return false
 	if skill_id == "armor_flash":
 		return enemy_armor >= HIGH_ARMOR_THRESHOLD
 	if skill_id == "execute_slash":
 		return enemy_hp / maxf(1.0, enemy_max_hp) <= 0.25
+	if skill_id == "return_blade":
+		return enemy_attack_remaining <= 0.7 and not return_blade_ready
 	return true
 
 func _cast_skill(skill_id: String) -> void:
 	var definition: Dictionary = SKILL_DEFS[skill_id]
+	if skill_id == "return_blade":
+		return_blade_ready = true
+		skill_cooldowns[skill_id] = float(definition.cooldown)
+		_events.append({"type": "return_blade", "skill_id": skill_id, "name": String(definition.name)})
+		return
+	if skill_id == "collapse_counter":
+		_cast_collapse_counter()
+		return
 	var momentum_before := momentum
 	momentum = maxf(0.0, momentum - float(definition.cost))
 	_momentum_was_full = false
@@ -237,6 +316,18 @@ func _cast_skill(skill_id: String) -> void:
 		var refund := float(SKILL_DEFS.remaining_heart.momentum_refund)
 		_add_momentum(refund, "remaining_heart")
 		_events.append({"type": "remaining_heart", "amount": refund})
+
+func _cast_collapse_counter() -> void:
+	var definition: Dictionary = SKILL_DEFS.collapse_counter
+	var spent := immovable
+	immovable = 0
+	skill_cooldowns["collapse_counter"] = float(definition.cooldown)
+	var raw_damage := _attack_power() * 2.2 + _defense() * 4.2 + recent_prevented_damage * 0.8
+	raw_damage *= 1.0 + float(spent) * 0.35
+	_events.append({"type": "collapse_counter", "name": "不動崩返", "damage": raw_damage, "spent": spent})
+	_deal_damage(raw_damage, "collapse_counter", 0.3)
+	recent_prevented_damage = 0.0
+	_events.append({"type": "immovable_changed", "value": immovable})
 
 func _try_first_strike() -> bool:
 	if martial_branch != "first_strike" or momentum < 70.0:
@@ -256,16 +347,111 @@ func _auto_attack() -> void:
 	_deal_damage(damage, "attack")
 	_add_momentum(6.0, "attack")
 
-func _enemy_attack() -> void:
-	var raw_damage := 4.4 + sqrt(float(stage)) * 1.15
-	var damage := maxf(1.0, raw_damage - _defense() * 0.35)
+func _enemy_attack(block_override := "") -> void:
+	enemy_attack_count += 1
+	var attack_type := "heavy" if _current_enemy_attack_is_heavy() else "normal"
+	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * (1.8 if attack_type == "heavy" else 1.0)
+	var incoming := raw_damage * 100.0 / (100.0 + _defense())
+	if skill_is_unlocked("heaven_return") and immovable >= MAX_IMMOVABLE and (attack_type == "heavy" or incoming >= hero_hp):
+		_trigger_heaven_return(incoming)
+		return_blade_ready = false
+		return
+	var forced_miss := block_override == "none"
+	var block_quality := "" if forced_miss else block_override
+	if block_override.is_empty():
+		block_quality = _roll_block_quality()
+	var blade_triggered := return_blade_ready
+	if blade_triggered and block_quality.is_empty():
+		block_quality = "block"
+	if physique_branch == "iron_wall" and immovable >= MAX_IMMOVABLE and block_quality == "block":
+		block_quality = "perfect"
+	return_blade_ready = false
+	if block_quality.is_empty():
+		_take_unblocked_hit(incoming)
+		return
+	var level := int(training.physique)
+	var reduction := 0.9 if block_quality == "perfect" else minf(0.78, 0.45 + float(immovable) * 0.08 + float(level) * 0.0005)
+	var damage := maxf(0.0, incoming * (1.0 - reduction))
+	var prevented := incoming - damage
+	recent_prevented_damage = prevented
+	hero_hp = maxf(0.0, hero_hp - damage)
+	_events.append({"type": "perfect_block" if block_quality == "perfect" else "block", "amount": damage, "prevented": prevented, "attack_type": attack_type})
+	if skill_is_unlocked("immovable_form"):
+		var gain := 2 if block_quality == "perfect" else 1
+		immovable = mini(MAX_IMMOVABLE, immovable + gain)
+		_events.append({"type": "immovable_changed", "value": immovable})
+	var guaranteed_counter := block_quality == "perfect" or blade_triggered
+	if guaranteed_counter or rng.randf() < 0.35 + float(level) * 0.002:
+		_counter_attack(prevented, block_quality == "perfect", attack_type)
+	if hero_hp <= 0.0:
+		_defeat_hero()
+
+func _roll_block_quality() -> String:
+	var level := int(training.physique)
+	if level <= 0:
+		return ""
+	var perfect_chance := minf(0.25, 0.03 + float(level) * 0.001)
+	if rng.randf() < perfect_chance:
+		return "perfect"
+	var block_chance := minf(0.65, 0.12 + float(level) * 0.002 + float(immovable) * 0.05)
+	return "block" if rng.randf() < block_chance else ""
+
+func _take_unblocked_hit(damage: float) -> void:
 	hero_hp = maxf(0.0, hero_hp - damage)
 	_events.append({"type": "hero_hit", "amount": damage})
+	return_blade_ready = false
+	counter_chain = 0
+	recent_prevented_damage = 0.0
+	if immovable > 0:
+		immovable -= 1
+		_events.append({"type": "immovable_changed", "value": immovable})
 	if hero_hp <= 0.0:
-		stage = maxi(1, stage - 1)
-		hero_hp = _hero_max_hp()
-		_spawn_enemy()
-		_events.append({"type": "defeat"})
+		_defeat_hero()
+
+func _counter_attack(prevented: float, perfect: bool, attack_type: String) -> void:
+	counter_chain += 1
+	var raw_damage := _attack_power() * 0.8 + _defense() * 1.25
+	raw_damage *= 1.0 + float(immovable) * 0.28
+	var borrowed := 0.0
+	if skill_is_unlocked("borrow_force"):
+		borrowed = prevented * 0.35
+		raw_damage += borrowed
+	if perfect:
+		raw_damage *= 1.55
+	if physique_branch == "inch_power":
+		raw_damage *= 1.0 + float(mini(counter_chain - 1, 5)) * 0.15
+	var shocked := physique_branch == "shock_return" and attack_type == "heavy"
+	if shocked:
+		raw_damage *= 1.8
+		enemy_attack_remaining += 1.0
+		_events.append({"type": "shock_return"})
+	_events.append({"type": "counter", "damage": raw_damage, "perfect": perfect, "chain": counter_chain, "borrowed": borrowed})
+	_deal_damage(raw_damage, "counter", 0.15)
+
+func _trigger_heaven_return(incoming: float) -> void:
+	var damage := incoming * 0.15
+	hero_hp = maxf(1.0, hero_hp - damage)
+	immovable = 0
+	var raw_counter := _attack_power() * 2.5 + _defense() * 7.0 + incoming * 1.25
+	_events.append({"type": "heaven_return", "amount": damage, "prevented": incoming - damage, "damage": raw_counter})
+	_events.append({"type": "immovable_changed", "value": immovable})
+	_deal_damage(raw_counter, "heaven_return", 0.5)
+
+func _defeat_hero() -> void:
+	stage = maxi(1, stage - 1)
+	hero_hp = _hero_max_hp()
+	immovable = 0
+	counter_chain = 0
+	return_blade_ready = false
+	_spawn_enemy()
+	_events.append({"type": "defeat"})
+
+func _current_enemy_attack_is_heavy() -> bool:
+	return enemy_attack_count % (3 if enemy_is_boss else 5) == 0
+
+func _next_enemy_attack_type() -> String:
+	var next_count := enemy_attack_count + 1
+	return "重擊" if next_count % (3 if enemy_is_boss else 5) == 0 else "普通"
 
 func _deal_damage(amount: float, source: String, armor_ignore := 0.0) -> bool:
 	if enemy_hp <= 0.0:
@@ -300,8 +486,14 @@ func _spawn_enemy() -> void:
 	enemy_hp = enemy_max_hp
 	enemy_armor = 5.0 + float(stage) * 0.8 + (20.0 if enemy_is_boss else 0.0)
 	enemy_engagement_time = 0.0
+	enemy_attack_count = 0
+	counter_chain = 0
+	recent_prevented_damage = 0.0
+	return_blade_ready = false
 
 func _add_momentum(amount: float, source: String) -> void:
+	if int(training.martial) <= 0:
+		return
 	var multiplier := 1.0 + float(training.martial) * 0.003
 	momentum = minf(MAX_MOMENTUM, momentum + amount * multiplier)
 	if momentum >= MAX_MOMENTUM and not _momentum_was_full:
