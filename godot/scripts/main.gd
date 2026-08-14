@@ -25,6 +25,7 @@ var training_overlay: Control
 var training_rows: Dictionary = {}
 var section_overlay: Control
 var section_margin: MarginContainer
+var section_scroll: ScrollContainer
 var section_box: VBoxContainer
 var nav_buttons: Dictionary = {}
 var toast_panel: PanelContainer
@@ -199,9 +200,14 @@ func _build_section_overlay() -> void:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style(Color("111a17", 0.99), Color("7d8f7d"), 2))
 	section_margin.add_child(panel)
+	section_scroll = ScrollContainer.new()
+	section_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	section_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_child(section_scroll)
 	section_box = VBoxContainer.new()
+	section_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	section_box.add_theme_constant_override("separation", 9)
-	panel.add_child(section_box)
+	section_scroll.add_child(section_box)
 
 func _switch_page(page: String) -> void:
 	if not PAGE_NAMES.has(page):
@@ -224,6 +230,7 @@ func _render_section(page: String) -> void:
 		section_box.remove_child(child)
 		child.queue_free()
 	var snapshot := model.snapshot()
+	section_scroll.scroll_vertical = 0
 	section_box.add_child(_label(String(PAGE_NAMES[page]), 27, Color("ffe09a")))
 	match page:
 		"character": _render_character_page(snapshot)
@@ -286,9 +293,7 @@ func _render_skills_page(snapshot: Dictionary) -> void:
 			continue
 		var type_text := "被動" if String(definition.type) == "passive" else ("奧義" if String(definition.type) == "ultimate" else "主動")
 		var status := "%s · Lv.%d" % [type_text, int(definition.level)]
-		if not bool(definition.get("implemented", false)):
-			status += " · 後續實作"
-		elif model.skill_is_unlocked(skill_id):
+		if model.skill_is_unlocked(skill_id):
 			status += " · 已解鎖"
 		else:
 			status += " 解鎖"
@@ -298,13 +303,33 @@ func _render_skills_page(snapshot: Dictionary) -> void:
 		var skill_card := _section_row(String(definition.name), "%s｜%s" % [status, String(definition.condition)])
 		skill_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		skill_row.add_child(skill_card)
-		if String(definition.type) != "passive" and bool(definition.get("implemented", false)):
+		if String(definition.type) != "passive":
 			var equip := _button("裝備", Color("71552f"), 44)
 			equip.custom_minimum_size.x = 58
 			equip.size_flags_horizontal = Control.SIZE_SHRINK_END
 			equip.disabled = not model.skill_is_unlocked(skill_id) or slots.has(skill_id) or not slots.has("")
 			equip.pressed.connect(_equip_auto_skill.bind(skill_id))
 			skill_row.add_child(equip)
+	section_box.add_child(_label("Lv.150 一刀流分支", 18, Color("f6d27d")))
+	var branch_id := String(snapshot.martial_branch)
+	var branch_name := "尚未選擇"
+	if CombatModel.MARTIAL_BRANCHES.has(branch_id):
+		branch_name = String(CombatModel.MARTIAL_BRANCHES[branch_id].name)
+	section_box.add_child(_label("目前：%s｜可隨時切換測試" % branch_name, 14, Color("cbd5cc")))
+	for choice_id: String in CombatModel.MARTIAL_BRANCHES:
+		var branch: Dictionary = CombatModel.MARTIAL_BRANCHES[choice_id]
+		var branch_row := HBoxContainer.new()
+		branch_row.add_theme_constant_override("separation", 6)
+		section_box.add_child(branch_row)
+		var branch_card := _section_row(String(branch.name), String(branch.description))
+		branch_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		branch_row.add_child(branch_card)
+		var choose := _button("使用中" if choice_id == branch_id else "選擇", Color("71552f"), 44)
+		choose.custom_minimum_size.x = 64
+		choose.size_flags_horizontal = Control.SIZE_SHRINK_END
+		choose.disabled = int(snapshot.training.martial) < 150 or choice_id == branch_id
+		choose.pressed.connect(_select_martial_branch.bind(choice_id))
+		branch_row.add_child(choose)
 
 func _render_equipment_page() -> void:
 	section_box.add_child(_label("裝備會改變數值與戰法，但規則尚未定案。", 16, Color("cbd5cc")))
@@ -386,8 +411,11 @@ func _handle_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
 		match String(event.type):
 			"unlock": _show_toast("解鎖：%s" % String(event.name), String(event.description))
-			"training_point": _show_toast("獲得 1 點操練", "現在有 %d 點可分配" % int(event.points))
+			"training_point": _show_toast("獲得 %d 點操練" % int(event.get("gain", 1)), "現在有 %d 點可分配" % int(event.points))
 			"momentum_full": _show_toast("勢已滿", "AUTO 將依技能優先序判斷")
+			"branch_unlocked": _show_toast("解鎖：一刀流分支", String(event.description))
+			"armor_broken": _show_toast("破甲一閃", "敵方護甲降低 %d" % roundi(float(event.amount)))
+			"no_beat": _show_toast("無拍子", "擊殺後額外回復 %d 勢" % roundi(float(event.amount)))
 			"defeat": _show_toast("戰敗後重整", "保留操練，退回上一戰")
 
 func _spend_training(track: String) -> void:
@@ -409,6 +437,13 @@ func _move_auto_slot(index: int, direction: int) -> void:
 	model.move_auto_skill(index, direction)
 	_update_hud(model.snapshot())
 
+func _select_martial_branch(branch_id: String) -> void:
+	if not model.select_martial_branch(branch_id):
+		return
+	var branch: Dictionary = CombatModel.MARTIAL_BRANCHES[branch_id]
+	_show_toast("已選擇：%s" % String(branch.name), String(branch.description))
+	_update_hud(model.snapshot())
+
 func _toggle_training() -> void:
 	if training_open: _close_training()
 	else: _open_training()
@@ -426,7 +461,8 @@ func _close_training() -> void:
 	else: (nav_buttons[current_page] as Button).grab_focus()
 
 func _update_hud(snapshot: Dictionary) -> void:
-	enemy_label.text = "林地哥布林 · 第 %d 戰" % int(snapshot.stage)
+	var boss_mark := "首領 · " if bool(snapshot.enemy_is_boss) else ""
+	enemy_label.text = "%s%s · 第 %d 戰 · 護甲 %d" % [boss_mark, String(snapshot.enemy_name), int(snapshot.stage), roundi(float(snapshot.enemy_armor))]
 	kills_label.text = "擊倒 %d" % int(snapshot.kills)
 	enemy_bar.max_value = float(snapshot.enemy_max_hp)
 	enemy_bar.value = float(snapshot.enemy_hp)

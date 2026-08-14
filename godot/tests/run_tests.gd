@@ -11,6 +11,11 @@ func _run_tests() -> void:
 	_test_training_growth_and_locked_tracks()
 	_test_heavy_slash_unlock_and_auto()
 	_test_remaining_heart_refund()
+	_test_armor_flash_and_auto_fallback()
+	_test_one_slash_mastery()
+	_test_execute_slash_condition()
+	_test_martial_branches()
+	_test_boss_spawn()
 	_test_ultimate_priority()
 	_test_auto_slot_configuration()
 	_test_playable_pace()
@@ -19,7 +24,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 8")
+		print("Godot tests passed: 13")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -63,6 +68,79 @@ func _test_remaining_heart_refund() -> void:
 	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "remaining_heart"), "Lv.30 一刀未擊殺時必須觸發殘心")
 	_expect(model.momentum >= 20.0, "殘心必須返還勢")
 
+func _test_armor_flash_and_auto_fallback() -> void:
+	var model = CombatModelScript.new()
+	model.training.martial = 50
+	model.auto_skill_slots[0] = "armor_flash"
+	model.auto_skill_slots[1] = "heavy_slash"
+	model.enemy_hp = 9999.0
+	model.enemy_armor = 25.0
+	model.momentum = 70.0
+	var events: Array[Dictionary] = model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "armor_flash"), "高護甲敵人必須優先觸發破甲一閃")
+	_expect(model.enemy_armor == 13.0, "破甲一閃必須降低 12 點護甲")
+	model.skill_cooldowns.clear()
+	model.enemy_armor = 5.0
+	model.momentum = 70.0
+	events = model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "heavy_slash"), "第一順位條件不符時必須往後判斷重斬")
+
+func _test_one_slash_mastery() -> void:
+	var model = CombatModelScript.new()
+	model.training.martial = 100
+	model.auto_skill_slots[0] = "heavy_slash"
+	model.enemy_hp = 99999.0
+	model.enemy_armor = 0.0
+	model.momentum = 100.0
+	var events: Array[Dictionary] = model.step(0.01)
+	var slash := events.filter(func(event: Dictionary) -> bool: return event.type == "heavy_slash")
+	_expect(not slash.is_empty() and is_equal_approx(float(slash[0].mastery), 1.6), "Lv.100 滿勢出刀必須獲得 60% 極意增傷")
+
+func _test_execute_slash_condition() -> void:
+	var model = CombatModelScript.new()
+	model.training.martial = 150
+	model.auto_skill_slots[0] = "execute_slash"
+	model.auto_skill_slots[1] = "heavy_slash"
+	model.enemy_max_hp = 100.0
+	model.enemy_hp = 25.0
+	model.enemy_armor = 0.0
+	model.momentum = 70.0
+	var events: Array[Dictionary] = model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "execute_slash"), "敵人生命低於 25% 時必須優先斷首")
+
+func _test_martial_branches() -> void:
+	var no_beat = CombatModelScript.new()
+	no_beat.training.martial = 150
+	_expect(no_beat.select_martial_branch("no_beat"), "Lv.150 必須能選擇武藝分支")
+	no_beat.enemy_hp = 1.0
+	no_beat.enemy_armor = 0.0
+	no_beat._auto_attack()
+	_expect(no_beat._events.any(func(event: Dictionary) -> bool: return event.type == "no_beat"), "無拍子必須在擊殺後額外回勢")
+	var spirit = CombatModelScript.new()
+	spirit.training.martial = 150
+	spirit.select_martial_branch("spirit_focus")
+	spirit.enemy_engagement_time = 20.0
+	spirit.auto_attack_remaining = 999.0
+	spirit.enemy_attack_remaining = 999.0
+	spirit.step(1.0)
+	_expect(spirit.momentum > 9.0, "氣合必須隨交戰時間提高蓄勢速度")
+	var first = CombatModelScript.new()
+	first.training.martial = 150
+	first.select_martial_branch("first_strike")
+	first.enemy_hp = 9999.0
+	first.momentum = 70.0
+	first.auto_attack_remaining = 999.0
+	first.enemy_attack_remaining = 0.0
+	var events: Array[Dictionary] = first.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "first_strike"), "先之先必須在敵人出手前觸發")
+	_expect(not events.any(func(event: Dictionary) -> bool: return event.type == "hero_hit"), "先之先成功時必須中斷敵人攻擊")
+
+func _test_boss_spawn() -> void:
+	var model = CombatModelScript.new()
+	model.stage = 10
+	model._spawn_enemy()
+	_expect(model.enemy_is_boss and model.enemy_armor >= CombatModelScript.HIGH_ARMOR_THRESHOLD, "每 10 戰首領必須具備高護甲並啟用破甲需求")
+
 func _test_ultimate_priority() -> void:
 	var model = CombatModelScript.new()
 	model.training.martial = 200
@@ -103,6 +181,7 @@ func _test_navigation() -> void:
 	_expect(scene.nav_buttons.size() == 5, "主分頁必須維持五個入口")
 	_expect(scene.auto_slot_buttons.size() == 5, "戰鬥 HUD 必須顯示五格 AUTO 優先序")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")
+	_expect(is_instance_valid(scene.section_scroll), "功能頁內容必須可捲動")
 	scene._switch_page("character")
 	await process_frame
 	_expect(scene.current_page == "character" and scene.section_overlay.visible, "角色頁必須能開啟並暫停戰鬥")
