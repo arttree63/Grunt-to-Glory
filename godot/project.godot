@@ -1,0 +1,23 @@
+[application]
+config/name="小兵的故事 2.0"
+run/main_scene="res://main.tscn"
+
+[display]
+window/size/viewport_width=390
+window/size/viewport_height=844
+window/size/window_width_override=390
+window/size/window_height_override=844
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
+
+[input]
+training={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":84), Object(InputEventJoypadButton,"button_index":6)]
+}

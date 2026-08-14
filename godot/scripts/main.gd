@@ -1,0 +1,598 @@
+extends Control
+
+const FIXED_STEP := 1.0 / 60.0
+const PAGE_NAMES := {"combat": "戰鬥", "character": "角色", "skills": "技能", "equipment": "裝備", "shop": "商店"}
+
+var model := CombatModel.new()
+var accumulator := 0.0
+var training_open := false
+var current_page := "combat"
+var battlefield: Battlefield
+var enemy_label: Label
+var kills_label: Label
+var top_panel: PanelContainer
+var combat_panel: PanelContainer
+var hp_bar: ProgressBar
+var hp_label: Label
+var mp_bar: ProgressBar
+var mp_label: Label
+var momentum_bar: ProgressBar
+var momentum_label: Label
+var enemy_bar: ProgressBar
+var auto_slot_buttons: Array[Button] = []
+var training_overlay: Control
+var training_rows: Dictionary = {}
+var section_overlay: Control
+var section_margin: MarginContainer
+var section_box: VBoxContainer
+var nav_buttons: Dictionary = {}
+var toast_panel: PanelContainer
+var toast_title: Label
+var toast_detail: Label
+
+func _ready() -> void:
+	_build_ui()
+	get_viewport().size_changed.connect(_apply_safe_area)
+	_apply_safe_area()
+	_update_hud(model.snapshot())
+	auto_slot_buttons[0].grab_focus()
+	_show_toast("戰鬥會自動進行", "前往角色頁投入武藝，Lv.10 解鎖重斬")
+
+func _process(delta: float) -> void:
+	if training_open or current_page != "combat":
+		return
+	accumulator = minf(accumulator + delta, FIXED_STEP * 5.0)
+	var stepped := false
+	while accumulator >= FIXED_STEP:
+		accumulator -= FIXED_STEP
+		_handle_events(model.step(FIXED_STEP))
+		stepped = true
+	if stepped:
+		_update_hud(model.snapshot())
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("training") and current_page == "character":
+		_toggle_training()
+	elif event.is_action_pressed("ui_cancel") and training_open:
+		_close_training()
+	elif event.is_action_pressed("ui_cancel") and current_page != "combat":
+		_switch_page("combat")
+
+func _build_ui() -> void:
+	var ui_theme := Theme.new()
+	var ui_font := SystemFont.new()
+	ui_font.font_names = PackedStringArray(["PingFang TC", "Noto Sans CJK TC", "Arial Unicode MS"])
+	ui_font.font_weight = 600
+	ui_theme.default_font = ui_font
+	theme = ui_theme
+
+	battlefield = Battlefield.new()
+	battlefield.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(battlefield)
+	var shade := ColorRect.new()
+	shade.color = Color("101916", 0.2)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(shade)
+
+	var safe := MarginContainer.new()
+	safe.name = "SafeArea"
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(safe)
+	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 10)
+	safe.add_child(layout)
+
+	top_panel = PanelContainer.new()
+	top_panel.add_theme_stylebox_override("panel", _panel_style(Color("17221e", 0.92), Color("c89b52")))
+	layout.add_child(top_panel)
+	var top_box := VBoxContainer.new()
+	top_box.add_theme_constant_override("separation", 5)
+	top_panel.add_child(top_box)
+	var identity := HBoxContainer.new()
+	top_box.add_child(identity)
+	var hero_name := _label("無名小兵", 22, Color("f6d27d"))
+	hero_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	identity.add_child(hero_name)
+	kills_label = _label("擊倒 0", 16, Color("c9d4cb"))
+	kills_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	identity.add_child(kills_label)
+	enemy_label = _label("林地哥布林 · 第 1 戰", 18, Color("e9ddd0"))
+	top_box.add_child(enemy_label)
+	enemy_bar = _progress_bar(Color("332b26"), Color("9c4138"), 16)
+	top_box.add_child(enemy_bar)
+
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(spacer)
+	toast_panel = PanelContainer.new()
+	toast_panel.visible = false
+	toast_panel.add_theme_stylebox_override("panel", _panel_style(Color("2c2218", 0.96), Color("f0c365")))
+	layout.add_child(toast_panel)
+	var toast_box := VBoxContainer.new()
+	toast_panel.add_child(toast_box)
+	toast_title = _label("", 22, Color("ffe09a"))
+	toast_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	toast_box.add_child(toast_title)
+	toast_detail = _label("", 15, Color("f4eee0"))
+	toast_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	toast_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	toast_box.add_child(toast_detail)
+
+	combat_panel = PanelContainer.new()
+	combat_panel.add_theme_stylebox_override("panel", _panel_style(Color("111a17", 0.96), Color("6f846d")))
+	layout.add_child(combat_panel)
+	var bottom_box := VBoxContainer.new()
+	bottom_box.add_theme_constant_override("separation", 7)
+	combat_panel.add_child(bottom_box)
+	var resource_row := HBoxContainer.new()
+	resource_row.add_theme_constant_override("separation", 8)
+	bottom_box.add_child(resource_row)
+	var hp_box := VBoxContainer.new()
+	hp_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	resource_row.add_child(hp_box)
+	hp_label = _label("生命", 15, Color("f2ded8"))
+	hp_box.add_child(hp_label)
+	hp_bar = _progress_bar(Color("332d2a"), Color("b85245"), 18)
+	hp_box.add_child(hp_bar)
+	var mp_box := VBoxContainer.new()
+	mp_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	resource_row.add_child(mp_box)
+	mp_label = _label("MP  尚未啟用", 15, Color("9eb2b6"))
+	mp_box.add_child(mp_label)
+	mp_bar = _progress_bar(Color("293238"), Color("477d91"), 18)
+	mp_box.add_child(mp_bar)
+
+	var momentum_head := HBoxContainer.new()
+	bottom_box.add_child(momentum_head)
+	momentum_label = _label("勢  0/100", 14, Color("ffe09a"))
+	momentum_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	momentum_head.add_child(momentum_label)
+	momentum_head.add_child(_label("隨時間、攻擊、擊殺累積", 12, Color("9fb0a5")))
+	momentum_bar = _progress_bar(Color("30291e"), Color("e0a541"), 12)
+	bottom_box.add_child(momentum_bar)
+
+	var slot_heading := HBoxContainer.new()
+	bottom_box.add_child(slot_heading)
+	var slot_title := _label("AUTO 優先序", 13, Color("cbd5cc"))
+	slot_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slot_heading.add_child(slot_title)
+	slot_heading.add_child(_label("左 → 右", 13, Color("9fb0a5")))
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 5)
+	bottom_box.add_child(actions)
+	for index in CombatModel.AUTO_SLOT_COUNT:
+		var slot := _skill_button("＋\nAUTO", Color("3a403b"))
+		slot.tooltip_text = "前往技能頁配置 AUTO 優先序"
+		slot.pressed.connect(_switch_page.bind("skills"))
+		actions.add_child(slot)
+		auto_slot_buttons.append(slot)
+	_build_navigation(layout)
+	_build_section_overlay()
+	_build_training_overlay()
+
+func _build_navigation(parent: VBoxContainer) -> void:
+	var nav := HBoxContainer.new()
+	nav.z_index = 30
+	nav.add_theme_constant_override("separation", 4)
+	parent.add_child(nav)
+	for page: String in PAGE_NAMES:
+		var button := _nav_button(String(PAGE_NAMES[page]))
+		button.pressed.connect(_switch_page.bind(page))
+		nav.add_child(button)
+		nav_buttons[page] = button
+	_refresh_navigation()
+
+func _build_section_overlay() -> void:
+	section_overlay = Control.new()
+	section_overlay.visible = false
+	section_overlay.z_index = 20
+	section_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	section_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(section_overlay)
+	section_margin = MarginContainer.new()
+	section_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	section_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	section_margin.add_theme_constant_override("margin_left", 16)
+	section_margin.add_theme_constant_override("margin_top", 20)
+	section_margin.add_theme_constant_override("margin_right", 16)
+	section_margin.add_theme_constant_override("margin_bottom", 82)
+	section_overlay.add_child(section_margin)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("111a17", 0.99), Color("7d8f7d"), 2))
+	section_margin.add_child(panel)
+	section_box = VBoxContainer.new()
+	section_box.add_theme_constant_override("separation", 9)
+	panel.add_child(section_box)
+
+func _switch_page(page: String) -> void:
+	if not PAGE_NAMES.has(page):
+		return
+	current_page = page
+	accumulator = 0.0
+	var combat_visible := page == "combat"
+	top_panel.visible = combat_visible
+	combat_panel.visible = combat_visible
+	if not combat_visible:
+		toast_panel.visible = false
+	section_overlay.visible = not combat_visible
+	if not combat_visible:
+		_render_section(page)
+	_refresh_navigation()
+	(nav_buttons[page] as Button).grab_focus()
+
+func _render_section(page: String) -> void:
+	for child: Node in section_box.get_children():
+		section_box.remove_child(child)
+		child.queue_free()
+	var snapshot := model.snapshot()
+	section_box.add_child(_label(String(PAGE_NAMES[page]), 27, Color("ffe09a")))
+	match page:
+		"character": _render_character_page(snapshot)
+		"skills": _render_skills_page(snapshot)
+		"equipment": _render_equipment_page()
+		"shop": _render_shop_page()
+
+func _render_character_page(snapshot: Dictionary) -> void:
+	section_box.add_child(_label("無名小兵 · 擊倒 %d" % int(snapshot.kills), 17, Color("d8e0d8")))
+	var resources := HBoxContainer.new()
+	resources.add_theme_constant_override("separation", 8)
+	section_box.add_child(resources)
+	resources.add_child(_resource_card("HP  %d/%d" % [roundi(snapshot.hero_hp), roundi(snapshot.hero_max_hp)], float(snapshot.hero_hp), float(snapshot.hero_max_hp), Color("b85245")))
+	resources.add_child(_resource_card("MP  %d（未啟用）" % roundi(snapshot.hero_max_mp), 0.0, 100.0, Color("477d91")))
+	section_box.add_child(_label("六種操練 · %d 點可用" % int(snapshot.training_points), 17, Color("f6d27d")))
+	var levels: Dictionary = snapshot.training
+	for track: String in CombatModel.TRAINING_ORDER:
+		var definition: Dictionary = CombatModel.TRAINING_DEFS[track]
+		section_box.add_child(_section_row("%s｜%s" % [String(definition.name), String(definition.style)], "Lv.%d · %s" % [int(levels[track]), model.training_hint(track)]))
+	var training_link := _button("前往操練配置", Color("685737"), 46)
+	training_link.pressed.connect(_open_training)
+	section_box.add_child(training_link)
+	var reduce_motion_toggle := CheckButton.new()
+	reduce_motion_toggle.text = "減少戰場震動"
+	reduce_motion_toggle.button_pressed = battlefield.reduced_motion
+	reduce_motion_toggle.toggled.connect(func(value: bool) -> void: battlefield.reduced_motion = value)
+	section_box.add_child(reduce_motion_toggle)
+
+func _render_skills_page(snapshot: Dictionary) -> void:
+	var slots: Array = snapshot.auto_skill_slots
+	section_box.add_child(_label("由 1 → 5 判斷；每次施放第一個符合條件的技能。", 14, Color("cbd5cc")))
+	for index in CombatModel.AUTO_SLOT_COUNT:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 5)
+		section_box.add_child(row)
+		var skill_id := String(slots[index])
+		var title := "%d  空槽" % (index + 1)
+		var detail := "不參與 AUTO 判斷"
+		if not skill_id.is_empty():
+			var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
+			title = "%d  %s" % [index + 1, String(definition.name)]
+			detail = String(definition.condition)
+		var card := _section_row(title, detail)
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(card)
+		for action: String in ["↑", "↓", "卸"]:
+			var button := _button(action, Color("45534a"), 44)
+			button.custom_minimum_size.x = 42
+			button.size_flags_horizontal = Control.SIZE_SHRINK_END
+			button.disabled = skill_id.is_empty() or (action == "↑" and index == 0) or (action == "↓" and index == CombatModel.AUTO_SLOT_COUNT - 1)
+			if action == "卸":
+				button.pressed.connect(_remove_auto_slot.bind(index))
+			else:
+				button.pressed.connect(_move_auto_slot.bind(index, -1 if action == "↑" else 1))
+			row.add_child(button)
+	section_box.add_child(_label("武藝｜一刀流技能", 18, Color("f6d27d")))
+	for skill_id: String in CombatModel.SKILL_DEFS:
+		var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
+		if String(definition.track) != "martial":
+			continue
+		var type_text := "被動" if String(definition.type) == "passive" else ("奧義" if String(definition.type) == "ultimate" else "主動")
+		var status := "%s · Lv.%d" % [type_text, int(definition.level)]
+		if not bool(definition.get("implemented", false)):
+			status += " · 後續實作"
+		elif model.skill_is_unlocked(skill_id):
+			status += " · 已解鎖"
+		else:
+			status += " 解鎖"
+		var skill_row := HBoxContainer.new()
+		skill_row.add_theme_constant_override("separation", 6)
+		section_box.add_child(skill_row)
+		var skill_card := _section_row(String(definition.name), "%s｜%s" % [status, String(definition.condition)])
+		skill_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		skill_row.add_child(skill_card)
+		if String(definition.type) != "passive" and bool(definition.get("implemented", false)):
+			var equip := _button("裝備", Color("71552f"), 44)
+			equip.custom_minimum_size.x = 58
+			equip.size_flags_horizontal = Control.SIZE_SHRINK_END
+			equip.disabled = not model.skill_is_unlocked(skill_id) or slots.has(skill_id) or not slots.has("")
+			equip.pressed.connect(_equip_auto_skill.bind(skill_id))
+			skill_row.add_child(equip)
+
+func _render_equipment_page() -> void:
+	section_box.add_child(_label("裝備會改變數值與戰法，但規則尚未定案。", 16, Color("cbd5cc")))
+	section_box.add_child(_section_row("武器", "尚未裝備"))
+	section_box.add_child(_section_row("防具", "尚未裝備"))
+	section_box.add_child(_section_row("飾品", "尚未裝備"))
+
+func _render_shop_page() -> void:
+	section_box.add_child(_label("商店尚未營業", 21, Color("d8e0d8")))
+	section_box.add_child(_section_row("商品", "等待裝備與貨幣規則確認"))
+	section_box.add_child(_section_row("出售", "尚未開放"))
+
+func _build_training_overlay() -> void:
+	training_overlay = Control.new()
+	training_overlay.visible = false
+	training_overlay.z_index = 40
+	training_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	training_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(training_overlay)
+	var dim := ColorRect.new()
+	dim.color = Color("08100d", 0.78)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	training_overlay.add_child(dim)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side: String in ["left", "right"]:
+		margin.add_theme_constant_override("margin_%s" % side, 16)
+	margin.add_theme_constant_override("margin_top", 40)
+	margin.add_theme_constant_override("margin_bottom", 40)
+	training_overlay.add_child(margin)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("17221e", 0.99), Color("d0a553"), 3))
+	margin.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	panel.add_child(box)
+	var heading := HBoxContainer.new()
+	box.add_child(heading)
+	var title := _label("六種操練", 25, Color("ffe09a"))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_child(title)
+	var close := _button("返回", Color("4e5a50"), 44)
+	close.custom_minimum_size.x = 72
+	close.size_flags_horizontal = Control.SIZE_SHRINK_END
+	close.pressed.connect(_close_training)
+	heading.add_child(close)
+	var explain := _label("每個流派都給共通成長；目前只開放武藝一刀流。", 13, Color("cbd5cc"))
+	explain.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(explain)
+	for track: String in CombatModel.TRAINING_ORDER:
+		var row := PanelContainer.new()
+		row.add_theme_stylebox_override("panel", _panel_style(Color("202e28"), Color("53675b"), 1))
+		box.add_child(row)
+		var row_box := HBoxContainer.new()
+		row_box.add_theme_constant_override("separation", 6)
+		row.add_child(row_box)
+		var text_box := VBoxContainer.new()
+		text_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row_box.add_child(text_box)
+		var definition: Dictionary = CombatModel.TRAINING_DEFS[track]
+		text_box.add_child(_label("%s｜%s" % [String(definition.name), String(definition.style)], 16, Color("f4eee0")))
+		var hint_label := _label("", 12, Color("aebfb4"))
+		text_box.add_child(hint_label)
+		var level_label := _label("Lv.0", 15, Color("f6d27d"))
+		level_label.custom_minimum_size.x = 50
+		level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row_box.add_child(level_label)
+		var add_button := _button("+", Color("71552f"), 44)
+		add_button.custom_minimum_size.x = 46
+		add_button.size_flags_horizontal = Control.SIZE_SHRINK_END
+		add_button.pressed.connect(func() -> void: _spend_training(track))
+		row_box.add_child(add_button)
+		training_rows[track] = {"level": level_label, "hint": hint_label, "button": add_button}
+
+func _handle_events(events: Array[Dictionary]) -> void:
+	if events.is_empty():
+		return
+	battlefield.play_events(events)
+	for event: Dictionary in events:
+		match String(event.type):
+			"unlock": _show_toast("解鎖：%s" % String(event.name), String(event.description))
+			"training_point": _show_toast("獲得 1 點操練", "現在有 %d 點可分配" % int(event.points))
+			"momentum_full": _show_toast("勢已滿", "AUTO 將依技能優先序判斷")
+			"defeat": _show_toast("戰敗後重整", "保留操練，退回上一戰")
+
+func _spend_training(track: String) -> void:
+	var events := model.spend_training(track)
+	_handle_events(events)
+	_update_hud(model.snapshot())
+	if not events.is_empty() and not events.any(func(event: Dictionary) -> bool: return event.type == "unlock"):
+		_show_toast("%s提升" % String(CombatModel.TRAINING_DEFS[track].name), "現在是 Lv.%d" % int(model.training[track]))
+
+func _equip_auto_skill(skill_id: String) -> void:
+	model.equip_auto_skill(skill_id)
+	_update_hud(model.snapshot())
+
+func _remove_auto_slot(index: int) -> void:
+	model.unequip_auto_skill(index)
+	_update_hud(model.snapshot())
+
+func _move_auto_slot(index: int, direction: int) -> void:
+	model.move_auto_skill(index, direction)
+	_update_hud(model.snapshot())
+
+func _toggle_training() -> void:
+	if training_open: _close_training()
+	else: _open_training()
+
+func _open_training() -> void:
+	training_open = true
+	training_overlay.visible = true
+	_update_training_rows(model.snapshot())
+	(training_rows["martial"].button as Button).grab_focus()
+
+func _close_training() -> void:
+	training_open = false
+	training_overlay.visible = false
+	if current_page == "combat": auto_slot_buttons[0].grab_focus()
+	else: (nav_buttons[current_page] as Button).grab_focus()
+
+func _update_hud(snapshot: Dictionary) -> void:
+	enemy_label.text = "林地哥布林 · 第 %d 戰" % int(snapshot.stage)
+	kills_label.text = "擊倒 %d" % int(snapshot.kills)
+	enemy_bar.max_value = float(snapshot.enemy_max_hp)
+	enemy_bar.value = float(snapshot.enemy_hp)
+	hp_bar.max_value = float(snapshot.hero_max_hp)
+	hp_bar.value = float(snapshot.hero_hp)
+	hp_label.text = "生命  %d/%d" % [roundi(snapshot.hero_hp), roundi(snapshot.hero_max_hp)]
+	mp_label.text = "MP  %d（未啟用）" % roundi(snapshot.hero_max_mp)
+	momentum_bar.max_value = float(snapshot.max_momentum)
+	momentum_bar.value = float(snapshot.momentum)
+	momentum_label.text = "勢  %d/%d" % [roundi(snapshot.momentum), roundi(snapshot.max_momentum)]
+	var slots: Array = snapshot.auto_skill_slots
+	for index in CombatModel.AUTO_SLOT_COUNT:
+		var skill_id := String(slots[index])
+		var button := auto_slot_buttons[index]
+		if skill_id.is_empty():
+			button.text = "＋\nAUTO"
+			button.tooltip_text = "第 %d 優先：尚未配置" % (index + 1)
+		else:
+			var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
+			var cooldown := float(snapshot.skill_cooldowns.get(skill_id, 0.0))
+			button.text = "%s\n%s" % [String(definition.short), "%.1fs" % cooldown if cooldown > 0.0 else String(definition.condition)]
+			button.tooltip_text = "第 %d 優先：%s" % [index + 1, String(definition.condition)]
+	battlefield.set_state(snapshot)
+	_update_training_rows(snapshot)
+	if current_page != "combat" and is_instance_valid(section_box):
+		_render_section(current_page)
+
+func _update_training_rows(snapshot: Dictionary) -> void:
+	if training_rows.is_empty(): return
+	for track: String in CombatModel.TRAINING_ORDER:
+		var widgets: Dictionary = training_rows[track]
+		var definition: Dictionary = CombatModel.TRAINING_DEFS[track]
+		var level := int(snapshot.training[track])
+		(widgets.level as Label).text = "Lv.%d" % level
+		(widgets.hint as Label).text = model.training_hint(track)
+		var add_button := widgets.button as Button
+		add_button.text = "+" if bool(definition.implemented) else "鎖"
+		add_button.disabled = not bool(definition.implemented) or int(snapshot.training_points) <= 0 or level >= CombatModel.MAX_TRAINING_LEVEL
+
+func _refresh_navigation() -> void:
+	for page: String in PAGE_NAMES:
+		var button := nav_buttons[page] as Button
+		var selected := page == current_page
+		button.text = ("● " if selected else "") + String(PAGE_NAMES[page])
+		button.add_theme_stylebox_override("normal", _slot_style(Color("80683c") if selected else Color("303a34"), Color("e1bf72") if selected else Color("59665d"), 2))
+
+func _show_toast(title: String, detail: String) -> void:
+	toast_title.text = title
+	toast_detail.text = detail
+	toast_panel.visible = true
+	toast_panel.modulate = Color.WHITE
+	toast_panel.scale = Vector2(0.96, 0.96)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(toast_panel, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(toast_panel, "modulate:a", 0.0, 0.3).set_delay(1.8)
+	tween.chain().tween_callback(func() -> void: toast_panel.visible = false)
+
+func _apply_safe_area() -> void:
+	var safe := get_node("SafeArea") as MarginContainer
+	var inset := maxi(16, roundi(minf(size.x, size.y) * 0.05))
+	for side: String in ["left", "top", "right", "bottom"]:
+		safe.add_theme_constant_override("margin_%s" % side, inset)
+
+func _resource_card(text_value: String, value: float, max_value: float, color: Color) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(_label(text_value, 15, Color("f2ded8")))
+	var bar := _progress_bar(Color("293238"), color, 18)
+	bar.max_value = max_value
+	bar.value = value
+	box.add_child(bar)
+	return box
+
+func _section_row(title_value: String, detail_value: String) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("202e28"), Color("53675b"), 1))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	panel.add_child(row)
+	var title := _label(title_value, 15, Color("f4eee0"))
+	title.custom_minimum_size.x = 86
+	row.add_child(title)
+	var detail := _label(detail_value, 12, Color("aebfb4"))
+	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(detail)
+	return panel
+
+func _progress_bar(background: Color, fill: Color, height: int) -> ProgressBar:
+	var bar := ProgressBar.new()
+	bar.max_value = 100.0
+	bar.show_percentage = false
+	bar.custom_minimum_size.y = height
+	bar.add_theme_stylebox_override("background", _bar_style(background))
+	bar.add_theme_stylebox_override("fill", _bar_style(fill))
+	return bar
+
+func _label(text_value: String, font_size: int, color: Color) -> Label:
+	var label := Label.new()
+	label.text = text_value
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_color_override("font_outline_color", Color("171310"))
+	label.add_theme_constant_override("outline_size", 3)
+	return label
+
+func _button(text_value: String, color: Color, height := 58) -> Button:
+	var button := Button.new()
+	button.text = text_value
+	button.custom_minimum_size.y = height
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.focus_mode = Control.FOCUS_ALL
+	button.add_theme_font_size_override("font_size", 16)
+	button.add_theme_stylebox_override("normal", _panel_style(color, Color("c8aa70")))
+	button.add_theme_stylebox_override("hover", _panel_style(color.lightened(0.12), Color("f1d590")))
+	button.add_theme_stylebox_override("pressed", _panel_style(color.darkened(0.12), Color("fff0b8")))
+	button.add_theme_stylebox_override("focus", _panel_style(color.lightened(0.08), Color("fff2ac"), 4))
+	button.add_theme_stylebox_override("disabled", _panel_style(Color("383a36"), Color("686d65")))
+	return button
+
+func _skill_button(text_value: String, color: Color) -> Button:
+	var button := _button(text_value, color, 62)
+	button.add_theme_font_size_override("font_size", 12)
+	button.add_theme_stylebox_override("normal", _slot_style(color, Color("c8aa70")))
+	button.add_theme_stylebox_override("hover", _slot_style(color.lightened(0.12), Color("f1d590")))
+	button.add_theme_stylebox_override("focus", _slot_style(color.lightened(0.08), Color("fff2ac"), 4))
+	return button
+
+func _nav_button(text_value: String) -> Button:
+	var button := _button(text_value, Color("303a34"), 48)
+	button.add_theme_font_size_override("font_size", 13)
+	button.add_theme_stylebox_override("normal", _slot_style(Color("303a34"), Color("59665d"), 1))
+	button.add_theme_stylebox_override("hover", _slot_style(Color("475449"), Color("c8aa70"), 2))
+	button.add_theme_stylebox_override("focus", _slot_style(Color("475449"), Color("fff2ac"), 4))
+	return button
+
+func _slot_style(color: Color, border: Color, border_width := 2) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.border_color = border
+	style.set_border_width_all(border_width)
+	style.set_corner_radius_all(8)
+	style.content_margin_left = 4
+	style.content_margin_right = 4
+	style.content_margin_top = 5
+	style.content_margin_bottom = 5
+	return style
+
+func _panel_style(color: Color, border: Color, border_width := 2) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.border_color = border
+	style.set_border_width_all(border_width)
+	style.set_corner_radius_all(10)
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 7
+	style.content_margin_bottom = 7
+	return style
+
+func _bar_style(color: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.set_corner_radius_all(6)
+	return style

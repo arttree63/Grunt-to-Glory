@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
+    "godot:check": "/Applications/Godot.app/Contents/MacOS/Godot --headless --path godot --editor --quit",
+    "godot:test": "/Applications/Godot.app/Contents/MacOS/Godot --headless --path godot --script res://tests/run_tests.gd",
     "sim": "tsx tools/balance-sim/sim.ts",
     "sim:legend": "tsx tools/balance-sim/legend-check.ts",
     "sim:shield": "tsx tools/balance-sim/shield-check.ts"
