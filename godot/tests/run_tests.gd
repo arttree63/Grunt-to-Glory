@@ -77,7 +77,11 @@ func _test_auto_attack_and_momentum() -> void:
 	var events: Array[Dictionary] = model.step(CombatModelScript.AUTO_ATTACK_INTERVAL + 0.01)
 	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "attack"), "沒有輸入時也必須自動普攻")
 	_expect(model.momentum > before, "時間與普攻必須累積勢")
-	_expect(model._current_attack_interval() <= 0.72, "取消點擊攻擊後，基礎 AUTO 節奏必須保持快速")
+	_expect(model._current_attack_interval() <= 0.55, "取消點擊攻擊後，基礎 AUTO 節奏必須保持高速")
+	model.training.agility = 200
+	model.youren = CombatModelScript.MAX_YOUREN
+	model.shadowless_remaining = 3.0
+	_expect(model._current_attack_interval() >= CombatModelScript.MIN_AUTO_ATTACK_INTERVAL, "極限攻速仍必須保留最低可辨識間隔")
 
 func _test_battlefield_impact_tiers() -> void:
 	var battlefield = BattlefieldScript.new()
