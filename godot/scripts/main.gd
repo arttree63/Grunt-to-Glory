@@ -586,7 +586,8 @@ func _update_hud(snapshot: Dictionary) -> void:
 	youren_hud.visible = agility_active
 	var shadowless_text := " · 無影 %.1fs" % float(snapshot.shadowless_remaining) if float(snapshot.shadowless_remaining) > 0.0 else ""
 	var swift_text := " · 瞬步待發" if bool(snapshot.swift_step_ready) else ""
-	youren_label.text = "游刃  %d/%d · 閃避 %d%%%s%s" % [int(snapshot.youren), int(snapshot.max_youren), roundi(float(snapshot.dodge_chance) * 100.0), swift_text, shadowless_text]
+	var flow_text := " · 連擊 %d/%d" % [int(snapshot.flow_hits), int(snapshot.flow_hits_required)] if int(snapshot.training.agility) >= 10 else ""
+	youren_label.text = "游刃  %d/%d%s%s%s" % [int(snapshot.youren), int(snapshot.max_youren), flow_text, swift_text, shadowless_text]
 	for index in youren_pips.size():
 		var filled := index < int(snapshot.youren)
 		youren_pips[index].add_theme_stylebox_override("panel", _slot_style(Color("9b86d6") if filled else Color("2e293b"), Color("f0eaff") if filled else Color("756a96"), 2 if filled else 1))

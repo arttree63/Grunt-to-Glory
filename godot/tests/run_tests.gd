@@ -280,7 +280,7 @@ func _test_dodge_stat_and_attack_modifiers() -> void:
 
 func _test_swift_step_auto_dodge() -> void:
 	var model = CombatModelScript.new()
-	model.training.agility = 10
+	model.training.agility = 50
 	model.auto_skill_slots[0] = "swift_step"
 	model.enemy_hp = 99999.0
 	model.enemy_attack_remaining = 999.0
@@ -301,25 +301,35 @@ func _test_swift_step_auto_dodge() -> void:
 
 func _test_youren_gain_and_break() -> void:
 	var model = CombatModelScript.new()
-	model.training.agility = 30
+	model.training.agility = 10
 	model.enemy_hp = 99999.0
 	model._events.clear()
+	for index in 4:
+		model._basic_attack(false)
+	_expect(model.youren == 1 and model.flow_hits == 0, "連續攻擊 4 次未被命中必須獲得 1 層游刃")
 	model._resolve_dodge("normal", false)
-	_expect(model.youren == 1, "成功閃避必須累積 1 層游刃")
+	_expect(model.youren == 3, "成功閃避必須獲得 2 層游刃")
 	model.youren = 5
 	model._lose_youren("normal")
 	_expect(model.youren == 3, "受到普通命中必須失去 2 層游刃")
 	model._lose_youren("heavy")
-	_expect(model.youren == 0, "受到重擊必須打斷全部游刃")
+	_expect(model.youren == 0, "受到重擊必須打斷全部游刃與連擊")
+	var finisher = CombatModelScript.new()
+	finisher.training.agility = 10
+	finisher.enemy_hp = 1.0
+	finisher.enemy_armor = 0.0
+	finisher._basic_attack(false)
+	_expect(finisher.youren == 1, "擊殺敵人必須獲得 1 層游刃")
 
 func _test_shadow_assault_and_opening() -> void:
 	var model = CombatModelScript.new()
 	model.training.agility = 100
 	model.enemy_hp = 99999.0
 	model.enemy_armor = 0.0
+	model.youren = 3
 	model._events.clear()
 	model._resolve_dodge("normal", false)
-	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "shadow_assault"), "Lv.50 閃避後必須觸發影襲")
+	_expect(model.youren == 5 and model._events.any(func(event: Dictionary) -> bool: return event.type == "shadow_assault"), "Lv.30 滿層游刃閃避後必須觸發影襲")
 	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "opening"), "Lv.100 閃避後必須揭露乘隙破綻")
 	model._events.clear()
 	model._deal_damage(100.0, "test")
@@ -400,7 +410,7 @@ func _test_agility_playable_pace() -> void:
 		model.step(1.0 / 60.0)
 		elapsed += 1.0 / 60.0
 	print("Shadow-flow unlock pace: %.1f seconds" % elapsed)
-	_expect(int(model.training.agility) >= 10, "敏捷核心瞬步應在 90 秒內解鎖")
+	_expect(int(model.training.agility) >= 10, "敏捷核心游刃應在 90 秒內解鎖")
 
 func _test_ultimate_priority() -> void:
 	var model = CombatModelScript.new()
