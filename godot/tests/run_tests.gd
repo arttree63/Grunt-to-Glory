@@ -57,13 +57,13 @@ func _test_manual_attack_and_shared_cooldown() -> void:
 	model.enemy_hp = 9999.0
 	var auto_before: float = model.auto_attack_remaining
 	var first: Array[Dictionary] = model.manual_attack()
-	_expect(first.any(func(event: Dictionary) -> bool: return event.type == "manual_attack"), "開場點擊戰場必須能立即造成手動追砍傷害")
-	_expect(is_equal_approx(model.auto_attack_remaining, auto_before), "手動追砍不可重置或延後 AUTO 普攻")
-	var enemy_hp_after_first: float = model.enemy_hp
+	_expect(first.any(func(event: Dictionary) -> bool: return event.type == "manual_attack"), "開場攻擊圖示必須能立即造成手動斬擊傷害")
+	_expect(is_equal_approx(model.auto_attack_remaining, auto_before), "手動斬擊不可重置或延後 AUTO 普攻")
 	var repeated: Array[Dictionary] = model.manual_attack()
-	_expect(repeated.any(func(event: Dictionary) -> bool: return event.type == "manual_attack") and model.enemy_hp < enemy_hp_after_first, "每一次點擊都必須同步造成手動追砍")
-	var automatic: Array[Dictionary] = model.step(model._current_attack_interval() + 0.01)
-	_expect(automatic.any(func(event: Dictionary) -> bool: return event.type == "attack"), "手動追砍期間 AUTO 普攻仍必須獨立運作")
+	_expect(repeated.is_empty(), "手動攻擊冷卻中不可重複出刀")
+	var automatic: Array[Dictionary] = model.step(maxf(model._current_attack_interval(), model._manual_attack_cooldown()) + 0.01)
+	_expect(automatic.any(func(event: Dictionary) -> bool: return event.type == "attack"), "手動斬擊冷卻期間 AUTO 普攻仍必須獨立運作")
+	_expect(model.manual_attack().any(func(event: Dictionary) -> bool: return event.type == "manual_attack"), "冷卻結束後攻擊圖示必須再次可用")
 
 func _test_training_growth_and_locked_tracks() -> void:
 	var model = CombatModelScript.new()
@@ -264,6 +264,13 @@ func _test_momentum_and_immovable_coexist() -> void:
 func _test_dodge_stat_and_attack_modifiers() -> void:
 	var model = CombatModelScript.new()
 	var base_dodge: float = model._dodge_chance()
+	var base_attack_interval: float = model._current_attack_interval()
+	model.training.agility = 20
+	_expect(is_equal_approx(model._agility_action_speed_bonus(), 0.24), "敏捷前 20 級必須先提供明顯攻速收益")
+	_expect(model._current_attack_interval() < base_attack_interval, "敏捷攻速必須直接加快 AUTO 普通攻擊")
+	_expect(is_equal_approx(model._critical_chance(), 0.09), "敏捷 Lv.20 必須同時提供穩定暴擊收益")
+	_expect(is_equal_approx(model._dodge_chance(), 0.08), "敏捷前期閃避成長必須低於攻速成長")
+	_expect(model._manual_attack_cooldown() < CombatModelScript.MANUAL_ATTACK_BASE_COOLDOWN, "敏捷必須縮短手動攻擊冷卻")
 	model.training.agility = 200
 	var trained_dodge: float = model._dodge_chance()
 	_expect(trained_dodge > base_dodge and trained_dodge <= CombatModelScript.DODGE_CAP, "敏捷必須提高面板閃避率且不能超過上限")
@@ -276,13 +283,21 @@ func _test_swift_step_auto_dodge() -> void:
 	model.training.agility = 10
 	model.auto_skill_slots[0] = "swift_step"
 	model.enemy_hp = 99999.0
-	model.enemy_attack_count = 4
-	model.enemy_attack_remaining = 0.0
+	model.enemy_attack_remaining = 999.0
 	model.auto_attack_remaining = 999.0
 	var events: Array[Dictionary] = model.step(0.01)
-	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "swift_step"), "敵方危險攻擊前 AUTO 必須準備瞬步")
-	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "dodge"), "瞬步必須保證閃開一次危險攻擊")
+	_expect(model.swift_step_ready and events.any(func(event: Dictionary) -> bool: return event.type == "swift_step_ready"), "瞬步冷卻完成後 AUTO 必須自動進入待發")
+	_expect(is_zero_approx(float(model.skill_cooldowns.get("swift_step", 0.0))), "瞬步待發時不可提前開始冷卻")
+	model.enemy_attack_remaining = 0.0
+	events = model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "swift_step"), "瞬步必須保證閃開下一次普通攻擊並反擊")
 	_expect(not events.any(func(event: Dictionary) -> bool: return event.type == "hero_hit"), "瞬步成功時角色不可受到傷害")
+	_expect(not model.swift_step_ready and float(model.skill_cooldowns.swift_step) > 0.0, "瞬步只能在成功觸發後開始 5 秒冷卻")
+	model.swift_step_ready = true
+	model.enemy_attack_count = 10
+	model._events.clear()
+	model._enemy_attack()
+	_expect(model.swift_step_ready and model._events.any(func(event: Dictionary) -> bool: return event.type == "hero_hit"), "必中攻擊不可觸發或消耗瞬步")
 
 func _test_youren_gain_and_break() -> void:
 	var model = CombatModelScript.new()
@@ -426,7 +441,9 @@ func _test_navigation() -> void:
 	await process_frame
 	_expect(scene.nav_buttons.size() == 5, "主分頁必須維持五個入口")
 	_expect(scene.auto_slot_buttons.size() == 5, "戰鬥 HUD 必須顯示五格 AUTO 優先序")
-	_expect(scene.battle_input_area.mouse_filter == Control.MOUSE_FILTER_STOP and scene.manual_hint_label.visible, "戰場必須可接收點擊並提示開場手動揮砍")
+	_expect(is_instance_valid(scene.manual_attack_button) and not scene.manual_attack_button.disabled, "戰鬥 HUD 必須提供就緒的手動攻擊圖示")
+	scene._manual_attack()
+	_expect(scene.manual_attack_button.disabled and "s" in scene.manual_attack_button.text, "按下攻擊圖示後必須顯示冷卻並暫停再次攻擊")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")
 	_expect(is_instance_valid(scene.section_scroll), "功能頁內容必須可捲動")
 	scene.model.training.martial = 10

@@ -31,9 +31,6 @@ var _shadow_assault := 0.0
 var _flying_swallow := 0.0
 var _opening_flash := 0.0
 var _shadowless_burst := 0.0
-var _manual_tap := 0.0
-var _manual_tap_position := Vector2.ZERO
-var _manual_tap_success := false
 var _manual_slash := 0.0
 var _manual_slash_side := 1.0
 var _momentum_pulse := 0.0
@@ -76,7 +73,6 @@ func _process(delta: float) -> void:
 	_flying_swallow = maxf(0.0, _flying_swallow - delta / 0.64)
 	_opening_flash = maxf(0.0, _opening_flash - delta / 0.8)
 	_shadowless_burst = maxf(0.0, _shadowless_burst - delta / 1.0)
-	_manual_tap = maxf(0.0, _manual_tap - delta / 0.32)
 	_manual_slash = maxf(0.0, _manual_slash - delta / 0.18)
 	_momentum_pulse = maxf(0.0, _momentum_pulse - delta * 1.8)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
@@ -174,11 +170,6 @@ func add_trauma(amount: float) -> void:
 		return
 	trauma = clampf(trauma + amount, 0.0, 1.0)
 
-func show_manual_tap(position: Vector2, success: bool) -> void:
-	_manual_tap_position = position
-	_manual_tap_success = success
-	_manual_tap = 1.0
-
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color("17251f"))
 	for band in 7:
@@ -206,15 +197,6 @@ func _draw() -> void:
 	_draw_afterimages(hero_pos)
 	_draw_hero(hero_pos)
 	_draw_skill_fx(hero_pos, enemy_pos)
-	_draw_manual_tap()
-
-func _draw_manual_tap() -> void:
-	if _manual_tap <= 0.0:
-		return
-	var phase := 1.0 - _manual_tap
-	var radius := 12.0 + phase * 24.0
-	var color := Color("ffe09a", _manual_tap * 0.8) if _manual_tap_success else Color("aab5ae", _manual_tap * 0.38)
-	draw_arc(_manual_tap_position, radius, 0.0, TAU, 24, color, 4.0 if _manual_tap_success else 2.0)
 
 func _draw_forest() -> void:
 	for index in 9:

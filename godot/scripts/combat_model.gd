@@ -4,7 +4,8 @@ extends RefCounted
 const MAX_TRAINING_LEVEL := 200
 const MAX_MOMENTUM := 100.0
 const AUTO_ATTACK_INTERVAL := 0.96
-const MANUAL_ATTACK_MULTIPLIER := 0.2
+const MANUAL_ATTACK_BASE_COOLDOWN := 1.0
+const MANUAL_ATTACK_MULTIPLIER := 0.65
 const AUTO_SLOT_COUNT := 5
 const HIGH_ARMOR_THRESHOLD := 18.0
 const MAX_IMMOVABLE := 3
@@ -23,7 +24,7 @@ const GROWTH := {
 	"common": {"hp": 1.5, "mp": 0.0, "attack": 0.25, "defense": 0.15, "attack_speed": 0.0},
 	"martial": {"hp": 0.5, "mp": 0.0, "attack": 0.7, "defense": 0.2, "attack_speed": 0.0},
 	"physique": {"hp": 2.0, "mp": 0.0, "attack": 0.15, "defense": 0.8, "attack_speed": 0.0},
-	"agility": {"hp": 0.4, "mp": 0.0, "attack": 0.35, "defense": 0.05, "attack_speed": 0.008},
+	"agility": {"hp": 0.4, "mp": 0.0, "attack": 0.35, "defense": 0.05, "attack_speed": 0.0},
 	"magic": {"hp": 0.2, "mp": 1.5, "attack": 0.35, "defense": 0.05, "attack_speed": 0.0},
 	"faith": {"hp": 1.0, "mp": 0.8, "attack": 0.2, "defense": 0.35, "attack_speed": 0.0},
 	"command": {"hp": 0.8, "mp": 0.2, "attack": 0.25, "defense": 0.2, "attack_speed": 0.0},
@@ -88,7 +89,7 @@ const SKILL_DEFS := {
 	"swift_step": {
 		"name": "瞬步", "short": "瞬步", "type": "active", "track": "agility", "level": 10,
 		"cooldown": 5.0, "resource": "none", "cost": 0.0,
-		"condition": "敵人即將發動危險攻擊", "tags": ["DODGE", "FOLLOW_UP"], "implemented": true,
+		"condition": "待發時必定閃避下一次可閃避攻擊", "tags": ["DODGE", "FOLLOW_UP"], "implemented": true,
 	},
 	"flowing_ease": {
 		"name": "游刃", "short": "游刃", "type": "passive", "track": "agility", "level": 30,
@@ -152,6 +153,7 @@ var rng := RandomNumberGenerator.new()
 var auto_skill_slots: Array[String] = ["", "", "", "", ""]
 var skill_cooldowns := {}
 var auto_attack_remaining := AUTO_ATTACK_INTERVAL
+var manual_attack_remaining := 0.0
 var enemy_attack_remaining := 2.25
 var _momentum_was_full := false
 var _events: Array[Dictionary] = []
@@ -162,6 +164,7 @@ func _init() -> void:
 func step(delta: float) -> Array[Dictionary]:
 	_events.clear()
 	_tick_cooldowns(delta)
+	manual_attack_remaining = maxf(0.0, manual_attack_remaining - delta)
 	opening_remaining = maxf(0.0, opening_remaining - delta)
 	shadowless_remaining = maxf(0.0, shadowless_remaining - delta)
 	shadowless_cooldown = maxf(0.0, shadowless_cooldown - delta)
@@ -189,13 +192,16 @@ func step(delta: float) -> Array[Dictionary]:
 
 func manual_attack() -> Array[Dictionary]:
 	_events.clear()
+	if manual_attack_remaining > 0.0:
+		return []
+	manual_attack_remaining = _manual_attack_cooldown()
 	var damage := _attack_power() * MANUAL_ATTACK_MULTIPLIER
-	var critical := int(training.agility) > 0 and rng.randf() < _critical_chance()
+	var critical := rng.randf() < _critical_chance()
 	if critical:
 		damage *= 1.5
 	_events.append({"type": "manual_attack", "damage": damage, "critical": critical})
 	_deal_damage(damage, "manual_attack")
-	_add_momentum(0.5, "manual_attack")
+	_add_momentum(2.0, "manual_attack")
 	return _events.duplicate(true)
 
 func spend_training(track: String) -> Array[Dictionary]:
@@ -295,7 +301,9 @@ func snapshot() -> Dictionary:
 		"youren": youren, "max_youren": MAX_YOUREN, "agility_branch": agility_branch,
 		"swift_step_ready": swift_step_ready, "shadowless_remaining": shadowless_remaining,
 		"dodge_chance": _dodge_chance(), "critical_chance": _critical_chance(),
-		"manual_attack_ready": true,
+		"attack_speed_bonus": _agility_action_speed_bonus(), "move_speed_bonus": _agility_move_speed_bonus(),
+		"manual_attack_ready": manual_attack_remaining <= 0.0,
+		"manual_attack_remaining": manual_attack_remaining, "manual_attack_cooldown": _manual_attack_cooldown(),
 		"auto_skill_slots": auto_skill_slots.duplicate(), "skill_cooldowns": skill_cooldowns.duplicate(true),
 		"attack_interval": _current_attack_interval(), "engagement_time": enemy_engagement_time,
 	}
@@ -331,7 +339,7 @@ func physique_hint() -> String:
 
 func agility_hint() -> String:
 	var level := int(training.agility)
-	if level < 10: return "Lv.10 瞬步"
+	if level < 10: return "攻速 +%d%% · Lv.10 瞬步" % roundi(_agility_action_speed_bonus() * 100.0)
 	if level < 30: return "Lv.30 游刃"
 	if level < 50: return "Lv.50 影襲"
 	if level < 100: return "Lv.100 乘隙"
@@ -366,7 +374,7 @@ func _can_cast(skill_id: String) -> bool:
 	if skill_id == "return_blade":
 		return enemy_attack_remaining <= 0.7 and not return_blade_ready
 	if skill_id == "swift_step":
-		return enemy_attack_remaining <= 0.7 and _next_enemy_attack_type() != "普通" and not swift_step_ready
+		return not swift_step_ready
 	return true
 
 func _cast_skill(skill_id: String) -> void:
@@ -378,7 +386,6 @@ func _cast_skill(skill_id: String) -> void:
 		return
 	if skill_id == "swift_step":
 		swift_step_ready = true
-		skill_cooldowns[skill_id] = float(definition.cooldown)
 		_events.append({"type": "swift_step_ready", "skill_id": skill_id, "name": String(definition.name)})
 		return
 	if skill_id == "collapse_counter":
@@ -509,9 +516,10 @@ func _take_unblocked_hit(damage: float) -> void:
 		_defeat_hero()
 
 func _try_dodge_attack(attack_type: String, roll_override := -1.0) -> bool:
-	var used_swift_step := swift_step_ready
+	var used_swift_step := swift_step_ready and _dodge_modifier(attack_type) > 0.0
 	if used_swift_step:
 		swift_step_ready = false
+		skill_cooldowns["swift_step"] = float(SKILL_DEFS.swift_step.cooldown)
 		_resolve_dodge(attack_type, true)
 		return true
 	var roll := rng.randf() if roll_override < 0.0 else roll_override
@@ -714,6 +722,8 @@ func _stat_value(stat: String, base: float) -> float:
 	var value := base + float(_total_training_levels()) * float(GROWTH.common.get(stat, 0.0))
 	for track: String in TRAINING_ORDER:
 		value += float(training[track]) * float(GROWTH[track].get(stat, 0.0))
+	if stat == "attack_speed":
+		value += _agility_action_speed_bonus()
 	return value
 
 func _hero_max_hp() -> float: return _stat_value("hp", 100.0)
@@ -721,11 +731,33 @@ func _hero_max_mp() -> float: return _stat_value("mp", 0.0)
 func _attack_power() -> float: return _stat_value("attack", 9.5)
 func _defense() -> float: return _stat_value("defense", 2.0)
 func _dodge_chance() -> float:
-	return minf(DODGE_CAP, 0.05 + float(training.agility) * 0.0022)
+	return minf(DODGE_CAP, 0.05 + _agility_dodge_bonus())
 func _critical_chance() -> float:
 	var bonus := float(youren) * 0.025 if skill_is_unlocked("flowing_ease") else 0.0
-	return minf(0.65, 0.05 + float(training.agility) * 0.001 + bonus)
+	return minf(0.65, 0.05 + _agility_critical_bonus() + bonus)
 func _current_attack_interval() -> float:
 	var youren_speed := float(youren) * 0.06 if skill_is_unlocked("flowing_ease") else 0.0
 	var shadowless_speed := 0.55 if shadowless_remaining > 0.0 else 0.0
 	return AUTO_ATTACK_INTERVAL / (1.0 + _stat_value("attack_speed", 0.0) + youren_speed + shadowless_speed)
+
+func _manual_attack_cooldown() -> float:
+	return MANUAL_ATTACK_BASE_COOLDOWN / (1.0 + _agility_action_speed_bonus() * 0.55)
+
+func _agility_action_speed_bonus() -> float:
+	return _tiered_agility_bonus(0.012, 0.008, 0.006, 0.004)
+
+func _agility_critical_bonus() -> float:
+	return _tiered_agility_bonus(0.002, 0.0015, 0.001, 0.00065)
+
+func _agility_dodge_bonus() -> float:
+	return _tiered_agility_bonus(0.0015, 0.002, 0.0025, 0.00225)
+
+func _agility_move_speed_bonus() -> float:
+	return _tiered_agility_bonus(0.01, 0.0066667, 0.004, 0.002)
+
+func _tiered_agility_bonus(early: float, mid: float, advanced: float, late: float) -> float:
+	var level := int(training.agility)
+	return float(mini(level, 20)) * early \
+		+ float(mini(maxi(level - 20, 0), 30)) * mid \
+		+ float(mini(maxi(level - 50, 0), 50)) * advanced \
+		+ float(maxi(level - 100, 0)) * late
