@@ -40,6 +40,7 @@ var nav_buttons: Dictionary = {}
 var toast_panel: PanelContainer
 var toast_title: Label
 var toast_detail: Label
+var last_touch_press_msec := -1000
 
 func _ready() -> void:
 	_build_ui()
@@ -494,9 +495,13 @@ func _on_battlefield_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		pressed = event.button_index == MOUSE_BUTTON_LEFT and event.pressed
 		position = event.position
+		if pressed and Time.get_ticks_msec() - last_touch_press_msec < 80:
+			return
 	elif event is InputEventScreenTouch:
 		pressed = event.pressed
 		position = event.position
+		if pressed:
+			last_touch_press_msec = Time.get_ticks_msec()
 	if not pressed or training_open or current_page != "combat":
 		return
 	var events := model.manual_attack()
@@ -593,7 +598,7 @@ func _update_hud(snapshot: Dictionary) -> void:
 		var filled := index < int(snapshot.youren)
 		youren_pips[index].add_theme_stylebox_override("panel", _slot_style(Color("9b86d6") if filled else Color("2e293b"), Color("f0eaff") if filled else Color("756a96"), 2 if filled else 1))
 	manual_hint_label.visible = int(snapshot.kills) < 3
-	manual_hint_label.text = "點擊戰場立即追砍" if bool(snapshot.manual_attack_ready) else "追砍 %.1f 秒後可用" % float(snapshot.manual_attack_remaining)
+	manual_hint_label.text = "每次點擊都會立即追砍"
 	var slots: Array = snapshot.auto_skill_slots
 	for index in CombatModel.AUTO_SLOT_COUNT:
 		var skill_id := String(slots[index])

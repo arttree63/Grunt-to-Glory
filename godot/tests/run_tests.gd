@@ -61,7 +61,7 @@ func _test_manual_attack_and_shared_cooldown() -> void:
 	_expect(is_equal_approx(model.auto_attack_remaining, auto_before), "手動追砍不可重置或延後 AUTO 普攻")
 	var enemy_hp_after_first: float = model.enemy_hp
 	var repeated: Array[Dictionary] = model.manual_attack()
-	_expect(repeated.is_empty() and is_equal_approx(model.enemy_hp, enemy_hp_after_first), "連點不可突破手動追砍冷卻")
+	_expect(repeated.any(func(event: Dictionary) -> bool: return event.type == "manual_attack") and model.enemy_hp < enemy_hp_after_first, "每一次點擊都必須同步造成手動追砍")
 	var automatic: Array[Dictionary] = model.step(model._current_attack_interval() + 0.01)
 	_expect(automatic.any(func(event: Dictionary) -> bool: return event.type == "attack"), "手動追砍期間 AUTO 普攻仍必須獨立運作")
 

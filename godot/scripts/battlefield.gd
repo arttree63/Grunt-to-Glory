@@ -34,6 +34,8 @@ var _shadowless_burst := 0.0
 var _manual_tap := 0.0
 var _manual_tap_position := Vector2.ZERO
 var _manual_tap_success := false
+var _manual_slash := 0.0
+var _manual_slash_side := 1.0
 var _momentum_pulse := 0.0
 var _enemy_flash := 0.0
 var _hero_flash := 0.0
@@ -75,6 +77,7 @@ func _process(delta: float) -> void:
 	_opening_flash = maxf(0.0, _opening_flash - delta / 0.8)
 	_shadowless_burst = maxf(0.0, _shadowless_burst - delta / 1.0)
 	_manual_tap = maxf(0.0, _manual_tap - delta / 0.32)
+	_manual_slash = maxf(0.0, _manual_slash - delta / 0.18)
 	_momentum_pulse = maxf(0.0, _momentum_pulse - delta * 1.8)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
 	_hero_flash = maxf(0.0, _hero_flash - delta * 7.0)
@@ -97,8 +100,10 @@ func play_events(events: Array[Dictionary]) -> void:
 			"attack":
 				_hero_action = 0.5
 			"manual_attack":
-				_hero_action = 0.82
-				add_trauma(0.12)
+				_hero_action = 0.5
+				_manual_slash = 1.0
+				_manual_slash_side *= -1.0
+				add_trauma(0.05)
 			"heavy_slash":
 				_heavy_slash = 1.0
 				add_trauma(0.42)
@@ -371,6 +376,12 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var phase := 1.0 - _shadowless_burst
 		var alpha := sin(clampf(phase * 1.5, 0.0, 1.0) * PI)
 		draw_arc(hero_pos + Vector2(0, -35), 78.0 + phase * 34.0, 0.0, TAU, 36, Color("d9ccff", alpha), 8.0)
+	if _manual_slash > 0.0:
+		var phase := 1.0 - _manual_slash
+		var alpha := sin(clampf(phase * 2.4, 0.0, 1.0) * PI)
+		var center := hero_pos.lerp(enemy_pos, 0.58)
+		var diagonal := Vector2(50.0, 58.0 * _manual_slash_side)
+		draw_line(center - diagonal, center + diagonal, Color("ffe8a8", alpha), 7.0)
 
 func _spawn_damage(amount: float, source: String) -> void:
 	var label := _damage_pool[_damage_cursor]
