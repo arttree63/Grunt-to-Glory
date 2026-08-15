@@ -41,6 +41,7 @@ func _run_tests() -> void:
 	_test_martial_branches()
 	_test_boss_spawn()
 	_test_enemy_archetypes_and_route_rhythm()
+	_test_journey_choice_controls_next_area()
 	_test_return_blade_auto_counter()
 	_test_immovable_layers()
 	_test_borrow_force_and_collapse_counter()
@@ -66,7 +67,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 54")
+		print("Godot tests passed: 55")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -514,6 +515,19 @@ func _test_enemy_archetypes_and_route_rhythm() -> void:
 	model._spawn_enemy()
 	_expect(model.enemy_is_elite and model._route_phase() == "危機", "首領前必須有精英危機戰")
 
+func _test_journey_choice_controls_next_area() -> void:
+	var model = CombatModelScript.new()
+	model.stage = 10
+	model._spawn_enemy()
+	model._enemy_defeated()
+	_expect(model.awaiting_journey_choice, "Boss 擊敗後必須暫停並等待一次旅途抉擇")
+	_expect(model.step(1.0).is_empty(), "旅途抉擇期間 AUTO 戰鬥不可偷偷推進")
+	var events: Array[Dictionary] = model.choose_journey_route("mountain")
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "journey_selected"), "選擇路線後必須送出下一區提示")
+	_expect(model.area_number == 2 and model.stage == 11 and model.journey_route == "mountain", "旅途抉擇必須套用到下一個完整十戰區域")
+	_expect(model.enemy_archetype == "raider" and model._enemy_display_name() == "裂牙獵狼", "山道路線必須改變敵人配置與名稱")
+	_expect(not model.awaiting_journey_choice, "完成路線選擇後必須恢復 AUTO 戰鬥")
+
 func _test_return_blade_auto_counter() -> void:
 	var model = CombatModelScript.new()
 	model.training.physique = 30
@@ -840,6 +854,7 @@ func _test_navigation() -> void:
 	await process_frame
 	_expect(scene.nav_buttons.size() == 5, "主分頁必須維持五個入口")
 	_expect(scene.auto_slot_buttons.size() == 5, "戰鬥 HUD 必須顯示五格 AUTO 優先序")
+	_expect(is_instance_valid(scene.journey_overlay) and scene.journey_buttons.size() == 3, "Boss 後旅途抉擇必須提供三條手機可操作路線")
 	_expect(is_instance_valid(scene.manual_attack_button) and not scene.manual_attack_button.disabled, "戰鬥 HUD 必須提供就緒的手動攻擊圖示")
 	scene._manual_attack()
 	_expect(scene.manual_attack_button.disabled and "s" in scene.manual_attack_button.text, "按下攻擊圖示後必須顯示冷卻並暫停再次攻擊")

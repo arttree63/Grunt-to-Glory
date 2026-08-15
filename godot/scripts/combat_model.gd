@@ -40,6 +40,17 @@ const ENEMY_DEFS := {
 	"caster": {"name": "林地咒術師", "role": "範圍施法", "hint": "以範圍與必中術打斷節奏", "hp": 0.92, "armor": 0.68, "damage": 1.18, "interval": 3.0},
 	"boss": {"name": "重甲哥布林王", "role": "首領", "hint": "混合重擊、範圍與必中攻擊", "hp": 2.2, "armor": 1.0, "damage": 1.25, "interval": 2.0},
 }
+const JOURNEY_ROUTES := {
+	"mountain": {"name": "灰狼山道", "intro": "碎石路上滿是爪痕。狼群與山賊正沿峽谷逼近。", "effect": "敵人更快更強｜每次戰鬥累積額外 20% 操練"},
+	"village": {"name": "邊境村落", "intro": "炊煙後藏著被劫掠的屋舍。村民請你守住最後一條路。", "effect": "選擇時回復生命｜區域敵人稍弱｜每戰額外恢復"},
+	"battlefield": {"name": "沉眠古戰場", "intro": "鏽劍遍地，亡者仍守著早已不存在的軍旗。", "effect": "敵人生命與護甲提高｜擊敗 Boss 額外獲得 3 操練"},
+}
+const ROUTE_ENEMY_NAMES := {
+	"frontier": {"grunt": "林地哥布林", "raider": "快攻斥候", "brute": "巨槌重兵", "shield": "黑鐵盾衛", "caster": "林地咒術師", "boss": "重甲哥布林王"},
+	"mountain": {"grunt": "灰峽野狼", "raider": "裂牙獵狼", "brute": "岩背巨狼", "shield": "山道盾匪", "caster": "峽谷獵手", "boss": "峽谷狼王"},
+	"village": {"grunt": "劫村盜匪", "raider": "盜匪斥候", "brute": "破門暴徒", "shield": "掠村盾徒", "caster": "縱火術士", "boss": "黑旗盜匪頭目"},
+	"battlefield": {"grunt": "徘徊亡兵", "raider": "斷刃幽魂", "brute": "鐵甲屍兵", "shield": "古戰盾靈", "caster": "戰場怨靈", "boss": "無首將軍"},
+}
 const AUTO_TACTIC_DEFS := {
 	"heavy_slash": [
 		{"id": "standard", "name": "勢≥50", "description": "勢達 50 就施放"},
@@ -496,6 +507,10 @@ const COMMAND_MILESTONES := {
 }
 
 var stage := 1
+var area_number := 1
+var journey_route := "frontier"
+var awaiting_journey_choice := false
+var route_training_progress := 0.0
 var hero_hp := 100.0
 var enemy_hp := 52.0
 var enemy_max_hp := 52.0
@@ -582,6 +597,8 @@ func _init() -> void:
 
 func step(delta: float) -> Array[Dictionary]:
 	_events.clear()
+	if awaiting_journey_choice:
+		return []
 	_tick_cooldowns(delta)
 	manual_attack_remaining = maxf(0.0, manual_attack_remaining - delta)
 	opening_remaining = maxf(0.0, opening_remaining - delta)
@@ -651,7 +668,7 @@ func step(delta: float) -> Array[Dictionary]:
 
 func manual_attack() -> Array[Dictionary]:
 	_events.clear()
-	if manual_attack_remaining > 0.0:
+	if awaiting_journey_choice or manual_attack_remaining > 0.0:
 		return []
 	manual_attack_remaining = _manual_attack_cooldown()
 	var damage := _attack_power() * MANUAL_ATTACK_MULTIPLIER
@@ -844,13 +861,17 @@ func skill_is_unlocked(skill_id: String) -> bool:
 	return int(training[String(definition.track)]) >= int(definition.level)
 
 func snapshot() -> Dictionary:
+	var route_definition := _journey_definition()
 	return {
 		"stage": stage,
+		"area_number": area_number, "journey_route": journey_route,
+		"journey_name": String(route_definition.name), "journey_intro": String(route_definition.intro), "journey_effect": String(route_definition.effect),
+		"awaiting_journey_choice": awaiting_journey_choice,
 		"hero_hp": hero_hp, "hero_max_hp": _hero_max_hp(), "hero_mp": hero_mp, "hero_max_mp": _hero_max_mp(),
 		"attack": _attack_power(), "magic_power": _magic_power(), "defense": _defense(),
 		"enemy_hp": enemy_hp, "enemy_max_hp": enemy_max_hp, "enemy_armor": enemy_armor,
 		"enemy_is_boss": enemy_is_boss, "enemy_is_elite": enemy_is_elite,
-		"enemy_archetype": enemy_archetype, "enemy_name": String(_enemy_definition().name),
+		"enemy_archetype": enemy_archetype, "enemy_name": _enemy_display_name(),
 		"enemy_role": String(_enemy_definition().role), "enemy_hint": String(_enemy_definition().hint),
 		"route_position": _route_position(), "route_phase": _route_phase(),
 		"enemy_attack_type": _next_enemy_attack_type(), "enemy_attack_remaining": enemy_attack_remaining,
@@ -1661,7 +1682,8 @@ func _enemy_attack(block_override := "") -> void:
 	enemy_attack_count += 1
 	var attack_type := _current_enemy_attack_type_id()
 	var attack_multiplier: float = float({"normal": 1.0, "heavy": 1.8, "area": 1.35, "sure_hit": 1.55}.get(attack_type, 1.0))
-	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(_enemy_definition().damage)
+	var route_damage := 1.08 if journey_route == "mountain" else (0.92 if journey_route == "village" else (1.15 if journey_route == "battlefield" else 1.0))
+	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(_enemy_definition().damage) * route_damage
 	if enemy_is_elite:
 		raw_damage *= 1.18
 	if enemy_weakened_remaining > 0.0:
@@ -1966,6 +1988,13 @@ func _enemy_defeated() -> void:
 	kills += 1
 	stage += 1
 	var point_gain := 3 if defeated_boss else 1
+	if journey_route == "mountain":
+		route_training_progress += float(point_gain) * 0.2
+		var route_bonus := floori(route_training_progress)
+		point_gain += route_bonus
+		route_training_progress -= float(route_bonus)
+	elif journey_route == "battlefield" and defeated_boss:
+		point_gain += 3
 	training_points += point_gain
 	_add_momentum(20.0 if int(training.martial) >= 25 else 12.0, "kill")
 	_add_youren(2 if int(training.agility) >= 25 else 1, "kill")
@@ -1976,19 +2005,41 @@ func _enemy_defeated() -> void:
 		if martial_branch == "chain_slash": no_beat_gain += 12.0
 		_add_momentum(no_beat_gain, "no_beat")
 		_events.append({"type": "no_beat", "amount": no_beat_gain})
-	hero_hp = minf(_hero_max_hp(), hero_hp + 10.0)
-	_spawn_enemy()
+	hero_hp = minf(_hero_max_hp(), hero_hp + (18.0 if journey_route == "village" else 10.0))
+	if defeated_boss:
+		awaiting_journey_choice = true
+	else:
+		_spawn_enemy()
 	_events.append({"type": "enemy_defeated", "stage": stage, "kills": kills, "boss": defeated_boss})
 	_events.append({"type": "training_point", "gain": point_gain, "points": training_points})
+	if defeated_boss:
+		_events.append({"type": "journey_choice", "area": area_number, "completed_route": journey_route})
+
+func choose_journey_route(route_id: String) -> Array[Dictionary]:
+	_events.clear()
+	if not awaiting_journey_choice or not JOURNEY_ROUTES.has(route_id):
+		return []
+	journey_route = route_id
+	area_number += 1
+	awaiting_journey_choice = false
+	if route_id == "village":
+		hero_hp = minf(_hero_max_hp(), hero_hp + _hero_max_hp() * 0.35)
+		hero_mp = minf(_hero_max_mp(), hero_mp + _hero_max_mp() * 0.35)
+	_spawn_enemy()
+	var definition: Dictionary = JOURNEY_ROUTES[route_id]
+	_events.append({"type": "journey_selected", "route": route_id, "name": String(definition.name), "intro": String(definition.intro), "effect": String(definition.effect)})
+	return _events.duplicate(true)
 
 func _spawn_enemy() -> void:
 	enemy_archetype = _enemy_archetype_for_stage(stage)
 	enemy_is_boss = enemy_archetype == "boss"
 	enemy_is_elite = _route_position() == 9
 	var definition := _enemy_definition()
-	enemy_max_hp = (52.0 + pow(float(stage - 1), 1.08) * 9.0) * float(definition.hp) * (1.35 if enemy_is_elite else 1.0)
+	var route_hp := 1.08 if journey_route == "mountain" else (0.95 if journey_route == "village" else (1.18 if journey_route == "battlefield" else 1.0))
+	enemy_max_hp = (52.0 + pow(float(stage - 1), 1.08) * 9.0) * float(definition.hp) * (1.35 if enemy_is_elite else 1.0) * route_hp
 	enemy_hp = enemy_max_hp
-	enemy_armor = (5.0 + float(stage) * 0.8) * float(definition.armor) + (20.0 if enemy_is_boss else 0.0)
+	var route_armor := 1.12 if journey_route == "battlefield" else 1.0
+	enemy_armor = ((5.0 + float(stage) * 0.8) * float(definition.armor) + (20.0 if enemy_is_boss else 0.0)) * route_armor
 	enemy_engagement_time = 0.0
 	enemy_attack_count = 0
 	counter_chain = 0
@@ -2010,6 +2061,15 @@ func _spawn_enemy() -> void:
 func _enemy_definition() -> Dictionary:
 	return ENEMY_DEFS.get(enemy_archetype, ENEMY_DEFS.grunt)
 
+func _enemy_display_name() -> String:
+	var names: Dictionary = ROUTE_ENEMY_NAMES.get(journey_route, ROUTE_ENEMY_NAMES.frontier)
+	return String(names.get(enemy_archetype, _enemy_definition().name))
+
+func _journey_definition() -> Dictionary:
+	if JOURNEY_ROUTES.has(journey_route):
+		return JOURNEY_ROUTES[journey_route]
+	return {"name": "黑鐵哨站", "intro": "你仍是軍陣裡最不起眼的一名小兵。前方，是第一座必須攻下的哨站。", "effect": "初始區域｜熟悉戰鬥與操練"}
+
 func _enemy_attack_interval() -> float:
 	var interval := float(_enemy_definition().interval) - minf(0.45, float(stage) * 0.012)
 	if enemy_is_elite:
@@ -2018,6 +2078,12 @@ func _enemy_attack_interval() -> float:
 
 func _enemy_archetype_for_stage(target_stage: int) -> String:
 	var position := ((maxi(1, target_stage) - 1) % 10) + 1
+	if journey_route == "mountain":
+		return {1: "raider", 2: "grunt", 3: "raider", 4: "brute", 5: "raider", 6: "caster", 7: "brute", 8: "raider", 9: "shield", 10: "boss"}.get(position, "raider")
+	if journey_route == "village":
+		return {1: "grunt", 2: "raider", 3: "grunt", 4: "shield", 5: "raider", 6: "caster", 7: "grunt", 8: "brute", 9: "shield", 10: "boss"}.get(position, "grunt")
+	if journey_route == "battlefield":
+		return {1: "grunt", 2: "shield", 3: "caster", 4: "brute", 5: "shield", 6: "caster", 7: "brute", 8: "caster", 9: "shield", 10: "boss"}.get(position, "grunt")
 	return {
 		1: "grunt", 2: "raider", 3: "grunt", 4: "brute", 5: "shield",
 		6: "raider", 7: "caster", 8: "brute", 9: "shield", 10: "boss",

@@ -8,6 +8,7 @@ var enemy_is_boss := false
 var enemy_heavy_windup := false
 var enemy_attack_type := "普通"
 var enemy_archetype := "grunt"
+var journey_route := "frontier"
 var immovable_level := 0
 var return_blade_ready := false
 var youren_level := 0
@@ -157,6 +158,7 @@ func set_state(snapshot: Dictionary) -> void:
 	enemy_is_boss = bool(snapshot.enemy_is_boss)
 	enemy_attack_type = String(snapshot.enemy_attack_type)
 	enemy_archetype = String(snapshot.enemy_archetype)
+	journey_route = String(snapshot.journey_route)
 	enemy_heavy_windup = enemy_attack_type != "普通" and float(snapshot.enemy_attack_remaining) <= 0.8
 	immovable_level = int(snapshot.immovable)
 	return_blade_ready = bool(snapshot.return_blade_ready)
@@ -364,10 +366,12 @@ func add_trauma(amount: float) -> void:
 	trauma = clampf(trauma + amount, 0.0, 1.0)
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color("17251f"))
+	var background := Color("263027") if journey_route == "mountain" else (Color("30291f") if journey_route == "village" else (Color("252431") if journey_route == "battlefield" else Color("17251f")))
+	draw_rect(Rect2(Vector2.ZERO, size), background)
 	for band in 7:
 		var y := size.y * float(band) / 7.0
-		var color := Color("1d3028").lerp(Color("6b4c2f"), float(band) / 7.0)
+		var lower_color := Color("5a5040") if journey_route == "mountain" else (Color("73543a") if journey_route == "village" else (Color("51455b") if journey_route == "battlefield" else Color("6b4c2f")))
+		var color := background.darkened(0.08).lerp(lower_color, float(band) / 7.0)
 		draw_rect(Rect2(0.0, y, size.x, size.y / 7.0 + 1.0), color)
 	_draw_forest()
 	var shake := trauma * trauma
@@ -403,11 +407,27 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("c83232", vignette_alpha), false, 14.0)
 
 func _draw_forest() -> void:
+	if journey_route == "village":
+		for index in 5:
+			var house_x := size.x * (0.08 + float(index) * 0.22)
+			var house_y := size.y * 0.47
+			draw_rect(Rect2(house_x, house_y - 42.0, 52.0, 42.0), Color("594534"))
+			draw_polygon(PackedVector2Array([Vector2(house_x - 8.0, house_y - 42.0), Vector2(house_x + 26.0, house_y - 72.0), Vector2(house_x + 60.0, house_y - 42.0)]), PackedColorArray([Color("7a4a35")]))
+		return
+	if journey_route == "battlefield":
+		for index in 11:
+			var x := size.x * float(index) / 10.0
+			var ground_y := size.y * 0.54 + float((index * 17) % 20)
+			draw_line(Vector2(x, ground_y), Vector2(x + 12.0, ground_y - 54.0), Color("8b817c"), 4.0)
+			draw_polygon(PackedVector2Array([Vector2(x + 12.0, ground_y - 54.0), Vector2(x + 40.0, ground_y - 43.0), Vector2(x + 12.0, ground_y - 30.0)]), PackedColorArray([Color("6f3f45", 0.7)]))
+		return
 	for index in 9:
 		var x := size.x * (float(index) / 8.0)
-		var height := 48.0 + float((index * 23) % 64)
-		draw_rect(Rect2(x - 7.0, size.y * 0.52 - height, 14.0, height), Color("26382b"))
-		draw_circle(Vector2(x, size.y * 0.52 - height), 34.0, Color("304b35"))
+		var height := (72.0 if journey_route == "mountain" else 48.0) + float((index * 23) % 64)
+		var trunk_color := Color("3d3c35") if journey_route == "mountain" else Color("26382b")
+		var leaf_color := Color("4e5547") if journey_route == "mountain" else Color("304b35")
+		draw_rect(Rect2(x - 7.0, size.y * 0.52 - height, 14.0, height), trunk_color)
+		draw_circle(Vector2(x, size.y * 0.52 - height), 34.0, leaf_color)
 	for index in 16:
 		var x := fmod(float(index * 71), maxf(size.x, 1.0))
 		var y := size.y * 0.53 + fmod(float(index * 37), size.y * 0.25)

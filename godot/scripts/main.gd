@@ -7,6 +7,8 @@ const UI_FONT := preload("res://assets/fonts/NotoSansTC-Variable.ttf")
 var model := CombatModel.new()
 var accumulator := 0.0
 var training_open := false
+var journey_open := false
+var journey_pending := false
 var current_page := "combat"
 var current_skill_tab := "auto"
 var battlefield: Battlefield
@@ -50,6 +52,10 @@ var skill_tab_buttons: Dictionary = {}
 var toast_panel: PanelContainer
 var toast_title: Label
 var toast_detail: Label
+var journey_overlay: Control
+var journey_title: Label
+var journey_detail: Label
+var journey_buttons: Dictionary = {}
 
 func _ready() -> void:
 	_build_ui()
@@ -60,7 +66,7 @@ func _ready() -> void:
 	_show_toast("手動攻擊已就緒", "點擊攻擊圖示出刀；不操作時仍會自動戰鬥")
 
 func _process(delta: float) -> void:
-	if training_open or current_page != "combat":
+	if training_open or journey_open or journey_pending or current_page != "combat":
 		return
 	accumulator = minf(accumulator + delta, FIXED_STEP * 5.0)
 	var stepped := false
@@ -72,6 +78,8 @@ func _process(delta: float) -> void:
 		_update_hud(model.snapshot())
 
 func _unhandled_input(event: InputEvent) -> void:
+	if journey_open or journey_pending:
+		return
 	if event.is_action_pressed("training") and current_page == "character":
 		_toggle_training()
 	elif event.is_action_pressed("ui_cancel") and training_open:
@@ -259,6 +267,7 @@ func _build_ui() -> void:
 	_build_navigation(layout)
 	_build_section_overlay()
 	_build_training_overlay()
+	_build_journey_overlay()
 
 func _build_navigation(parent: VBoxContainer) -> void:
 	var nav := HBoxContainer.new()
@@ -299,6 +308,47 @@ func _build_section_overlay() -> void:
 	section_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	section_box.add_theme_constant_override("separation", 9)
 	section_scroll.add_child(section_box)
+
+func _build_journey_overlay() -> void:
+	journey_overlay = Control.new()
+	journey_overlay.visible = false
+	journey_overlay.z_index = 60
+	journey_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	journey_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(journey_overlay)
+	var dim := ColorRect.new()
+	dim.color = Color("090d0c", 0.9)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	journey_overlay.add_child(dim)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_top", 42)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_bottom", 42)
+	journey_overlay.add_child(margin)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("151d1a", 0.99), Color("d8b565"), 3))
+	margin.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	panel.add_child(box)
+	journey_title = _label("旅途抉擇", 29, Color("ffe09a"))
+	journey_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(journey_title)
+	journey_detail = _label("據點已突破。下一段旅程，要往哪裡走？", 15, Color("d8e0d8"))
+	journey_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	journey_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(journey_detail)
+	for route_id: String in CombatModel.JOURNEY_ROUTES:
+		var definition: Dictionary = CombatModel.JOURNEY_ROUTES[route_id]
+		var color: Color = {"mountain": Color("485044"), "village": Color("654b35"), "battlefield": Color("4e4258")}[route_id]
+		var button := _button("%s\n%s" % [String(definition.name), String(definition.effect)], color, 88)
+		button.add_theme_font_size_override("font_size", 14)
+		button.tooltip_text = String(definition.intro)
+		button.pressed.connect(_choose_journey_route.bind(route_id))
+		box.add_child(button)
+		journey_buttons[route_id] = button
 
 func _switch_page(page: String) -> void:
 	if not PAGE_NAMES.has(page):
@@ -676,6 +726,11 @@ func _handle_events(events: Array[Dictionary]) -> void:
 	battlefield.play_events(events)
 	for event: Dictionary in events:
 		match String(event.type):
+			"journey_choice":
+				journey_pending = true
+				_show_toast("區域突破", "戰鬥暫歇，決定下一段旅程")
+				get_tree().create_timer(1.15).timeout.connect(_show_journey_choice)
+			"journey_selected": _show_toast("前往：%s" % String(event.name), String(event.intro))
 			"unlock": _show_toast("解鎖：%s" % String(event.name), String(event.description))
 			"milestone": _show_toast("流派強化：%s" % String(event.name), String(event.description))
 			"training_point": _show_toast("獲得 %d 點操練" % int(event.get("gain", 1)), "現在有 %d 點可分配" % int(event.points))
@@ -714,7 +769,7 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"defeat": _show_toast("戰敗後重整", "保留操練，退回上一戰")
 
 func _manual_attack() -> void:
-	if training_open or current_page != "combat":
+	if training_open or journey_open or journey_pending or current_page != "combat":
 		return
 	var events := model.manual_attack()
 	_handle_events(events)
@@ -825,10 +880,32 @@ func _close_training() -> void:
 	if current_page == "combat": auto_slot_buttons[0].grab_focus()
 	else: (nav_buttons[current_page] as Button).grab_focus()
 
+func _show_journey_choice() -> void:
+	journey_pending = false
+	journey_open = true
+	journey_overlay.visible = true
+	journey_overlay.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	journey_title.text = "區域 %d 突破｜旅途抉擇" % int(model.area_number)
+	journey_detail.text = "下一個十戰區域只做這一次決定。選擇會改變整段路線、敵人、收益與首領。"
+	var tween := create_tween()
+	tween.tween_property(journey_overlay, "modulate:a", 1.0, 0.25)
+	(journey_buttons["mountain"] as Button).grab_focus()
+
+func _choose_journey_route(route_id: String) -> void:
+	var events := model.choose_journey_route(route_id)
+	if events.is_empty():
+		return
+	journey_open = false
+	journey_overlay.visible = false
+	accumulator = 0.0
+	_handle_events(events)
+	_update_hud(model.snapshot())
+	manual_attack_button.grab_focus()
+
 func _update_hud(snapshot: Dictionary) -> void:
 	var boss_mark := "首領 · " if bool(snapshot.enemy_is_boss) else ("精英 · " if bool(snapshot.enemy_is_elite) else "")
 	var attack_hint := " · %s準備" % String(snapshot.enemy_attack_type) if String(snapshot.enemy_attack_type) != "普通" and float(snapshot.enemy_attack_remaining) <= 0.8 else ""
-	enemy_label.text = "路段 %d/10・%s｜%s%s\n%s · 護甲 %d%s" % [int(snapshot.route_position), String(snapshot.route_phase), boss_mark, String(snapshot.enemy_name), String(snapshot.enemy_role), roundi(float(snapshot.enemy_armor)), attack_hint]
+	enemy_label.text = "第%d區・%s｜%d/10・%s\n%s%s · 護甲 %d%s" % [int(snapshot.area_number), String(snapshot.journey_name), int(snapshot.route_position), String(snapshot.route_phase), boss_mark, String(snapshot.enemy_name), roundi(float(snapshot.enemy_armor)), attack_hint]
 	enemy_label.tooltip_text = String(snapshot.enemy_hint)
 	kills_label.text = "擊倒 %d" % int(snapshot.kills)
 	enemy_bar.max_value = float(snapshot.enemy_max_hp)
