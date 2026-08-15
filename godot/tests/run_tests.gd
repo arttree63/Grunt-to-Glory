@@ -57,13 +57,14 @@ func _run_tests() -> void:
 	_test_agility_playable_pace()
 	_test_ultimate_priority()
 	_test_auto_slot_configuration()
+	_test_auto_tactic_conditions()
 	_test_playable_pace()
 	await _test_navigation()
 	if failures > 0:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 52")
+		print("Godot tests passed: 53")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -779,6 +780,38 @@ func _test_auto_slot_configuration() -> void:
 	_expect(model.unequip_auto_skill(1) and model.auto_skill_slots[1].is_empty(), "AUTO 技能必須能卸下")
 	var locked = CombatModelScript.new()
 	_expect(not locked.equip_auto_skill("heavy_slash"), "未解鎖技能不可裝備")
+
+func _test_auto_tactic_conditions() -> void:
+	var martial = CombatModelScript.new()
+	martial.training.martial = 30
+	martial.momentum = 60.0
+	martial.enemy_hp = 9999.0
+	_expect(martial.set_auto_tactic("heavy_slash", "full") and not martial._can_cast("heavy_slash"), "重斬選擇勢滿後不可提前施放")
+	martial.momentum = 100.0
+	_expect(martial._can_cast("heavy_slash"), "勢滿後必須允許重斬")
+	martial.momentum = 70.0
+	martial.enemy_max_hp = 100.0
+	martial.enemy_hp = 34.0
+	martial.set_auto_tactic("execute_slash", "hp35")
+	_expect(martial._can_cast("execute_slash"), "斬首戰術必須能改為生命 35% 觸發")
+	var physique = CombatModelScript.new()
+	physique.training.physique = 30
+	physique.enemy_archetype = "brute"
+	physique.enemy_attack_count = 1
+	physique.enemy_attack_remaining = 0.6
+	physique.set_auto_tactic("return_blade", "heavy")
+	_expect(physique._can_cast("return_blade"), "返刃必須能保留給下一次重擊")
+	var faith = CombatModelScript.new()
+	faith.training.faith = 20
+	faith.holy_seals = 1
+	faith.hero_hp = faith._hero_max_hp() * 0.6
+	faith.set_auto_tactic("grace_heal", "hp50")
+	faith._events.clear()
+	faith._try_grace_heal()
+	_expect(not faith._events.any(func(event: Dictionary) -> bool: return event.type == "grace"), "恩典選擇 50% 後不可過早治療")
+	faith.hero_hp = faith._hero_max_hp() * 0.49
+	faith._try_grace_heal()
+	_expect(faith._events.any(func(event: Dictionary) -> bool: return event.type == "grace"), "生命低於設定門檻必須自動治療")
 
 func _test_playable_pace() -> void:
 	var model = CombatModelScript.new()

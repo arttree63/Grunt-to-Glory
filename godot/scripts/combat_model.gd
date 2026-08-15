@@ -40,6 +40,41 @@ const ENEMY_DEFS := {
 	"caster": {"name": "林地咒術師", "role": "範圍施法", "hint": "以範圍與必中術打斷節奏", "hp": 0.92, "armor": 0.68, "damage": 1.18, "interval": 3.0},
 	"boss": {"name": "重甲哥布林王", "role": "首領", "hint": "混合重擊、範圍與必中攻擊", "hp": 2.2, "armor": 1.0, "damage": 1.25, "interval": 2.0},
 }
+const AUTO_TACTIC_DEFS := {
+	"heavy_slash": [
+		{"id": "standard", "name": "勢≥50", "description": "勢達 50 就施放"},
+		{"id": "full", "name": "勢滿", "description": "保留勢到 100 再施放"},
+		{"id": "boss", "name": "精英+", "description": "只對精英或首領施放"},
+	],
+	"execute_slash": [
+		{"id": "hp25", "name": "血≤25%", "description": "目標生命低於 25% 才斬首"},
+		{"id": "hp35", "name": "血≤35%", "description": "更早嘗試斬首"},
+	],
+	"return_blade": [
+		{"id": "any", "name": "任何攻擊", "description": "敵人即將出手就準備返刃"},
+		{"id": "heavy", "name": "重擊才擋", "description": "保留返刃給重擊與必中攻擊"},
+	],
+	"swift_step": [
+		{"id": "any", "name": "下一攻擊", "description": "冷卻完成就準備瞬步"},
+		{"id": "danger", "name": "重擊/範圍", "description": "只在下一招是重擊或範圍時準備"},
+		{"id": "heavy", "name": "只閃重擊", "description": "保留瞬步給重擊"},
+	],
+	"holy_light_slash": [
+		{"id": "offense", "name": "可用就放", "description": "以輸出優先施放聖光斬"},
+		{"id": "hp70", "name": "HP<70%", "description": "受傷後才施放，同時回復生命"},
+		{"id": "hp50", "name": "HP<50%", "description": "保留聖印給危急時使用"},
+	],
+	"legion_command": [
+		{"id": "full", "name": "軍勢滿", "description": "軍勢已滿就發動號令"},
+		{"id": "elite", "name": "精英+", "description": "只對精英或首領發動"},
+		{"id": "boss", "name": "只打首領", "description": "保留全軍進攻給首領"},
+	],
+	"grace_heal": [
+		{"id": "hp70", "name": "HP<70%", "description": "生命低於 70% 自動恩典治療"},
+		{"id": "hp50", "name": "HP<50%", "description": "生命低於 50% 才治療"},
+		{"id": "hp30", "name": "HP<30%", "description": "只在危急時消耗聖印治療"},
+	],
+}
 const GROWTH := {
 	"common": {"hp": 1.5, "mp": 0.0, "attack": 0.25, "defense": 0.15, "attack_speed": 0.0},
 	"martial": {"hp": 0.5, "mp": 0.0, "attack": 0.7, "defense": 0.2, "attack_speed": 0.0},
@@ -534,6 +569,7 @@ var unharmed_duration := 0.0
 var instant_kill_ready := false
 var rng := RandomNumberGenerator.new()
 var auto_skill_slots: Array[String] = ["", "", "", "", ""]
+var auto_tactics := {}
 var skill_cooldowns := {}
 var auto_attack_remaining := AUTO_ATTACK_INTERVAL
 var manual_attack_remaining := 0.0
@@ -755,6 +791,52 @@ func move_auto_skill(slot_index: int, direction: int) -> bool:
 	auto_skill_slots[target] = held
 	return true
 
+func set_auto_tactic(skill_id: String, tactic_id: String) -> bool:
+	if not AUTO_TACTIC_DEFS.has(skill_id):
+		return false
+	for tactic: Dictionary in AUTO_TACTIC_DEFS[skill_id]:
+		if String(tactic.id) == tactic_id:
+			auto_tactics[skill_id] = tactic_id
+			return true
+	return false
+
+func cycle_auto_tactic(skill_id: String) -> bool:
+	if not AUTO_TACTIC_DEFS.has(skill_id):
+		return false
+	var tactics: Array = AUTO_TACTIC_DEFS[skill_id]
+	var current := auto_tactic_id(skill_id)
+	var current_index := 0
+	for index in tactics.size():
+		if String(tactics[index].id) == current:
+			current_index = index
+			break
+	auto_tactics[skill_id] = String(tactics[(current_index + 1) % tactics.size()].id)
+	return true
+
+func auto_tactic_id(skill_id: String) -> String:
+	if not AUTO_TACTIC_DEFS.has(skill_id):
+		return ""
+	var tactics: Array = AUTO_TACTIC_DEFS[skill_id]
+	return String(auto_tactics.get(skill_id, tactics[0].id))
+
+func auto_tactic_label(skill_id: String) -> String:
+	if not AUTO_TACTIC_DEFS.has(skill_id):
+		return "固定"
+	var current := auto_tactic_id(skill_id)
+	for tactic: Dictionary in AUTO_TACTIC_DEFS[skill_id]:
+		if String(tactic.id) == current:
+			return String(tactic.name)
+	return "固定"
+
+func auto_tactic_description(skill_id: String) -> String:
+	if not AUTO_TACTIC_DEFS.has(skill_id):
+		return "依技能原始條件判斷"
+	var current := auto_tactic_id(skill_id)
+	for tactic: Dictionary in AUTO_TACTIC_DEFS[skill_id]:
+		if String(tactic.id) == current:
+			return String(tactic.description)
+	return "依技能原始條件判斷"
+
 func skill_is_unlocked(skill_id: String) -> bool:
 	if not SKILL_DEFS.has(skill_id):
 		return false
@@ -796,7 +878,7 @@ func snapshot() -> Dictionary:
 		"attack_speed_bonus": _agility_action_speed_bonus(), "move_speed_bonus": _agility_move_speed_bonus(),
 		"manual_attack_ready": manual_attack_remaining <= 0.0,
 		"manual_attack_remaining": manual_attack_remaining, "manual_attack_cooldown": _manual_attack_cooldown(),
-		"auto_skill_slots": auto_skill_slots.duplicate(), "skill_cooldowns": skill_cooldowns.duplicate(true),
+		"auto_skill_slots": auto_skill_slots.duplicate(), "auto_tactics": auto_tactics.duplicate(true), "skill_cooldowns": skill_cooldowns.duplicate(true),
 		"attack_interval": _current_attack_interval(), "engagement_time": enemy_engagement_time,
 	}
 
@@ -878,10 +960,12 @@ func _can_cast(skill_id: String) -> bool:
 	var mp_cost := _skill_mp_cost(skill_id)
 	if hero_mp < mp_cost:
 		return false
+	if not _passes_auto_tactic(skill_id):
+		return false
 	if skill_id == "armor_flash":
 		return enemy_armor >= HIGH_ARMOR_THRESHOLD
 	if skill_id == "execute_slash":
-		return enemy_hp / maxf(1.0, enemy_max_hp) <= 0.25
+		return enemy_hp / maxf(1.0, enemy_max_hp) <= (0.35 if auto_tactic_id(skill_id) == "hp35" else 0.25)
 	if skill_id == "return_blade":
 		return enemy_attack_remaining <= 0.7 and not return_blade_ready
 	if skill_id == "swift_step":
@@ -896,6 +980,26 @@ func _can_cast(skill_id: String) -> bool:
 		return holy_release_remaining <= 0.0 and holy_descent_remaining <= 0.0
 	if skill_id == "holy_sword_descent":
 		return holy_seals >= MAX_HOLY_SEALS and holy_descent_remaining <= 0.0
+	return true
+
+func _passes_auto_tactic(skill_id: String) -> bool:
+	var tactic := auto_tactic_id(skill_id)
+	if skill_id == "heavy_slash":
+		if tactic == "full": return momentum >= MAX_MOMENTUM
+		if tactic == "boss": return enemy_is_elite or enemy_is_boss
+	if skill_id == "return_blade" and tactic == "heavy":
+		return _next_enemy_attack_type_id() in ["heavy", "sure_hit"]
+	if skill_id == "swift_step":
+		var next_attack := _next_enemy_attack_type_id()
+		if tactic == "danger": return next_attack in ["heavy", "area"]
+		if tactic == "heavy": return next_attack == "heavy"
+	if skill_id == "holy_light_slash":
+		var hp_ratio := hero_hp / maxf(1.0, _hero_max_hp())
+		if tactic == "hp70": return hp_ratio < 0.7
+		if tactic == "hp50": return hp_ratio < 0.5
+	if skill_id == "legion_command":
+		if tactic == "elite": return enemy_is_elite or enemy_is_boss
+		if tactic == "boss": return enemy_is_boss
 	return true
 
 func _cast_skill(skill_id: String) -> void:
@@ -1158,7 +1262,8 @@ func _ally_attack_interval() -> float:
 func _try_grace_heal() -> void:
 	if not skill_is_unlocked("grace") or holy_seals <= 0 or grace_cooldown > 0.0:
 		return
-	if hero_hp / maxf(1.0, _hero_max_hp()) >= 0.7:
+	var threshold: float = float({"hp70": 0.7, "hp50": 0.5, "hp30": 0.3}.get(auto_tactic_id("grace_heal"), 0.7))
+	if hero_hp / maxf(1.0, _hero_max_hp()) >= threshold:
 		return
 	var cost := 0 if int(training.faith) >= 160 and holy_seals >= MAX_HOLY_SEALS else 1
 	holy_seals = maxi(0, holy_seals - cost)
@@ -1816,6 +1921,9 @@ func _defeat_hero() -> void:
 func _next_enemy_attack_type() -> String:
 	var next_count := enemy_attack_count + 1
 	return _attack_type_name(_attack_type_for_count(next_count))
+
+func _next_enemy_attack_type_id() -> String:
+	return _attack_type_for_count(enemy_attack_count + 1)
 
 func _current_enemy_attack_type_id() -> String:
 	return _attack_type_for_count(enemy_attack_count)

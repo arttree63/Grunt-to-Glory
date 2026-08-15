@@ -252,8 +252,8 @@ func _build_ui() -> void:
 	bottom_box.add_child(actions)
 	for index in CombatModel.AUTO_SLOT_COUNT:
 		var slot := _skill_button("%d\n＋" % (index + 1), Color("3a403b"))
-		slot.tooltip_text = "前往技能頁配置 AUTO 優先序"
-		slot.pressed.connect(_switch_page.bind("skills"))
+		slot.tooltip_text = "空槽會開啟技能頁；已裝備技能可點擊切換戰術"
+		slot.pressed.connect(_on_auto_slot_pressed.bind(index))
 		actions.add_child(slot)
 		auto_slot_buttons.append(slot)
 	_build_navigation(layout)
@@ -402,7 +402,7 @@ func _render_auto_setup(slots: Array) -> void:
 		if not skill_id.is_empty():
 			var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
 			title = "%d  %s" % [index + 1, String(definition.name)]
-			detail = String(definition.condition)
+			detail = "%s｜戰術：%s" % [String(definition.condition), model.auto_tactic_label(skill_id)]
 		var card := _section_row(title, detail)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(card)
@@ -416,6 +416,24 @@ func _render_auto_setup(slots: Array) -> void:
 			else:
 				button.pressed.connect(_move_auto_slot.bind(index, -1 if action == "↑" else 1))
 			row.add_child(button)
+		if not skill_id.is_empty() and CombatModel.AUTO_TACTIC_DEFS.has(skill_id):
+			var tactic_button := _button("戰術\n%s" % model.auto_tactic_label(skill_id), Color("5a4930"), 44)
+			tactic_button.custom_minimum_size.x = 82
+			tactic_button.tooltip_text = model.auto_tactic_description(skill_id)
+			tactic_button.pressed.connect(_cycle_auto_tactic.bind(skill_id))
+			row.add_child(tactic_button)
+	var grace_unlocked := model.skill_is_unlocked("grace")
+	var grace_row := HBoxContainer.new()
+	grace_row.add_theme_constant_override("separation", 5)
+	section_box.add_child(grace_row)
+	var grace_card := _section_row("被動戰術｜恩典治療", model.auto_tactic_description("grace_heal") if grace_unlocked else "信仰 Lv.20 解鎖")
+	grace_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grace_row.add_child(grace_card)
+	var grace_button := _button(model.auto_tactic_label("grace_heal"), Color("6b6335"), 44)
+	grace_button.custom_minimum_size.x = 82
+	grace_button.disabled = not grace_unlocked
+	grace_button.pressed.connect(_cycle_auto_tactic.bind("grace_heal"))
+	grace_row.add_child(grace_button)
 	section_box.add_child(_label("到各流派分頁選擇要裝入的主動技能。", 13, Color("9fb0a5")))
 
 func _render_command_allies(snapshot: Dictionary) -> void:
@@ -713,6 +731,21 @@ func _equip_auto_skill(skill_id: String) -> void:
 	model.equip_auto_skill(skill_id)
 	_update_hud(model.snapshot())
 
+func _on_auto_slot_pressed(index: int) -> void:
+	var skill_id := String(model.auto_skill_slots[index])
+	if skill_id.is_empty():
+		_switch_page("skills")
+		return
+	if model.cycle_auto_tactic(skill_id):
+		_show_toast("戰術：%s" % model.auto_tactic_label(skill_id), model.auto_tactic_description(skill_id))
+	_update_hud(model.snapshot())
+
+func _cycle_auto_tactic(skill_id: String) -> void:
+	if not model.cycle_auto_tactic(skill_id):
+		return
+	_show_toast("戰術：%s" % model.auto_tactic_label(skill_id), model.auto_tactic_description(skill_id))
+	_update_hud(model.snapshot())
+
 func _remove_auto_slot(index: int) -> void:
 	model.unequip_auto_skill(index)
 	_update_hud(model.snapshot())
@@ -870,8 +903,9 @@ func _update_hud(snapshot: Dictionary) -> void:
 		else:
 			var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
 			var state := model.auto_skill_state(skill_id)
-			button.text = "%d  %s\n%s" % [index + 1, String(definition.short), state]
-			button.tooltip_text = "第 %d 優先｜%s｜%s" % [index + 1, String(definition.condition), model.skill_power_hint(skill_id)]
+			var tactic_text := model.auto_tactic_label(skill_id) if CombatModel.AUTO_TACTIC_DEFS.has(skill_id) else state
+			button.text = "%d  %s\n%s · %s" % [index + 1, String(definition.short), tactic_text, state]
+			button.tooltip_text = "第 %d 優先｜%s｜%s" % [index + 1, model.auto_tactic_description(skill_id), model.skill_power_hint(skill_id)]
 			var track := String(definition.track)
 			var base: Color = {
 				"martial": Color("654c27"), "physique": Color("31545c"), "agility": Color("4b416d"),
