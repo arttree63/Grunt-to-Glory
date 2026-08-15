@@ -40,12 +40,12 @@ const SKILL_DEFS := {
 		"tags": ["ONE_SLASH"], "implemented": true,
 	},
 	"remaining_heart": {
-		"name": "殘心", "short": "殘心", "type": "passive", "track": "martial", "level": 30,
+		"name": "殘心", "short": "殘心", "type": "passive", "track": "martial", "level": 130,
 		"condition": "一刀未擊殺返還 20 勢", "momentum_refund": 20.0,
 		"tags": ["ONE_SLASH"], "implemented": true,
 	},
 	"armor_flash": {
-		"name": "破甲一閃", "short": "破甲", "type": "active", "track": "martial", "level": 50,
+		"name": "破甲一閃", "short": "破甲", "type": "active", "track": "martial", "level": 60,
 		"cooldown": 3.0, "resource": "momentum", "cost": 70.0,
 		"condition": "敵方護甲 ≥ 18 且勢 ≥ 70", "damage_multiplier": 4.0, "armor_ignore": 0.75, "armor_break": 12.0,
 		"tags": ["ONE_SLASH", "ARMOR_BREAK"], "implemented": true,
@@ -56,10 +56,21 @@ const SKILL_DEFS := {
 		"tags": ["ONE_SLASH"], "implemented": true,
 	},
 	"execute_slash": {
-		"name": "斷首", "short": "斷首", "type": "active", "track": "martial", "level": 150,
+		"name": "斷首", "short": "斷首", "type": "active", "track": "martial", "level": 30,
 		"cooldown": 2.0, "resource": "momentum", "cost": 70.0,
 		"condition": "目標生命 ≤ 25% 且勢 ≥ 70", "damage_multiplier": 6.0, "armor_ignore": 0.35,
 		"tags": ["ONE_SLASH", "EXECUTE"], "implemented": true,
+	},
+	"draw_stance": {
+		"name": "拔刀", "short": "拔刀", "type": "active", "track": "martial", "level": 50,
+		"cooldown": 18.0, "resource": "none", "cost": 0.0,
+		"condition": "未處於拔刀狀態", "tags": ["ONE_SLASH", "BURST"], "implemented": true,
+	},
+	"mountain_break": {
+		"name": "斷嶽", "short": "斷嶽", "type": "active", "track": "martial", "level": 120,
+		"cooldown": 6.0, "resource": "momentum", "cost": 90.0,
+		"condition": "勢 ≥ 90", "damage_multiplier": 8.0, "armor_ignore": 0.45,
+		"tags": ["ONE_SLASH", "BOSS"], "implemented": true,
 	},
 	"two_cut": {
 		"name": "一刀兩斷", "short": "兩斷", "type": "ultimate", "track": "martial", "level": 200,
@@ -68,20 +79,20 @@ const SKILL_DEFS := {
 		"tags": ["ONE_SLASH", "EXECUTE"], "implemented": true,
 	},
 	"return_blade": {
-		"name": "返刃", "short": "返刃", "type": "active", "track": "physique", "level": 10,
+		"name": "返刃", "short": "返刃", "type": "active", "track": "physique", "level": 30,
 		"cooldown": 4.0, "resource": "none", "cost": 0.0,
 		"condition": "敵人即將攻擊", "tags": ["BLOCK", "COUNTER"], "implemented": true,
 	},
 	"immovable_form": {
-		"name": "不動", "short": "不動", "type": "passive", "track": "physique", "level": 30,
+		"name": "不動", "short": "不動", "type": "passive", "track": "physique", "level": 10,
 		"condition": "格擋累積不動，最高 3 層", "tags": ["BLOCK", "STANCE"], "implemented": true,
 	},
 	"borrow_force": {
-		"name": "借力", "short": "借力", "type": "passive", "track": "physique", "level": 50,
+		"name": "借力", "short": "借力", "type": "passive", "track": "physique", "level": 20,
 		"condition": "格擋減免量的 35% 轉為反擊傷害", "tags": ["BLOCK", "COUNTER"], "implemented": true,
 	},
 	"collapse_counter": {
-		"name": "不動崩返", "short": "崩返", "type": "active", "track": "physique", "level": 100,
+		"name": "崩勢反擊", "short": "崩返", "type": "active", "track": "physique", "level": 50,
 		"cooldown": 5.0, "resource": "immovable", "cost": 3.0,
 		"condition": "不動達 3 層", "tags": ["COUNTER", "BURST"], "implemented": true,
 	},
@@ -98,17 +109,25 @@ const SKILL_DEFS := {
 		"name": "游刃", "short": "游刃", "type": "passive", "track": "agility", "level": 10,
 		"condition": "疊至 5 層進入游刃有餘，每 2 次普攻追加疾斬", "tags": ["DODGE", "STACK", "FOLLOW_UP"], "implemented": true,
 	},
+	"swift_cut": {
+		"name": "疾斬", "short": "疾斬", "type": "passive", "track": "agility", "level": 15,
+		"condition": "滿層游刃時，普攻連段自動追加疾斬", "tags": ["FOLLOW_UP"], "implemented": true,
+	},
 	"shadow_assault": {
 		"name": "影襲", "short": "影襲", "type": "passive", "track": "agility", "level": 30,
 		"condition": "滿層游刃成功閃避後必定追擊", "tags": ["DODGE", "FOLLOW_UP"], "implemented": true,
 	},
 	"exploit_opening": {
-		"name": "乘隙", "short": "乘隙", "type": "passive", "track": "agility", "level": 100,
+		"name": "乘隙", "short": "乘隙", "type": "passive", "track": "agility", "level": 70,
 		"condition": "敵人攻擊落空後，2 秒內受到傷害提高 25%", "tags": ["DODGE", "VULNERABLE"], "implemented": true,
 	},
 	"shadowless": {
-		"name": "奧義・無影", "short": "無影", "type": "ultimate", "track": "agility", "level": 200,
-		"condition": "滿層游刃時自動進入 6 秒無影", "tags": ["DODGE", "FOLLOW_UP", "ULTIMATE"], "implemented": true, "reactive": true,
+		"name": "無影", "short": "無影", "type": "passive", "track": "agility", "level": 190,
+		"condition": "滿層游刃維持 3 秒後進入無影", "tags": ["DODGE", "FOLLOW_UP"], "implemented": true,
+	},
+	"shadowless_extreme": {
+		"name": "奧義・無影極境", "short": "極境", "type": "ultimate", "track": "agility", "level": 200,
+		"condition": "無影狀態下閃避時自動展開完整連攜", "tags": ["DODGE", "FOLLOW_UP", "ULTIMATE"], "implemented": true, "reactive": true,
 	},
 	"magic_sword_marks": {
 		"name": "魔劍・魔紋", "short": "魔紋", "type": "passive", "track": "magic", "level": 10,
@@ -148,21 +167,138 @@ const SKILL_DEFS := {
 		"cooldown": 18.0, "resource": "mp", "cost": 20.0,
 		"condition": "MP ≥ 20 且不在解放狀態", "tags": ["MAGIC_SWORD", "ELEMENTAL", "BURST"], "implemented": true,
 	},
+	"elemental_boundary_slash": {
+		"name": "元素斷界斬", "short": "斷界", "type": "active", "track": "magic", "level": 130,
+		"cooldown": 6.0, "resource": "magic_marks", "cost": 3.0, "mp_cost": 18.0,
+		"condition": "魔紋 ≥ 3 且 MP ≥ 18", "tags": ["MAGIC_SWORD", "ELEMENTAL", "BURST"], "implemented": true,
+	},
+	"magic_sword_complete_release": {
+		"name": "奧義・魔劍完全解放", "short": "全解放", "type": "ultimate", "track": "magic", "level": 200,
+		"cooldown": 30.0, "resource": "mp", "cost": 40.0,
+		"condition": "MP ≥ 40 且未在完全解放", "tags": ["MAGIC_SWORD", "ELEMENTAL", "ULTIMATE"], "implemented": true,
+	},
 }
 const MARTIAL_BRANCHES := {
-	"no_beat": {"name": "無拍子", "description": "擊殺後額外獲得 28 勢，適合連續清怪"},
-	"spirit_focus": {"name": "氣合", "description": "對同一敵人戰鬥越久，蓄勢速度越快"},
-	"first_strike": {"name": "先之先", "description": "敵人出手前消耗 70 勢先斬並中斷攻擊"},
+	"execution": {"name": "斬首", "description": "強化低血斬殺、斷首與擊殺後的蓄勢"},
+	"army_break": {"name": "破軍", "description": "強化精英、Boss 傷害與裂甲效果"},
+	"chain_slash": {"name": "連斬", "description": "擊殺後降低下一刀勢需求，連續收割"},
 }
 const PHYSIQUE_BRANCHES := {
-	"shock_return": {"name": "震返", "description": "格擋重擊時震退敵人並強化該次反擊"},
-	"inch_power": {"name": "寸勁", "description": "連續反擊會逐次提高反擊傷害，破防時重置"},
 	"iron_wall": {"name": "鐵壁", "description": "滿層不動時，下一次普通格擋提升為完美格擋"},
+	"borrowed_force": {"name": "借力", "description": "提高格擋減免轉傷，專門反制 Boss 重擊"},
+	"return_blade": {"name": "返刃", "description": "提高返刃頻率與連續反擊傷害"},
 }
 const AGILITY_BRANCHES := {
-	"flying_swallow": {"name": "飛燕", "description": "影襲有 35% 機率追加一次高速追擊"},
+	"chase_wind": {"name": "追風", "description": "提高攻速、疾斬與多段追擊頻率"},
 	"traceless": {"name": "無蹤", "description": "滿層游刃時，消耗全部游刃閃開一次原本會命中的普通攻擊"},
 	"instant_kill": {"name": "瞬殺", "description": "閃避後的下一次普通攻擊必定造成強力暴擊"},
+}
+const MARTIAL_MILESTONES := {
+	5: {"name": "鋒刃磨練", "description": "攻擊與破甲提高"}, 10: {"name": "勢與重斬", "description": "解鎖勢與第一個一刀技能"},
+	15: {"name": "蓄勢重斬", "description": "勢越高，重斬傷害越高"}, 20: {"name": "斬殺", "description": "低血敵人受到更多一刀傷害"},
+	25: {"name": "回勢", "description": "擊殺返還額外勢"}, 30: {"name": "斷首", "description": "解鎖低血斬殺技能"},
+	35: {"name": "斷首續勢", "description": "斷首擊殺後加快下一輪蓄勢"}, 40: {"name": "裂甲蓄勢", "description": "高勢斬擊獲得額外破甲"},
+	45: {"name": "極勢", "description": "滿勢時提高一刀傷害與破甲"}, 50: {"name": "拔刀", "description": "解鎖一刀流爆發狀態"},
+	55: {"name": "鋒刃突破", "description": "攻擊與暴擊傷害提高"}, 60: {"name": "破甲一閃", "description": "解鎖高護甲目標專用斬擊"},
+	65: {"name": "裂甲追斬", "description": "對裂甲敵人的傷害提高"}, 70: {"name": "一念", "description": "越久未施放一刀，下一刀越強"},
+	75: {"name": "一念深化", "description": "一念可累積更高倍率"}, 80: {"name": "極勢留存", "description": "擊殺後短暫保留極勢收益"},
+	85: {"name": "斬破精進", "description": "破甲與斬殺效果提高"}, 90: {"name": "無拍子", "description": "擊殺後降低下一刀勢需求"},
+	95: {"name": "無拍子深化", "description": "無拍子返還更多勢"}, 100: {"name": "一刀流極意", "description": "滿勢斬擊造成破防與失衡"},
+	105: {"name": "極斬磨練", "description": "攻擊與一刀技能提高"}, 110: {"name": "極勢回流", "description": "滿勢斬擊返還少量勢"},
+	115: {"name": "拔刀延長", "description": "拔刀狀態延長"}, 120: {"name": "斷嶽", "description": "解鎖精英與 Boss 專用重斬"},
+	125: {"name": "破軍鋒", "description": "Boss 傷害與破甲提高"}, 130: {"name": "殘心", "description": "一刀未擊殺時返還勢"},
+	135: {"name": "殘心深化", "description": "殘心返還量提高"}, 140: {"name": "超量蓄勢", "description": "極勢斬擊可保留一次餘勢"},
+	145: {"name": "極斬突破", "description": "暴擊傷害與破甲提高"}, 150: {"name": "極斬專精", "description": "選擇斬首、破軍或連斬"},
+	155: {"name": "專精增幅", "description": "專精效果提高"}, 160: {"name": "勢不盡", "description": "極勢斬擊有機率不完全消耗勢"},
+	165: {"name": "主力斬強化", "description": "重斬與斷首提高"}, 170: {"name": "一念極勢", "description": "一念可與極勢完整疊加"},
+	175: {"name": "武極突破", "description": "攻擊與暴擊傷害提高"}, 180: {"name": "斬敵極勢", "description": "擊殺後短暫直接進入極勢"},
+	185: {"name": "斬首轉化", "description": "斬殺與 Boss 倍率提高"}, 190: {"name": "無心", "description": "滿勢且一念完成時，下一刀瞬發強化"},
+	195: {"name": "無心深化", "description": "無心傷害與破甲提高"}, 200: {"name": "一刀兩斷", "description": "解鎖純武藝終極奧義"},
+}
+const PHYSIQUE_MILESTONES := {
+	5: {"name": "鍛體", "description": "生命與防禦提高"}, 10: {"name": "不動", "description": "格擋累積不動並強化反擊"},
+	15: {"name": "穩架", "description": "不動層數提高格擋效果"}, 20: {"name": "借力", "description": "格擋減免轉為反擊傷害"},
+	25: {"name": "借力反制", "description": "格擋後反擊傷害提高"}, 30: {"name": "返刃", "description": "解鎖待發型格擋反擊"},
+	35: {"name": "返刃守勢", "description": "返刃成功保留不動"}, 40: {"name": "不動境", "description": "滿層時提高格擋、反擊與韌性"},
+	45: {"name": "不退", "description": "不動境提高抗擊退"}, 50: {"name": "崩勢反擊", "description": "消耗不動打出防禦爆發"},
+	55: {"name": "鐵身突破", "description": "生命與防禦提高"}, 60: {"name": "完美借力", "description": "完美格擋額外儲存借力傷害"},
+	65: {"name": "返刃強化", "description": "返刃傷害提高"}, 70: {"name": "卸力", "description": "格擋後降低敵人下一次攻擊"},
+	75: {"name": "卸力深化", "description": "卸力效果提高"}, 80: {"name": "連擋反制", "description": "連續格擋提高反擊傷害"},
+	85: {"name": "守勢精進", "description": "格擋率與韌性提高"}, 90: {"name": "震返", "description": "完美格擋重擊使敵人失衡"},
+	95: {"name": "震返深化", "description": "失衡時間提高"}, 100: {"name": "返刃極意", "description": "完美格擋串聯不動、借力與返刃"},
+	105: {"name": "反制磨練", "description": "防禦與反擊傷害提高"}, 110: {"name": "穩固不動", "description": "不動境下普通受擊較不易掉層"},
+	115: {"name": "借力深化", "description": "借力轉換率提高"}, 120: {"name": "以牙還牙", "description": "重擊與暴擊會強化下一次反擊"},
+	125: {"name": "巨力反制", "description": "Boss 格擋收益提高"}, 130: {"name": "寸勁", "description": "連續反擊逐次增傷"},
+	135: {"name": "寸勁疊層", "description": "連續反擊增傷上限提高"}, 140: {"name": "崩返留勢", "description": "崩勢反擊後保留一層不動"},
+	145: {"name": "守反突破", "description": "格擋與反擊提高"}, 150: {"name": "返刃專精", "description": "選擇鐵壁、借力或返刃"},
+	155: {"name": "專精增幅", "description": "專精效果提高"}, 160: {"name": "不動不破", "description": "滿層時首次破防不會清空"},
+	165: {"name": "返刃深化", "description": "返刃傷害與速度提高"}, 170: {"name": "完美回勢", "description": "完美格擋縮短崩勢反擊冷卻"},
+	175: {"name": "鐵身極境", "description": "生命與防禦提高"}, 180: {"name": "拒死守勢", "description": "致命攻擊觸發特殊防守"},
+	185: {"name": "借力極化", "description": "借力倍率提高"}, 190: {"name": "不動明王", "description": "滿層連擋後短暫必定返刃"},
+	195: {"name": "明王深化", "description": "不動明王時間與反擊提高"}, 200: {"name": "不動返天", "description": "解鎖純體術終極奧義"},
+}
+const AGILITY_MILESTONES := {
+	5: {"name": "行動效率", "description": "攻速、暴擊與閃避提高"}, 10: {"name": "游刃", "description": "順暢攻防累積游刃"},
+	15: {"name": "疾斬", "description": "滿游刃時普攻連段追加斬擊"}, 20: {"name": "游刃精進", "description": "游刃提高追擊與暴擊"},
+	25: {"name": "節奏維持", "description": "擊殺與閃避更容易維持游刃"}, 30: {"name": "影襲", "description": "閃避後追加高速攻擊"},
+	35: {"name": "影襲強化", "description": "影襲傷害提高"}, 40: {"name": "游刃有餘", "description": "滿層時提高攻速、暴擊與疾斬"},
+	45: {"name": "快劍", "description": "提高疾斬頻率"}, 50: {"name": "瞬步", "description": "保證閃避下一次可閃攻擊"},
+	55: {"name": "迅捷突破", "description": "攻速與暴擊提高"}, 60: {"name": "游刃影襲", "description": "影襲傷害隨游刃提高"},
+	65: {"name": "身法精進", "description": "閃避率小幅提高"}, 70: {"name": "乘隙", "description": "敵人揮空後短暫承受更多傷害"},
+	75: {"name": "乘隙深化", "description": "乘隙傷害提高"}, 80: {"name": "疾斬會心", "description": "疾斬可暴擊"},
+	85: {"name": "節奏保全", "description": "普通受擊的掉層懲罰降低"}, 90: {"name": "飛燕", "description": "影襲有機率追加追擊"},
+	95: {"name": "飛燕強化", "description": "飛燕追擊率提高"}, 100: {"name": "流轉", "description": "追擊可維持游刃循環"},
+	105: {"name": "追影磨練", "description": "攻速與追擊傷害提高"}, 110: {"name": "游刃護持", "description": "高游刃時命中只掉部分層數"},
+	115: {"name": "影襲加速", "description": "影襲速度與傷害提高"}, 120: {"name": "燕返", "description": "影襲後有機率繞側再次斬擊"},
+	125: {"name": "追擊突破", "description": "暴擊與追擊提高"}, 130: {"name": "無聲", "description": "長時間無傷逐漸提高暴擊傷害"},
+	135: {"name": "無聲深化", "description": "無傷增傷上限提高"}, 140: {"name": "疾斬流轉", "description": "滿游刃時每次普攻都可疾斬"},
+	145: {"name": "閃影突破", "description": "閃避收益提高"}, 150: {"name": "閃影專精", "description": "選擇追風、無蹤或瞬殺"},
+	155: {"name": "專精增幅", "description": "專精效果提高"}, 160: {"name": "滿盈護持", "description": "滿層時首次普通命中不掉層"},
+	165: {"name": "疾影強化", "description": "疾斬與影襲提高"}, 170: {"name": "無間影襲", "description": "影襲有機率不受追擊間隔限制"},
+	175: {"name": "迅捷極境", "description": "攻速與暴擊提高"}, 180: {"name": "雙重追影", "description": "閃避後獲得第二次追擊機會"},
+	185: {"name": "無聲乘隙", "description": "無聲與乘隙提高"}, 190: {"name": "無影", "description": "滿游刃維持後進入高速殘像狀態"},
+	195: {"name": "無影深化", "description": "無影攻速與追擊提高"}, 200: {"name": "無影極境", "description": "閃避後展開影襲、飛燕、燕返與疾斬連攜"},
+}
+const MAGIC_SECONDARIES := {
+	"ice": {"name": "冰", "description": "累積冰霜、延緩敵人攻勢，與火形成蒸氣碎裂"},
+	"lightning": {"name": "雷", "description": "附加雷擊與連鎖傷害，與火形成爆燃雷爆"},
+}
+const MAGIC_SPECIALIZATIONS := {
+	"fire": {"name": "炎劍", "description": "燃燒、爆炸與炎爆斬傷害提高"},
+	"ice": {"name": "霜劍", "description": "冰霜、凍結與碎裂控制提高"},
+	"lightning": {"name": "雷劍", "description": "雷擊、連鎖與高頻共鳴提高"},
+}
+const MAGIC_MILESTONES := {
+	55: {"name": "元素增幅", "description": "魔攻與元素傷害提高 5%"},
+	60: {"name": "熾燃侵蝕", "description": "熾燃敵人受到的魔劍傷害提高"},
+	65: {"name": "魔力效率", "description": "技能 MP 消耗降低 5%，技能傷害提高 5%"},
+	70: {"name": "第二元素", "description": "可選擇冰或雷作為副元素"},
+	75: {"name": "副元素強化", "description": "冰霜控制或雷擊傷害提高"},
+	80: {"name": "雙元素附魔", "description": "魔力斬會追加副元素"},
+	85: {"name": "異常增幅", "description": "元素異常累積效率提高"},
+	90: {"name": "元素共鳴", "description": "魔力斬可觸發火冰或火雷共鳴"},
+	95: {"name": "共鳴增幅", "description": "共鳴傷害與範圍提高"},
+	100: {"name": "魔劍共鳴", "description": "共鳴返還魔紋並強化下一次魔力斬"},
+	105: {"name": "魔力深化", "description": "魔攻與 MP 提高 5%"},
+	110: {"name": "共鳴回流", "description": "共鳴額外返還 1 枚魔紋"},
+	115: {"name": "解放延長", "description": "魔劍解放延長至 10 秒"},
+	120: {"name": "共鳴鋒刃", "description": "共鳴後的下一次魔力斬獲得強化"},
+	125: {"name": "元素精煉", "description": "技能與元素傷害提高 5%"},
+	130: {"name": "元素斷界斬", "description": "解鎖依當前元素變化的高階主動斬擊"},
+	135: {"name": "斷界塑形", "description": "斷界斬依火、冰、雷產生完整特殊效果"},
+	140: {"name": "魔紋留存", "description": "強化技能只消耗部分魔紋"},
+	145: {"name": "共鳴擴張", "description": "共鳴傷害提高 10%"},
+	150: {"name": "元素專精", "description": "可切換炎劍、霜劍或雷劍專精"},
+	155: {"name": "專精增幅", "description": "專精元素傷害提高 10%"},
+	160: {"name": "小型共鳴", "description": "專精元素滿層時自動觸發小型共鳴"},
+	165: {"name": "專精魔力斬", "description": "魔力斬追加專精元素效果"},
+	170: {"name": "解放循環", "description": "解放期間大幅降低魔紋消耗"},
+	175: {"name": "極效魔力", "description": "MP 效率提高 10%，魔攻提高 5%"},
+	180: {"name": "雙元素融合", "description": "大型元素爆發後暫時獲得第二元素附魔"},
+	185: {"name": "共鳴極化", "description": "共鳴倍率與範圍再次提升"},
+	190: {"name": "魔劍顯現", "description": "滿魔紋且敵人帶有異常時進入高階狀態"},
+	195: {"name": "顯現昇華", "description": "魔劍顯現與完全解放效果提高"},
+	200: {"name": "魔劍完全解放", "description": "解鎖純魔法終極奧義"},
 }
 
 var stage := 1
@@ -180,6 +316,10 @@ var martial_branch := ""
 var physique_branch := ""
 var agility_branch := ""
 var momentum := 0.0
+var draw_stance_remaining := 0.0
+var time_since_one_slash := 0.0
+var reduced_next_slash_cost := false
+var extreme_momentum_remaining := 0.0
 var immovable := 0
 var youren := 0
 var flow_hits := 0
@@ -190,13 +330,30 @@ var burn_stacks := 0
 var burning_hits := 0
 var burn_tick_remaining := 1.0
 var magic_release_remaining := 0.0
+var secondary_element := ""
+var magic_specialization := ""
+var frost_stacks := 0
+var lightning_stacks := 0
+var secondary_hit_counter := 0
+var resonance_slash_ready := false
+var minor_resonance_cooldown := 0.0
+var fusion_remaining := 0.0
+var complete_release_remaining := 0.0
+var _manifest_was_active := false
 var return_blade_ready := false
 var swift_step_ready := false
 var recent_prevented_damage := 0.0
 var counter_chain := 0
+var consecutive_blocks := 0
+var enemy_weakened_remaining := 0.0
+var immovable_king_remaining := 0.0
+var immovable_break_guard := true
 var opening_remaining := 0.0
 var shadowless_remaining := 0.0
 var shadowless_cooldown := 0.0
+var full_youren_duration := 0.0
+var full_youren_guard := true
+var unharmed_duration := 0.0
 var instant_kill_ready := false
 var rng := RandomNumberGenerator.new()
 var auto_skill_slots: Array[String] = ["", "", "", "", ""]
@@ -215,22 +372,37 @@ func step(delta: float) -> Array[Dictionary]:
 	_tick_cooldowns(delta)
 	manual_attack_remaining = maxf(0.0, manual_attack_remaining - delta)
 	opening_remaining = maxf(0.0, opening_remaining - delta)
+	draw_stance_remaining = maxf(0.0, draw_stance_remaining - delta)
+	extreme_momentum_remaining = maxf(0.0, extreme_momentum_remaining - delta)
+	enemy_weakened_remaining = maxf(0.0, enemy_weakened_remaining - delta)
+	immovable_king_remaining = maxf(0.0, immovable_king_remaining - delta)
 	shadowless_remaining = maxf(0.0, shadowless_remaining - delta)
 	shadowless_cooldown = maxf(0.0, shadowless_cooldown - delta)
 	magic_release_remaining = maxf(0.0, magic_release_remaining - delta)
+	complete_release_remaining = maxf(0.0, complete_release_remaining - delta)
+	fusion_remaining = maxf(0.0, fusion_remaining - delta)
+	minor_resonance_cooldown = maxf(0.0, minor_resonance_cooldown - delta)
+	var manifest_active := _magic_manifest_active()
+	if manifest_active and not _manifest_was_active:
+		_events.append({"type": "magic_sword_manifestation", "name": "魔劍顯現"})
+	_manifest_was_active = manifest_active
 	if _hero_max_mp() > 0.0:
 		hero_mp = minf(_hero_max_mp(), hero_mp + delta * _mp_regeneration())
 	_tick_burning(delta)
-	if skill_is_unlocked("shadowless") and youren >= MAX_YOUREN and shadowless_remaining <= 0.0 and shadowless_cooldown <= 0.0:
+	time_since_one_slash += delta
+	unharmed_duration += delta
+	full_youren_duration = full_youren_duration + delta if youren >= MAX_YOUREN else 0.0
+	if int(training.agility) >= 190 and full_youren_duration >= 3.0 and shadowless_remaining <= 0.0 and shadowless_cooldown <= 0.0:
 		shadowless_remaining = 6.0
 		shadowless_cooldown = 15.0
 		_events.append({"type": "shadowless", "duration": shadowless_remaining})
 	enemy_engagement_time += delta
-	var passive_gain := 5.0
-	if martial_branch == "spirit_focus":
-		passive_gain += minf(6.0, enemy_engagement_time * 0.08)
-	if int(training.martial) > 0:
+	var passive_gain := 5.0 * (2.0 if draw_stance_remaining > 0.0 else 1.0)
+	if int(training.martial) >= 10:
 		_add_momentum(delta * passive_gain, "time")
+	if int(training.physique) >= 190 and immovable >= MAX_IMMOVABLE and consecutive_blocks >= 3 and immovable_king_remaining <= 0.0:
+		immovable_king_remaining = 6.0 if int(training.physique) >= 195 else 4.0
+		_events.append({"type": "immovable_king", "duration": immovable_king_remaining})
 	auto_attack_remaining -= delta
 	enemy_attack_remaining -= delta
 	if not _try_auto_skill() and auto_attack_remaining <= 0.0:
@@ -280,13 +452,19 @@ func spend_training(track: String) -> Array[Dictionary]:
 		var skill_id := String(unlock.skill_id)
 		var skill_type := String(SKILL_DEFS[skill_id].type)
 		if bool(SKILL_DEFS[skill_id].get("implemented", false)) and (skill_type == "active" or (skill_type == "ultimate" and not bool(SKILL_DEFS[skill_id].get("reactive", false)))):
-			_auto_equip(skill_id, skill_id == "two_cut")
+			_auto_equip(skill_id, skill_id in ["two_cut", "magic_sword_complete_release"])
+	for milestone: Dictionary in _new_track_milestones(track, previous, previous + 1):
+		_events.append(milestone)
 	if track == "martial" and previous < 150 and int(training.martial) >= 150:
-		_events.append({"type": "branch_unlocked", "name": "一刀流分支", "description": "前往技能頁選擇無拍子、氣合或先之先"})
+		_events.append({"type": "branch_unlocked", "name": "極斬專精", "description": "前往技能頁選擇斬首、破軍或連斬"})
 	if track == "physique" and previous < 150 and int(training.physique) >= 150:
-		_events.append({"type": "branch_unlocked", "name": "不動流分支", "description": "前往技能頁選擇震返、寸勁或鐵壁"})
+		_events.append({"type": "branch_unlocked", "name": "返刃專精", "description": "前往技能頁選擇鐵壁、借力或返刃"})
 	if track == "agility" and previous < 150 and int(training.agility) >= 150:
-		_events.append({"type": "branch_unlocked", "name": "閃影流分支", "description": "前往技能頁選擇飛燕、無蹤或瞬殺"})
+		_events.append({"type": "branch_unlocked", "name": "閃影專精", "description": "前往技能頁選擇追風、無蹤或瞬殺"})
+	if track == "magic" and previous < 70 and int(training.magic) >= 70:
+		_events.append({"type": "branch_unlocked", "name": "第二元素", "description": "前往技能頁選擇冰或雷，可隨時切換"})
+	if track == "magic" and previous < 150 and int(training.magic) >= 150:
+		_events.append({"type": "branch_unlocked", "name": "元素專精", "description": "前往技能頁選擇炎劍、霜劍或雷劍"})
 	return _events.duplicate(true)
 
 func select_martial_branch(branch_id: String) -> bool:
@@ -305,6 +483,20 @@ func select_agility_branch(branch_id: String) -> bool:
 	if int(training.agility) < 150 or not AGILITY_BRANCHES.has(branch_id):
 		return false
 	agility_branch = branch_id
+	return true
+
+func select_secondary_element(element_id: String) -> bool:
+	if int(training.magic) < 70 or not MAGIC_SECONDARIES.has(element_id):
+		return false
+	secondary_element = element_id
+	frost_stacks = 0
+	lightning_stacks = 0
+	return true
+
+func select_magic_specialization(specialization_id: String) -> bool:
+	if int(training.magic) < 150 or not MAGIC_SPECIALIZATIONS.has(specialization_id):
+		return false
+	magic_specialization = specialization_id
 	return true
 
 func equip_auto_skill(skill_id: String, slot_index := -1) -> bool:
@@ -353,14 +545,18 @@ func snapshot() -> Dictionary:
 		"enemy_is_boss": enemy_is_boss, "enemy_name": "重甲哥布林王" if enemy_is_boss else "林地哥布林",
 		"enemy_attack_type": _next_enemy_attack_type(), "enemy_attack_remaining": enemy_attack_remaining,
 		"kills": kills, "training_points": training_points, "training": training.duplicate(true),
-		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch,
+		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch, "draw_stance_remaining": draw_stance_remaining,
 		"immovable": immovable, "max_immovable": MAX_IMMOVABLE, "physique_branch": physique_branch,
 		"return_blade_ready": return_blade_ready, "counter_chain": counter_chain,
 		"youren": youren, "max_youren": MAX_YOUREN, "flow_hits": flow_hits, "flow_hits_required": FLOW_HITS_REQUIRED,
-		"swift_cut_hits": swift_cut_hits, "swift_cut_hits_required": 2, "agility_branch": agility_branch,
+		"swift_cut_hits": swift_cut_hits, "swift_cut_hits_required": 1 if int(training.agility) >= 140 else (2 if int(training.agility) >= 45 else 3), "agility_branch": agility_branch,
 		"swift_step_ready": swift_step_ready, "shadowless_remaining": shadowless_remaining,
 		"magic_marks": magic_marks, "max_magic_marks": MAX_MAGIC_MARKS,
-		"burn_stacks": burn_stacks, "max_burn": MAX_BURN, "magic_release_remaining": magic_release_remaining,
+		"burn_stacks": burn_stacks, "max_burn": MAX_BURN, "frost_stacks": frost_stacks,
+		"lightning_stacks": lightning_stacks, "secondary_element": secondary_element,
+		"magic_specialization": magic_specialization, "magic_release_remaining": magic_release_remaining,
+		"fusion_remaining": fusion_remaining, "complete_release_remaining": complete_release_remaining,
+		"magic_manifest_active": _magic_manifest_active(),
 		"dodge_chance": _dodge_chance(), "critical_chance": _critical_chance(),
 		"attack_speed_bonus": _agility_action_speed_bonus(), "move_speed_bonus": _agility_move_speed_bonus(),
 		"manual_attack_ready": manual_attack_remaining <= 0.0,
@@ -382,33 +578,15 @@ func training_hint(track: String) -> String:
 	if track == "magic":
 		return magic_hint()
 	var level := int(training[track])
-	if level < 10: return "Lv.10 重斬"
-	if level < 30: return "Lv.30 殘心"
-	if level < 50: return "Lv.50 破甲一閃"
-	if level < 100: return "Lv.100 一刀流極意"
-	if level < 150: return "Lv.150 斷首＋分支"
-	if level < 200: return "Lv.200 一刀兩斷"
-	return "一刀流已達純流派極致"
+	return _next_milestone_hint(MARTIAL_MILESTONES, level, "一刀流已達純流派極致")
 
 func physique_hint() -> String:
 	var level := int(training.physique)
-	if level < 10: return "Lv.10 返刃"
-	if level < 30: return "Lv.30 不動"
-	if level < 50: return "Lv.50 借力"
-	if level < 100: return "Lv.100 不動崩返"
-	if level < 150: return "Lv.150 不動流分支"
-	if level < 200: return "Lv.200 不動返天"
-	return "不動流已達純流派極致"
+	return _next_milestone_hint(PHYSIQUE_MILESTONES, level, "不動流已達純流派極致")
 
 func agility_hint() -> String:
 	var level := int(training.agility)
-	if level < 10: return "攻速 +%d%% · Lv.10 游刃" % roundi(_agility_action_speed_bonus() * 100.0)
-	if level < 30: return "Lv.30 影襲"
-	if level < 50: return "Lv.50 瞬步"
-	if level < 100: return "Lv.100 乘隙"
-	if level < 150: return "Lv.150 閃影流分支"
-	if level < 200: return "Lv.200 奧義・無影"
-	return "閃影流已達純流派極致"
+	return _next_milestone_hint(AGILITY_MILESTONES, level, "閃影流已達純流派極致")
 
 func magic_hint() -> String:
 	var level := int(training.magic)
@@ -421,7 +599,16 @@ func magic_hint() -> String:
 	if level < 40: return "Lv.40 熾燃"
 	if level < 45: return "Lv.45 熾魔"
 	if level < 50: return "Lv.50 魔劍解放"
-	return "魔劍流第一階段完成"
+	for target: int in MAGIC_MILESTONES:
+		if level < target:
+			return "Lv.%d %s" % [target, String(MAGIC_MILESTONES[target].name)]
+	return "魔劍流已達純流派極致"
+
+func _next_milestone_hint(table: Dictionary, level: int, complete_text: String) -> String:
+	for target: int in table:
+		if level < target:
+			return "Lv.%d %s" % [target, String(table[target].name)]
+	return complete_text
 
 func _try_auto_skill() -> bool:
 	for skill_id: String in auto_skill_slots:
@@ -439,13 +626,13 @@ func _can_cast(skill_id: String) -> bool:
 		return false
 	if float(skill_cooldowns.get(skill_id, 0.0)) > 0.0:
 		return false
-	if String(definition.resource) == "momentum" and momentum < float(definition.cost):
+	if String(definition.resource) == "momentum" and momentum < _momentum_cost(skill_id):
 		return false
 	if String(definition.resource) == "immovable" and immovable < int(definition.cost):
 		return false
-	if String(definition.resource) == "magic_marks" and magic_marks < int(definition.cost):
+	if String(definition.resource) == "magic_marks" and magic_marks < _magic_mark_cost(skill_id):
 		return false
-	var mp_cost := float(definition.get("mp_cost", definition.cost if String(definition.resource) == "mp" else 0.0))
+	var mp_cost := _skill_mp_cost(skill_id)
 	if hero_mp < mp_cost:
 		return false
 	if skill_id == "armor_flash":
@@ -459,7 +646,9 @@ func _can_cast(skill_id: String) -> bool:
 	if skill_id == "flame_burst_slash":
 		return burn_stacks >= MAX_BURN
 	if skill_id == "magic_sword_release":
-		return magic_release_remaining <= 0.0
+		return magic_release_remaining <= 0.0 and complete_release_remaining <= 0.0
+	if skill_id == "magic_sword_complete_release":
+		return complete_release_remaining <= 0.0
 	return true
 
 func _cast_skill(skill_id: String) -> void:
@@ -468,6 +657,11 @@ func _cast_skill(skill_id: String) -> void:
 		return_blade_ready = true
 		skill_cooldowns[skill_id] = float(definition.cooldown)
 		_events.append({"type": "return_blade", "skill_id": skill_id, "name": String(definition.name)})
+		return
+	if skill_id == "draw_stance":
+		draw_stance_remaining = 10.0 if int(training.martial) >= 115 else 8.0
+		skill_cooldowns[skill_id] = float(definition.cooldown)
+		_events.append({"type": "draw_stance", "skill_id": skill_id, "name": String(definition.name), "duration": draw_stance_remaining})
 		return
 	if skill_id == "swift_step":
 		swift_step_ready = true
@@ -479,37 +673,59 @@ func _cast_skill(skill_id: String) -> void:
 	if skill_id == "flame_burst_slash":
 		_cast_flame_burst_slash()
 		return
+	if skill_id == "elemental_boundary_slash":
+		_cast_elemental_boundary_slash()
+		return
 	if skill_id == "magic_sword_release":
-		hero_mp = maxf(0.0, hero_mp - float(definition.cost))
-		magic_release_remaining = 8.0
+		hero_mp = maxf(0.0, hero_mp - _skill_mp_cost(skill_id))
+		magic_release_remaining = 10.0 if int(training.magic) >= 115 else 8.0
 		skill_cooldowns[skill_id] = float(definition.cooldown)
 		_events.append({"type": "magic_sword_release", "skill_id": skill_id, "name": String(definition.name), "duration": magic_release_remaining})
 		return
+	if skill_id == "magic_sword_complete_release":
+		hero_mp = maxf(0.0, hero_mp - _skill_mp_cost(skill_id))
+		complete_release_remaining = 12.0
+		magic_release_remaining = maxf(magic_release_remaining, complete_release_remaining)
+		fusion_remaining = maxf(fusion_remaining, complete_release_remaining)
+		skill_cooldowns[skill_id] = float(definition.cooldown)
+		_events.append({"type": "magic_sword_complete_release", "skill_id": skill_id, "name": String(definition.name), "duration": complete_release_remaining})
+		return
 	var momentum_before := momentum
-	momentum = maxf(0.0, momentum - float(definition.cost))
+	var actual_cost := _momentum_cost(skill_id)
+	momentum = maxf(0.0, momentum - actual_cost)
 	_momentum_was_full = false
 	skill_cooldowns[skill_id] = float(definition.cooldown)
 	var mastery := _one_slash_mastery_multiplier(momentum_before)
-	var raw_damage := _attack_power() * float(definition.damage_multiplier) * mastery
+	var raw_damage := _attack_power() * float(definition.damage_multiplier) * mastery * _skill_level_multiplier(skill_id) * _martial_slash_multiplier(skill_id, momentum_before)
+	reduced_next_slash_cost = false
 	var armor_ignore := float(definition.get("armor_ignore", 0.0))
+	if int(training.martial) >= 40 and momentum_before >= 80.0: armor_ignore += 0.12
+	if int(training.martial) >= 100 and momentum_before >= MAX_MOMENTUM: armor_ignore += 0.12
 	_events.append({"type": skill_id, "skill_id": skill_id, "name": String(definition.name), "damage": raw_damage, "mastery": mastery})
 	var defeated := _deal_damage(raw_damage, skill_id, armor_ignore)
+	time_since_one_slash = 0.0
+	if int(training.martial) >= 110 and momentum_before >= MAX_MOMENTUM:
+		_add_momentum(10.0 if int(training.martial) < 140 else 20.0, "extreme_refund")
+	if defeated and int(training.martial) >= 90:
+		reduced_next_slash_cost = true
+		if int(training.martial) >= 180: extreme_momentum_remaining = 4.0
 	if skill_id == "armor_flash" and not defeated:
 		var armor_broken := minf(enemy_armor, float(definition.armor_break))
 		enemy_armor = maxf(0.0, enemy_armor - armor_broken)
 		_events.append({"type": "armor_broken", "amount": armor_broken, "remaining": enemy_armor})
 	if not defeated and skill_id != "two_cut" and skill_is_unlocked("remaining_heart"):
-		var refund := float(SKILL_DEFS.remaining_heart.momentum_refund)
+		var refund := 30.0 if int(training.martial) >= 135 else float(SKILL_DEFS.remaining_heart.momentum_refund)
 		_add_momentum(refund, "remaining_heart")
 		_events.append({"type": "remaining_heart", "amount": refund})
 
 func _cast_collapse_counter() -> void:
 	var definition: Dictionary = SKILL_DEFS.collapse_counter
 	var spent := immovable
-	immovable = 0
+	immovable = 1 if int(training.physique) >= 140 else 0
 	skill_cooldowns["collapse_counter"] = float(definition.cooldown)
 	var raw_damage := _attack_power() * 2.2 + _defense() * 4.2 + recent_prevented_damage * 0.8
 	raw_damage *= 1.0 + float(spent) * 0.35
+	raw_damage *= _skill_level_multiplier("collapse_counter")
 	_events.append({"type": "collapse_counter", "name": "不動崩返", "damage": raw_damage, "spent": spent})
 	_deal_damage(raw_damage, "collapse_counter", 0.3)
 	recent_prevented_damage = 0.0
@@ -518,14 +734,18 @@ func _cast_collapse_counter() -> void:
 func _cast_flame_burst_slash() -> void:
 	var definition: Dictionary = SKILL_DEFS.flame_burst_slash
 	var fire_multiplier := _fire_damage_multiplier()
-	magic_marks = 0
+	magic_marks = maxi(0, magic_marks - _magic_mark_cost("flame_burst_slash"))
 	burn_stacks = 0
 	burning_hits = 0
-	hero_mp = maxf(0.0, hero_mp - float(definition.mp_cost))
+	hero_mp = maxf(0.0, hero_mp - _skill_mp_cost("flame_burst_slash"))
 	skill_cooldowns["flame_burst_slash"] = float(definition.cooldown)
-	var raw_damage := _magic_power() * 4.2 * fire_multiplier
+	var raw_damage := _magic_power() * 4.2 * fire_multiplier * _skill_level_multiplier("flame_burst_slash")
 	if magic_release_remaining > 0.0:
 		raw_damage *= 1.4
+	if magic_specialization == "fire" and int(training.magic) >= 155:
+		raw_damage *= 1.1
+	if complete_release_remaining > 0.0:
+		raw_damage *= 1.45
 	_events.append({"type": "flame_burst_slash", "name": "炎爆斬", "damage": raw_damage})
 	_events.append({"type": "magic_marks_changed", "value": magic_marks})
 	_events.append({"type": "burn_changed", "value": burn_stacks})
@@ -533,6 +753,42 @@ func _cast_flame_burst_slash() -> void:
 	if defeated and skill_is_unlocked("flame_burst_refund"):
 		_add_magic_marks(2, "flame_burst_refund")
 		_events.append({"type": "flame_burst_refund", "amount": 2})
+	_trigger_elemental_fusion()
+
+func _cast_elemental_boundary_slash() -> void:
+	var definition: Dictionary = SKILL_DEFS.elemental_boundary_slash
+	var element := _current_magic_element()
+	magic_marks = maxi(0, magic_marks - _magic_mark_cost("elemental_boundary_slash"))
+	hero_mp = maxf(0.0, hero_mp - _skill_mp_cost("elemental_boundary_slash"))
+	skill_cooldowns["elemental_boundary_slash"] = float(definition.cooldown)
+	var raw_damage := _magic_power() * 4.8 * _advanced_magic_damage_multiplier() * _skill_level_multiplier("elemental_boundary_slash")
+	var lightning_chain_count := 0
+	if int(training.magic) >= 135:
+		raw_damage *= 1.2
+	match element:
+		"fire":
+			raw_damage *= _fire_damage_multiplier()
+			burn_stacks = 0
+			_events.append({"type": "burn_changed", "value": burn_stacks})
+		"ice":
+			raw_damage *= 1.1
+			enemy_attack_remaining += 1.4
+			frost_stacks = 0
+			_events.append({"type": "secondary_changed", "element": "ice", "value": frost_stacks})
+		"lightning":
+			raw_damage *= 0.82
+			lightning_chain_count = 2
+			lightning_stacks = 0
+			_events.append({"type": "secondary_changed", "element": "lightning", "value": lightning_stacks})
+	_events.append({"type": "elemental_boundary_slash", "name": "元素斷界斬", "element": element, "damage": raw_damage})
+	_events.append({"type": "magic_marks_changed", "value": magic_marks})
+	var defeated := _deal_damage(raw_damage, "elemental_boundary_slash", 0.3)
+	if not defeated:
+		for index in lightning_chain_count:
+			_events.append({"type": "lightning_chain", "damage": raw_damage * 0.38})
+			if _deal_damage(raw_damage * 0.38, "lightning_chain", 0.2):
+				break
+	_trigger_elemental_fusion()
 
 func _try_first_strike() -> bool:
 	if martial_branch != "first_strike" or momentum < 70.0:
@@ -540,7 +796,7 @@ func _try_first_strike() -> bool:
 	var momentum_before := momentum
 	momentum -= 70.0
 	_momentum_was_full = false
-	var raw_damage := _attack_power() * 4.5 * _one_slash_mastery_multiplier(momentum_before)
+	var raw_damage := _attack_power() * 4.5 * _one_slash_mastery_multiplier(momentum_before) * _track_level_multiplier("martial", 150)
 	_events.append({"type": "first_strike", "name": "先之先", "damage": raw_damage})
 	_deal_damage(raw_damage, "first_strike", 0.25)
 	_events.append({"type": "attack_interrupted"})
@@ -558,6 +814,9 @@ func _basic_attack(manual: bool) -> void:
 		instant_kill_ready = false
 	if critical:
 		damage *= 2.6 if instant_kill else 1.75
+		if int(training.agility) >= 130:
+			var cap := 14.0 if int(training.agility) >= 135 else 10.0
+			damage *= 1.0 + minf(cap, unharmed_duration) * 0.02
 	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill, "manual": manual})
 	var defeated := _deal_damage(damage, "critical_attack" if critical else "attack")
 	_add_momentum(6.0, "attack")
@@ -570,24 +829,40 @@ func _magic_enchanted_hit(manual: bool) -> void:
 	if not skill_is_unlocked("magic_sword_marks"):
 		return
 	var marks_were_full := magic_marks >= MAX_MAGIC_MARKS
-	var enchant_damage := _magic_power() * 0.42 * _fire_damage_multiplier()
+	var element := _current_magic_element()
+	var enchant_damage := _magic_power() * 0.42 * _element_damage_multiplier(element) * _skill_level_multiplier("magic_sword_marks")
 	if skill_is_unlocked("blazing_magic") and marks_were_full:
 		enchant_damage *= 1.2
 	if magic_release_remaining > 0.0:
 		enchant_damage *= 1.4
-	_events.append({"type": "magic_enchant", "damage": enchant_damage, "manual": manual})
+	if _magic_manifest_active():
+		enchant_damage *= 1.25 if int(training.magic) >= 195 else 1.15
+	if complete_release_remaining > 0.0:
+		enchant_damage *= 1.35
+	_events.append({"type": "magic_enchant", "damage": enchant_damage, "manual": manual, "element": element})
 	var defeated := _deal_damage(enchant_damage, "magic_enchant", 0.1)
 	if not defeated and marks_were_full:
-		magic_marks = 0
+		magic_marks = 3 if int(training.magic) >= 170 and magic_release_remaining > 0.0 else 0
 		_events.append({"type": "magic_marks_changed", "value": magic_marks})
-		var slash_damage := _magic_power() * (2.75 if skill_is_unlocked("magic_slash_spread") else 2.2)
+		var slash_damage := _magic_power() * (2.75 if skill_is_unlocked("magic_slash_spread") else 2.2) * _skill_level_multiplier("magic_sword_marks")
 		if skill_is_unlocked("blazing_magic"):
 			slash_damage *= 1.2
 		if magic_release_remaining > 0.0:
 			slash_damage *= 1.5
-		_events.append({"type": "magic_slash", "name": "魔力斬", "damage": slash_damage, "spread": skill_is_unlocked("magic_slash_spread")})
+		if resonance_slash_ready and int(training.magic) >= 120:
+			slash_damage *= 1.4
+			resonance_slash_ready = false
+		if _magic_manifest_active():
+			slash_damage *= 1.3 if int(training.magic) >= 195 else 1.2
+		_events.append({"type": "magic_slash", "name": "魔力斬", "damage": slash_damage, "spread": skill_is_unlocked("magic_slash_spread"), "element": element})
 		defeated = _deal_damage(slash_damage, "magic_slash", 0.15)
-	var mark_gain := 2 if magic_release_remaining > 0.0 else 1
+		if not defeated and int(training.magic) >= 80:
+			_add_secondary_element(2)
+		if not defeated and int(training.magic) >= 165:
+			_apply_element(_current_magic_element(), 2)
+		if not defeated:
+			_try_elemental_resonance()
+	var mark_gain := 3 if complete_release_remaining > 0.0 else (2 if magic_release_remaining > 0.0 else 1)
 	if skill_is_unlocked("burning_inscription") and burn_stacks > 0:
 		burning_hits += 1
 		if burning_hits >= 2:
@@ -596,7 +871,13 @@ func _magic_enchanted_hit(manual: bool) -> void:
 	_add_magic_marks(mark_gain, "magic_enchant")
 	if defeated or not skill_is_unlocked("burning_enchant"):
 		return
-	_add_burn(2 if magic_release_remaining > 0.0 else 1)
+	var element_gain := 3 if complete_release_remaining > 0.0 else (2 if magic_release_remaining > 0.0 or int(training.magic) >= 85 else 1)
+	_apply_element(element, element_gain)
+	if int(training.magic) >= 70 and not secondary_element.is_empty():
+		secondary_hit_counter += 1
+		if int(training.magic) >= 80 or fusion_remaining > 0.0 or complete_release_remaining > 0.0 or secondary_hit_counter >= 2:
+			secondary_hit_counter = 0
+			_add_secondary_element(element_gain)
 
 func _add_magic_marks(amount: int, source: String) -> void:
 	if amount <= 0:
@@ -617,6 +898,42 @@ func _add_burn(amount: int) -> void:
 	_events.append({"type": "burn_changed", "value": burn_stacks, "gain": burn_stacks - previous})
 	if previous < MAX_BURN and burn_stacks >= MAX_BURN:
 		_events.append({"type": "scorching_entered", "enabled": skill_is_unlocked("scorching_state")})
+		_try_minor_resonance("fire")
+
+func _apply_element(element: String, amount: int) -> void:
+	match element:
+		"ice": _add_frost(amount)
+		"lightning": _add_lightning(amount)
+		_: _add_burn(amount)
+
+func _add_secondary_element(amount: int) -> void:
+	var element := _active_secondary_element()
+	if not element.is_empty():
+		_apply_element(element, amount)
+
+func _add_frost(amount: int) -> void:
+	var previous := frost_stacks
+	frost_stacks = mini(MAX_BURN, frost_stacks + amount)
+	if frost_stacks == previous:
+		return
+	enemy_attack_remaining += float(frost_stacks - previous) * (0.1 if int(training.magic) >= 75 else 0.06)
+	_events.append({"type": "secondary_changed", "element": "ice", "value": frost_stacks, "gain": frost_stacks - previous})
+	if previous < MAX_BURN and frost_stacks >= MAX_BURN:
+		enemy_attack_remaining += 0.8
+		_events.append({"type": "frozen", "duration": 0.8})
+		_try_minor_resonance("ice")
+
+func _add_lightning(amount: int) -> void:
+	var previous := lightning_stacks
+	lightning_stacks = mini(MAX_BURN, lightning_stacks + amount)
+	if lightning_stacks == previous:
+		return
+	var shock_damage := _magic_power() * (0.24 if int(training.magic) >= 75 else 0.16) * float(lightning_stacks - previous) * _track_level_multiplier("magic", 70)
+	_events.append({"type": "secondary_changed", "element": "lightning", "value": lightning_stacks, "gain": lightning_stacks - previous})
+	_events.append({"type": "lightning_tick", "damage": shock_damage})
+	_deal_damage(shock_damage, "lightning_tick", 0.15)
+	if previous < MAX_BURN and lightning_stacks >= MAX_BURN:
+		_try_minor_resonance("lightning")
 
 func _tick_burning(delta: float) -> void:
 	if burn_stacks <= 0:
@@ -625,20 +942,123 @@ func _tick_burning(delta: float) -> void:
 	burn_tick_remaining -= delta
 	while burn_tick_remaining <= 0.0 and burn_stacks > 0:
 		burn_tick_remaining += 1.0
-		var damage := _magic_power() * 0.16 * float(burn_stacks) * _fire_damage_multiplier()
+		var damage := _magic_power() * 0.16 * float(burn_stacks) * _fire_damage_multiplier() * _skill_level_multiplier("burning_enchant")
 		_events.append({"type": "burn_tick", "damage": damage, "stacks": burn_stacks})
 		if _deal_damage(damage, "burn_tick"):
 			return
 
 func _fire_damage_multiplier() -> float:
-	return 1.25 if skill_is_unlocked("scorching_state") and burn_stacks >= MAX_BURN else 1.0
+	var multiplier := 1.25 if skill_is_unlocked("scorching_state") and burn_stacks >= MAX_BURN else 1.0
+	if int(training.magic) >= 60 and burn_stacks >= MAX_BURN:
+		multiplier *= 1.15
+	return multiplier
+
+func _try_elemental_resonance() -> bool:
+	if int(training.magic) < 90 or burn_stacks <= 0:
+		return false
+	var element := _active_secondary_element()
+	var stacks := frost_stacks if element == "ice" else lightning_stacks
+	if stacks < 3:
+		return false
+	var damage := _magic_power() * (2.6 if element == "ice" else 2.9) * _resonance_multiplier() * _track_level_multiplier("magic", 90)
+	if element == "ice":
+		frost_stacks = 0
+		enemy_attack_remaining += 1.0
+	else:
+		lightning_stacks = 0
+	_events.append({"type": "elemental_resonance", "element": element, "damage": damage, "name": "蒸氣碎裂" if element == "ice" else "爆燃雷爆"})
+	_events.append({"type": "secondary_changed", "element": element, "value": 0})
+	_deal_damage(damage, "elemental_resonance", 0.2)
+	if int(training.magic) >= 100:
+		_add_magic_marks(3 if int(training.magic) >= 110 else 2, "resonance")
+		resonance_slash_ready = true
+		skill_cooldowns["magic_sword_release"] = maxf(0.0, float(skill_cooldowns.get("magic_sword_release", 0.0)) - 1.0)
+	return true
+
+func _try_minor_resonance(element: String) -> void:
+	if int(training.magic) < 160 or minor_resonance_cooldown > 0.0 or _current_magic_element() != element:
+		return
+	minor_resonance_cooldown = 2.5 if complete_release_remaining <= 0.0 else 0.8
+	var damage := _magic_power() * 1.25 * _resonance_multiplier() * _track_level_multiplier("magic", 160)
+	_events.append({"type": "minor_resonance", "element": element, "damage": damage})
+	_deal_damage(damage, "minor_resonance", 0.1)
+
+func _trigger_elemental_fusion() -> void:
+	if int(training.magic) < 180:
+		return
+	fusion_remaining = 6.0
+	_events.append({"type": "elemental_fusion", "element": _active_secondary_element(), "duration": fusion_remaining})
+
+func _current_magic_element() -> String:
+	return magic_specialization if int(training.magic) >= 150 and not magic_specialization.is_empty() else "fire"
+
+func _active_secondary_element() -> String:
+	var primary := _current_magic_element()
+	if not secondary_element.is_empty() and secondary_element != primary:
+		return secondary_element
+	return "fire" if primary != "fire" else secondary_element
+
+func _element_damage_multiplier(element: String) -> float:
+	var multiplier := _fire_damage_multiplier() if element == "fire" else 1.0
+	if int(training.magic) >= 55:
+		multiplier *= 1.05
+	if int(training.magic) >= 125:
+		multiplier *= 1.05
+	if int(training.magic) >= 155 and magic_specialization == element:
+		multiplier *= 1.1
+	return multiplier
+
+func _advanced_magic_damage_multiplier() -> float:
+	var multiplier := 1.05 if int(training.magic) >= 65 else 1.0
+	if int(training.magic) >= 125:
+		multiplier *= 1.05
+	if _magic_manifest_active():
+		multiplier *= 1.3 if int(training.magic) >= 195 else 1.2
+	if complete_release_remaining > 0.0:
+		multiplier *= 1.5
+	return multiplier
+
+func _resonance_multiplier() -> float:
+	var multiplier := 1.15 if int(training.magic) >= 95 else 1.0
+	if int(training.magic) >= 145:
+		multiplier *= 1.1
+	if int(training.magic) >= 185:
+		multiplier *= 1.25
+	if complete_release_remaining > 0.0:
+		multiplier *= 1.45
+	return multiplier
+
+func _magic_mark_cost(skill_id: String) -> int:
+	if skill_id == "flame_burst_slash":
+		if int(training.magic) >= 170 and magic_release_remaining > 0.0: return 2
+		if int(training.magic) >= 140: return 3
+	if skill_id == "elemental_boundary_slash":
+		if int(training.magic) >= 170 and magic_release_remaining > 0.0: return 1
+		if int(training.magic) >= 140: return 2
+	return int(SKILL_DEFS[skill_id].cost)
+
+func _skill_mp_cost(skill_id: String) -> float:
+	var definition: Dictionary = SKILL_DEFS[skill_id]
+	var cost := float(definition.get("mp_cost", definition.cost if String(definition.resource) == "mp" else 0.0))
+	var efficiency := 0.95 if int(training.magic) >= 65 else 1.0
+	if int(training.magic) >= 175:
+		efficiency *= 0.9
+	return cost * efficiency
+
+func _magic_manifest_active() -> bool:
+	return int(training.magic) >= 190 and magic_marks >= MAX_MAGIC_MARKS and (burn_stacks > 0 or frost_stacks > 0 or lightning_stacks > 0)
 
 func _enemy_attack(block_override := "") -> void:
 	enemy_attack_count += 1
 	var attack_type := _current_enemy_attack_type_id()
 	var attack_multiplier: float = float({"normal": 1.0, "heavy": 1.8, "area": 1.35, "sure_hit": 1.55}.get(attack_type, 1.0))
 	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier
+	if enemy_weakened_remaining > 0.0:
+		raw_damage *= 0.82 if int(training.physique) >= 75 else 0.9
 	var incoming := raw_damage * 100.0 / (100.0 + _defense())
+	if int(training.physique) >= 180 and incoming >= hero_hp and immovable > 0:
+		incoming *= 0.5
+		_events.append({"type": "fatal_guard"})
 	if block_override.is_empty() and _try_dodge_attack(attack_type):
 		return
 	if skill_is_unlocked("heaven_return") and immovable >= MAX_IMMOVABLE and (attack_type in ["heavy", "sure_hit"] or incoming >= hero_hp):
@@ -659,18 +1079,23 @@ func _enemy_attack(block_override := "") -> void:
 		_take_unblocked_hit(incoming)
 		return
 	var level := int(training.physique)
-	var reduction := 0.9 if block_quality == "perfect" else minf(0.78, 0.45 + float(immovable) * 0.08 + float(level) * 0.0005)
+	var layer_reduction := float(immovable) * (0.1 if level >= 15 else 0.08)
+	var reduction := 0.9 if block_quality == "perfect" else minf(0.82, 0.45 + layer_reduction + float(level) * 0.0005)
 	var damage := maxf(0.0, incoming * (1.0 - reduction))
 	var prevented := incoming - damage
 	recent_prevented_damage = prevented
 	hero_hp = maxf(0.0, hero_hp - damage)
 	_lose_youren(attack_type)
 	_events.append({"type": "perfect_block" if block_quality == "perfect" else "block", "amount": damage, "prevented": prevented, "attack_type": attack_type})
+	consecutive_blocks += 1
+	if level >= 70:
+		enemy_weakened_remaining = 4.0
 	if skill_is_unlocked("immovable_form"):
 		var gain := 2 if block_quality == "perfect" else 1
 		immovable = mini(MAX_IMMOVABLE, immovable + gain)
+		if immovable >= MAX_IMMOVABLE: immovable_break_guard = true
 		_events.append({"type": "immovable_changed", "value": immovable})
-	var guaranteed_counter := block_quality == "perfect" or blade_triggered
+	var guaranteed_counter := block_quality == "perfect" or blade_triggered or immovable_king_remaining > 0.0
 	if guaranteed_counter or rng.randf() < 0.35 + float(level) * 0.002:
 		_counter_attack(prevented, block_quality == "perfect", attack_type)
 	if hero_hp <= 0.0:
@@ -691,10 +1116,15 @@ func _take_unblocked_hit(damage: float) -> void:
 	_events.append({"type": "hero_hit", "amount": damage})
 	return_blade_ready = false
 	counter_chain = 0
+	consecutive_blocks = 0
 	recent_prevented_damage = 0.0
 	_lose_youren(_current_enemy_attack_type_id())
 	if immovable > 0:
-		immovable -= 1
+		if int(training.physique) >= 160 and immovable >= MAX_IMMOVABLE and immovable_break_guard:
+			immovable_break_guard = false
+			_events.append({"type": "immovable_guard"})
+		else:
+			immovable -= 1
 		_events.append({"type": "immovable_changed", "value": immovable})
 	if hero_hp <= 0.0:
 		_defeat_hero()
@@ -731,28 +1161,49 @@ func _resolve_dodge(attack_type: String, used_swift_step: bool) -> void:
 	if agility_branch == "instant_kill":
 		instant_kill_ready = true
 	if used_swift_step:
-		var swift_damage := _attack_power() * 1.4
+		var swift_damage := _attack_power() * 1.4 * _skill_level_multiplier("swift_step")
 		_events.append({"type": "swift_step", "damage": swift_damage})
 		if _deal_damage(swift_damage, "swift_step", 0.1):
 			return
 	if skill_is_unlocked("shadow_assault") and youren >= MAX_YOUREN:
-		var shadow_damage := _attack_power() * 1.15 * (1.1 if youren >= 4 else 1.0)
+		var shadow_damage := _attack_power() * 1.15 * (1.1 if youren >= 4 else 1.0) * _skill_level_multiplier("shadow_assault")
+		if int(training.agility) >= 35: shadow_damage *= 1.2
+		if int(training.agility) >= 60: shadow_damage *= 1.0 + float(youren) * 0.05
+		if int(training.agility) >= 115: shadow_damage *= 1.15
+		if int(training.agility) >= 165: shadow_damage *= 1.15
 		if shadowless_remaining > 0.0:
-			shadow_damage *= 1.8
+			shadow_damage *= 2.0 if int(training.agility) >= 195 else 1.8
 		_events.append({"type": "shadow_assault", "damage": shadow_damage})
 		if _deal_damage(shadow_damage, "shadow_assault", 0.15):
 			return
-		if agility_branch == "flying_swallow" and rng.randf() < 0.35:
+		var flying_chance := 0.5 if int(training.agility) >= 95 else 0.3
+		if int(training.agility) >= 90 and rng.randf() < flying_chance:
 			var extra_damage := shadow_damage * 0.75
 			_events.append({"type": "flying_swallow", "damage": extra_damage})
-			_deal_damage(extra_damage, "flying_swallow", 0.15)
+			if not _deal_damage(extra_damage, "flying_swallow", 0.15) and int(training.agility) >= 120 and rng.randf() < 0.45:
+				var return_damage := shadow_damage * 0.62
+				_events.append({"type": "swallow_return", "damage": return_damage})
+				_deal_damage(return_damage, "swallow_return", 0.18)
+		if int(training.agility) >= 180 and not used_swift_step:
+			var second_damage := shadow_damage * 0.5
+			_events.append({"type": "second_shadow", "damage": second_damage})
+			_deal_damage(second_damage, "second_shadow", 0.15)
+		if int(training.agility) >= 200 and shadowless_remaining > 0.0:
+			var extreme_damage := shadow_damage * 0.8
+			_events.append({"type": "shadowless_extreme", "damage": extreme_damage})
+			_deal_damage(extreme_damage, "shadowless_extreme", 0.25)
 
 func _lose_youren(attack_type: String) -> void:
 	if shadowless_remaining > 0.0 and attack_type == "normal":
 		return
 	flow_hits = 0
 	swift_cut_hits = 0
+	unharmed_duration = 0.0
 	if youren <= 0:
+		return
+	if int(training.agility) >= 160 and youren >= MAX_YOUREN and attack_type == "normal" and full_youren_guard:
+		full_youren_guard = false
+		_events.append({"type": "flow_guard"})
 		return
 	var loss := youren if attack_type in ["heavy", "sure_hit"] else 1
 	youren = maxi(0, youren - loss)
@@ -762,19 +1213,26 @@ func _lose_youren(attack_type: String) -> void:
 func _counter_attack(prevented: float, perfect: bool, attack_type: String) -> void:
 	counter_chain += 1
 	var raw_damage := _attack_power() * 0.8 + _defense() * 1.25
+	raw_damage *= _track_level_multiplier("physique", 10)
 	raw_damage *= 1.0 + float(immovable) * 0.28
 	var borrowed := 0.0
 	if skill_is_unlocked("borrow_force"):
-		borrowed = prevented * 0.35
+		var borrow_ratio := 0.35
+		if int(training.physique) >= 115: borrow_ratio = 0.5
+		if int(training.physique) >= 185: borrow_ratio = 0.65
+		if physique_branch == "borrowed_force": borrow_ratio += 0.15
+		borrowed = prevented * borrow_ratio
 		raw_damage += borrowed
 	if perfect:
 		raw_damage *= 1.55
-	if physique_branch == "inch_power":
-		raw_damage *= 1.0 + float(mini(counter_chain - 1, 5)) * 0.15
-	var shocked := physique_branch == "shock_return" and attack_type == "heavy"
+	if int(training.physique) >= 130:
+		raw_damage *= 1.0 + float(mini(counter_chain - 1, 7 if int(training.physique) >= 135 else 5)) * 0.12
+	if physique_branch == "return_blade": raw_damage *= 1.25
+	if int(training.physique) >= 120 and attack_type in ["heavy", "sure_hit"]: raw_damage *= 1.3
+	var shocked := int(training.physique) >= 90 and perfect and attack_type == "heavy"
 	if shocked:
 		raw_damage *= 1.8
-		enemy_attack_remaining += 1.0
+		enemy_attack_remaining += 1.4 if int(training.physique) >= 95 else 1.0
 		_events.append({"type": "shock_return"})
 	_events.append({"type": "counter", "damage": raw_damage, "perfect": perfect, "chain": counter_chain, "borrowed": borrowed})
 	_deal_damage(raw_damage, "counter", 0.15)
@@ -783,7 +1241,7 @@ func _trigger_heaven_return(incoming: float) -> void:
 	var damage := incoming * 0.15
 	hero_hp = maxf(1.0, hero_hp - damage)
 	immovable = 0
-	var raw_counter := _attack_power() * 2.5 + _defense() * 7.0 + incoming * 1.25
+	var raw_counter := (_attack_power() * 2.5 + _defense() * 7.0 + incoming * 1.25) * _skill_level_multiplier("heaven_return")
 	_events.append({"type": "heaven_return", "amount": damage, "prevented": incoming - damage, "damage": raw_counter})
 	_events.append({"type": "immovable_changed", "value": immovable})
 	_deal_damage(raw_counter, "heaven_return", 0.5)
@@ -794,15 +1252,26 @@ func _defeat_hero() -> void:
 	hero_mp = _hero_max_mp()
 	immovable = 0
 	youren = 0
+	draw_stance_remaining = 0.0
+	extreme_momentum_remaining = 0.0
+	reduced_next_slash_cost = false
 	flow_hits = 0
 	swift_cut_hits = 0
 	counter_chain = 0
+	consecutive_blocks = 0
+	immovable_king_remaining = 0.0
 	return_blade_ready = false
 	swift_step_ready = false
 	shadowless_remaining = 0.0
+	full_youren_duration = 0.0
+	unharmed_duration = 0.0
 	instant_kill_ready = false
 	magic_marks = 0
 	magic_release_remaining = 0.0
+	complete_release_remaining = 0.0
+	fusion_remaining = 0.0
+	resonance_slash_ready = false
+	_manifest_was_active = false
 	_spawn_enemy()
 	_events.append({"type": "defeat"})
 
@@ -844,11 +1313,13 @@ func _enemy_defeated() -> void:
 	stage += 1
 	var point_gain := 3 if defeated_boss else 1
 	training_points += point_gain
-	_add_momentum(12.0, "kill")
-	_add_youren(1, "kill")
-	if martial_branch == "no_beat":
-		_add_momentum(28.0, "no_beat")
-		_events.append({"type": "no_beat", "amount": 28.0})
+	_add_momentum(20.0 if int(training.martial) >= 25 else 12.0, "kill")
+	_add_youren(2 if int(training.agility) >= 25 else 1, "kill")
+	if int(training.martial) >= 90:
+		var no_beat_gain := 32.0 if int(training.martial) >= 95 else 24.0
+		if martial_branch == "chain_slash": no_beat_gain += 12.0
+		_add_momentum(no_beat_gain, "no_beat")
+		_events.append({"type": "no_beat", "amount": no_beat_gain})
 	hero_hp = minf(_hero_max_hp(), hero_hp + 10.0)
 	_spawn_enemy()
 	_events.append({"type": "enemy_defeated", "stage": stage, "kills": kills, "boss": defeated_boss})
@@ -862,27 +1333,62 @@ func _spawn_enemy() -> void:
 	enemy_engagement_time = 0.0
 	enemy_attack_count = 0
 	counter_chain = 0
+	consecutive_blocks = 0
 	recent_prevented_damage = 0.0
 	return_blade_ready = false
 	swift_step_ready = false
 	opening_remaining = 0.0
+	enemy_weakened_remaining = 0.0
 	burn_stacks = 0
+	frost_stacks = 0
+	lightning_stacks = 0
+	secondary_hit_counter = 0
 	burning_hits = 0
 	burn_tick_remaining = 1.0
 
 func _add_momentum(amount: float, source: String) -> void:
-	if int(training.martial) <= 0:
+	if int(training.martial) < 10:
 		return
 	var multiplier := 1.0 + float(training.martial) * 0.003
 	momentum = minf(MAX_MOMENTUM, momentum + amount * multiplier)
 	if momentum >= MAX_MOMENTUM and not _momentum_was_full:
 		_momentum_was_full = true
+		if int(training.martial) >= 45: extreme_momentum_remaining = 4.0
 		_events.append({"type": "momentum_full", "source": source})
 
 func _one_slash_mastery_multiplier(momentum_before: float) -> float:
-	if not skill_is_unlocked("one_slash_mastery"):
-		return 1.0
-	return 1.0 + clampf(momentum_before / MAX_MOMENTUM, 0.0, 1.0) * 0.6
+	var ratio := clampf(momentum_before / MAX_MOMENTUM, 0.0, 1.0)
+	if int(training.martial) >= 15:
+		ratio *= 0.25
+	if skill_is_unlocked("one_slash_mastery"):
+		ratio += clampf(momentum_before / MAX_MOMENTUM, 0.0, 1.0) * 0.6
+	return 1.0 + ratio
+
+func _momentum_cost(skill_id: String) -> float:
+	var cost := float(SKILL_DEFS[skill_id].cost)
+	if reduced_next_slash_cost:
+		cost *= 0.5
+	if draw_stance_remaining > 0.0:
+		cost *= 0.75
+	return cost
+
+func _martial_slash_multiplier(skill_id: String, momentum_before: float) -> float:
+	var multiplier := 1.0
+	var hp_ratio := enemy_hp / maxf(1.0, enemy_max_hp)
+	if int(training.martial) >= 20 and hp_ratio <= 0.3:
+		multiplier *= 1.25 if int(training.martial) < 85 else 1.4
+	if int(training.martial) >= 70:
+		var cap := 8.0 if int(training.martial) < 75 else 12.0
+		multiplier *= 1.0 + minf(cap, time_since_one_slash) * 0.035
+	if draw_stance_remaining > 0.0: multiplier *= 1.3
+	if momentum_before >= MAX_MOMENTUM or extreme_momentum_remaining > 0.0: multiplier *= 1.2
+	if martial_branch == "execution" and hp_ratio <= 0.3: multiplier *= 1.3
+	if martial_branch == "army_break" and enemy_is_boss: multiplier *= 1.35
+	if martial_branch == "chain_slash" and reduced_next_slash_cost: multiplier *= 1.2
+	if int(training.martial) >= 190 and momentum_before >= MAX_MOMENTUM and time_since_one_slash >= 8.0:
+		multiplier *= 1.65 if int(training.martial) >= 195 else 1.45
+		_events.append({"type": "mindless", "name": "無心"})
+	return multiplier
 
 func _tick_cooldowns(delta: float) -> void:
 	for skill_id: String in skill_cooldowns.keys():
@@ -906,6 +1412,27 @@ func _new_unlocks(track: String, previous: int, current: int) -> Array[Dictionar
 			unlocks.append({"type": "unlock", "track": track, "level": target, "skill_id": skill_id, "name": String(definition.name), "description": String(definition.condition)})
 	return unlocks
 
+func _new_track_milestones(track: String, previous: int, current: int) -> Array[Dictionary]:
+	var milestones: Array[Dictionary] = []
+	var table: Dictionary = {
+		"martial": MARTIAL_MILESTONES, "physique": PHYSIQUE_MILESTONES,
+		"agility": AGILITY_MILESTONES, "magic": MAGIC_MILESTONES,
+	}.get(track, {})
+	for target: int in table:
+		if _has_unlock_at(track, target):
+			continue
+		if previous < target and current >= target:
+			var definition: Dictionary = table[target]
+			milestones.append({"type": "milestone", "track": track, "level": target, "name": String(definition.name), "description": String(definition.description)})
+	return milestones
+
+func _has_unlock_at(track: String, level: int) -> bool:
+	for skill_id: String in SKILL_DEFS:
+		var definition: Dictionary = SKILL_DEFS[skill_id]
+		if String(definition.track) == track and int(definition.level) == level:
+			return true
+	return false
+
 func _total_training_levels() -> int:
 	var total := 0
 	for track: String in TRAINING_ORDER:
@@ -921,11 +1448,39 @@ func _stat_value(stat: String, base: float) -> float:
 	return value
 
 func _hero_max_hp() -> float: return _stat_value("hp", 100.0)
-func _hero_max_mp() -> float: return _stat_value("mp", 0.0)
+func _hero_max_mp() -> float:
+	var value := _stat_value("mp", 0.0)
+	return value * (1.05 if int(training.magic) >= 105 else 1.0)
 func _attack_power() -> float: return _stat_value("attack", 9.5)
-func _magic_power() -> float: return 4.0 + float(_total_training_levels()) * 0.08 + float(training.magic) * 0.78
+func _magic_power() -> float:
+	var value := 4.0 + float(_total_training_levels()) * 0.08 + float(training.magic) * 0.78
+	if int(training.magic) >= 55: value *= 1.05
+	if int(training.magic) >= 105: value *= 1.05
+	if int(training.magic) >= 175: value *= 1.05
+	return value
 func _defense() -> float: return _stat_value("defense", 2.0)
 func _mp_regeneration() -> float: return 1.2 + float(training.magic) * 0.035
+
+func skill_power_hint(skill_id: String) -> String:
+	if not SKILL_DEFS.has(skill_id):
+		return ""
+	var definition: Dictionary = SKILL_DEFS[skill_id]
+	if String(definition.type) == "passive" and skill_id not in ["flowing_ease", "shadow_assault", "burning_enchant", "magic_sword_marks"]:
+		return "被動機制"
+	return "流派熟練 ×%.2f" % _skill_level_multiplier(skill_id)
+
+func auto_skill_state(skill_id: String) -> String:
+	var cooldown := float(skill_cooldowns.get(skill_id, 0.0))
+	if cooldown > 0.0:
+		return "冷卻 %.1fs" % cooldown
+	return "就緒" if _can_cast(skill_id) else "等待條件"
+
+func _skill_level_multiplier(skill_id: String) -> float:
+	var definition: Dictionary = SKILL_DEFS[skill_id]
+	return _track_level_multiplier(String(definition.track), int(definition.level))
+
+func _track_level_multiplier(track: String, unlock_level: int) -> float:
+	return 1.0 + float(maxi(0, int(training[track]) - unlock_level)) * 0.004
 func _dodge_chance() -> float:
 	return minf(DODGE_CAP, 0.05 + _agility_dodge_bonus())
 func _critical_chance() -> float:
@@ -957,24 +1512,31 @@ func _add_youren(amount: int, source: String) -> void:
 		_events.append({"type": "youren_changed", "value": youren, "gain": youren - previous, "source": source})
 		if previous < MAX_YOUREN and youren >= MAX_YOUREN:
 			swift_cut_hits = 0
+			full_youren_guard = true
+			full_youren_duration = 0.0
 			_events.append({"type": "flow_state_entered", "name": "游刃有餘"})
 
 func _track_swift_cut() -> void:
-	if not skill_is_unlocked("flowing_ease") or youren < MAX_YOUREN:
+	if not skill_is_unlocked("swift_cut") or youren < MAX_YOUREN:
 		swift_cut_hits = 0
 		return
 	swift_cut_hits += 1
-	if swift_cut_hits < 2:
+	var required := 1 if int(training.agility) >= 140 else (2 if int(training.agility) >= 45 else 3)
+	if swift_cut_hits < required:
 		return
 	swift_cut_hits = 0
-	var damage := _attack_power() * 0.35
-	_events.append({"type": "swift_cut", "name": "疾斬", "damage": damage})
+	var damage := _attack_power() * (0.45 if int(training.agility) >= 165 else 0.35) * _skill_level_multiplier("swift_cut")
+	var critical := int(training.agility) >= 80 and rng.randf() < _critical_chance()
+	if critical: damage *= 1.75
+	_events.append({"type": "swift_cut", "name": "疾斬", "damage": damage, "critical": critical})
 	_deal_damage(damage, "swift_cut", 0.05)
 
 func _youren_attack_speed_bonus() -> float:
 	if not skill_is_unlocked("flowing_ease"):
 		return 0.0
-	return float(youren) * 0.03
+	var bonus := float(youren) * 0.03
+	if agility_branch == "chase_wind": bonus += 0.12
+	return bonus
 
 func _youren_critical_bonus() -> float:
 	if not skill_is_unlocked("flowing_ease"): return 0.0

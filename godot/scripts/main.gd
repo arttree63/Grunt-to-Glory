@@ -216,15 +216,15 @@ func _build_ui() -> void:
 
 	var slot_heading := HBoxContainer.new()
 	bottom_box.add_child(slot_heading)
-	var slot_title := _label("AUTO 優先序", 13, Color("cbd5cc"))
+	var slot_title := _label("AUTO 編成｜依序判斷", 13, Color("cbd5cc"))
 	slot_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slot_heading.add_child(slot_title)
-	slot_heading.add_child(_label("左 → 右", 13, Color("9fb0a5")))
+	slot_heading.add_child(_label("1 → 5", 13, Color("9fb0a5")))
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 5)
 	bottom_box.add_child(actions)
 	for index in CombatModel.AUTO_SLOT_COUNT:
-		var slot := _skill_button("＋\nAUTO", Color("3a403b"))
+		var slot := _skill_button("%d\n＋" % (index + 1), Color("3a403b"))
 		slot.tooltip_text = "前往技能頁配置 AUTO 優先序"
 		slot.pressed.connect(_switch_page.bind("skills"))
 		actions.add_child(slot)
@@ -355,19 +355,28 @@ func _render_skills_page(snapshot: Dictionary) -> void:
 			row.add_child(button)
 	_render_track_skills("martial", "武藝｜一刀流技能", slots)
 	_render_branch_choices("martial", snapshot)
+	_render_track_milestones("martial", snapshot)
 	_render_track_skills("physique", "體術｜不動流技能", slots)
 	_render_branch_choices("physique", snapshot)
+	_render_track_milestones("physique", snapshot)
 	_render_track_skills("agility", "敏捷｜閃影流技能", slots)
 	_render_branch_choices("agility", snapshot)
+	_render_track_milestones("agility", snapshot)
 	_render_track_skills("magic", "魔法｜魔劍流技能", slots)
+	_render_magic_choices(snapshot)
+	_render_magic_milestones(snapshot)
 
 func _render_track_skills(track: String, heading: String, slots: Array) -> void:
 	var heading_color := Color("f6d27d") if track == "martial" else (Color("bfe8ef") if track == "physique" else (Color("d8ccff") if track == "agility" else Color("ffc28f")))
 	section_box.add_child(_label(heading, 18, heading_color))
+	var skill_ids: Array[String] = []
 	for skill_id: String in CombatModel.SKILL_DEFS:
 		var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
-		if String(definition.track) != track:
-			continue
+		if String(definition.track) == track:
+			skill_ids.append(skill_id)
+	skill_ids.sort_custom(func(left: String, right: String) -> bool: return int(CombatModel.SKILL_DEFS[left].level) < int(CombatModel.SKILL_DEFS[right].level))
+	for skill_id: String in skill_ids:
+		var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
 		var type_text := "被動" if String(definition.type) == "passive" else ("奧義" if String(definition.type) == "ultimate" else "主動")
 		var status := "%s · Lv.%d" % [type_text, int(definition.level)]
 		if model.skill_is_unlocked(skill_id):
@@ -377,7 +386,7 @@ func _render_track_skills(track: String, heading: String, slots: Array) -> void:
 		var skill_row := HBoxContainer.new()
 		skill_row.add_theme_constant_override("separation", 6)
 		section_box.add_child(skill_row)
-		var skill_card := _section_row(String(definition.name), "%s｜%s" % [status, String(definition.condition)])
+		var skill_card := _section_row(String(definition.name), "%s｜%s｜%s" % [status, String(definition.condition), model.skill_power_hint(skill_id)])
 		skill_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		skill_row.add_child(skill_card)
 		if String(definition.type) == "active" or (String(definition.type) == "ultimate" and not bool(definition.get("reactive", false))):
@@ -420,6 +429,63 @@ func _render_branch_choices(track: String, snapshot: Dictionary) -> void:
 		else:
 			choose.pressed.connect(_select_agility_branch.bind(choice_id))
 		branch_row.add_child(choose)
+
+func _render_magic_choices(snapshot: Dictionary) -> void:
+	section_box.add_child(_label("Lv.70 第二元素", 18, Color("9fdcff")))
+	section_box.add_child(_label("目前：%s｜可隨時切換" % _magic_choice_name(CombatModel.MAGIC_SECONDARIES, String(snapshot.secondary_element)), 14, Color("cbd5cc")))
+	for choice_id: String in CombatModel.MAGIC_SECONDARIES:
+		var choice: Dictionary = CombatModel.MAGIC_SECONDARIES[choice_id]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		section_box.add_child(row)
+		var card := _section_row(String(choice.name), String(choice.description))
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(card)
+		var button := _button("使用中" if choice_id == String(snapshot.secondary_element) else "選擇", Color("3d6170"), 44)
+		button.custom_minimum_size.x = 64
+		button.disabled = int(snapshot.training.magic) < 70 or choice_id == String(snapshot.secondary_element)
+		button.pressed.connect(_select_secondary_element.bind(choice_id))
+		row.add_child(button)
+	section_box.add_child(_label("Lv.150 元素專精", 18, Color("ffc28f")))
+	section_box.add_child(_label("目前：%s｜可隨時切換" % _magic_choice_name(CombatModel.MAGIC_SPECIALIZATIONS, String(snapshot.magic_specialization)), 14, Color("cbd5cc")))
+	for choice_id: String in CombatModel.MAGIC_SPECIALIZATIONS:
+		var choice: Dictionary = CombatModel.MAGIC_SPECIALIZATIONS[choice_id]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		section_box.add_child(row)
+		var card := _section_row(String(choice.name), String(choice.description))
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(card)
+		var button := _button("使用中" if choice_id == String(snapshot.magic_specialization) else "選擇", Color("71482f"), 44)
+		button.custom_minimum_size.x = 64
+		button.disabled = int(snapshot.training.magic) < 150 or choice_id == String(snapshot.magic_specialization)
+		button.pressed.connect(_select_magic_specialization.bind(choice_id))
+		row.add_child(button)
+
+func _render_magic_milestones(snapshot: Dictionary) -> void:
+	section_box.add_child(_label("魔劍流 Lv.55～200 里程碑", 18, Color("ffc28f")))
+	for level: int in CombatModel.MAGIC_MILESTONES:
+		var milestone: Dictionary = CombatModel.MAGIC_MILESTONES[level]
+		var state := "已取得" if int(snapshot.training.magic) >= level else "未解鎖"
+		section_box.add_child(_section_row("Lv.%d｜%s" % [level, String(milestone.name)], "%s · %s" % [state, String(milestone.description)]))
+
+func _render_track_milestones(track: String, snapshot: Dictionary) -> void:
+	var table: Dictionary = {
+		"martial": CombatModel.MARTIAL_MILESTONES,
+		"physique": CombatModel.PHYSIQUE_MILESTONES,
+		"agility": CombatModel.AGILITY_MILESTONES,
+	}[track]
+	var level := int(snapshot.training[track])
+	var style_name: String = {"martial": "一刀流", "physique": "不動流", "agility": "閃影流"}[track]
+	var color := Color("f6d27d") if track == "martial" else (Color("bfe8ef") if track == "physique" else Color("d8ccff"))
+	section_box.add_child(_label("%s Lv.1～200 里程碑" % style_name, 18, color))
+	for target: int in table:
+		var milestone: Dictionary = table[target]
+		var state := "已取得" if level >= target else "未解鎖"
+		section_box.add_child(_section_row("Lv.%d｜%s" % [target, String(milestone.name)], "%s · %s" % [state, String(milestone.description)]))
+
+func _magic_choice_name(choices: Dictionary, choice_id: String) -> String:
+	return String(choices[choice_id].name) if choices.has(choice_id) else "尚未選擇"
 
 func _render_equipment_page() -> void:
 	section_box.add_child(_label("裝備會改變數值與戰法，但規則尚未定案。", 16, Color("cbd5cc")))
@@ -501,20 +567,31 @@ func _handle_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
 		match String(event.type):
 			"unlock": _show_toast("解鎖：%s" % String(event.name), String(event.description))
+			"milestone": _show_toast("流派強化：%s" % String(event.name), String(event.description))
 			"training_point": _show_toast("獲得 %d 點操練" % int(event.get("gain", 1)), "現在有 %d 點可分配" % int(event.points))
 			"momentum_full": _show_toast("勢已滿", "AUTO 將依技能優先序判斷")
 			"branch_unlocked": _show_toast("解鎖：%s" % String(event.name), String(event.description))
 			"armor_broken": _show_toast("破甲一閃", "敵方護甲降低 %d" % roundi(float(event.amount)))
 			"no_beat": _show_toast("無拍子", "擊殺後額外回復 %d 勢" % roundi(float(event.amount)))
+			"draw_stance": _show_toast("拔刀", "蓄勢加速，第一刀降低消耗並提高傷害")
+			"mindless": _show_toast("無心", "極勢與一念合一，下一刀全面強化")
 			"perfect_block": _show_toast("完美格擋", "減免 %d 傷害並立即反擊" % roundi(float(event.prevented)))
 			"heaven_return": _show_toast("奧義・不動返天", "硬接重擊，將敵人的力量反還")
-			"shadowless": _show_toast("奧義・無影", "六秒內攻速與影襲大幅提升")
-			"flow_state_entered": _show_toast("游刃有餘", "快劍節奏啟動 · 每兩次普攻觸發疾斬")
+			"immovable_king": _show_toast("不動明王", "連續格擋完成，期間每次格擋必定返刃")
+			"shadowless": _show_toast("無影", "六秒內攻速與影襲大幅提升")
+			"shadowless_extreme": _show_toast("奧義・無影極境", "影襲連攜完整展開")
+			"flow_state_entered": _show_toast("游刃有餘", "快劍節奏啟動 · 疾斬開始運作")
 			"traceless": _show_toast("無蹤", "消耗滿層游刃，閃開原本會命中的攻擊")
 			"blazing_magic_entered": _show_toast("魔紋已滿", "下一次附魔攻擊將觸發魔力斬")
 			"scorching_entered": _show_toast("燃燒已滿", "炎爆斬的爆發條件已成立")
 			"flame_burst_slash": _show_toast("炎爆斬", "消耗魔紋與燃燒，造成元素爆發")
 			"magic_sword_release": _show_toast("魔劍解放", "八秒內魔紋、燃燒與魔劍傷害全面加速")
+			"elemental_resonance": _show_toast(String(event.name), "元素共鳴觸發，返還魔紋並強化循環")
+			"minor_resonance": _show_toast("小型共鳴", "專精元素滿層，自動釋放元素力量")
+			"elemental_boundary_slash": _show_toast("元素斷界斬", "%s元素效果已釋放" % {"fire": "火", "ice": "冰", "lightning": "雷"}.get(String(event.element), "火"))
+			"elemental_fusion": _show_toast("雙元素融合", "六秒內追加副元素附魔")
+			"magic_sword_manifestation": _show_toast("魔劍顯現", "滿魔紋與元素異常使魔劍進入高階狀態")
+			"magic_sword_complete_release": _show_toast("奧義・魔劍完全解放", "劍、魔力與元素完全融合")
 			"defeat": _show_toast("戰敗後重整", "保留操練，退回上一戰")
 
 func _manual_attack() -> void:
@@ -564,6 +641,20 @@ func _select_agility_branch(branch_id: String) -> void:
 	_show_toast("已選擇：%s" % String(branch.name), String(branch.description))
 	_update_hud(model.snapshot())
 
+func _select_secondary_element(element_id: String) -> void:
+	if not model.select_secondary_element(element_id):
+		return
+	var choice: Dictionary = CombatModel.MAGIC_SECONDARIES[element_id]
+	_show_toast("副元素：%s" % String(choice.name), String(choice.description))
+	_update_hud(model.snapshot())
+
+func _select_magic_specialization(specialization_id: String) -> void:
+	if not model.select_magic_specialization(specialization_id):
+		return
+	var choice: Dictionary = CombatModel.MAGIC_SPECIALIZATIONS[specialization_id]
+	_show_toast("元素專精：%s" % String(choice.name), String(choice.description))
+	_update_hud(model.snapshot())
+
 func _toggle_training() -> void:
 	if training_open: _close_training()
 	else: _open_training()
@@ -595,22 +686,23 @@ func _update_hud(snapshot: Dictionary) -> void:
 	mp_label.text = "MP  %d/%d" % [roundi(snapshot.hero_mp), roundi(snapshot.hero_max_mp)]
 	momentum_bar.max_value = float(snapshot.max_momentum)
 	momentum_bar.value = float(snapshot.momentum)
-	momentum_label.text = "勢  %d/%d" % [roundi(snapshot.momentum), roundi(snapshot.max_momentum)]
-	var martial_active := int(snapshot.training.martial) > 0
+	var draw_text := " · 拔刀 %.1fs" % float(snapshot.draw_stance_remaining) if float(snapshot.draw_stance_remaining) > 0.0 else ""
+	momentum_label.text = "勢  %d/%d%s" % [roundi(snapshot.momentum), roundi(snapshot.max_momentum), draw_text]
+	var martial_active := int(snapshot.training.martial) >= 10
 	momentum_head.visible = martial_active
 	momentum_bar.visible = martial_active
-	var physique_active := int(snapshot.training.physique) > 0
+	var physique_active := int(snapshot.training.physique) >= 10
 	immovable_hud.visible = physique_active
 	immovable_label.text = "不動  %d/%d%s" % [int(snapshot.immovable), int(snapshot.max_immovable), " · 返刃待發" if bool(snapshot.return_blade_ready) else ""]
 	for index in immovable_pips.size():
 		var filled := index < int(snapshot.immovable)
 		immovable_pips[index].add_theme_stylebox_override("panel", _slot_style(Color("8ec5d1") if filled else Color("26353a"), Color("e8fbff") if filled else Color("70848b"), 2 if filled else 1))
-	var agility_active := int(snapshot.training.agility) > 0
+	var agility_active := int(snapshot.training.agility) >= 10
 	youren_hud.visible = agility_active
 	var shadowless_text := " · 無影 %.1fs" % float(snapshot.shadowless_remaining) if float(snapshot.shadowless_remaining) > 0.0 else ""
 	var swift_text := " · 瞬步待發" if bool(snapshot.swift_step_ready) else ""
 	var flow_text := ""
-	if int(snapshot.training.agility) >= 10:
+	if int(snapshot.training.agility) >= 15:
 		flow_text = " · 疾斬 %d/%d" % [int(snapshot.swift_cut_hits), int(snapshot.swift_cut_hits_required)] if int(snapshot.youren) >= int(snapshot.max_youren) else " · 連擊 %d/%d" % [int(snapshot.flow_hits), int(snapshot.flow_hits_required)]
 	youren_label.text = "游刃  %d/%d%s%s%s" % [int(snapshot.youren), int(snapshot.max_youren), flow_text, swift_text, shadowless_text]
 	for index in youren_pips.size():
@@ -618,8 +710,12 @@ func _update_hud(snapshot: Dictionary) -> void:
 		youren_pips[index].add_theme_stylebox_override("panel", _slot_style(Color("9b86d6") if filled else Color("2e293b"), Color("f0eaff") if filled else Color("756a96"), 2 if filled else 1))
 	var magic_active := int(snapshot.training.magic) >= 10
 	magic_hud.visible = magic_active
-	var release_text := " · 解放 %.1fs" % float(snapshot.magic_release_remaining) if float(snapshot.magic_release_remaining) > 0.0 else ""
-	magic_label.text = "魔紋  %d/%d · 燃燒 %d/%d%s" % [int(snapshot.magic_marks), int(snapshot.max_magic_marks), int(snapshot.burn_stacks), int(snapshot.max_burn), release_text]
+	var release_text := " · 全解放 %.1fs" % float(snapshot.complete_release_remaining) if float(snapshot.complete_release_remaining) > 0.0 else (" · 解放 %.1fs" % float(snapshot.magic_release_remaining) if float(snapshot.magic_release_remaining) > 0.0 else "")
+	var element_text := "火%d" % int(snapshot.burn_stacks)
+	if String(snapshot.secondary_element) == "ice": element_text += " 冰%d" % int(snapshot.frost_stacks)
+	elif String(snapshot.secondary_element) == "lightning": element_text += " 雷%d" % int(snapshot.lightning_stacks)
+	var manifest_text := " · 顯現" if bool(snapshot.magic_manifest_active) else ""
+	magic_label.text = "魔紋 %d/%d · %s%s%s" % [int(snapshot.magic_marks), int(snapshot.max_magic_marks), element_text, manifest_text, release_text]
 	for index in magic_pips.size():
 		var filled := index < int(snapshot.magic_marks)
 		magic_pips[index].add_theme_stylebox_override("panel", _slot_style(Color("d96a36") if filled else Color("3b2b25"), Color("ffd0a1") if filled else Color("8f674f"), 2 if filled else 1))
@@ -633,13 +729,18 @@ func _update_hud(snapshot: Dictionary) -> void:
 		var skill_id := String(slots[index])
 		var button := auto_slot_buttons[index]
 		if skill_id.is_empty():
-			button.text = "＋\nAUTO"
+			button.text = "%d\n＋" % (index + 1)
 			button.tooltip_text = "第 %d 優先：尚未配置" % (index + 1)
+			button.add_theme_stylebox_override("normal", _slot_style(Color("313833"), Color("667169"), 1))
 		else:
 			var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
-			var cooldown := float(snapshot.skill_cooldowns.get(skill_id, 0.0))
-			button.text = "%s\n%s" % [String(definition.short), "%.1fs" % cooldown if cooldown > 0.0 else String(definition.condition)]
-			button.tooltip_text = "第 %d 優先：%s" % [index + 1, String(definition.condition)]
+			var state := model.auto_skill_state(skill_id)
+			button.text = "%d  %s\n%s" % [index + 1, String(definition.short), state]
+			button.tooltip_text = "第 %d 優先｜%s｜%s" % [index + 1, String(definition.condition), model.skill_power_hint(skill_id)]
+			var track := String(definition.track)
+			var base := Color("654c27") if track == "martial" else (Color("31545c") if track == "physique" else (Color("4b416d") if track == "agility" else Color("70452d")))
+			var border := Color("f1d590") if state == "就緒" else Color("7b817a")
+			button.add_theme_stylebox_override("normal", _slot_style(base if state == "就緒" else base.darkened(0.32), border, 2 if state == "就緒" else 1))
 	battlefield.set_state(snapshot)
 	_update_training_rows(snapshot)
 	if current_page != "combat" and is_instance_valid(section_box):

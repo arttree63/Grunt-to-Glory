@@ -15,6 +15,15 @@ func _run_tests() -> void:
 	_test_flame_burst_slash()
 	_test_magic_sword_release()
 	_test_four_mechanics_coexist()
+	_test_skill_damage_scales_with_training()
+	_test_physical_milestone_sequences()
+	_test_secondary_elements_and_resonance()
+	_test_elemental_boundary_and_mark_retention()
+	_test_magic_specialization_and_minor_resonance()
+	_test_advanced_release_cycle()
+	_test_elemental_fusion()
+	_test_magic_sword_manifestation()
+	_test_magic_sword_complete_release()
 	_test_heavy_slash_unlock_and_auto()
 	_test_remaining_heart_refund()
 	_test_armor_flash_and_auto_fallback()
@@ -45,12 +54,12 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 34")
+		print("Godot tests passed: 43")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
 	var model = CombatModelScript.new()
-	model.training.martial = 1
+	model.training.martial = 10
 	model.enemy_hp = 999.0
 	var before: float = model.momentum
 	var events: Array[Dictionary] = model.step(CombatModelScript.AUTO_ATTACK_INTERVAL + 0.01)
@@ -81,6 +90,17 @@ func _test_training_growth_and_locked_tracks() -> void:
 	var after: Dictionary = model.snapshot()
 	_expect(int(model.training.martial) == 1 and model.training_points == points_before - 2, "每次有效操練必須消耗 1 點")
 	_expect(float(after.hero_max_hp) > float(before.hero_max_hp) and float(after.attack) > float(before.attack) and float(after.defense) > float(before.defense), "任一流派都必須提供共通基礎成長")
+
+func _test_physical_milestone_sequences() -> void:
+	for track: String in ["martial", "physique", "agility"]:
+		var model = CombatModelScript.new()
+		model.training[track] = 14
+		model.training_points = 1
+		var events: Array[Dictionary] = model.spend_training(track)
+		_expect(events.any(func(event: Dictionary) -> bool: return event.type in ["milestone", "unlock"] and int(event.level) == 15), "%s Lv.15 必須發出對應成長事件" % track)
+	_expect(CombatModelScript.MARTIAL_MILESTONES.size() == 40, "武藝必須具備完整 Lv.5～200 成長節點")
+	_expect(CombatModelScript.PHYSIQUE_MILESTONES.size() == 40, "體術必須具備完整 Lv.5～200 成長節點")
+	_expect(CombatModelScript.AGILITY_MILESTONES.size() == 40, "敏捷必須具備完整 Lv.5～200 成長節點")
 
 func _test_magic_sword_marks_and_manual_attack() -> void:
 	var model = CombatModelScript.new()
@@ -131,7 +151,7 @@ func _test_flame_burst_slash() -> void:
 	var events := model.step(0.01)
 	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "flame_burst_slash"), "滿魔紋與滿燃燒時 AUTO 必須施放炎爆斬")
 	var burst_events: Array = events.filter(func(event: Dictionary) -> bool: return event.type == "flame_burst_slash")
-	_expect(not burst_events.is_empty() and is_equal_approx(float(burst_events[0].damage), model._magic_power() * 4.2 * 1.25), "熾燃必須強化滿燃燒炎爆斬")
+	_expect(not burst_events.is_empty() and is_equal_approx(float(burst_events[0].damage), model._magic_power() * 4.2 * 1.25 * model._skill_level_multiplier("flame_burst_slash")), "熾燃必須強化滿燃燒炎爆斬")
 	_expect(model.magic_marks == 0 and model.burn_stacks == 0 and model.hero_mp < model._hero_max_mp(), "炎爆斬必須消耗魔紋、燃燒與 MP")
 
 func _test_magic_sword_release() -> void:
@@ -163,6 +183,104 @@ func _test_four_mechanics_coexist() -> void:
 	var snapshot: Dictionary = model.snapshot()
 	_expect(float(snapshot.momentum) > 40.0 and int(snapshot.immovable) == 2 and int(snapshot.youren) == 4 and int(snapshot.magic_marks) == 3, "勢、不動、游刃與魔紋必須能同時存在")
 
+func _test_skill_damage_scales_with_training() -> void:
+	var model = CombatModelScript.new()
+	model.training.martial = 10
+	_expect(is_equal_approx(model._skill_level_multiplier("heavy_slash"), 1.0), "技能剛解鎖時流派熟練倍率必須為 1")
+	model.training.martial = 200
+	_expect(is_equal_approx(model._skill_level_multiplier("heavy_slash"), 1.76), "Lv.10 技能練到流派 Lv.200 時必須獲得 76% 熟練增傷")
+	_expect(is_equal_approx(model._skill_level_multiplier("two_cut"), 1.0), "Lv.200 奧義剛解鎖時不可重複取得熟練增傷")
+
+func _test_secondary_elements_and_resonance() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 100
+	model.hero_mp = model._hero_max_mp()
+	model.enemy_hp = 999999.0
+	model.enemy_armor = 0.0
+	_expect(model.select_secondary_element("ice"), "魔法 Lv.70 後必須能選擇冰副元素")
+	model._events.clear()
+	model._basic_attack(false)
+	_expect(model.burn_stacks > 0 and model.frost_stacks > 0, "雙元素附魔必須讓火與所選副元素同時累積")
+	model.burn_stacks = 1
+	model.frost_stacks = 3
+	model.magic_marks = 0
+	model._events.clear()
+	_expect(model._try_elemental_resonance(), "火與冰達成條件時必須觸發元素共鳴")
+	_expect(model.magic_marks == 2 and model.resonance_slash_ready, "Lv.100 魔劍共鳴必須返還魔紋並強化下一次魔力斬")
+
+func _test_elemental_boundary_and_mark_retention() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 150
+	model.select_secondary_element("lightning")
+	model.select_magic_specialization("ice")
+	model.hero_mp = model._hero_max_mp()
+	model.magic_marks = 5
+	model.enemy_hp = 999999.0
+	model.enemy_armor = 0.0
+	model.auto_skill_slots[0] = "elemental_boundary_slash"
+	var before_timer: float = model.enemy_attack_remaining
+	var events := model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "elemental_boundary_slash" and String(event.element) == "ice"), "斷界斬必須依目前專精切換元素效果")
+	_expect(model.magic_marks == 3, "Lv.140 魔紋留存必須讓斷界斬只消耗 2 枚魔紋")
+	_expect(model.enemy_attack_remaining > before_timer, "冰元素斷界斬必須延緩敵人攻勢")
+
+func _test_magic_specialization_and_minor_resonance() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 160
+	model.select_magic_specialization("ice")
+	model.enemy_hp = 999999.0
+	model.enemy_armor = 0.0
+	model._events.clear()
+	model._add_frost(5)
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "minor_resonance" and String(event.element) == "ice"), "Lv.160 專精元素滿層時必須自動觸發小型共鳴")
+
+func _test_advanced_release_cycle() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 170
+	model.select_secondary_element("ice")
+	model.hero_mp = model._hero_max_mp()
+	model.magic_release_remaining = 5.0
+	model.magic_marks = 5
+	model.enemy_hp = 999999.0
+	model.enemy_armor = 0.0
+	model._events.clear()
+	model._basic_attack(false)
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "magic_slash"), "解放期間滿魔紋必須正常觸發魔力斬")
+	_expect(model.magic_marks >= 3, "Lv.170 解放循環必須在魔力斬後保留大部分魔紋")
+
+func _test_elemental_fusion() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 180
+	model.select_secondary_element("lightning")
+	model._events.clear()
+	model._trigger_elemental_fusion()
+	_expect(model.fusion_remaining == 6.0 and model._events.any(func(event: Dictionary) -> bool: return event.type == "elemental_fusion"), "Lv.180 大型元素爆發後必須取得六秒雙元素融合")
+
+func _test_magic_sword_manifestation() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 190
+	model.magic_marks = 5
+	model.burn_stacks = 1
+	model.enemy_hp = 999999.0
+	model.auto_attack_remaining = 999.0
+	model.enemy_attack_remaining = 999.0
+	var events := model.step(0.01)
+	_expect(model._magic_manifest_active() and events.any(func(event: Dictionary) -> bool: return event.type == "magic_sword_manifestation"), "Lv.190 滿魔紋且敵人帶異常時必須進入魔劍顯現")
+
+func _test_magic_sword_complete_release() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 200
+	model.select_secondary_element("lightning")
+	model.select_magic_specialization("fire")
+	model.hero_mp = model._hero_max_mp()
+	model.enemy_hp = 999999.0
+	model.auto_skill_slots[0] = "magic_sword_complete_release"
+	var events := model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "magic_sword_complete_release") and model.complete_release_remaining > 0.0, "魔法 Lv.200 必須能自動施放魔劍完全解放")
+	model._events.clear()
+	model._basic_attack(false)
+	_expect(model.magic_marks >= 3 and model.burn_stacks >= 3 and model.lightning_stacks >= 3, "完全解放必須高速生成魔紋並自動附著雙元素")
+
 func _test_heavy_slash_unlock_and_auto() -> void:
 	var model = CombatModelScript.new()
 	model.training_points = 20
@@ -178,17 +296,17 @@ func _test_heavy_slash_unlock_and_auto() -> void:
 
 func _test_remaining_heart_refund() -> void:
 	var model = CombatModelScript.new()
-	model.training.martial = 30
+	model.training.martial = 130
 	model.auto_skill_slots[0] = "heavy_slash"
 	model.enemy_hp = 9999.0
 	model.momentum = 50.0
 	var events: Array[Dictionary] = model.step(0.01)
-	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "remaining_heart"), "Lv.30 一刀未擊殺時必須觸發殘心")
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "remaining_heart"), "Lv.130 一刀未擊殺時必須觸發殘心")
 	_expect(model.momentum >= 20.0, "殘心必須返還勢")
 
 func _test_armor_flash_and_auto_fallback() -> void:
 	var model = CombatModelScript.new()
-	model.training.martial = 50
+	model.training.martial = 60
 	model.auto_skill_slots[0] = "armor_flash"
 	model.auto_skill_slots[1] = "heavy_slash"
 	model.enemy_hp = 9999.0
@@ -212,11 +330,11 @@ func _test_one_slash_mastery() -> void:
 	model.momentum = 100.0
 	var events: Array[Dictionary] = model.step(0.01)
 	var slash := events.filter(func(event: Dictionary) -> bool: return event.type == "heavy_slash")
-	_expect(not slash.is_empty() and is_equal_approx(float(slash[0].mastery), 1.6), "Lv.100 滿勢出刀必須獲得 60% 極意增傷")
+	_expect(not slash.is_empty() and is_equal_approx(float(slash[0].mastery), 1.85), "Lv.100 滿勢出刀必須疊加蓄勢與極意增傷")
 
 func _test_execute_slash_condition() -> void:
 	var model = CombatModelScript.new()
-	model.training.martial = 150
+	model.training.martial = 30
 	model.auto_skill_slots[0] = "execute_slash"
 	model.auto_skill_slots[1] = "heavy_slash"
 	model.enemy_max_hp = 100.0
@@ -227,31 +345,18 @@ func _test_execute_slash_condition() -> void:
 	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "execute_slash"), "敵人生命低於 25% 時必須優先斷首")
 
 func _test_martial_branches() -> void:
-	var no_beat = CombatModelScript.new()
-	no_beat.training.martial = 150
-	_expect(no_beat.select_martial_branch("no_beat"), "Lv.150 必須能選擇武藝分支")
-	no_beat.enemy_hp = 1.0
-	no_beat.enemy_armor = 0.0
-	no_beat._auto_attack()
-	_expect(no_beat._events.any(func(event: Dictionary) -> bool: return event.type == "no_beat"), "無拍子必須在擊殺後額外回勢")
-	var spirit = CombatModelScript.new()
-	spirit.training.martial = 150
-	spirit.select_martial_branch("spirit_focus")
-	spirit.enemy_engagement_time = 20.0
-	spirit.auto_attack_remaining = 999.0
-	spirit.enemy_attack_remaining = 999.0
-	spirit.step(1.0)
-	_expect(spirit.momentum > 9.0, "氣合必須隨交戰時間提高蓄勢速度")
-	var first = CombatModelScript.new()
-	first.training.martial = 150
-	first.select_martial_branch("first_strike")
-	first.enemy_hp = 9999.0
-	first.momentum = 70.0
-	first.auto_attack_remaining = 999.0
-	first.enemy_attack_remaining = 0.0
-	var events: Array[Dictionary] = first.step(0.01)
-	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "first_strike"), "先之先必須在敵人出手前觸發")
-	_expect(not events.any(func(event: Dictionary) -> bool: return event.type == "hero_hit"), "先之先成功時必須中斷敵人攻擊")
+	var execution = CombatModelScript.new()
+	execution.training.martial = 150
+	_expect(execution.select_martial_branch("execution"), "Lv.150 必須能選擇極斬專精")
+	execution.enemy_max_hp = 100.0
+	execution.enemy_hp = 20.0
+	var normal_multiplier := execution._martial_slash_multiplier("execute_slash", 70.0)
+	execution.select_martial_branch("army_break")
+	execution.enemy_is_boss = true
+	var boss_multiplier := execution._martial_slash_multiplier("mountain_break", 90.0)
+	_expect(normal_multiplier > 1.5, "斬首專精必須強化低血斬殺")
+	_expect(boss_multiplier > 1.3, "破軍專精必須強化 Boss 一刀")
+	_expect(execution.select_martial_branch("chain_slash"), "連斬專精必須可以切換")
 
 func _test_boss_spawn() -> void:
 	var model = CombatModelScript.new()
@@ -261,7 +366,7 @@ func _test_boss_spawn() -> void:
 
 func _test_return_blade_auto_counter() -> void:
 	var model = CombatModelScript.new()
-	model.training.physique = 10
+	model.training.physique = 30
 	model.auto_skill_slots[0] = "return_blade"
 	model.enemy_hp = 9999.0
 	model.enemy_attack_remaining = 0.0
@@ -273,7 +378,7 @@ func _test_return_blade_auto_counter() -> void:
 
 func _test_immovable_layers() -> void:
 	var model = CombatModelScript.new()
-	model.training.physique = 30
+	model.training.physique = 10
 	model.enemy_hp = 99999.0
 	model._events.clear()
 	model._enemy_attack("block")
@@ -285,7 +390,7 @@ func _test_immovable_layers() -> void:
 
 func _test_borrow_force_and_collapse_counter() -> void:
 	var model = CombatModelScript.new()
-	model.training.physique = 100
+	model.training.physique = 50
 	model.enemy_hp = 99999.0
 	model._events.clear()
 	model._enemy_attack("perfect")
@@ -308,15 +413,15 @@ func _test_physique_branches() -> void:
 	_expect(iron._events.any(func(event: Dictionary) -> bool: return event.type == "perfect_block"), "鐵壁必須把滿層時的普通格擋提升為完美格擋")
 	var shock = CombatModelScript.new()
 	shock.training.physique = 150
-	shock.select_physique_branch("shock_return")
+	shock.select_physique_branch("borrowed_force")
 	shock.enemy_hp = 99999.0
 	shock.enemy_attack_count = 4
 	shock._events.clear()
-	shock._enemy_attack("block")
+	shock._enemy_attack("perfect")
 	_expect(shock._events.any(func(event: Dictionary) -> bool: return event.type == "shock_return"), "震返必須反制敵方重擊")
 	var inch = CombatModelScript.new()
 	inch.training.physique = 150
-	inch.select_physique_branch("inch_power")
+	inch.select_physique_branch("return_blade")
 	inch.enemy_hp = 99999.0
 	inch._events.clear()
 	inch._enemy_attack("perfect")
@@ -389,7 +494,7 @@ func _test_swift_step_auto_dodge() -> void:
 
 func _test_youren_gain_and_break() -> void:
 	var model = CombatModelScript.new()
-	model.training.agility = 10
+	model.training.agility = 15
 	model.enemy_hp = 99999.0
 	model._events.clear()
 	for index in 2:
@@ -414,7 +519,8 @@ func _test_youren_gain_and_break() -> void:
 	model._events.clear()
 	model._basic_attack(false)
 	model._basic_attack(false)
-	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "swift_cut"), "游刃有餘時每兩次普攻必須追加疾斬")
+	model._basic_attack(false)
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "swift_cut"), "Lv.15 游刃有餘時每三次普攻必須追加疾斬")
 	var finisher = CombatModelScript.new()
 	finisher.training.agility = 10
 	finisher.enemy_hp = 1.0
@@ -457,7 +563,7 @@ func _test_agility_branches() -> void:
 	_expect(instant._events.any(func(event: Dictionary) -> bool: return event.type == "attack" and bool(event.instant_kill)), "瞬殺必須強化閃避後的下一次普攻")
 	var swallow = CombatModelScript.new()
 	swallow.training.agility = 150
-	swallow.select_agility_branch("flying_swallow")
+	swallow.select_agility_branch("chase_wind")
 	swallow.enemy_hp = 999999.0
 	for index in 20:
 		swallow._resolve_dodge("normal", false)
@@ -470,8 +576,8 @@ func _test_shadowless() -> void:
 	model.enemy_hp = 99999.0
 	model.auto_attack_remaining = 999.0
 	model.enemy_attack_remaining = 999.0
-	var events: Array[Dictionary] = model.step(0.01)
-	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "shadowless"), "滿游刃時必須自動進入奧義無影")
+	var events: Array[Dictionary] = model.step(3.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "shadowless"), "滿游刃維持三秒必須進入無影")
 	model._lose_youren("normal")
 	_expect(model.youren == 5, "無影期間普通命中不可降低游刃")
 	model._lose_youren("heavy")

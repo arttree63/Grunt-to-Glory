@@ -14,6 +14,10 @@ var shadowless_active := false
 var magic_marks_level := 0
 var burn_level := 0
 var magic_release_active := false
+var frost_level := 0
+var lightning_level := 0
+var magic_manifest_active := false
+var complete_release_active := false
 var trauma := 0.0
 var _time := 0.0
 var _hero_action := 0.0
@@ -41,6 +45,12 @@ var _magic_slash := 0.0
 var _flame_burst := 0.0
 var _release_burst := 0.0
 var _burn_pulse := 0.0
+var _resonance_burst := 0.0
+var _resonance_element := "fire"
+var _boundary_slash := 0.0
+var _boundary_element := "fire"
+var _manifest_burst := 0.0
+var _complete_release_burst := 0.0
 var _manual_slash := 0.0
 var _manual_slash_side := 1.0
 var _momentum_pulse := 0.0
@@ -90,6 +100,10 @@ func _process(delta: float) -> void:
 	_flame_burst = maxf(0.0, _flame_burst - delta / 0.9)
 	_release_burst = maxf(0.0, _release_burst - delta / 1.0)
 	_burn_pulse = maxf(0.0, _burn_pulse - delta / 0.55)
+	_resonance_burst = maxf(0.0, _resonance_burst - delta / 0.78)
+	_boundary_slash = maxf(0.0, _boundary_slash - delta / 0.95)
+	_manifest_burst = maxf(0.0, _manifest_burst - delta / 0.9)
+	_complete_release_burst = maxf(0.0, _complete_release_burst - delta / 1.25)
 	_manual_slash = maxf(0.0, _manual_slash - delta / 0.18)
 	_momentum_pulse = maxf(0.0, _momentum_pulse - delta * 1.8)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
@@ -109,6 +123,10 @@ func set_state(snapshot: Dictionary) -> void:
 	magic_marks_level = int(snapshot.magic_marks)
 	burn_level = int(snapshot.burn_stacks)
 	magic_release_active = float(snapshot.magic_release_remaining) > 0.0
+	frost_level = int(snapshot.frost_stacks)
+	lightning_level = int(snapshot.lightning_stacks)
+	magic_manifest_active = bool(snapshot.magic_manifest_active)
+	complete_release_active = float(snapshot.complete_release_remaining) > 0.0
 
 func play_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
@@ -120,9 +138,11 @@ func play_events(events: Array[Dictionary]) -> void:
 				_manual_slash = 1.0
 				_manual_slash_side *= -1.0
 				add_trauma(0.05)
-			"heavy_slash":
+			"heavy_slash", "mountain_break":
 				_heavy_slash = 1.0
-				add_trauma(0.42)
+				add_trauma(0.62 if String(event.type) == "mountain_break" else 0.42)
+			"draw_stance":
+				_flow_burst = 1.0
 			"two_cut":
 				_ultimate_slash = 1.0
 				add_trauma(0.72)
@@ -154,6 +174,9 @@ func play_events(events: Array[Dictionary]) -> void:
 			"heaven_return":
 				_heaven_return = 1.0
 				add_trauma(0.86)
+			"immovable_king":
+				_perfect_block = 1.0
+				add_trauma(0.2)
 			"dodge":
 				_dodge_flash = 1.0
 			"swift_step_ready":
@@ -169,9 +192,9 @@ func play_events(events: Array[Dictionary]) -> void:
 				add_trauma(0.34)
 			"opening":
 				_opening_flash = 1.0
-			"shadowless":
+			"shadowless", "shadowless_extreme":
 				_shadowless_burst = 1.0
-				add_trauma(0.45)
+				add_trauma(0.65 if String(event.type) == "shadowless_extreme" else 0.45)
 			"flow_state_entered":
 				_flow_burst = 1.0
 				add_trauma(0.08)
@@ -191,6 +214,20 @@ func play_events(events: Array[Dictionary]) -> void:
 			"magic_sword_release":
 				_release_burst = 1.0
 				add_trauma(0.34)
+			"elemental_resonance", "minor_resonance":
+				_resonance_burst = 1.0
+				_resonance_element = String(event.get("element", "fire"))
+				add_trauma(0.34 if String(event.type) == "elemental_resonance" else 0.14)
+			"elemental_boundary_slash":
+				_boundary_slash = 1.0
+				_boundary_element = String(event.get("element", "fire"))
+				add_trauma(0.58)
+			"magic_sword_manifestation":
+				_manifest_burst = 1.0
+				add_trauma(0.24)
+			"magic_sword_complete_release":
+				_complete_release_burst = 1.0
+				add_trauma(0.82)
 			"momentum_full":
 				_momentum_pulse = 1.0
 			"no_beat":
@@ -259,9 +296,10 @@ func _draw_hero(origin: Vector2) -> void:
 		draw_arc(origin + Vector2(-4, -32), 45.0 + float(immovable_level) * 4.0, -2.35, 0.65, 28, Color("9ee7f2", guard_alpha), 5.0)
 		for index in immovable_level:
 			draw_circle(origin + Vector2(-26.0 + float(index) * 26.0, 30.0), 6.0, Color("bceef4", 0.9))
-	if magic_marks_level > 0 or magic_release_active:
-		var magic_alpha := 0.18 + float(magic_marks_level) * 0.07 + (0.28 if magic_release_active else 0.0)
-		draw_arc(origin + Vector2(5, -38), 42.0 + sin(_time * 7.0) * 3.0, -2.6, 0.6, 28, Color("ff8a45", magic_alpha), 5.0)
+	if magic_marks_level > 0 or magic_release_active or magic_manifest_active:
+		var magic_alpha := 0.18 + float(magic_marks_level) * 0.07 + (0.28 if magic_release_active else 0.0) + (0.18 if magic_manifest_active else 0.0)
+		var aura_color := Color("fff2c7") if complete_release_active else Color("ff8a45")
+		draw_arc(origin + Vector2(5, -38), 42.0 + sin(_time * 7.0) * 3.0, -2.6, 0.6, 28, Color(aura_color, magic_alpha), 7.0 if magic_manifest_active else 5.0)
 		for index in magic_marks_level:
 			var angle := _time * 0.8 + float(index) * TAU / 5.0
 			draw_circle(origin + Vector2(0, -35) + Vector2.from_angle(angle) * 48.0, 3.5, Color("ffd09c", 0.9))
@@ -285,6 +323,15 @@ func _draw_enemy(origin: Vector2) -> void:
 			var flame_x := -24.0 + float(index) * 12.0
 			var flame_height := 14.0 + sin(_time * 11.0 + float(index)) * 5.0
 			draw_polygon(PackedVector2Array([origin + Vector2(flame_x - 5.0, 24.0), origin + Vector2(flame_x, 24.0 - flame_height), origin + Vector2(flame_x + 5.0, 24.0)]), PackedColorArray([Color("f47a32", 0.62 + float(burn_level) * 0.05)]))
+	if frost_level > 0:
+		for index in frost_level:
+			var angle := float(index) * TAU / 5.0 + _time * 0.15
+			var point := origin + Vector2(0, -30) + Vector2.from_angle(angle) * 48.0
+			draw_polygon(PackedVector2Array([point + Vector2(0, -8), point + Vector2(6, 6), point + Vector2(-6, 6)]), PackedColorArray([Color("9eeaff", 0.75)]))
+	if lightning_level > 0:
+		for index in lightning_level:
+			var x := -30.0 + float(index) * 15.0
+			draw_polyline(PackedVector2Array([origin + Vector2(x, -82), origin + Vector2(x + 7, -65), origin + Vector2(x - 2, -48)]), Color("e7c8ff", 0.72), 3.0)
 	draw_circle(origin + Vector2(0, -46 + bob), 30.0, skin)
 	draw_polygon(PackedVector2Array([origin + Vector2(-30, -52 + bob), origin + Vector2(-54, -67 + bob), origin + Vector2(-27, -31 + bob)]), PackedColorArray([skin]))
 	draw_polygon(PackedVector2Array([origin + Vector2(30, -52 + bob), origin + Vector2(54, -67 + bob), origin + Vector2(27, -31 + bob)]), PackedColorArray([skin]))
@@ -442,6 +489,31 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var alpha := sin(clampf(phase * 1.5, 0.0, 1.0) * PI)
 		draw_arc(hero_pos + Vector2(0, -36), 62.0 + phase * 48.0, 0.0, TAU, 36, Color("ffad68", alpha), 9.0)
 		draw_arc(hero_pos + Vector2(0, -36), 46.0 + phase * 34.0, 0.0, TAU, 32, Color("fff4c7", alpha * 0.8), 5.0)
+	if _resonance_burst > 0.0:
+		var phase := 1.0 - _resonance_burst
+		var alpha := sin(clampf(phase * 1.65, 0.0, 1.0) * PI)
+		var color := Color("a8efff") if _resonance_element == "ice" else (Color("d6a7ff") if _resonance_element == "lightning" else Color("ff9a52"))
+		draw_arc(enemy_pos + Vector2(0, -34), 42.0 + phase * 82.0, 0.0, TAU, 34, Color(color, alpha), 10.0)
+		draw_circle(enemy_pos + Vector2(0, -34), 34.0 * alpha, Color(color, alpha * 0.28))
+	if _boundary_slash > 0.0:
+		var phase := 1.0 - _boundary_slash
+		var alpha := sin(clampf(phase * 1.45, 0.0, 1.0) * PI)
+		var color := Color("9eeaff") if _boundary_element == "ice" else (Color("d5a2ff") if _boundary_element == "lightning" else Color("ff8c45"))
+		var center := hero_pos.lerp(enemy_pos, 0.64)
+		draw_line(center + Vector2(-92, 74), center + Vector2(96, -82), Color("ffffff", alpha), 19.0)
+		draw_arc(center, 104.0, -2.35, 0.55, 36, Color(color, alpha), 13.0)
+	if _manifest_burst > 0.0:
+		var phase := 1.0 - _manifest_burst
+		var alpha := sin(clampf(phase * 1.6, 0.0, 1.0) * PI)
+		draw_arc(hero_pos + Vector2(0, -36), 66.0 + phase * 36.0, 0.0, TAU, 36, Color("ffd49c", alpha), 9.0)
+	if _complete_release_burst > 0.0:
+		var phase := 1.0 - _complete_release_burst
+		var alpha := sin(clampf(phase * 1.35, 0.0, 1.0) * PI)
+		var center := hero_pos.lerp(enemy_pos, 0.55)
+		for index in 3:
+			var color: Color = [Color("ff8a45"), Color("9eeaff"), Color("d5a2ff")][index]
+			draw_arc(center, 82.0 + float(index) * 24.0 + phase * 62.0, 0.0, TAU, 40, Color(color, alpha * (1.0 - float(index) * 0.15)), 12.0)
+		draw_line(hero_pos + Vector2(-20, 18), enemy_pos + Vector2(32, -76), Color("ffffff", alpha), 24.0)
 	if _manual_slash > 0.0:
 		var phase := 1.0 - _manual_slash
 		var alpha := sin(clampf(phase * 2.4, 0.0, 1.0) * PI)
@@ -454,10 +526,10 @@ func _spawn_damage(amount: float, source: String) -> void:
 	_damage_cursor = (_damage_cursor + 1) % _damage_pool.size()
 	label.visible = true
 	label.modulate = Color.WHITE
-	var large := source in ["heavy_slash", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "two_cut", "magic_slash", "flame_burst_slash"]
+	var large := source in ["heavy_slash", "mountain_break", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "two_cut", "magic_slash", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "minor_resonance"]
 	label.scale = Vector2(1.75, 1.75) if source == "two_cut" else (Vector2(1.4, 1.4) if large else Vector2.ONE)
 	label.text = str(roundi(amount))
-	var color := Color("fff0a3") if source == "two_cut" else (Color("ffb16f") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash"] else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["swift_step", "swift_cut", "shadow_assault", "flying_swallow", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0"))))))
+	var color := Color("fff0a3") if source == "two_cut" else (Color("d7b2ff") if source in ["lightning_tick", "lightning_chain"] else (Color("a9edff") if source in ["elemental_resonance", "minor_resonance"] else (Color("ffb16f") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash", "elemental_boundary_slash"] else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["swift_step", "swift_cut", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0"))))))))
 	label.add_theme_color_override("font_color", color)
 	label.position = Vector2(size.x * 0.64 + randf_range(-18.0, 18.0), size.y * 0.28)
 	var tween := create_tween()
