@@ -500,7 +500,7 @@ func _on_battlefield_input(event: InputEvent) -> void:
 	if not pressed or training_open or current_page != "combat":
 		return
 	var events := model.manual_attack()
-	var success := events.any(func(item: Dictionary) -> bool: return item.type == "attack" and bool(item.get("manual", false)))
+	var success := events.any(func(item: Dictionary) -> bool: return item.type == "manual_attack")
 	battlefield.show_manual_tap(battle_input_area.get_global_rect().position + position, success)
 	_handle_events(events)
 	_update_hud(model.snapshot())
@@ -593,7 +593,7 @@ func _update_hud(snapshot: Dictionary) -> void:
 		var filled := index < int(snapshot.youren)
 		youren_pips[index].add_theme_stylebox_override("panel", _slot_style(Color("9b86d6") if filled else Color("2e293b"), Color("f0eaff") if filled else Color("756a96"), 2 if filled else 1))
 	manual_hint_label.visible = int(snapshot.kills) < 3
-	manual_hint_label.text = "點擊戰場立即揮砍" if bool(snapshot.manual_attack_ready) else "下一刀 %.1f 秒後可揮砍" % float(snapshot.attack_remaining)
+	manual_hint_label.text = "點擊戰場立即追砍" if bool(snapshot.manual_attack_ready) else "追砍 %.1f 秒後可用" % float(snapshot.manual_attack_remaining)
 	var slots: Array = snapshot.auto_skill_slots
 	for index in CombatModel.AUTO_SLOT_COUNT:
 		var skill_id := String(slots[index])

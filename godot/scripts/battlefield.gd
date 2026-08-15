@@ -95,10 +95,10 @@ func play_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
 		match String(event.type):
 			"attack":
-				var manual := bool(event.get("manual", false))
-				_hero_action = 0.72 if manual else 0.5
-				if manual:
-					add_trauma(0.1)
+				_hero_action = 0.5
+			"manual_attack":
+				_hero_action = 0.82
+				add_trauma(0.12)
 			"heavy_slash":
 				_heavy_slash = 1.0
 				add_trauma(0.42)

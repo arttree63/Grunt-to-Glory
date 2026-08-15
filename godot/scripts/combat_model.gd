@@ -4,7 +4,8 @@ extends RefCounted
 const MAX_TRAINING_LEVEL := 200
 const MAX_MOMENTUM := 100.0
 const AUTO_ATTACK_INTERVAL := 0.96
-const MANUAL_ATTACK_GRACE := 0.12
+const MANUAL_ATTACK_COOLDOWN := 0.45
+const MANUAL_ATTACK_MULTIPLIER := 0.4
 const AUTO_SLOT_COUNT := 5
 const HIGH_ARMOR_THRESHOLD := 18.0
 const MAX_IMMOVABLE := 3
@@ -151,7 +152,8 @@ var instant_kill_ready := false
 var rng := RandomNumberGenerator.new()
 var auto_skill_slots: Array[String] = ["", "", "", "", ""]
 var skill_cooldowns := {}
-var auto_attack_remaining := MANUAL_ATTACK_GRACE
+var auto_attack_remaining := AUTO_ATTACK_INTERVAL
+var manual_attack_remaining := 0.0
 var enemy_attack_remaining := 2.25
 var _momentum_was_full := false
 var _events: Array[Dictionary] = []
@@ -165,6 +167,7 @@ func step(delta: float) -> Array[Dictionary]:
 	opening_remaining = maxf(0.0, opening_remaining - delta)
 	shadowless_remaining = maxf(0.0, shadowless_remaining - delta)
 	shadowless_cooldown = maxf(0.0, shadowless_cooldown - delta)
+	manual_attack_remaining = maxf(0.0, manual_attack_remaining - delta)
 	if skill_is_unlocked("shadowless") and youren >= MAX_YOUREN and shadowless_remaining <= 0.0 and shadowless_cooldown <= 0.0:
 		shadowless_remaining = 6.0
 		shadowless_cooldown = 15.0
@@ -189,10 +192,16 @@ func step(delta: float) -> Array[Dictionary]:
 
 func manual_attack() -> Array[Dictionary]:
 	_events.clear()
-	if auto_attack_remaining > MANUAL_ATTACK_GRACE:
+	if manual_attack_remaining > 0.0:
 		return []
-	auto_attack_remaining = _current_attack_interval()
-	_basic_attack(true)
+	manual_attack_remaining = MANUAL_ATTACK_COOLDOWN
+	var damage := _attack_power() * MANUAL_ATTACK_MULTIPLIER
+	var critical := int(training.agility) > 0 and rng.randf() < _critical_chance()
+	if critical:
+		damage *= 1.5
+	_events.append({"type": "manual_attack", "damage": damage, "critical": critical})
+	_deal_damage(damage, "manual_attack")
+	_add_momentum(2.0, "manual_attack")
 	return _events.duplicate(true)
 
 func spend_training(track: String) -> Array[Dictionary]:
@@ -292,7 +301,7 @@ func snapshot() -> Dictionary:
 		"youren": youren, "max_youren": MAX_YOUREN, "agility_branch": agility_branch,
 		"swift_step_ready": swift_step_ready, "shadowless_remaining": shadowless_remaining,
 		"dodge_chance": _dodge_chance(), "critical_chance": _critical_chance(),
-		"manual_attack_ready": auto_attack_remaining <= MANUAL_ATTACK_GRACE, "attack_remaining": maxf(0.0, auto_attack_remaining - MANUAL_ATTACK_GRACE),
+		"manual_attack_ready": manual_attack_remaining <= 0.0, "manual_attack_remaining": manual_attack_remaining,
 		"auto_skill_slots": auto_skill_slots.duplicate(), "skill_cooldowns": skill_cooldowns.duplicate(true),
 		"attack_interval": _current_attack_interval(), "engagement_time": enemy_engagement_time,
 	}
