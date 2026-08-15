@@ -7,6 +7,7 @@ var enemy_armor_ratio := 0.0
 var enemy_is_boss := false
 var enemy_heavy_windup := false
 var enemy_attack_type := "普通"
+var enemy_archetype := "grunt"
 var immovable_level := 0
 var return_blade_ready := false
 var youren_level := 0
@@ -118,6 +119,7 @@ func set_state(snapshot: Dictionary) -> void:
 	enemy_armor_ratio = clampf(float(snapshot.enemy_armor) / 50.0, 0.0, 1.0)
 	enemy_is_boss = bool(snapshot.enemy_is_boss)
 	enemy_attack_type = String(snapshot.enemy_attack_type)
+	enemy_archetype = String(snapshot.enemy_archetype)
 	enemy_heavy_windup = enemy_attack_type != "普通" and float(snapshot.enemy_attack_remaining) <= 0.8
 	immovable_level = int(snapshot.immovable)
 	return_blade_ready = bool(snapshot.return_blade_ready)
@@ -369,6 +371,7 @@ func _draw_hero(origin: Vector2) -> void:
 func _draw_enemy(origin: Vector2) -> void:
 	var bob := sin(_time * 3.2) * 3.0
 	var skin := Color.WHITE if _enemy_flash > 0.0 else Color("71964a")
+	var body_scale := 1.18 if enemy_archetype == "brute" else (0.86 if enemy_archetype in ["raider", "caster"] else 1.0)
 	if enemy_heavy_windup:
 		var pulse := 0.55 + sin(_time * 14.0) * 0.18
 		var warning_color := Color("e85a3d") if enemy_attack_type == "重擊" else (Color("b76be0") if enemy_attack_type == "範圍" else Color("f0d55a"))
@@ -387,7 +390,7 @@ func _draw_enemy(origin: Vector2) -> void:
 		for index in lightning_level:
 			var x := -30.0 + float(index) * 15.0
 			draw_polyline(PackedVector2Array([origin + Vector2(x, -82), origin + Vector2(x + 7, -65), origin + Vector2(x - 2, -48)]), Color("e7c8ff", 0.72), 3.0)
-	draw_circle(origin + Vector2(0, -46 + bob), 30.0, skin)
+	draw_circle(origin + Vector2(0, -46 + bob), 30.0 * body_scale, skin)
 	draw_polygon(PackedVector2Array([origin + Vector2(-30, -52 + bob), origin + Vector2(-54, -67 + bob), origin + Vector2(-27, -31 + bob)]), PackedColorArray([skin]))
 	draw_polygon(PackedVector2Array([origin + Vector2(30, -52 + bob), origin + Vector2(54, -67 + bob), origin + Vector2(27, -31 + bob)]), PackedColorArray([skin]))
 	draw_circle(origin + Vector2(-10, -51 + bob), 4.5, Color("f6d56a"))
@@ -395,6 +398,18 @@ func _draw_enemy(origin: Vector2) -> void:
 	draw_polygon(PackedVector2Array([origin + Vector2(-28, -20 + bob), origin + Vector2(30, -20 + bob), origin + Vector2(38, 31 + bob), origin + Vector2(-38, 31 + bob)]), PackedColorArray([Color("4d382d")]))
 	draw_line(origin + Vector2(-27, 5 + bob), origin + Vector2(-52, 42 + bob), Color("8f6743"), 8.0)
 	draw_line(origin + Vector2(27, 5 + bob), origin + Vector2(52, 42 + bob), Color("8f6743"), 8.0)
+	if enemy_archetype == "raider":
+		draw_line(origin + Vector2(-25, -5 + bob), origin + Vector2(-58, -35 + bob), Color("d7dce0"), 5.0)
+		draw_line(origin + Vector2(25, -5 + bob), origin + Vector2(58, -35 + bob), Color("d7dce0"), 5.0)
+	elif enemy_archetype == "brute":
+		draw_line(origin + Vector2(22, -8 + bob), origin + Vector2(67, -74 + bob), Color("74543c"), 10.0)
+		draw_rect(Rect2(origin + Vector2(51, -91 + bob), Vector2(35, 26)), Color("68747a"))
+	elif enemy_archetype == "shield":
+		draw_polygon(PackedVector2Array([origin + Vector2(-62, -42 + bob), origin + Vector2(-20, -55 + bob), origin + Vector2(-16, 20 + bob), origin + Vector2(-48, 40 + bob)]), PackedColorArray([Color("596a72")]))
+		draw_line(origin + Vector2(-46, -33 + bob), origin + Vector2(-27, 22 + bob), Color("a6b2b7"), 4.0)
+	elif enemy_archetype == "caster":
+		draw_line(origin + Vector2(31, 8 + bob), origin + Vector2(63, -80 + bob), Color("806044"), 7.0)
+		draw_circle(origin + Vector2(65, -87 + bob), 11.0, Color("b76be0", 0.8))
 	if enemy_armor_ratio > 0.05:
 		var armor_color := Color("e7eff2") if _armor_break_flash > 0.0 else Color("778a93")
 		draw_arc(origin + Vector2(0, -16 + bob), 47.0, -2.65, -0.48, 18, armor_color, 5.0 + enemy_armor_ratio * 5.0)
@@ -583,7 +598,20 @@ func _spawn_damage(amount: float, source: String) -> void:
 	label.modulate = Color.WHITE
 	var large := source in ["heavy_slash", "mountain_break", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "two_cut", "magic_slash", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "minor_resonance"]
 	label.scale = Vector2(1.75, 1.75) if source == "two_cut" else (Vector2(1.4, 1.4) if large else Vector2.ONE)
-	label.text = str(roundi(amount))
+	var prefix := ""
+	if source in ["execute_slash", "two_cut"]:
+		prefix = "斬 "
+	elif source in ["counter", "collapse_counter", "heaven_return", "first_strike"]:
+		prefix = "反 "
+	elif source in ["swift_step", "swift_cut", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme"]:
+		prefix = "影 "
+	elif source in ["magic_slash", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "minor_resonance"]:
+		prefix = "爆 "
+	elif source.begins_with("ally_"):
+		prefix = "援 "
+	elif source == "critical_attack":
+		prefix = "暴 "
+	label.text = "%s%d%s" % [prefix, roundi(amount), "!" if source == "critical_attack" else ""]
 	var color := Color("fff0a3") if source == "two_cut" else (Color("d7b2ff") if source in ["lightning_tick", "lightning_chain"] else (Color("a9edff") if source in ["elemental_resonance", "minor_resonance"] else (Color("ffb16f") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash", "elemental_boundary_slash"] else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["swift_step", "swift_cut", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0"))))))))
 	label.add_theme_color_override("font_color", color)
 	label.position = Vector2(size.x * 0.64 + randf_range(-18.0, 18.0), size.y * 0.28)

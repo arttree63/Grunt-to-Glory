@@ -32,6 +32,14 @@ const ALLY_DEFS := {
 	"mage": {"name": "隨軍法師", "unlock_level": 130, "role": "追加魔力攻擊與破甲支援"},
 	"cleric": {"name": "隨軍聖職", "unlock_level": 200, "role": "進攻時同步為全軍提供小型治療"},
 }
+const ENEMY_DEFS := {
+	"grunt": {"name": "林地哥布林", "role": "普通近戰", "hint": "攻守平衡", "hp": 1.0, "armor": 1.0, "damage": 1.0, "interval": 2.25},
+	"raider": {"name": "快攻斥候", "role": "高頻攻擊", "hint": "會頻繁養出格擋與閃避觸發", "hp": 0.86, "armor": 0.72, "damage": 0.72, "interval": 1.35},
+	"brute": {"name": "巨槌重兵", "role": "慢速重擊", "hint": "蓄力久但傷害高，適合閃避或借力反擊", "hp": 1.28, "armor": 1.08, "damage": 1.48, "interval": 3.35},
+	"shield": {"name": "黑鐵盾衛", "role": "高護甲", "hint": "普通攻擊效率較低，破甲與魔劍更有效", "hp": 1.3, "armor": 2.45, "damage": 0.9, "interval": 2.65},
+	"caster": {"name": "林地咒術師", "role": "範圍施法", "hint": "以範圍與必中術打斷節奏", "hp": 0.92, "armor": 0.68, "damage": 1.18, "interval": 3.0},
+	"boss": {"name": "重甲哥布林王", "role": "首領", "hint": "混合重擊、範圍與必中攻擊", "hp": 2.2, "armor": 1.0, "damage": 1.25, "interval": 2.0},
+}
 const GROWTH := {
 	"common": {"hp": 1.5, "mp": 0.0, "attack": 0.25, "defense": 0.15, "attack_speed": 0.0},
 	"martial": {"hp": 0.5, "mp": 0.0, "attack": 0.7, "defense": 0.2, "attack_speed": 0.0},
@@ -458,6 +466,8 @@ var enemy_hp := 52.0
 var enemy_max_hp := 52.0
 var enemy_armor := 5.8
 var enemy_is_boss := false
+var enemy_archetype := "grunt"
+var enemy_is_elite := false
 var enemy_engagement_time := 0.0
 var enemy_attack_count := 0
 var kills := 0
@@ -595,7 +605,7 @@ func step(delta: float) -> Array[Dictionary]:
 		_basic_attack(false)
 		_try_auto_skill()
 	if enemy_attack_remaining <= 0.0:
-		enemy_attack_remaining += maxf(1.25, 2.25 - stage * 0.02)
+		enemy_attack_remaining += _enemy_attack_interval()
 		if not _try_first_strike():
 			_enemy_attack()
 	if ally_attack_remaining <= 0.0 and _ally_count() > 0 and enemy_hp > 0.0:
@@ -757,7 +767,10 @@ func snapshot() -> Dictionary:
 		"hero_hp": hero_hp, "hero_max_hp": _hero_max_hp(), "hero_mp": hero_mp, "hero_max_mp": _hero_max_mp(),
 		"attack": _attack_power(), "magic_power": _magic_power(), "defense": _defense(),
 		"enemy_hp": enemy_hp, "enemy_max_hp": enemy_max_hp, "enemy_armor": enemy_armor,
-		"enemy_is_boss": enemy_is_boss, "enemy_name": "重甲哥布林王" if enemy_is_boss else "林地哥布林",
+		"enemy_is_boss": enemy_is_boss, "enemy_is_elite": enemy_is_elite,
+		"enemy_archetype": enemy_archetype, "enemy_name": String(_enemy_definition().name),
+		"enemy_role": String(_enemy_definition().role), "enemy_hint": String(_enemy_definition().hint),
+		"route_position": _route_position(), "route_phase": _route_phase(),
 		"enemy_attack_type": _next_enemy_attack_type(), "enemy_attack_remaining": enemy_attack_remaining,
 		"kills": kills, "training_points": training_points, "training": training.duplicate(true),
 		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch, "draw_stance_remaining": draw_stance_remaining,
@@ -1543,7 +1556,9 @@ func _enemy_attack(block_override := "") -> void:
 	enemy_attack_count += 1
 	var attack_type := _current_enemy_attack_type_id()
 	var attack_multiplier: float = float({"normal": 1.0, "heavy": 1.8, "area": 1.35, "sure_hit": 1.55}.get(attack_type, 1.0))
-	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier
+	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(_enemy_definition().damage)
+	if enemy_is_elite:
+		raw_damage *= 1.18
 	if enemy_weakened_remaining > 0.0:
 		raw_damage *= 0.82 if int(training.physique) >= 75 else 0.9
 	var incoming := raw_damage * 100.0 / (100.0 + _defense())
@@ -1806,6 +1821,14 @@ func _current_enemy_attack_type_id() -> String:
 	return _attack_type_for_count(enemy_attack_count)
 
 func _attack_type_for_count(count: int) -> String:
+	if enemy_archetype == "raider":
+		return "area" if count % 4 == 0 else "normal"
+	if enemy_archetype == "brute":
+		return "heavy" if count % 2 == 0 else "normal"
+	if enemy_archetype == "shield":
+		return "heavy" if count % 4 == 0 else "normal"
+	if enemy_archetype == "caster":
+		return "sure_hit" if count % 3 == 0 else "area"
 	if count % 11 == 0:
 		return "sure_hit"
 	if count % 7 == 0:
@@ -1851,10 +1874,13 @@ func _enemy_defeated() -> void:
 	_events.append({"type": "training_point", "gain": point_gain, "points": training_points})
 
 func _spawn_enemy() -> void:
-	enemy_is_boss = stage % 10 == 0
-	enemy_max_hp = (52.0 + pow(float(stage - 1), 1.08) * 9.0) * (2.2 if enemy_is_boss else 1.0)
+	enemy_archetype = _enemy_archetype_for_stage(stage)
+	enemy_is_boss = enemy_archetype == "boss"
+	enemy_is_elite = _route_position() == 9
+	var definition := _enemy_definition()
+	enemy_max_hp = (52.0 + pow(float(stage - 1), 1.08) * 9.0) * float(definition.hp) * (1.35 if enemy_is_elite else 1.0)
 	enemy_hp = enemy_max_hp
-	enemy_armor = 5.0 + float(stage) * 0.8 + (20.0 if enemy_is_boss else 0.0)
+	enemy_armor = (5.0 + float(stage) * 0.8) * float(definition.armor) + (20.0 if enemy_is_boss else 0.0)
 	enemy_engagement_time = 0.0
 	enemy_attack_count = 0
 	counter_chain = 0
@@ -1870,7 +1896,37 @@ func _spawn_enemy() -> void:
 	secondary_hit_counter = 0
 	burning_hits = 0
 	burn_tick_remaining = 1.0
+	enemy_attack_remaining = minf(_enemy_attack_interval(), 1.4)
 	ally_attack_remaining = minf(ally_attack_remaining, 0.8) if _ally_count() > 0 else ALLY_ATTACK_INTERVAL
+
+func _enemy_definition() -> Dictionary:
+	return ENEMY_DEFS.get(enemy_archetype, ENEMY_DEFS.grunt)
+
+func _enemy_attack_interval() -> float:
+	var interval := float(_enemy_definition().interval) - minf(0.45, float(stage) * 0.012)
+	if enemy_is_elite:
+		interval *= 0.88
+	return maxf(0.85, interval)
+
+func _enemy_archetype_for_stage(target_stage: int) -> String:
+	var position := ((maxi(1, target_stage) - 1) % 10) + 1
+	return {
+		1: "grunt", 2: "raider", 3: "grunt", 4: "brute", 5: "shield",
+		6: "raider", 7: "caster", 8: "brute", 9: "shield", 10: "boss",
+	}.get(position, "grunt")
+
+func _route_position() -> int:
+	return ((maxi(1, stage) - 1) % 10) + 1
+
+func _route_phase() -> String:
+	var position := _route_position()
+	if position <= 3:
+		return "遭遇"
+	if position <= 6:
+		return "戰線"
+	if position <= 9:
+		return "危機"
+	return "首領"
 
 func _add_momentum(amount: float, source: String) -> void:
 	if int(training.martial) < 10:

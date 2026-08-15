@@ -39,6 +39,7 @@ func _run_tests() -> void:
 	_test_execute_slash_condition()
 	_test_martial_branches()
 	_test_boss_spawn()
+	_test_enemy_archetypes_and_route_rhythm()
 	_test_return_blade_auto_counter()
 	_test_immovable_layers()
 	_test_borrow_force_and_collapse_counter()
@@ -62,7 +63,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 51")
+		print("Godot tests passed: 52")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -481,6 +482,27 @@ func _test_boss_spawn() -> void:
 	model.stage = 10
 	model._spawn_enemy()
 	_expect(model.enemy_is_boss and model.enemy_armor >= CombatModelScript.HIGH_ARMOR_THRESHOLD, "每 10 戰首領必須具備高護甲並啟用破甲需求")
+
+func _test_enemy_archetypes_and_route_rhythm() -> void:
+	var model = CombatModelScript.new()
+	var expected := {2: "raider", 4: "brute", 5: "shield", 7: "caster", 10: "boss"}
+	for target_stage: int in expected:
+		model.stage = target_stage
+		model._spawn_enemy()
+		_expect(model.enemy_archetype == String(expected[target_stage]), "路段 %d 必須出現預定敵人類型" % target_stage)
+	model.stage = 2
+	model._spawn_enemy()
+	var raider_interval := model._enemy_attack_interval()
+	model.stage = 4
+	model._spawn_enemy()
+	_expect(model._enemy_attack_interval() > raider_interval, "巨槌重兵必須比快攻斥候更慢出手")
+	_expect(model._attack_type_for_count(2) == "heavy", "巨槌重兵必須穩定使用重擊")
+	model.stage = 7
+	model._spawn_enemy()
+	_expect(model._attack_type_for_count(1) == "area" and model._attack_type_for_count(3) == "sure_hit", "咒術師必須以範圍與必中術攻擊")
+	model.stage = 9
+	model._spawn_enemy()
+	_expect(model.enemy_is_elite and model._route_phase() == "危機", "首領前必須有精英危機戰")
 
 func _test_return_blade_auto_counter() -> void:
 	var model = CombatModelScript.new()

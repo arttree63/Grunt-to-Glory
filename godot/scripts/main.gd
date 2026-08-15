@@ -793,9 +793,10 @@ func _close_training() -> void:
 	else: (nav_buttons[current_page] as Button).grab_focus()
 
 func _update_hud(snapshot: Dictionary) -> void:
-	var boss_mark := "首領 · " if bool(snapshot.enemy_is_boss) else ""
+	var boss_mark := "首領 · " if bool(snapshot.enemy_is_boss) else ("精英 · " if bool(snapshot.enemy_is_elite) else "")
 	var attack_hint := " · %s準備" % String(snapshot.enemy_attack_type) if String(snapshot.enemy_attack_type) != "普通" and float(snapshot.enemy_attack_remaining) <= 0.8 else ""
-	enemy_label.text = "%s%s · 第 %d 戰 · 護甲 %d%s" % [boss_mark, String(snapshot.enemy_name), int(snapshot.stage), roundi(float(snapshot.enemy_armor)), attack_hint]
+	enemy_label.text = "路段 %d/10・%s｜%s%s\n%s · 護甲 %d%s" % [int(snapshot.route_position), String(snapshot.route_phase), boss_mark, String(snapshot.enemy_name), String(snapshot.enemy_role), roundi(float(snapshot.enemy_armor)), attack_hint]
+	enemy_label.tooltip_text = String(snapshot.enemy_hint)
 	kills_label.text = "擊倒 %d" % int(snapshot.kills)
 	enemy_bar.max_value = float(snapshot.enemy_max_hp)
 	enemy_bar.value = float(snapshot.enemy_hp)
