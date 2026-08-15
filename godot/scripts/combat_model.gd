@@ -10,7 +10,7 @@ const AUTO_SLOT_COUNT := 5
 const HIGH_ARMOR_THRESHOLD := 18.0
 const MAX_IMMOVABLE := 3
 const MAX_YOUREN := 5
-const FLOW_HITS_REQUIRED := 4
+const FLOW_HITS_REQUIRED := 2
 const DODGE_CAP := 0.55
 const TRAINING_ORDER := ["martial", "physique", "agility", "magic", "faith", "command"]
 const TRAINING_DEFS := {
@@ -94,7 +94,7 @@ const SKILL_DEFS := {
 	},
 	"flowing_ease": {
 		"name": "游刃", "short": "游刃", "type": "passive", "track": "agility", "level": 10,
-		"condition": "連續攻擊 4 次 +1，閃避 +2，擊殺 +1；最高 5 層", "tags": ["DODGE", "STACK"], "implemented": true,
+		"condition": "連續攻擊 2 次 +1，閃避 +2，擊殺 +1；最高 5 層", "tags": ["DODGE", "STACK"], "implemented": true,
 	},
 	"shadow_assault": {
 		"name": "影襲", "short": "影襲", "type": "passive", "track": "agility", "level": 30,
@@ -572,7 +572,7 @@ func _lose_youren(attack_type: String) -> void:
 	flow_hits = 0
 	if youren <= 0:
 		return
-	var loss := youren if attack_type in ["heavy", "sure_hit"] else 2
+	var loss := youren if attack_type in ["heavy", "sure_hit"] else 1
 	youren = maxi(0, youren - loss)
 	instant_kill_ready = false
 	_events.append({"type": "youren_changed", "value": youren})

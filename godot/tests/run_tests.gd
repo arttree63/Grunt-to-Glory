@@ -304,14 +304,14 @@ func _test_youren_gain_and_break() -> void:
 	model.training.agility = 10
 	model.enemy_hp = 99999.0
 	model._events.clear()
-	for index in 4:
+	for index in 2:
 		model._basic_attack(false)
-	_expect(model.youren == 1 and model.flow_hits == 0, "連續攻擊 4 次未被命中必須獲得 1 層游刃")
+	_expect(model.youren == 1 and model.flow_hits == 0, "連續攻擊 2 次未被命中必須獲得 1 層游刃")
 	model._resolve_dodge("normal", false)
 	_expect(model.youren == 3, "成功閃避必須獲得 2 層游刃")
 	model.youren = 5
 	model._lose_youren("normal")
-	_expect(model.youren == 3, "受到普通命中必須失去 2 層游刃")
+	_expect(model.youren == 4, "受到普通命中只失去 1 層游刃")
 	model._lose_youren("heavy")
 	_expect(model.youren == 0, "受到重擊必須打斷全部游刃與連擊")
 	var finisher = CombatModelScript.new()
