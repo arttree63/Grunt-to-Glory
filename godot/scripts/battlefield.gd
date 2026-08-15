@@ -18,6 +18,7 @@ var frost_level := 0
 var lightning_level := 0
 var magic_manifest_active := false
 var complete_release_active := false
+var ally_count := 0
 var trauma := 0.0
 var _time := 0.0
 var _hero_action := 0.0
@@ -51,6 +52,7 @@ var _boundary_slash := 0.0
 var _boundary_element := "fire"
 var _manifest_burst := 0.0
 var _complete_release_burst := 0.0
+var _ally_action := 0.0
 var _manual_slash := 0.0
 var _manual_slash_side := 1.0
 var _momentum_pulse := 0.0
@@ -104,6 +106,7 @@ func _process(delta: float) -> void:
 	_boundary_slash = maxf(0.0, _boundary_slash - delta / 0.95)
 	_manifest_burst = maxf(0.0, _manifest_burst - delta / 0.9)
 	_complete_release_burst = maxf(0.0, _complete_release_burst - delta / 1.25)
+	_ally_action = maxf(0.0, _ally_action - delta / 0.48)
 	_manual_slash = maxf(0.0, _manual_slash - delta / 0.18)
 	_momentum_pulse = maxf(0.0, _momentum_pulse - delta * 1.8)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
@@ -127,6 +130,7 @@ func set_state(snapshot: Dictionary) -> void:
 	lightning_level = int(snapshot.lightning_stacks)
 	magic_manifest_active = bool(snapshot.magic_manifest_active)
 	complete_release_active = float(snapshot.complete_release_remaining) > 0.0
+	ally_count = int(snapshot.ally_count)
 
 func play_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
@@ -242,6 +246,9 @@ func play_events(events: Array[Dictionary]) -> void:
 			"coordinated_pursuit", "reverse_pursuit":
 				_flying_swallow = 1.0
 				add_trauma(0.18)
+			"ally_attack":
+				_ally_action = 1.0
+				add_trauma(0.08)
 			"vanguard_slash", "army_break_order":
 				_heavy_slash = 1.0
 				add_trauma(0.5)
@@ -280,6 +287,7 @@ func _draw() -> void:
 	var shake_offset := Vector2(sin(_time * 31.0) * 10.0, sin(_time * 43.0) * 7.0) * shake
 	var enemy_pos := Vector2(size.x * 0.68, size.y * 0.36) + shake_offset
 	var hero_pos := Vector2(size.x * 0.33, size.y * 0.68) + shake_offset
+	var ally_lunge := sin(_ally_action * PI) * minf(size.x * 0.12, 46.0)
 	var lunge := sin(_hero_action * PI) * minf(size.x * 0.16, 72.0)
 	var heavy_lunge := sin(_heavy_slash * PI) * minf(size.x * 0.22, 92.0)
 	var ultimate_lunge := sin(_ultimate_slash * PI) * minf(size.x * 0.27, 110.0)
@@ -293,6 +301,11 @@ func _draw() -> void:
 	var dodge_shift := sin(_dodge_flash * PI) * minf(size.x * 0.15, 64.0)
 	hero_pos.x += lunge + heavy_lunge + ultimate_lunge + armor_lunge + execute_lunge + first_lunge + counter_lunge + collapse_lunge + heaven_lunge + agility_lunge - dodge_shift
 	_draw_enemy(enemy_pos)
+	for index in ally_count:
+		var row := index / 2
+		var column := index % 2
+		var ally_pos := hero_pos + Vector2(-65.0 - float(column) * 36.0 + ally_lunge, 24.0 - float(row) * 56.0)
+		_draw_ally(ally_pos, index)
 	_draw_afterimages(hero_pos)
 	_draw_hero(hero_pos)
 	_draw_skill_fx(hero_pos, enemy_pos)
@@ -307,6 +320,25 @@ func _draw_forest() -> void:
 		var x := fmod(float(index * 71), maxf(size.x, 1.0))
 		var y := size.y * 0.53 + fmod(float(index * 37), size.y * 0.25)
 		draw_circle(Vector2(x, y), 2.0, Color("d4aa62", 0.42))
+
+func _draw_ally(origin: Vector2, index: int) -> void:
+	var bob := sin(_time * 4.0 + float(index) * 0.8) * 1.5
+	var body_colors := [Color("496477"), Color("566e50"), Color("5d4f79"), Color("d7c88b")]
+	var body: Color = body_colors[mini(index, body_colors.size() - 1)]
+	draw_polygon(PackedVector2Array([origin + Vector2(-13, 8 + bob), origin + Vector2(13, 8 + bob), origin + Vector2(10, -21 + bob), origin + Vector2(-10, -21 + bob)]), PackedColorArray([body]))
+	draw_circle(origin + Vector2(0, -31 + bob), 10.0, Color("caa875"))
+	draw_polygon(PackedVector2Array([origin + Vector2(-11, -34 + bob), origin + Vector2(0, -45 + bob), origin + Vector2(12, -34 + bob)]), PackedColorArray([Color("59656a")]))
+	if index == 0:
+		draw_circle(origin + Vector2(-14, -2 + bob), 11.0, Color("647981"))
+		draw_line(origin + Vector2(9, -15 + bob), origin + Vector2(28, -39 + bob), Color("e7dec2"), 4.0)
+	elif index == 1:
+		draw_line(origin + Vector2(10, -16 + bob), origin + Vector2(30, -30 + bob), Color("d9e1d1"), 3.0)
+	elif index == 2:
+		draw_line(origin + Vector2(10, -14 + bob), origin + Vector2(24, -38 + bob), Color("a77f54"), 4.0)
+		draw_circle(origin + Vector2(26, -42 + bob), 5.0, Color("cda8ff"))
+	else:
+		draw_line(origin + Vector2(10, -14 + bob), origin + Vector2(23, -37 + bob), Color("c7b36f"), 4.0)
+		draw_circle(origin + Vector2(24, -40 + bob), 5.0, Color("fff1a8"))
 
 func _draw_hero(origin: Vector2) -> void:
 	var bob := sin(_time * 4.2) * 2.0

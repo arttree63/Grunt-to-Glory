@@ -15,6 +15,7 @@ const MAX_MAGIC_MARKS := 5
 const MAX_BURN := 5
 const MAX_HOLY_SEALS := 5
 const MAX_MILITARY_MOMENTUM := 100.0
+const ALLY_ATTACK_INTERVAL := 2.6
 const DODGE_CAP := 0.55
 const TRAINING_ORDER := ["martial", "physique", "agility", "magic", "faith", "command"]
 const TRAINING_DEFS := {
@@ -24,6 +25,12 @@ const TRAINING_DEFS := {
 	"magic": {"name": "魔法", "style": "魔劍流", "implemented": true, "special": "魔紋、燃燒、元素爆發"},
 	"faith": {"name": "信仰", "style": "聖劍流", "implemented": true, "special": "聖印、治療、護盾、制裁"},
 	"command": {"name": "統御", "style": "軍團劍技流", "implemented": true, "special": "軍勢、友軍、雙向連攜"},
+}
+const ALLY_DEFS := {
+	"infantry": {"name": "王國步兵", "unlock_level": 10, "role": "前排作戰，定時揮劍並為主角累積軍勢"},
+	"scout": {"name": "王國斥候", "unlock_level": 80, "role": "高頻追擊，提高軍團連攜次數"},
+	"mage": {"name": "隨軍法師", "unlock_level": 130, "role": "追加魔力攻擊與破甲支援"},
+	"cleric": {"name": "隨軍聖職", "unlock_level": 200, "role": "進攻時同步為全軍提供小型治療"},
 }
 const GROWTH := {
 	"common": {"hp": 1.5, "mp": 0.0, "attack": 0.25, "defense": 0.15, "attack_speed": 0.0},
@@ -225,7 +232,7 @@ const SKILL_DEFS := {
 	},
 	"military_momentum": {
 		"name": "軍勢", "short": "軍勢", "type": "passive", "track": "command", "level": 10,
-		"condition": "主角、友軍攻擊與擊殺累積軍勢", "tags": ["COMMAND", "MILITARY_MOMENTUM"], "implemented": true,
+		"condition": "統御 Lv.10 時王國步兵入隊；雙方攻擊與擊殺累積軍勢", "tags": ["COMMAND", "MILITARY_MOMENTUM"], "implemented": true,
 	},
 	"coordinated_pursuit": {
 		"name": "協同追擊", "short": "協擊", "type": "passive", "track": "command", "level": 20,
@@ -423,26 +430,26 @@ const FAITH_MILESTONES := {
 	195: {"name": "顯現升華", "description": "神聖顯現的輸出與護盾提高"}, 200: {"name": "聖劍降臨", "description": "解鎖純信仰終極奧義"},
 }
 const COMMAND_MILESTONES := {
-	5: {"name": "統帥初成", "description": "生命與友軍傷害提高"}, 10: {"name": "軍勢", "description": "主角與友軍行動開始累積軍勢"},
+	5: {"name": "統帥初成", "description": "生命與友軍傷害提高"}, 10: {"name": "第一位友軍", "description": "王國步兵正式入隊，解鎖軍勢與友軍自動攻擊"},
 	15: {"name": "前線鼓舞", "description": "主角攻擊獲得更多軍勢"}, 20: {"name": "協同追擊", "description": "主角命中後友軍可追擊"},
 	25: {"name": "勝勢", "description": "擊殺後額外返還軍勢"}, 30: {"name": "先鋒斬", "description": "解鎖主角先斬、前排追擊的軍團劍技"},
 	35: {"name": "先鋒突進", "description": "先鋒追擊傷害提高"}, 40: {"name": "高昂軍勢", "description": "高軍勢時友軍攻速提高"},
 	45: {"name": "軍威", "description": "滿軍勢時主角與友軍攻擊提高"}, 50: {"name": "軍團號令", "description": "命令所有存活友軍同時進攻"},
 	55: {"name": "軍備突破", "description": "友軍攻擊與生命提高"}, 60: {"name": "協擊熟練", "description": "主角技能觸發友軍追擊率提高"},
 	65: {"name": "軍勢效率", "description": "軍勢獲取效率提高"}, 70: {"name": "列陣", "description": "高軍勢時前排防禦、後排增傷"},
-	75: {"name": "戰陣深化", "description": "陣形提供的攻防收益提高"}, 80: {"name": "兵種特性", "description": "友軍依兵種提供不同追擊效果"},
+	75: {"name": "戰陣深化", "description": "陣形提供的攻防收益提高"}, 80: {"name": "第二位友軍", "description": "王國斥候入隊，提供高頻追擊"},
 	85: {"name": "結陣固守", "description": "友軍生存能力提高"}, 90: {"name": "追擊令", "description": "破甲與斬殺後獲得全軍追擊"},
 	95: {"name": "追擊令深化", "description": "全軍追擊傷害與軍勢回收提高"}, 100: {"name": "軍團劍陣", "description": "主角、先鋒與遠程形成固定連攜"},
 	105: {"name": "戰陣磨練", "description": "軍勢與友軍傷害提高"}, 110: {"name": "追擊回勢", "description": "軍團追擊後返還軍勢"},
 	115: {"name": "號令熟練", "description": "軍團號令冷卻縮短"}, 120: {"name": "護衛", "description": "友軍分攤主角承受的大量傷害"},
-	125: {"name": "全軍固守", "description": "友軍減傷與護衛效果提高"}, 130: {"name": "破軍劍令", "description": "解鎖依存活友軍數強化的軍團劍技"},
+	125: {"name": "全軍固守", "description": "友軍減傷與護衛效果提高"}, 130: {"name": "第三位友軍・破軍劍令", "description": "隨軍法師入隊，並解鎖依存活友軍數強化的軍團劍技"},
 	135: {"name": "萬人鋒", "description": "破軍劍令依友軍數取得額外破甲"}, 140: {"name": "軍令節制", "description": "軍勢消耗降低"},
 	145: {"name": "軍團突破", "description": "軍團技能與追擊傷害提高"}, 150: {"name": "統御專精", "description": "選擇先鋒、陣軍或號令"},
 	155: {"name": "專精增幅", "description": "專精效果提高"}, 160: {"name": "號令留勢", "description": "滿軍勢時首次號令保留部分軍勢"},
 	165: {"name": "協擊升華", "description": "協同追擊頻率與傷害提高"}, 170: {"name": "雙向連攜", "description": "友軍特殊攻擊有機會反向觸發主角追擊"},
 	175: {"name": "全軍極境", "description": "友軍生命與傷害提高"}, 180: {"name": "奮戰", "description": "軍團號令後全軍暫時提高攻速與追擊"},
 	185: {"name": "軍勢永續", "description": "追擊與軍勢效率提高"}, 190: {"name": "軍神", "description": "高軍勢與友軍存活時進入雙向高頻連攜"},
-	195: {"name": "軍神深化", "description": "軍神期間連攜頻率與軍勢效率提高"}, 200: {"name": "萬軍一劍", "description": "解鎖純統御終極奧義"},
+	195: {"name": "軍神深化", "description": "軍神期間連攜頻率與軍勢效率提高"}, 200: {"name": "第四位友軍・萬軍一劍", "description": "隨軍聖職入隊，解鎖純統御終極奧義"},
 }
 
 var stage := 1
@@ -498,6 +505,8 @@ var military_momentum := 0.0
 var legion_fervor_remaining := 0.0
 var war_god_remaining := 0.0
 var _war_god_was_active := false
+var ally_attack_remaining := ALLY_ATTACK_INTERVAL
+var ally_attack_cursor := 0
 var return_blade_ready := false
 var swift_step_ready := false
 var recent_prevented_damage := 0.0
@@ -546,6 +555,8 @@ func step(delta: float) -> Array[Dictionary]:
 	divine_grace_cooldown = maxf(0.0, divine_grace_cooldown - delta)
 	legion_fervor_remaining = maxf(0.0, legion_fervor_remaining - delta)
 	war_god_remaining = maxf(0.0, war_god_remaining - delta)
+	if _ally_count() > 0:
+		ally_attack_remaining -= delta
 	var manifest_active := _magic_manifest_active()
 	if manifest_active and not _manifest_was_active:
 		_events.append({"type": "magic_sword_manifestation", "name": "魔劍顯現"})
@@ -587,6 +598,9 @@ func step(delta: float) -> Array[Dictionary]:
 		enemy_attack_remaining += maxf(1.25, 2.25 - stage * 0.02)
 		if not _try_first_strike():
 			_enemy_attack()
+	if ally_attack_remaining <= 0.0 and _ally_count() > 0 and enemy_hp > 0.0:
+		ally_attack_remaining += _ally_attack_interval()
+		_ally_auto_attack()
 	return _events.duplicate(true)
 
 func manual_attack() -> Array[Dictionary]:
@@ -634,6 +648,12 @@ func spend_training(track: String) -> Array[Dictionary]:
 			_auto_equip(skill_id, skill_id in ["two_cut", "magic_sword_complete_release"])
 	for milestone: Dictionary in _new_track_milestones(track, previous, previous + 1):
 		_events.append(milestone)
+	if track == "command":
+		for ally_id: String in ALLY_DEFS:
+			var ally: Dictionary = ALLY_DEFS[ally_id]
+			var unlock_level := int(ally.unlock_level)
+			if previous < unlock_level and int(training.command) >= unlock_level:
+				_events.append({"type": "ally_joined", "ally_id": ally_id, "name": String(ally.name), "level": unlock_level, "description": String(ally.role)})
 	if track == "martial" and previous < 150 and int(training.martial) >= 150:
 		_events.append({"type": "branch_unlocked", "name": "極斬專精", "description": "前往技能頁選擇斬首、破軍或連斬"})
 	if track == "physique" and previous < 150 and int(training.physique) >= 150:
@@ -756,7 +776,8 @@ func snapshot() -> Dictionary:
 		"faith_branch": faith_branch, "holy_release_remaining": holy_release_remaining,
 		"holy_descent_remaining": holy_descent_remaining, "divine_manifest_active": _divine_manifest_active(),
 		"military_momentum": military_momentum, "max_military_momentum": MAX_MILITARY_MOMENTUM,
-		"command_branch": command_branch, "ally_count": _ally_count(), "legion_fervor_remaining": legion_fervor_remaining,
+		"command_branch": command_branch, "ally_count": _ally_count(), "ally_roster": _unlocked_allies(),
+		"ally_attack_remaining": ally_attack_remaining, "legion_fervor_remaining": legion_fervor_remaining,
 		"war_god_active": _war_god_active(),
 		"dodge_chance": _dodge_chance(), "critical_chance": _critical_chance(),
 		"attack_speed_bonus": _agility_action_speed_bonus(), "move_speed_bonus": _agility_move_speed_bonus(),
@@ -1094,6 +1115,33 @@ func _try_command_follow_up(source: String) -> void:
 		_events.append({"type": "reverse_pursuit", "damage": hero_follow})
 		_deal_damage(hero_follow, "reverse_pursuit", 0.12)
 
+func _ally_auto_attack() -> void:
+	var roster := _unlocked_allies()
+	if roster.is_empty():
+		return
+	var ally_id := String(roster[ally_attack_cursor % roster.size()])
+	ally_attack_cursor += 1
+	var ally: Dictionary = ALLY_DEFS[ally_id]
+	var multiplier: float = float({"infantry": 0.58, "scout": 0.46, "mage": 0.72, "cleric": 0.38}.get(ally_id, 0.5))
+	var damage := _attack_power() * multiplier * _track_level_multiplier("command", int(ally.unlock_level)) * _command_damage_multiplier()
+	var armor_ignore := 0.2 if ally_id == "mage" else 0.05
+	_events.append({"type": "ally_attack", "ally_id": ally_id, "name": String(ally.name), "damage": damage})
+	_deal_damage(damage, "ally_%s" % ally_id, armor_ignore)
+	_add_military_momentum(6.0, "ally_attack")
+	if ally_id == "cleric":
+		_heal_hero(_attack_power() * 0.3, "ally_cleric")
+	if int(training.command) >= 170 and rng.randf() < (0.5 if _war_god_active() else 0.28) and enemy_hp > 0.0:
+		var hero_follow := _attack_power() * 0.65 * _track_level_multiplier("command", 170)
+		_events.append({"type": "reverse_pursuit", "damage": hero_follow, "ally_id": ally_id})
+		_deal_damage(hero_follow, "reverse_pursuit", 0.12)
+
+func _ally_attack_interval() -> float:
+	var speed := 1.0
+	if military_momentum >= 70.0: speed += 0.18
+	if legion_fervor_remaining > 0.0: speed += 0.3
+	if _war_god_active(): speed += 0.25
+	return ALLY_ATTACK_INTERVAL / speed
+
 func _try_grace_heal() -> void:
 	if not skill_is_unlocked("grace") or holy_seals <= 0 or grace_cooldown > 0.0:
 		return
@@ -1206,11 +1254,14 @@ func _divine_manifest_active() -> bool:
 	return int(training.faith) >= 190 and holy_seals >= MAX_HOLY_SEALS
 
 func _ally_count() -> int:
-	if int(training.command) < 10: return 0
-	if int(training.command) >= 200: return 4
-	if int(training.command) >= 130: return 3
-	if int(training.command) >= 80: return 2
-	return 1
+	return _unlocked_allies().size()
+
+func _unlocked_allies() -> Array[String]:
+	var roster: Array[String] = []
+	for ally_id: String in ALLY_DEFS:
+		if int(training.command) >= int(ALLY_DEFS[ally_id].unlock_level):
+			roster.append(ally_id)
+	return roster
 
 func _command_damage_multiplier() -> float:
 	var multiplier := 1.0
@@ -1742,6 +1793,8 @@ func _defeat_hero() -> void:
 	legion_fervor_remaining = 0.0
 	war_god_remaining = 0.0
 	_war_god_was_active = false
+	ally_attack_remaining = ALLY_ATTACK_INTERVAL
+	ally_attack_cursor = 0
 	_spawn_enemy()
 	_events.append({"type": "defeat"})
 
@@ -1817,6 +1870,7 @@ func _spawn_enemy() -> void:
 	secondary_hit_counter = 0
 	burning_hits = 0
 	burn_tick_remaining = 1.0
+	ally_attack_remaining = minf(ally_attack_remaining, 0.8) if _ally_count() > 0 else ALLY_ATTACK_INTERVAL
 
 func _add_momentum(amount: float, source: String) -> void:
 	if int(training.martial) < 10:

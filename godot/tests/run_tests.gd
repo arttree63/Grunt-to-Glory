@@ -28,6 +28,7 @@ func _run_tests() -> void:
 	_test_faith_active_cycle_and_divine_grace()
 	_test_faith_branches_and_milestones()
 	_test_command_momentum_and_follow_up()
+	_test_ally_recruitment_and_auto_attack()
 	_test_command_skills_and_branches()
 	_test_command_milestones()
 	_test_six_mechanics_coexist()
@@ -61,7 +62,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 50")
+		print("Godot tests passed: 51")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -343,6 +344,24 @@ func _test_command_momentum_and_follow_up() -> void:
 	for index in 30:
 		model._try_command_follow_up("test")
 	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "coordinated_pursuit"), "協同追擊必須讓主角出劍後的友軍回應可見")
+
+func _test_ally_recruitment_and_auto_attack() -> void:
+	var model = CombatModelScript.new()
+	model.training.command = 9
+	model.training_points = 1
+	var unlock_events := model.spend_training("command")
+	_expect(unlock_events.any(func(event: Dictionary) -> bool: return event.type == "ally_joined" and String(event.name) == "王國步兵"), "統御 Lv.10 必須明確通知王國步兵入隊")
+	_expect(model._ally_count() == 1 and model._unlocked_allies() == ["infantry"], "統御 Lv.10 必須實際擁有第一位友軍")
+	model.enemy_hp = 999999.0
+	model.enemy_armor = 0.0
+	model.auto_attack_remaining = 999.0
+	model.enemy_attack_remaining = 999.0
+	model.ally_attack_remaining = 0.0
+	var battle_events := model.step(0.01)
+	_expect(battle_events.any(func(event: Dictionary) -> bool: return event.type == "ally_attack" and String(event.name) == "王國步兵"), "入隊後的王國步兵必須在戰場上定時自動攻擊")
+	_expect(model.military_momentum > 0.0, "友軍自動攻擊必須為統御流累積軍勢")
+	model.training.command = 80
+	_expect(model._ally_count() == 2, "統御 Lv.80 必須明確解鎖第二位友軍王國斥候")
 
 func _test_command_skills_and_branches() -> void:
 	var model = CombatModelScript.new()

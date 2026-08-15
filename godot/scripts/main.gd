@@ -363,6 +363,8 @@ func _render_skills_page(snapshot: Dictionary) -> void:
 	var definition: Dictionary = CombatModel.TRAINING_DEFS[current_skill_tab]
 	section_box.add_child(_label("%s｜%s" % [String(definition.name), String(definition.style)], 20, _track_color(current_skill_tab)))
 	section_box.add_child(_label("目前 Lv.%d｜%s" % [int(snapshot.training[current_skill_tab]), String(definition.special)], 14, Color("cbd5cc")))
+	if current_skill_tab == "command":
+		_render_command_allies(snapshot)
 	_render_track_skills(current_skill_tab, "核心技能", slots)
 	if current_skill_tab != "magic":
 		_render_branch_choices(current_skill_tab, snapshot)
@@ -415,6 +417,18 @@ func _render_auto_setup(slots: Array) -> void:
 				button.pressed.connect(_move_auto_slot.bind(index, -1 if action == "↑" else 1))
 			row.add_child(button)
 	section_box.add_child(_label("到各流派分頁選擇要裝入的主動技能。", 13, Color("9fb0a5")))
+
+func _render_command_allies(snapshot: Dictionary) -> void:
+	section_box.add_child(_label("友軍入隊", 18, Color("bfe3c7")))
+	section_box.add_child(_label("友軍不是技能召喚；統御達到指定等級後會永久入隊。", 13, Color("cbd5cc")))
+	var level := int(snapshot.training.command)
+	for ally_id: String in CombatModel.ALLY_DEFS:
+		var ally: Dictionary = CombatModel.ALLY_DEFS[ally_id]
+		var unlock_level := int(ally.unlock_level)
+		var joined := level >= unlock_level
+		var status := "已入隊 · 會自動參戰" if joined else "Lv.%d 入隊" % unlock_level
+		var marker := "●" if joined else "○"
+		section_box.add_child(_section_row("%s %s" % [marker, String(ally.name)], "%s｜%s" % [status, String(ally.role)]))
 
 func _render_track_skills(track: String, heading: String, slots: Array) -> void:
 	var heading_color := _track_color(track).lightened(0.35)
@@ -649,6 +663,7 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"training_point": _show_toast("獲得 %d 點操練" % int(event.get("gain", 1)), "現在有 %d 點可分配" % int(event.points))
 			"momentum_full": _show_toast("勢已滿", "AUTO 將依技能優先序判斷")
 			"branch_unlocked": _show_toast("解鎖：%s" % String(event.name), String(event.description))
+			"ally_joined": _show_toast("友軍入隊：%s" % String(event.name), String(event.description))
 			"armor_broken": _show_toast("破甲一閃", "敵方護甲降低 %d" % roundi(float(event.amount)))
 			"no_beat": _show_toast("無拍子", "擊殺後額外回復 %d 勢" % roundi(float(event.amount)))
 			"draw_stance": _show_toast("拔刀", "蓄勢加速，第一刀降低消耗並提高傷害")
@@ -837,7 +852,7 @@ func _update_hud(snapshot: Dictionary) -> void:
 	command_bar.max_value = float(snapshot.max_military_momentum)
 	command_bar.value = float(snapshot.military_momentum)
 	var war_text := " · 軍神" if bool(snapshot.war_god_active) else (" · 奮戰 %.1fs" % float(snapshot.legion_fervor_remaining) if float(snapshot.legion_fervor_remaining) > 0.0 else "")
-	command_label.text = "軍勢  %d/%d · 友軍 %d%s" % [roundi(float(snapshot.military_momentum)), roundi(float(snapshot.max_military_momentum)), int(snapshot.ally_count), war_text]
+	command_label.text = "軍勢  %d/%d · 友軍 %d · 援攻 %.1fs%s" % [roundi(float(snapshot.military_momentum)), roundi(float(snapshot.max_military_momentum)), int(snapshot.ally_count), float(snapshot.ally_attack_remaining), war_text]
 	var manual_remaining := float(snapshot.manual_attack_remaining)
 	manual_attack_button.disabled = not bool(snapshot.manual_attack_ready)
 	manual_attack_button.text = "斬  攻擊" if manual_remaining <= 0.0 else "斬  %.1fs" % manual_remaining
