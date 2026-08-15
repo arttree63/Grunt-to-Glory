@@ -10,6 +10,11 @@ func _run_tests() -> void:
 	_test_auto_attack_and_momentum()
 	_test_manual_attack_and_shared_cooldown()
 	_test_training_growth_and_locked_tracks()
+	_test_magic_sword_marks_and_manual_attack()
+	_test_burning_cycle()
+	_test_flame_burst_slash()
+	_test_magic_sword_release()
+	_test_four_mechanics_coexist()
 	_test_heavy_slash_unlock_and_auto()
 	_test_remaining_heart_refund()
 	_test_armor_flash_and_auto_fallback()
@@ -40,7 +45,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 29")
+		print("Godot tests passed: 34")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -69,11 +74,94 @@ func _test_training_growth_and_locked_tracks() -> void:
 	var model = CombatModelScript.new()
 	var before: Dictionary = model.snapshot()
 	var points_before: int = model.training_points
-	_expect(model.spend_training("magic").is_empty(), "未完成流派不可消耗點數")
+	_expect(model.spend_training("faith").is_empty(), "未完成流派不可消耗點數")
+	model.spend_training("magic")
+	_expect(int(model.training.magic) == 1 and model.hero_mp > 0.0, "魔法操練必須開放並提高目前與最大 MP")
 	model.spend_training("martial")
 	var after: Dictionary = model.snapshot()
-	_expect(int(model.training.martial) == 1 and model.training_points == points_before - 1, "武藝每級必須消耗 1 點")
+	_expect(int(model.training.martial) == 1 and model.training_points == points_before - 2, "每次有效操練必須消耗 1 點")
 	_expect(float(after.hero_max_hp) > float(before.hero_max_hp) and float(after.attack) > float(before.attack) and float(after.defense) > float(before.defense), "任一流派都必須提供共通基礎成長")
+
+func _test_magic_sword_marks_and_manual_attack() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 10
+	model.hero_mp = model._hero_max_mp()
+	model.enemy_hp = 99999.0
+	model.enemy_armor = 0.0
+	var events := model.manual_attack()
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "magic_enchant"), "魔法 Lv.10 後手動攻擊也必須觸發魔劍附傷")
+	_expect(model.magic_marks == 1, "附魔攻擊必須累積 1 枚魔紋")
+	for index in 4:
+		model._events.clear()
+		model._basic_attack(false)
+	_expect(model.magic_marks == 5, "連續五次附魔攻擊必須集滿魔紋")
+	model._events.clear()
+	model._basic_attack(false)
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "magic_slash"), "滿魔紋後的下一次附魔攻擊必須觸發魔力斬")
+
+func _test_burning_cycle() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 25
+	model.hero_mp = model._hero_max_mp()
+	model.enemy_hp = 99999.0
+	model.enemy_armor = 0.0
+	model._events.clear()
+	model._basic_attack(false)
+	_expect(model.burn_stacks == 1, "魔法 Lv.20 後附魔攻擊必須疊加燃燒")
+	var hp_before: float = model.enemy_hp
+	var events := model.step(1.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "burn_tick") and model.enemy_hp < hp_before, "燃燒必須每秒造成元素傷害")
+	model.magic_marks = 0
+	model.burn_stacks = 1
+	model.burning_hits = 0
+	model._events.clear()
+	model._basic_attack(false)
+	model._basic_attack(false)
+	_expect(model.magic_marks >= 3, "灼紋必須讓連續攻擊燃燒敵人時額外累積魔紋")
+
+func _test_flame_burst_slash() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 40
+	model.hero_mp = model._hero_max_mp()
+	model.auto_skill_slots[0] = "flame_burst_slash"
+	model.magic_marks = 5
+	model.burn_stacks = 5
+	model.enemy_hp = 99999.0
+	model.enemy_armor = 0.0
+	var events := model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "flame_burst_slash"), "滿魔紋與滿燃燒時 AUTO 必須施放炎爆斬")
+	var burst_events: Array = events.filter(func(event: Dictionary) -> bool: return event.type == "flame_burst_slash")
+	_expect(not burst_events.is_empty() and is_equal_approx(float(burst_events[0].damage), model._magic_power() * 4.2 * 1.25), "熾燃必須強化滿燃燒炎爆斬")
+	_expect(model.magic_marks == 0 and model.burn_stacks == 0 and model.hero_mp < model._hero_max_mp(), "炎爆斬必須消耗魔紋、燃燒與 MP")
+
+func _test_magic_sword_release() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 50
+	model.hero_mp = model._hero_max_mp()
+	model.auto_skill_slots[0] = "magic_sword_release"
+	model.enemy_hp = 99999.0
+	var events := model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "magic_sword_release") and model.magic_release_remaining > 0.0, "魔法 Lv.50 必須能由 AUTO 進入魔劍解放")
+	model._events.clear()
+	model._basic_attack(false)
+	_expect(model.magic_marks == 2 and model.burn_stacks == 2, "魔劍解放期間必須加快魔紋與燃燒獲取")
+
+func _test_four_mechanics_coexist() -> void:
+	var model = CombatModelScript.new()
+	model.training.martial = 100
+	model.training.physique = 100
+	model.training.agility = 100
+	model.training.magic = 50
+	model.momentum = 40.0
+	model.immovable = 2
+	model.youren = 4
+	model.magic_marks = 3
+	model.hero_mp = model._hero_max_mp()
+	model.auto_attack_remaining = 999.0
+	model.enemy_attack_remaining = 999.0
+	model.step(0.1)
+	var snapshot: Dictionary = model.snapshot()
+	_expect(float(snapshot.momentum) > 40.0 and int(snapshot.immovable) == 2 and int(snapshot.youren) == 4 and int(snapshot.magic_marks) == 3, "勢、不動、游刃與魔紋必須能同時存在")
 
 func _test_heavy_slash_unlock_and_auto() -> void:
 	var model = CombatModelScript.new()
@@ -472,11 +560,13 @@ func _test_navigation() -> void:
 	scene.model.training.martial = 10
 	scene.model.training.physique = 30
 	scene.model.training.agility = 30
+	scene.model.training.magic = 30
 	scene.model.momentum = 45.0
 	scene.model.immovable = 2
 	scene.model.youren = 3
+	scene.model.magic_marks = 3
 	scene._update_hud(scene.model.snapshot())
-	_expect(scene.momentum_head.visible and scene.immovable_hud.visible and scene.youren_hud.visible, "勢、不動與游刃同時存在時，HUD 必須同時顯示三種流派狀態")
+	_expect(scene.momentum_head.visible and scene.immovable_hud.visible and scene.youren_hud.visible and scene.magic_hud.visible, "勢、不動、游刃與魔紋同時存在時，HUD 必須完整顯示")
 	scene._switch_page("character")
 	await process_frame
 	_expect(scene.current_page == "character" and scene.section_overlay.visible, "角色頁必須能開啟並暫停戰鬥")

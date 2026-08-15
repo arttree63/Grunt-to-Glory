@@ -27,6 +27,9 @@ var immovable_pips: Array[PanelContainer] = []
 var youren_hud: HBoxContainer
 var youren_label: Label
 var youren_pips: Array[PanelContainer] = []
+var magic_hud: HBoxContainer
+var magic_label: Label
+var magic_pips: Array[PanelContainer] = []
 var enemy_bar: ProgressBar
 var auto_slot_buttons: Array[Button] = []
 var training_overlay: Control
@@ -183,6 +186,18 @@ func _build_ui() -> void:
 		pip.add_theme_stylebox_override("panel", _slot_style(Color("2e293b"), Color("756a96"), 1))
 		youren_hud.add_child(pip)
 		youren_pips.append(pip)
+	magic_hud = HBoxContainer.new()
+	magic_hud.add_theme_constant_override("separation", 5)
+	bottom_box.add_child(magic_hud)
+	magic_label = _label("魔紋  0/5", 14, Color("ffc28f"))
+	magic_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	magic_hud.add_child(magic_label)
+	for index in CombatModel.MAX_MAGIC_MARKS:
+		var pip := PanelContainer.new()
+		pip.custom_minimum_size = Vector2(24, 14)
+		pip.add_theme_stylebox_override("panel", _slot_style(Color("3b2b25"), Color("8f674f"), 1))
+		magic_hud.add_child(pip)
+		magic_pips.append(pip)
 
 	var manual_row := HBoxContainer.new()
 	manual_row.add_theme_constant_override("separation", 8)
@@ -292,7 +307,7 @@ func _render_character_page(snapshot: Dictionary) -> void:
 	resources.add_theme_constant_override("separation", 8)
 	section_box.add_child(resources)
 	resources.add_child(_resource_card("HP  %d/%d" % [roundi(snapshot.hero_hp), roundi(snapshot.hero_max_hp)], float(snapshot.hero_hp), float(snapshot.hero_max_hp), Color("b85245")))
-	resources.add_child(_resource_card("MP  %d（未啟用）" % roundi(snapshot.hero_max_mp), 0.0, 100.0, Color("477d91")))
+	resources.add_child(_resource_card("MP  %d/%d" % [roundi(snapshot.hero_mp), roundi(snapshot.hero_max_mp)], float(snapshot.hero_mp), maxf(1.0, float(snapshot.hero_max_mp)), Color("477d91")))
 	section_box.add_child(_label("戰鬥數值", 17, Color("f6d27d")))
 	section_box.add_child(_section_row("基礎戰力", "攻擊 %d · 防禦 %d · 普攻 %.2fs" % [roundi(snapshot.attack), roundi(snapshot.defense), float(snapshot.attack_interval)]))
 	section_box.add_child(_section_row("行動效率", "攻速 +%d%% · 移速 +%d%%" % [roundi(float(snapshot.attack_speed_bonus) * 100.0), roundi(float(snapshot.move_speed_bonus) * 100.0)]))
@@ -344,9 +359,10 @@ func _render_skills_page(snapshot: Dictionary) -> void:
 	_render_branch_choices("physique", snapshot)
 	_render_track_skills("agility", "敏捷｜閃影流技能", slots)
 	_render_branch_choices("agility", snapshot)
+	_render_track_skills("magic", "魔法｜魔劍流技能", slots)
 
 func _render_track_skills(track: String, heading: String, slots: Array) -> void:
-	var heading_color := Color("f6d27d") if track == "martial" else (Color("bfe8ef") if track == "physique" else Color("d8ccff"))
+	var heading_color := Color("f6d27d") if track == "martial" else (Color("bfe8ef") if track == "physique" else (Color("d8ccff") if track == "agility" else Color("ffc28f")))
 	section_box.add_child(_label(heading, 18, heading_color))
 	for skill_id: String in CombatModel.SKILL_DEFS:
 		var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
@@ -450,7 +466,7 @@ func _build_training_overlay() -> void:
 	close.size_flags_horizontal = Control.SIZE_SHRINK_END
 	close.pressed.connect(_close_training)
 	heading.add_child(close)
-	var explain := _label("目前開放一刀流、不動流與閃影流；三套機制可以同時存在。", 13, Color("cbd5cc"))
+	var explain := _label("目前開放一刀流、不動流、閃影流與魔劍流；四套機制可以同時存在。", 13, Color("cbd5cc"))
 	explain.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(explain)
 	for track: String in CombatModel.TRAINING_ORDER:
@@ -495,6 +511,10 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"shadowless": _show_toast("奧義・無影", "六秒內攻速與影襲大幅提升")
 			"flow_state_entered": _show_toast("游刃有餘", "快劍節奏啟動 · 每兩次普攻觸發疾斬")
 			"traceless": _show_toast("無蹤", "消耗滿層游刃，閃開原本會命中的攻擊")
+			"blazing_magic_entered": _show_toast("魔紋已滿", "下一次附魔攻擊將觸發魔力斬")
+			"scorching_entered": _show_toast("燃燒已滿", "炎爆斬的爆發條件已成立")
+			"flame_burst_slash": _show_toast("炎爆斬", "消耗魔紋與燃燒，造成元素爆發")
+			"magic_sword_release": _show_toast("魔劍解放", "八秒內魔紋、燃燒與魔劍傷害全面加速")
 			"defeat": _show_toast("戰敗後重整", "保留操練，退回上一戰")
 
 func _manual_attack() -> void:
@@ -570,7 +590,9 @@ func _update_hud(snapshot: Dictionary) -> void:
 	hp_bar.max_value = float(snapshot.hero_max_hp)
 	hp_bar.value = float(snapshot.hero_hp)
 	hp_label.text = "生命  %d/%d" % [roundi(snapshot.hero_hp), roundi(snapshot.hero_max_hp)]
-	mp_label.text = "MP  %d（未啟用）" % roundi(snapshot.hero_max_mp)
+	mp_bar.max_value = maxf(1.0, float(snapshot.hero_max_mp))
+	mp_bar.value = float(snapshot.hero_mp)
+	mp_label.text = "MP  %d/%d" % [roundi(snapshot.hero_mp), roundi(snapshot.hero_max_mp)]
 	momentum_bar.max_value = float(snapshot.max_momentum)
 	momentum_bar.value = float(snapshot.momentum)
 	momentum_label.text = "勢  %d/%d" % [roundi(snapshot.momentum), roundi(snapshot.max_momentum)]
@@ -594,6 +616,13 @@ func _update_hud(snapshot: Dictionary) -> void:
 	for index in youren_pips.size():
 		var filled := index < int(snapshot.youren)
 		youren_pips[index].add_theme_stylebox_override("panel", _slot_style(Color("9b86d6") if filled else Color("2e293b"), Color("f0eaff") if filled else Color("756a96"), 2 if filled else 1))
+	var magic_active := int(snapshot.training.magic) >= 10
+	magic_hud.visible = magic_active
+	var release_text := " · 解放 %.1fs" % float(snapshot.magic_release_remaining) if float(snapshot.magic_release_remaining) > 0.0 else ""
+	magic_label.text = "魔紋  %d/%d · 燃燒 %d/%d%s" % [int(snapshot.magic_marks), int(snapshot.max_magic_marks), int(snapshot.burn_stacks), int(snapshot.max_burn), release_text]
+	for index in magic_pips.size():
+		var filled := index < int(snapshot.magic_marks)
+		magic_pips[index].add_theme_stylebox_override("panel", _slot_style(Color("d96a36") if filled else Color("3b2b25"), Color("ffd0a1") if filled else Color("8f674f"), 2 if filled else 1))
 	var manual_remaining := float(snapshot.manual_attack_remaining)
 	manual_attack_button.disabled = not bool(snapshot.manual_attack_ready)
 	manual_attack_button.text = "斬  攻擊" if manual_remaining <= 0.0 else "斬  %.1fs" % manual_remaining

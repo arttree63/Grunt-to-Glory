@@ -11,6 +11,9 @@ var immovable_level := 0
 var return_blade_ready := false
 var youren_level := 0
 var shadowless_active := false
+var magic_marks_level := 0
+var burn_level := 0
+var magic_release_active := false
 var trauma := 0.0
 var _time := 0.0
 var _hero_action := 0.0
@@ -33,6 +36,11 @@ var _opening_flash := 0.0
 var _shadowless_burst := 0.0
 var _flow_burst := 0.0
 var _swift_cut := 0.0
+var _magic_enchant := 0.0
+var _magic_slash := 0.0
+var _flame_burst := 0.0
+var _release_burst := 0.0
+var _burn_pulse := 0.0
 var _manual_slash := 0.0
 var _manual_slash_side := 1.0
 var _momentum_pulse := 0.0
@@ -77,6 +85,11 @@ func _process(delta: float) -> void:
 	_shadowless_burst = maxf(0.0, _shadowless_burst - delta / 1.0)
 	_flow_burst = maxf(0.0, _flow_burst - delta / 0.72)
 	_swift_cut = maxf(0.0, _swift_cut - delta / 0.28)
+	_magic_enchant = maxf(0.0, _magic_enchant - delta / 0.24)
+	_magic_slash = maxf(0.0, _magic_slash - delta / 0.58)
+	_flame_burst = maxf(0.0, _flame_burst - delta / 0.9)
+	_release_burst = maxf(0.0, _release_burst - delta / 1.0)
+	_burn_pulse = maxf(0.0, _burn_pulse - delta / 0.55)
 	_manual_slash = maxf(0.0, _manual_slash - delta / 0.18)
 	_momentum_pulse = maxf(0.0, _momentum_pulse - delta * 1.8)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
@@ -93,6 +106,9 @@ func set_state(snapshot: Dictionary) -> void:
 	return_blade_ready = bool(snapshot.return_blade_ready)
 	youren_level = int(snapshot.youren)
 	shadowless_active = float(snapshot.shadowless_remaining) > 0.0
+	magic_marks_level = int(snapshot.magic_marks)
+	burn_level = int(snapshot.burn_stacks)
+	magic_release_active = float(snapshot.magic_release_remaining) > 0.0
 
 func play_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
@@ -162,6 +178,19 @@ func play_events(events: Array[Dictionary]) -> void:
 			"swift_cut":
 				_swift_cut = 1.0
 				add_trauma(0.12)
+			"magic_enchant":
+				_magic_enchant = 1.0
+			"magic_slash":
+				_magic_slash = 1.0
+				add_trauma(0.24)
+			"burn_tick":
+				_burn_pulse = 1.0
+			"flame_burst_slash":
+				_flame_burst = 1.0
+				add_trauma(0.62)
+			"magic_sword_release":
+				_release_burst = 1.0
+				add_trauma(0.34)
 			"momentum_full":
 				_momentum_pulse = 1.0
 			"no_beat":
@@ -230,6 +259,12 @@ func _draw_hero(origin: Vector2) -> void:
 		draw_arc(origin + Vector2(-4, -32), 45.0 + float(immovable_level) * 4.0, -2.35, 0.65, 28, Color("9ee7f2", guard_alpha), 5.0)
 		for index in immovable_level:
 			draw_circle(origin + Vector2(-26.0 + float(index) * 26.0, 30.0), 6.0, Color("bceef4", 0.9))
+	if magic_marks_level > 0 or magic_release_active:
+		var magic_alpha := 0.18 + float(magic_marks_level) * 0.07 + (0.28 if magic_release_active else 0.0)
+		draw_arc(origin + Vector2(5, -38), 42.0 + sin(_time * 7.0) * 3.0, -2.6, 0.6, 28, Color("ff8a45", magic_alpha), 5.0)
+		for index in magic_marks_level:
+			var angle := _time * 0.8 + float(index) * TAU / 5.0
+			draw_circle(origin + Vector2(0, -35) + Vector2.from_angle(angle) * 48.0, 3.5, Color("ffd09c", 0.9))
 	draw_polygon(PackedVector2Array([origin + Vector2(-26, 18 + bob), origin + Vector2(20, 15 + bob), origin + Vector2(16, -36 + bob), origin + Vector2(-18, -42 + bob)]), PackedColorArray([Color("7d2f2a")]))
 	draw_circle(origin + Vector2(0, -55 + bob), 18.0, color)
 	draw_polygon(PackedVector2Array([origin + Vector2(-20, -58 + bob), origin + Vector2(0, -82 + bob), origin + Vector2(21, -58 + bob)]), PackedColorArray([Color("495a63")]))
@@ -245,6 +280,11 @@ func _draw_enemy(origin: Vector2) -> void:
 		var pulse := 0.55 + sin(_time * 14.0) * 0.18
 		var warning_color := Color("e85a3d") if enemy_attack_type == "重擊" else (Color("b76be0") if enemy_attack_type == "範圍" else Color("f0d55a"))
 		draw_arc(origin + Vector2(0, -30 + bob), 68.0, 0.0, TAU, 32, Color(warning_color, pulse), 7.0)
+	if burn_level > 0:
+		for index in mini(burn_level, 5):
+			var flame_x := -24.0 + float(index) * 12.0
+			var flame_height := 14.0 + sin(_time * 11.0 + float(index)) * 5.0
+			draw_polygon(PackedVector2Array([origin + Vector2(flame_x - 5.0, 24.0), origin + Vector2(flame_x, 24.0 - flame_height), origin + Vector2(flame_x + 5.0, 24.0)]), PackedColorArray([Color("f47a32", 0.62 + float(burn_level) * 0.05)]))
 	draw_circle(origin + Vector2(0, -46 + bob), 30.0, skin)
 	draw_polygon(PackedVector2Array([origin + Vector2(-30, -52 + bob), origin + Vector2(-54, -67 + bob), origin + Vector2(-27, -31 + bob)]), PackedColorArray([skin]))
 	draw_polygon(PackedVector2Array([origin + Vector2(30, -52 + bob), origin + Vector2(54, -67 + bob), origin + Vector2(27, -31 + bob)]), PackedColorArray([skin]))
@@ -378,6 +418,30 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var phase := 1.0 - _flow_burst
 		var alpha := sin(clampf(phase * 1.6, 0.0, 1.0) * PI)
 		draw_arc(hero_pos + Vector2(0, -35), 56.0 + phase * 24.0, 0.0, TAU, 32, Color("d8ccff", alpha), 6.0)
+	if _magic_enchant > 0.0:
+		var alpha := sin((1.0 - _magic_enchant) * PI)
+		draw_line(hero_pos + Vector2(25, -48), enemy_pos + Vector2(-16, -42), Color("ffad68", alpha * 0.7), 4.0)
+	if _magic_slash > 0.0:
+		var phase := 1.0 - _magic_slash
+		var alpha := sin(clampf(phase * 1.8, 0.0, 1.0) * PI)
+		var center := hero_pos.lerp(enemy_pos, 0.62)
+		draw_arc(center, 78.0 + phase * 18.0, -2.3, 0.45, 30, Color("fff0c2", alpha), 12.0)
+		draw_arc(center, 62.0, -2.3, 0.45, 26, Color("f06a32", alpha * 0.9), 6.0)
+	if _burn_pulse > 0.0:
+		var alpha := sin((1.0 - _burn_pulse) * PI)
+		draw_circle(enemy_pos + Vector2(0, -26), 36.0 * alpha, Color("ef5d2f", alpha * 0.3))
+	if _flame_burst > 0.0:
+		var phase := 1.0 - _flame_burst
+		var alpha := sin(clampf(phase * 1.45, 0.0, 1.0) * PI)
+		var center := hero_pos.lerp(enemy_pos, 0.7)
+		draw_circle(center, (28.0 + phase * 92.0) * alpha, Color("ff7a32", alpha * 0.42))
+		draw_arc(center, 54.0 + phase * 76.0, 0.0, TAU, 36, Color("fff0b2", alpha), 14.0)
+		draw_line(hero_pos + Vector2(8, -42), enemy_pos + Vector2(18, -52), Color("ffffff", alpha), 16.0)
+	if _release_burst > 0.0:
+		var phase := 1.0 - _release_burst
+		var alpha := sin(clampf(phase * 1.5, 0.0, 1.0) * PI)
+		draw_arc(hero_pos + Vector2(0, -36), 62.0 + phase * 48.0, 0.0, TAU, 36, Color("ffad68", alpha), 9.0)
+		draw_arc(hero_pos + Vector2(0, -36), 46.0 + phase * 34.0, 0.0, TAU, 32, Color("fff4c7", alpha * 0.8), 5.0)
 	if _manual_slash > 0.0:
 		var phase := 1.0 - _manual_slash
 		var alpha := sin(clampf(phase * 2.4, 0.0, 1.0) * PI)
@@ -390,10 +454,10 @@ func _spawn_damage(amount: float, source: String) -> void:
 	_damage_cursor = (_damage_cursor + 1) % _damage_pool.size()
 	label.visible = true
 	label.modulate = Color.WHITE
-	var large := source in ["heavy_slash", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "two_cut"]
+	var large := source in ["heavy_slash", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "two_cut", "magic_slash", "flame_burst_slash"]
 	label.scale = Vector2(1.75, 1.75) if source == "two_cut" else (Vector2(1.4, 1.4) if large else Vector2.ONE)
 	label.text = str(roundi(amount))
-	var color := Color("fff0a3") if source == "two_cut" else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["swift_step", "swift_cut", "shadow_assault", "flying_swallow", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0")))))
+	var color := Color("fff0a3") if source == "two_cut" else (Color("ffb16f") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash"] else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["swift_step", "swift_cut", "shadow_assault", "flying_swallow", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0"))))))
 	label.add_theme_color_override("font_color", color)
 	label.position = Vector2(size.x * 0.64 + randf_range(-18.0, 18.0), size.y * 0.28)
 	var tween := create_tween()
