@@ -59,8 +59,20 @@ var _manual_slash_side := 1.0
 var _momentum_pulse := 0.0
 var _enemy_flash := 0.0
 var _hero_flash := 0.0
+var _visual_freeze_remaining := 0.0
+var _enemy_knockback := 0.0
+var _hero_recoil := 0.0
+var _impact_burst := 0.0
+var _impact_strength := 0.0
+var _impact_color := Color("fff0b0")
+var _hurt_vignette := 0.0
+var _defeat_burst := 0.0
+var _defeat_was_boss := false
 var _damage_pool: Array[Label] = []
 var _damage_cursor := 0
+var _sfx_streams: Dictionary = {}
+var _sfx_players: Array[AudioStreamPlayer] = []
+var _sfx_cursor := 0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -73,10 +85,30 @@ func _ready() -> void:
 		label.add_theme_constant_override("outline_size", 5)
 		add_child(label)
 		_damage_pool.append(label)
+	_sfx_streams = {
+		"light": _make_sfx("light"),
+		"medium": _make_sfx("medium"),
+		"heavy": _make_sfx("heavy"),
+		"block": _make_sfx("block"),
+		"perfect": _make_sfx("perfect"),
+		"dodge": _make_sfx("dodge"),
+		"hurt": _make_sfx("hurt"),
+		"defeat": _make_sfx("defeat"),
+		"boss_defeat": _make_sfx("boss_defeat"),
+	}
+	for index in 6:
+		var player := AudioStreamPlayer.new()
+		player.volume_db = -7.0
+		add_child(player)
+		_sfx_players.append(player)
 	queue_redraw()
 
 func _process(delta: float) -> void:
 	_time += delta
+	if _visual_freeze_remaining > 0.0:
+		_visual_freeze_remaining = maxf(0.0, _visual_freeze_remaining - delta)
+		queue_redraw()
+		return
 	trauma = maxf(0.0, trauma - delta * 1.45)
 	_hero_action = maxf(0.0, _hero_action - delta * 3.4)
 	_heavy_slash = maxf(0.0, _heavy_slash - delta / 0.72)
@@ -112,6 +144,11 @@ func _process(delta: float) -> void:
 	_momentum_pulse = maxf(0.0, _momentum_pulse - delta * 1.8)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
 	_hero_flash = maxf(0.0, _hero_flash - delta * 7.0)
+	_enemy_knockback = maxf(0.0, _enemy_knockback - delta * 5.8)
+	_hero_recoil = maxf(0.0, _hero_recoil - delta * 6.5)
+	_impact_burst = maxf(0.0, _impact_burst - delta * 7.0)
+	_hurt_vignette = maxf(0.0, _hurt_vignette - delta * 4.8)
+	_defeat_burst = maxf(0.0, _defeat_burst - delta * (1.25 if _defeat_was_boss else 2.5))
 	queue_redraw()
 
 func set_state(snapshot: Dictionary) -> void:
@@ -168,9 +205,13 @@ func play_events(events: Array[Dictionary]) -> void:
 			"block":
 				_block_flash = 1.0
 				add_trauma(0.1)
+				_hit_stop(0.025)
+				_play_sfx("block")
 			"perfect_block":
 				_perfect_block = 1.0
 				add_trauma(0.28)
+				_hit_stop(0.05)
+				_play_sfx("perfect")
 			"counter":
 				_counter_slash = 1.0
 				add_trauma(0.32)
@@ -185,6 +226,7 @@ func play_events(events: Array[Dictionary]) -> void:
 				add_trauma(0.2)
 			"dodge":
 				_dodge_flash = 1.0
+				_play_sfx("dodge")
 			"swift_step_ready":
 				_dodge_flash = maxf(_dodge_flash, 0.35)
 			"swift_step":
@@ -268,10 +310,53 @@ func play_events(events: Array[Dictionary]) -> void:
 				_momentum_pulse = maxf(_momentum_pulse, 0.5)
 			"damage":
 				_enemy_flash = 1.0
-				_spawn_damage(float(event.amount), String(event.source))
+				var source := String(event.source)
+				var tier := impact_tier_for_source(source)
+				_spawn_damage(float(event.amount), source)
+				_apply_impact(tier, source)
 			"hero_hit":
 				_hero_flash = 1.0
+				_hero_recoil = 1.0
+				_hurt_vignette = 1.0
 				add_trauma(0.16)
+				_hit_stop(0.035)
+				_play_sfx("hurt")
+			"enemy_defeated":
+				_defeat_burst = 1.0
+				_defeat_was_boss = bool(event.get("boss", false))
+				add_trauma(0.88 if _defeat_was_boss else 0.3)
+				_hit_stop(0.13 if _defeat_was_boss else 0.055)
+				_play_sfx("boss_defeat" if _defeat_was_boss else "defeat")
+
+func impact_tier_for_source(source: String) -> String:
+	if source in ["burn_tick", "lightning_tick", "holy_enchant", "magic_enchant"] or source.begins_with("ally_"):
+		return "light"
+	if source in ["heavy_slash", "mountain_break", "armor_flash", "execute_slash", "collapse_counter", "heaven_return", "two_cut", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "shadowless_extreme", "ten_thousand_armies_one_sword"]:
+		return "heavy"
+	if source in ["critical_attack", "counter", "first_strike", "swift_step", "shadow_assault", "flying_swallow", "magic_slash", "judgment_slash"]:
+		return "medium"
+	return "light"
+
+func _apply_impact(tier: String, source: String) -> void:
+	_impact_burst = 1.0
+	_impact_strength = 0.45 if tier == "light" else (0.72 if tier == "medium" else 1.0)
+	_impact_color = Color("aeefff") if source in ["armor_flash", "counter", "collapse_counter", "heaven_return"] else (Color("d7c4ff") if source in ["swift_step", "shadow_assault", "flying_swallow", "shadowless_extreme"] else (Color("ff9a52") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash", "elemental_boundary_slash"] else Color("fff0b0")))
+	_enemy_knockback = maxf(_enemy_knockback, _impact_strength)
+	if tier == "heavy":
+		add_trauma(0.48)
+		_hit_stop(0.085)
+	elif tier == "medium":
+		add_trauma(0.24)
+		_hit_stop(0.045)
+	else:
+		add_trauma(0.07)
+		_hit_stop(0.018)
+	_play_sfx(tier)
+
+func _hit_stop(duration: float) -> void:
+	if reduced_motion:
+		return
+	_visual_freeze_remaining = maxf(_visual_freeze_remaining, duration)
 
 func add_trauma(amount: float) -> void:
 	if reduced_motion:
@@ -289,6 +374,8 @@ func _draw() -> void:
 	var shake_offset := Vector2(sin(_time * 31.0) * 10.0, sin(_time * 43.0) * 7.0) * shake
 	var enemy_pos := Vector2(size.x * 0.68, size.y * 0.36) + shake_offset
 	var hero_pos := Vector2(size.x * 0.33, size.y * 0.68) + shake_offset
+	enemy_pos.x += sin(_enemy_knockback * PI) * minf(size.x * 0.055, 24.0) * _impact_strength
+	hero_pos.x -= sin(_hero_recoil * PI) * minf(size.x * 0.045, 20.0)
 	var ally_lunge := sin(_ally_action * PI) * minf(size.x * 0.12, 46.0)
 	var lunge := sin(_hero_action * PI) * minf(size.x * 0.16, 72.0)
 	var heavy_lunge := sin(_heavy_slash * PI) * minf(size.x * 0.22, 92.0)
@@ -311,6 +398,9 @@ func _draw() -> void:
 	_draw_afterimages(hero_pos)
 	_draw_hero(hero_pos)
 	_draw_skill_fx(hero_pos, enemy_pos)
+	if _hurt_vignette > 0.0:
+		var vignette_alpha := _hurt_vignette * 0.2
+		draw_rect(Rect2(Vector2.ZERO, size), Color("c83232", vignette_alpha), false, 14.0)
 
 func _draw_forest() -> void:
 	for index in 9:
@@ -590,6 +680,29 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var center := hero_pos.lerp(enemy_pos, 0.58)
 		var diagonal := Vector2(50.0, 58.0 * _manual_slash_side)
 		draw_line(center - diagonal, center + diagonal, Color("ffe8a8", alpha), 7.0)
+	if _impact_burst > 0.0:
+		var phase := 1.0 - _impact_burst
+		var alpha := _impact_burst
+		var center := enemy_pos + Vector2(0, -38)
+		var radius := 12.0 + phase * (32.0 + 28.0 * _impact_strength)
+		draw_circle(center, 9.0 * alpha * _impact_strength, Color("ffffff", alpha * 0.78))
+		draw_arc(center, radius, 0.0, TAU, 28, Color(_impact_color, alpha * 0.9), 3.0 + 5.0 * _impact_strength)
+		var ray_count := 5 if _impact_strength < 0.6 else (8 if _impact_strength < 0.9 else 12)
+		for index in ray_count:
+			var angle := float(index) * TAU / float(ray_count) + 0.2
+			var inner := center + Vector2.from_angle(angle) * (16.0 + phase * 12.0)
+			var outer := center + Vector2.from_angle(angle) * (28.0 + phase * 46.0 * _impact_strength)
+			draw_line(inner, outer, Color(_impact_color, alpha * 0.9), 2.0 + 3.0 * _impact_strength)
+	if _defeat_burst > 0.0:
+		var phase := 1.0 - _defeat_burst
+		var alpha := sin(clampf(phase * 1.45, 0.0, 1.0) * PI)
+		var center := enemy_pos + Vector2(0, -38)
+		var reach := 130.0 if _defeat_was_boss else 72.0
+		draw_arc(center, 24.0 + phase * reach, 0.0, TAU, 40, Color("ffe09a", alpha), 10.0 if _defeat_was_boss else 5.0)
+		if _defeat_was_boss:
+			for index in 14:
+				var angle := float(index) * TAU / 14.0
+				draw_line(center + Vector2.from_angle(angle) * 34.0, center + Vector2.from_angle(angle) * (90.0 + phase * 90.0), Color("fff4c4", alpha * 0.85), 6.0)
 
 func _spawn_damage(amount: float, source: String) -> void:
 	var label := _damage_pool[_damage_cursor]
@@ -621,3 +734,67 @@ func _spawn_damage(amount: float, source: String) -> void:
 	tween.tween_property(label, "modulate:a", 0.0, 0.62).set_delay(0.18)
 	tween.tween_property(label, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.chain().tween_callback(func() -> void: label.visible = false)
+
+func _play_sfx(kind: String) -> void:
+	if _sfx_players.is_empty() or not _sfx_streams.has(kind):
+		return
+	var player := _sfx_players[_sfx_cursor]
+	_sfx_cursor = (_sfx_cursor + 1) % _sfx_players.size()
+	player.stream = _sfx_streams[kind]
+	player.pitch_scale = 0.98 + float(_sfx_cursor % 3) * 0.015
+	player.play()
+
+func _make_sfx(kind: String) -> AudioStreamWAV:
+	var duration := 0.07
+	if kind in ["heavy", "perfect", "defeat"]:
+		duration = 0.13
+	elif kind == "boss_defeat":
+		duration = 0.3
+	var sample_rate := 22050
+	var sample_count := roundi(duration * float(sample_rate))
+	var data := PackedByteArray()
+	data.resize(sample_count * 2)
+	for index in sample_count:
+		var time := float(index) / float(sample_rate)
+		var progress := float(index) / float(sample_count)
+		var envelope := pow(1.0 - progress, 2.4)
+		var frequency := 560.0
+		var noise_amount := 0.22
+		match kind:
+			"light":
+				frequency = 720.0 - progress * 260.0
+			"medium":
+				frequency = 470.0 - progress * 190.0
+				noise_amount = 0.32
+			"heavy":
+				frequency = 150.0 - progress * 45.0
+				noise_amount = 0.42
+			"block":
+				frequency = 960.0 + progress * 180.0
+				noise_amount = 0.12
+			"perfect":
+				frequency = 1380.0 + progress * 420.0
+				noise_amount = 0.1
+			"dodge":
+				frequency = 840.0 + progress * 680.0
+				noise_amount = 0.3
+			"hurt":
+				frequency = 115.0
+				noise_amount = 0.48
+			"defeat":
+				frequency = 220.0 - progress * 80.0
+				noise_amount = 0.35
+			"boss_defeat":
+				frequency = 92.0 + progress * 34.0
+				noise_amount = 0.3
+		var noise := sin(float(index) * 12.9898) * sin(float(index) * 4.1414)
+		var sample := (sin(TAU * frequency * time) * (1.0 - noise_amount) + noise * noise_amount) * envelope * 0.62
+		if kind in ["block", "perfect", "boss_defeat"]:
+			sample += sin(TAU * frequency * 1.62 * time) * envelope * 0.22
+		data.encode_s16(index * 2, clampi(roundi(sample * 32767.0), -32768, 32767))
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = sample_rate
+	stream.stereo = false
+	stream.data = data
+	return stream

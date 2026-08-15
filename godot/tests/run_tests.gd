@@ -1,6 +1,7 @@
 extends SceneTree
 
 const CombatModelScript = preload("res://scripts/combat_model.gd")
+const BattlefieldScript = preload("res://scripts/battlefield.gd")
 var failures := 0
 
 func _init() -> void:
@@ -58,13 +59,14 @@ func _run_tests() -> void:
 	_test_ultimate_priority()
 	_test_auto_slot_configuration()
 	_test_auto_tactic_conditions()
+	_test_battlefield_impact_tiers()
 	_test_playable_pace()
 	await _test_navigation()
 	if failures > 0:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 53")
+		print("Godot tests passed: 54")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -75,6 +77,13 @@ func _test_auto_attack_and_momentum() -> void:
 	var events: Array[Dictionary] = model.step(CombatModelScript.AUTO_ATTACK_INTERVAL + 0.01)
 	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "attack"), "沒有輸入時也必須自動普攻")
 	_expect(model.momentum > before, "時間與普攻必須累積勢")
+
+func _test_battlefield_impact_tiers() -> void:
+	var battlefield = BattlefieldScript.new()
+	_expect(battlefield.impact_tier_for_source("attack") == "light", "普通攻擊必須使用輕量命中回饋")
+	_expect(battlefield.impact_tier_for_source("critical_attack") == "medium", "暴擊必須使用中量命中回饋")
+	_expect(battlefield.impact_tier_for_source("mountain_break") == "heavy", "斷嶽必須使用重型命中回饋")
+	battlefield.free()
 
 func _test_manual_attack_and_shared_cooldown() -> void:
 	var model = CombatModelScript.new()
