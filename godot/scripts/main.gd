@@ -12,7 +12,6 @@ var journey_pending := false
 var current_page := "combat"
 var current_skill_tab := "auto"
 var battlefield: Battlefield
-var manual_attack_button: Button
 var enemy_label: Label
 var kills_label: Label
 var top_panel: PanelContainer
@@ -63,7 +62,7 @@ func _ready() -> void:
 	_apply_safe_area()
 	_update_hud(model.snapshot())
 	auto_slot_buttons[0].grab_focus()
-	_show_toast("手動攻擊已就緒", "點擊攻擊圖示出刀；不操作時仍會自動戰鬥")
+	_show_toast("AUTO 戰鬥開始", "角色會持續快速攻擊；你負責操練、技能編成與旅途選擇")
 
 func _process(delta: float) -> void:
 	if training_open or journey_open or journey_pending or current_page != "combat":
@@ -233,21 +232,6 @@ func _build_ui() -> void:
 	command_hud.add_child(command_label)
 	command_bar = _progress_bar(Color("253229"), Color("5d9a6c"), 11)
 	command_hud.add_child(command_bar)
-
-	var manual_row := HBoxContainer.new()
-	manual_row.add_theme_constant_override("separation", 8)
-	bottom_box.add_child(manual_row)
-	var manual_text := VBoxContainer.new()
-	manual_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	manual_row.add_child(manual_text)
-	manual_text.add_child(_label("手動攻擊", 14, Color("ffe09a")))
-	manual_text.add_child(_label("獨立冷卻 · 敏捷會加快再次出刀", 12, Color("aebfb4")))
-	manual_attack_button = _button("斬  攻擊", Color("78552d"), 54)
-	manual_attack_button.custom_minimum_size.x = 118
-	manual_attack_button.size_flags_horizontal = Control.SIZE_SHRINK_END
-	manual_attack_button.tooltip_text = "手動斬擊｜不會延後 AUTO 普攻"
-	manual_attack_button.pressed.connect(_manual_attack)
-	manual_row.add_child(manual_attack_button)
 
 	var slot_heading := HBoxContainer.new()
 	bottom_box.add_child(slot_heading)
@@ -768,13 +752,6 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"ten_thousand_armies_one_sword": _show_toast("奧義・萬軍一劍", "一劍起，萬軍動")
 			"defeat": _show_toast("戰敗後重整", "保留操練，退回上一戰")
 
-func _manual_attack() -> void:
-	if training_open or journey_open or journey_pending or current_page != "combat":
-		return
-	var events := model.manual_attack()
-	_handle_events(events)
-	_update_hud(model.snapshot())
-
 func _spend_training(track: String) -> void:
 	var events := model.spend_training(track)
 	_handle_events(events)
@@ -900,7 +877,7 @@ func _choose_journey_route(route_id: String) -> void:
 	accumulator = 0.0
 	_handle_events(events)
 	_update_hud(model.snapshot())
-	manual_attack_button.grab_focus()
+	auto_slot_buttons[0].grab_focus()
 
 func _update_hud(snapshot: Dictionary) -> void:
 	var boss_mark := "首領 · " if bool(snapshot.enemy_is_boss) else ("精英 · " if bool(snapshot.enemy_is_elite) else "")
@@ -964,11 +941,6 @@ func _update_hud(snapshot: Dictionary) -> void:
 	command_bar.value = float(snapshot.military_momentum)
 	var war_text := " · 軍神" if bool(snapshot.war_god_active) else (" · 奮戰 %.1fs" % float(snapshot.legion_fervor_remaining) if float(snapshot.legion_fervor_remaining) > 0.0 else "")
 	command_label.text = "軍勢  %d/%d · 友軍 %d · 援攻 %.1fs%s" % [roundi(float(snapshot.military_momentum)), roundi(float(snapshot.max_military_momentum)), int(snapshot.ally_count), float(snapshot.ally_attack_remaining), war_text]
-	var manual_remaining := float(snapshot.manual_attack_remaining)
-	manual_attack_button.disabled = not bool(snapshot.manual_attack_ready)
-	manual_attack_button.text = "斬  攻擊" if manual_remaining <= 0.0 else "斬  %.1fs" % manual_remaining
-	manual_attack_button.add_theme_stylebox_override("normal", _panel_style(Color("8a6230") if manual_remaining <= 0.0 else Color("383a36"), Color("f1d590") if manual_remaining <= 0.0 else Color("686d65"), 3 if manual_remaining <= 0.0 else 2))
-	manual_attack_button.tooltip_text = "手動斬擊｜冷卻 %.2f 秒｜不會延後 AUTO 普攻" % float(snapshot.manual_attack_cooldown)
 	var slots: Array = snapshot.auto_skill_slots
 	for index in CombatModel.AUTO_SLOT_COUNT:
 		var skill_id := String(slots[index])

@@ -55,8 +55,6 @@ var _boundary_element := "fire"
 var _manifest_burst := 0.0
 var _complete_release_burst := 0.0
 var _ally_action := 0.0
-var _manual_slash := 0.0
-var _manual_slash_side := 1.0
 var _momentum_pulse := 0.0
 var _enemy_flash := 0.0
 var _hero_flash := 0.0
@@ -141,7 +139,6 @@ func _process(delta: float) -> void:
 	_manifest_burst = maxf(0.0, _manifest_burst - delta / 0.9)
 	_complete_release_burst = maxf(0.0, _complete_release_burst - delta / 1.25)
 	_ally_action = maxf(0.0, _ally_action - delta / 0.48)
-	_manual_slash = maxf(0.0, _manual_slash - delta / 0.18)
 	_momentum_pulse = maxf(0.0, _momentum_pulse - delta * 1.8)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
 	_hero_flash = maxf(0.0, _hero_flash - delta * 7.0)
@@ -178,11 +175,6 @@ func play_events(events: Array[Dictionary]) -> void:
 		match String(event.type):
 			"attack":
 				_hero_action = 0.5
-			"manual_attack":
-				_hero_action = 0.5
-				_manual_slash = 1.0
-				_manual_slash_side *= -1.0
-				add_trauma(0.05)
 			"heavy_slash", "mountain_break":
 				_heavy_slash = 1.0
 				add_trauma(0.62 if String(event.type) == "mountain_break" else 0.42)
@@ -694,12 +686,6 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 			var color: Color = [Color("ff8a45"), Color("9eeaff"), Color("d5a2ff")][index]
 			draw_arc(center, 82.0 + float(index) * 24.0 + phase * 62.0, 0.0, TAU, 40, Color(color, alpha * (1.0 - float(index) * 0.15)), 12.0)
 		draw_line(hero_pos + Vector2(-20, 18), enemy_pos + Vector2(32, -76), Color("ffffff", alpha), 24.0)
-	if _manual_slash > 0.0:
-		var phase := 1.0 - _manual_slash
-		var alpha := sin(clampf(phase * 2.4, 0.0, 1.0) * PI)
-		var center := hero_pos.lerp(enemy_pos, 0.58)
-		var diagonal := Vector2(50.0, 58.0 * _manual_slash_side)
-		draw_line(center - diagonal, center + diagonal, Color("ffe8a8", alpha), 7.0)
 	if _impact_burst > 0.0:
 		var phase := 1.0 - _impact_burst
 		var alpha := _impact_burst

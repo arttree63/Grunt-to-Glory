@@ -3,9 +3,8 @@ extends RefCounted
 
 const MAX_TRAINING_LEVEL := 200
 const MAX_MOMENTUM := 100.0
-const AUTO_ATTACK_INTERVAL := 0.96
-const MANUAL_ATTACK_BASE_COOLDOWN := 1.0
-const MANUAL_ATTACK_MULTIPLIER := 0.65
+const AUTO_ATTACK_INTERVAL := 0.72
+const MIN_AUTO_ATTACK_INTERVAL := 0.24
 const AUTO_SLOT_COUNT := 5
 const HIGH_ARMOR_THRESHOLD := 18.0
 const MAX_IMMOVABLE := 3
@@ -587,7 +586,6 @@ var auto_skill_slots: Array[String] = ["", "", "", "", ""]
 var auto_tactics := {}
 var skill_cooldowns := {}
 var auto_attack_remaining := AUTO_ATTACK_INTERVAL
-var manual_attack_remaining := 0.0
 var enemy_attack_remaining := 2.25
 var _momentum_was_full := false
 var _events: Array[Dictionary] = []
@@ -600,7 +598,6 @@ func step(delta: float) -> Array[Dictionary]:
 	if awaiting_journey_choice:
 		return []
 	_tick_cooldowns(delta)
-	manual_attack_remaining = maxf(0.0, manual_attack_remaining - delta)
 	opening_remaining = maxf(0.0, opening_remaining - delta)
 	draw_stance_remaining = maxf(0.0, draw_stance_remaining - delta)
 	extreme_momentum_remaining = maxf(0.0, extreme_momentum_remaining - delta)
@@ -664,28 +661,6 @@ func step(delta: float) -> Array[Dictionary]:
 	if ally_attack_remaining <= 0.0 and _ally_count() > 0 and enemy_hp > 0.0:
 		ally_attack_remaining += _ally_attack_interval()
 		_ally_auto_attack()
-	return _events.duplicate(true)
-
-func manual_attack() -> Array[Dictionary]:
-	_events.clear()
-	if awaiting_journey_choice or manual_attack_remaining > 0.0:
-		return []
-	manual_attack_remaining = _manual_attack_cooldown()
-	var damage := _attack_power() * MANUAL_ATTACK_MULTIPLIER
-	var critical := rng.randf() < _critical_chance()
-	if critical:
-		damage *= 1.5
-	_events.append({"type": "manual_attack", "damage": damage, "critical": critical})
-	var defeated := _deal_damage(damage, "manual_attack")
-	_add_momentum(2.0, "manual_attack")
-	_add_military_momentum(4.0, "manual_attack")
-	_record_flow_attack()
-	if not defeated:
-		_magic_enchanted_hit(true)
-	if enemy_hp > 0.0:
-		_holy_sword_hit(true)
-	if enemy_hp > 0.0:
-		_try_command_follow_up("manual_attack")
 	return _events.duplicate(true)
 
 func spend_training(track: String) -> Array[Dictionary]:
@@ -897,8 +872,6 @@ func snapshot() -> Dictionary:
 		"war_god_active": _war_god_active(),
 		"dodge_chance": _dodge_chance(), "critical_chance": _critical_chance(),
 		"attack_speed_bonus": _agility_action_speed_bonus(), "move_speed_bonus": _agility_move_speed_bonus(),
-		"manual_attack_ready": manual_attack_remaining <= 0.0,
-		"manual_attack_remaining": manual_attack_remaining, "manual_attack_cooldown": _manual_attack_cooldown(),
 		"auto_skill_slots": auto_skill_slots.duplicate(), "auto_tactics": auto_tactics.duplicate(true), "skill_cooldowns": skill_cooldowns.duplicate(true),
 		"attack_interval": _current_attack_interval(), "engagement_time": enemy_engagement_time,
 	}
@@ -2246,7 +2219,7 @@ func _critical_chance() -> float:
 func _current_attack_interval() -> float:
 	var youren_speed := _youren_attack_speed_bonus()
 	var shadowless_speed := 0.55 if shadowless_remaining > 0.0 else 0.0
-	return AUTO_ATTACK_INTERVAL / (1.0 + _stat_value("attack_speed", 0.0) + youren_speed + shadowless_speed)
+	return maxf(MIN_AUTO_ATTACK_INTERVAL, AUTO_ATTACK_INTERVAL / (1.0 + _stat_value("attack_speed", 0.0) + youren_speed + shadowless_speed))
 
 func _record_flow_attack() -> void:
 	if not skill_is_unlocked("flowing_ease"):
@@ -2300,9 +2273,6 @@ func _youren_critical_bonus() -> float:
 	if youren >= 4: return 0.05
 	if youren >= 3: return 0.03
 	return 0.0
-
-func _manual_attack_cooldown() -> float:
-	return MANUAL_ATTACK_BASE_COOLDOWN / (1.0 + _agility_action_speed_bonus() * 0.55)
 
 func _agility_action_speed_bonus() -> float:
 	return _tiered_agility_bonus(0.012, 0.008, 0.006, 0.004)

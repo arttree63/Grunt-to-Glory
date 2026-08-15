@@ -9,9 +9,8 @@ func _init() -> void:
 
 func _run_tests() -> void:
 	_test_auto_attack_and_momentum()
-	_test_manual_attack_and_shared_cooldown()
 	_test_training_growth_and_locked_tracks()
-	_test_magic_sword_marks_and_manual_attack()
+	_test_magic_sword_marks_and_auto_attack()
 	_test_burning_cycle()
 	_test_flame_burst_slash()
 	_test_magic_sword_release()
@@ -67,7 +66,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 55")
+		print("Godot tests passed: 54")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -78,6 +77,7 @@ func _test_auto_attack_and_momentum() -> void:
 	var events: Array[Dictionary] = model.step(CombatModelScript.AUTO_ATTACK_INTERVAL + 0.01)
 	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "attack"), "沒有輸入時也必須自動普攻")
 	_expect(model.momentum > before, "時間與普攻必須累積勢")
+	_expect(model._current_attack_interval() <= 0.72, "取消點擊攻擊後，基礎 AUTO 節奏必須保持快速")
 
 func _test_battlefield_impact_tiers() -> void:
 	var battlefield = BattlefieldScript.new()
@@ -85,19 +85,6 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(battlefield.impact_tier_for_source("critical_attack") == "medium", "暴擊必須使用中量命中回饋")
 	_expect(battlefield.impact_tier_for_source("mountain_break") == "heavy", "斷嶽必須使用重型命中回饋")
 	battlefield.free()
-
-func _test_manual_attack_and_shared_cooldown() -> void:
-	var model = CombatModelScript.new()
-	model.enemy_hp = 9999.0
-	var auto_before: float = model.auto_attack_remaining
-	var first: Array[Dictionary] = model.manual_attack()
-	_expect(first.any(func(event: Dictionary) -> bool: return event.type == "manual_attack"), "開場攻擊圖示必須能立即造成手動斬擊傷害")
-	_expect(is_equal_approx(model.auto_attack_remaining, auto_before), "手動斬擊不可重置或延後 AUTO 普攻")
-	var repeated: Array[Dictionary] = model.manual_attack()
-	_expect(repeated.is_empty(), "手動攻擊冷卻中不可重複出刀")
-	var automatic: Array[Dictionary] = model.step(maxf(model._current_attack_interval(), model._manual_attack_cooldown()) + 0.01)
-	_expect(automatic.any(func(event: Dictionary) -> bool: return event.type == "attack"), "手動斬擊冷卻期間 AUTO 普攻仍必須獨立運作")
-	_expect(model.manual_attack().any(func(event: Dictionary) -> bool: return event.type == "manual_attack"), "冷卻結束後攻擊圖示必須再次可用")
 
 func _test_training_growth_and_locked_tracks() -> void:
 	var model = CombatModelScript.new()
@@ -123,14 +110,15 @@ func _test_physical_milestone_sequences() -> void:
 	_expect(CombatModelScript.PHYSIQUE_MILESTONES.size() == 40, "體術必須具備完整 Lv.5～200 成長節點")
 	_expect(CombatModelScript.AGILITY_MILESTONES.size() == 40, "敏捷必須具備完整 Lv.5～200 成長節點")
 
-func _test_magic_sword_marks_and_manual_attack() -> void:
+func _test_magic_sword_marks_and_auto_attack() -> void:
 	var model = CombatModelScript.new()
 	model.training.magic = 10
 	model.hero_mp = model._hero_max_mp()
 	model.enemy_hp = 99999.0
 	model.enemy_armor = 0.0
-	var events := model.manual_attack()
-	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "magic_enchant"), "魔法 Lv.10 後手動攻擊也必須觸發魔劍附傷")
+	model._events.clear()
+	model._basic_attack(false)
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "magic_enchant"), "魔法 Lv.10 後 AUTO 普攻必須觸發魔劍附傷")
 	_expect(model.magic_marks == 1, "附魔攻擊必須累積 1 枚魔紋")
 	for index in 4:
 		model._events.clear()
@@ -627,7 +615,6 @@ func _test_dodge_stat_and_attack_modifiers() -> void:
 	_expect(model._current_attack_interval() < base_attack_interval, "敏捷攻速必須直接加快 AUTO 普通攻擊")
 	_expect(is_equal_approx(model._critical_chance(), 0.09), "敏捷 Lv.20 必須同時提供穩定暴擊收益")
 	_expect(is_equal_approx(model._dodge_chance(), 0.08), "敏捷前期閃避成長必須低於攻速成長")
-	_expect(model._manual_attack_cooldown() < CombatModelScript.MANUAL_ATTACK_BASE_COOLDOWN, "敏捷必須縮短手動攻擊冷卻")
 	model.training.agility = 200
 	var trained_dodge: float = model._dodge_chance()
 	_expect(trained_dodge > base_dodge and trained_dodge <= CombatModelScript.DODGE_CAP, "敏捷必須提高面板閃避率且不能超過上限")
@@ -855,9 +842,6 @@ func _test_navigation() -> void:
 	_expect(scene.nav_buttons.size() == 5, "主分頁必須維持五個入口")
 	_expect(scene.auto_slot_buttons.size() == 5, "戰鬥 HUD 必須顯示五格 AUTO 優先序")
 	_expect(is_instance_valid(scene.journey_overlay) and scene.journey_buttons.size() == 3, "Boss 後旅途抉擇必須提供三條手機可操作路線")
-	_expect(is_instance_valid(scene.manual_attack_button) and not scene.manual_attack_button.disabled, "戰鬥 HUD 必須提供就緒的手動攻擊圖示")
-	scene._manual_attack()
-	_expect(scene.manual_attack_button.disabled and "s" in scene.manual_attack_button.text, "按下攻擊圖示後必須顯示冷卻並暫停再次攻擊")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")
 	_expect(is_instance_valid(scene.section_scroll), "功能頁內容必須可捲動")
 	scene.model.training.martial = 10
