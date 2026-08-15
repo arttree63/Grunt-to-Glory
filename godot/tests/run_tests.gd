@@ -680,6 +680,13 @@ func _test_navigation() -> void:
 	scene._switch_page("skills")
 	await process_frame
 	_expect(scene.current_page == "skills", "技能頁必須可切換")
+	_expect(scene.skill_tab_buttons.size() == 7, "技能頁必須提供 AUTO 與六流派共七個分頁")
+	scene._select_skill_tab("faith")
+	await process_frame
+	_expect(scene.current_skill_tab == "faith" and scene.skill_tab_buttons.has("command"), "信仰與統御必須保留鎖定分頁")
+	scene._select_skill_tab("martial")
+	await process_frame
+	_expect(scene.current_skill_tab == "martial", "已完成流派必須能獨立切換成長路線")
 	scene._switch_page("combat")
 	await process_frame
 	_expect(not scene.section_overlay.visible, "返回戰鬥頁必須關閉功能面板")

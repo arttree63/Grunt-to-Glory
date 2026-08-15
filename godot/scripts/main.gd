@@ -8,6 +8,7 @@ var model := CombatModel.new()
 var accumulator := 0.0
 var training_open := false
 var current_page := "combat"
+var current_skill_tab := "auto"
 var battlefield: Battlefield
 var manual_attack_button: Button
 var enemy_label: Label
@@ -39,6 +40,7 @@ var section_margin: MarginContainer
 var section_scroll: ScrollContainer
 var section_box: VBoxContainer
 var nav_buttons: Dictionary = {}
+var skill_tab_buttons: Dictionary = {}
 var toast_panel: PanelContainer
 var toast_title: Label
 var toast_detail: Label
@@ -266,6 +268,7 @@ func _build_section_overlay() -> void:
 	section_scroll = ScrollContainer.new()
 	section_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	section_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	section_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(section_scroll)
 	section_box = VBoxContainer.new()
 	section_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -327,7 +330,43 @@ func _render_character_page(snapshot: Dictionary) -> void:
 	section_box.add_child(reduce_motion_toggle)
 
 func _render_skills_page(snapshot: Dictionary) -> void:
+	_render_skill_tabs()
 	var slots: Array = snapshot.auto_skill_slots
+	if current_skill_tab == "auto":
+		_render_auto_setup(slots)
+		return
+	if current_skill_tab in ["faith", "command"]:
+		_render_reserved_skill_track(current_skill_tab, snapshot)
+		return
+	var definition: Dictionary = CombatModel.TRAINING_DEFS[current_skill_tab]
+	section_box.add_child(_label("%s｜%s" % [String(definition.name), String(definition.style)], 20, _track_color(current_skill_tab)))
+	section_box.add_child(_label("目前 Lv.%d｜%s" % [int(snapshot.training[current_skill_tab]), String(definition.special)], 14, Color("cbd5cc")))
+	_render_track_skills(current_skill_tab, "核心技能", slots)
+	if current_skill_tab in ["martial", "physique", "agility"]:
+		_render_branch_choices(current_skill_tab, snapshot)
+		_render_track_milestones(current_skill_tab, snapshot)
+	else:
+		_render_magic_choices(snapshot)
+		_render_magic_milestones(snapshot)
+
+func _render_skill_tabs() -> void:
+	skill_tab_buttons.clear()
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 5)
+	grid.add_theme_constant_override("v_separation", 5)
+	section_box.add_child(grid)
+	var tabs := {"auto": "編成", "martial": "武藝", "physique": "體術", "agility": "敏捷", "magic": "魔法", "faith": "信仰", "command": "統御"}
+	for tab_id: String in tabs:
+		var active := tab_id == current_skill_tab
+		var button := _button("● %s" % String(tabs[tab_id]) if active else String(tabs[tab_id]), _track_color(tab_id) if active else Color("354039"), 44)
+		button.add_theme_font_size_override("font_size", 14)
+		button.tooltip_text = "%s分頁%s" % [String(tabs[tab_id]), "｜目前顯示" if active else ""]
+		button.pressed.connect(_select_skill_tab.bind(tab_id))
+		grid.add_child(button)
+		skill_tab_buttons[tab_id] = button
+
+func _render_auto_setup(slots: Array) -> void:
 	section_box.add_child(_label("由 1 → 5 判斷；每次施放第一個符合條件的技能。", 14, Color("cbd5cc")))
 	for index in CombatModel.AUTO_SLOT_COUNT:
 		var row := HBoxContainer.new()
@@ -353,18 +392,15 @@ func _render_skills_page(snapshot: Dictionary) -> void:
 			else:
 				button.pressed.connect(_move_auto_slot.bind(index, -1 if action == "↑" else 1))
 			row.add_child(button)
-	_render_track_skills("martial", "武藝｜一刀流技能", slots)
-	_render_branch_choices("martial", snapshot)
-	_render_track_milestones("martial", snapshot)
-	_render_track_skills("physique", "體術｜不動流技能", slots)
-	_render_branch_choices("physique", snapshot)
-	_render_track_milestones("physique", snapshot)
-	_render_track_skills("agility", "敏捷｜閃影流技能", slots)
-	_render_branch_choices("agility", snapshot)
-	_render_track_milestones("agility", snapshot)
-	_render_track_skills("magic", "魔法｜魔劍流技能", slots)
-	_render_magic_choices(snapshot)
-	_render_magic_milestones(snapshot)
+	section_box.add_child(_label("到各流派分頁選擇要裝入的主動技能。", 13, Color("9fb0a5")))
+
+func _render_reserved_skill_track(track: String, snapshot: Dictionary) -> void:
+	var definition: Dictionary = CombatModel.TRAINING_DEFS[track]
+	section_box.add_child(_label("%s｜%s" % [String(definition.name), String(definition.style)], 21, _track_color(track)))
+	section_box.add_child(_section_row("預留流派", "目前 Lv.%d · 尚未開放" % int(snapshot.training[track])))
+	section_box.add_child(_section_row("核心定位", String(definition.special)))
+	section_box.add_child(_section_row("成長路線", "Lv.1～200 節點等待玩法定案"))
+	section_box.add_child(_label("先保留入口與資料位置，不預設技能、資源或專精分支。", 14, Color("aebfb4")))
 
 func _render_track_skills(track: String, heading: String, slots: Array) -> void:
 	var heading_color := Color("f6d27d") if track == "martial" else (Color("bfe8ef") if track == "physique" else (Color("d8ccff") if track == "agility" else Color("ffc28f")))
@@ -463,11 +499,15 @@ func _render_magic_choices(snapshot: Dictionary) -> void:
 		row.add_child(button)
 
 func _render_magic_milestones(snapshot: Dictionary) -> void:
-	section_box.add_child(_label("魔劍流 Lv.55～200 里程碑", 18, Color("ffc28f")))
+	section_box.add_child(_label("成長路線", 18, Color("ffc28f")))
 	for level: int in CombatModel.MAGIC_MILESTONES:
+		if level in [55, 105, 155]:
+			section_box.add_child(_label(_route_stage_name(level), 15, Color("d6c5a2")))
 		var milestone: Dictionary = CombatModel.MAGIC_MILESTONES[level]
-		var state := "已取得" if int(snapshot.training.magic) >= level else "未解鎖"
-		section_box.add_child(_section_row("Lv.%d｜%s" % [level, String(milestone.name)], "%s · %s" % [state, String(milestone.description)]))
+		var unlocked := int(snapshot.training.magic) >= level
+		var marker := "◆" if level in [100, 150, 200] else ("●" if unlocked else "○")
+		var state := "已取得" if unlocked else "未解鎖"
+		section_box.add_child(_section_row("%s Lv.%d｜%s" % [marker, level, String(milestone.name)], "%s · %s" % [state, String(milestone.description)]))
 
 func _render_track_milestones(track: String, snapshot: Dictionary) -> void:
 	var table: Dictionary = {
@@ -478,11 +518,27 @@ func _render_track_milestones(track: String, snapshot: Dictionary) -> void:
 	var level := int(snapshot.training[track])
 	var style_name: String = {"martial": "一刀流", "physique": "不動流", "agility": "閃影流"}[track]
 	var color := Color("f6d27d") if track == "martial" else (Color("bfe8ef") if track == "physique" else Color("d8ccff"))
-	section_box.add_child(_label("%s Lv.1～200 里程碑" % style_name, 18, color))
+	section_box.add_child(_label("%s成長路線" % style_name, 18, color))
 	for target: int in table:
+		if target in [5, 55, 105, 155]:
+			section_box.add_child(_label(_route_stage_name(target), 15, Color("d6c5a2")))
 		var milestone: Dictionary = table[target]
-		var state := "已取得" if level >= target else "未解鎖"
-		section_box.add_child(_section_row("Lv.%d｜%s" % [target, String(milestone.name)], "%s · %s" % [state, String(milestone.description)]))
+		var unlocked := level >= target
+		var marker := "◆" if target in [50, 100, 150, 200] else ("●" if unlocked else "○")
+		var state := "已取得" if unlocked else "未解鎖"
+		section_box.add_child(_section_row("%s Lv.%d｜%s" % [marker, target, String(milestone.name)], "%s · %s" % [state, String(milestone.description)]))
+
+func _route_stage_name(level: int) -> String:
+	if level <= 50: return "I｜Lv.1～50 · 流派成形"
+	if level <= 100: return "II｜Lv.51～100 · 機制深化"
+	if level <= 150: return "III｜Lv.101～150 · 高階專精"
+	return "IV｜Lv.151～200 · 純流極境"
+
+func _track_color(track: String) -> Color:
+	return {
+		"auto": Color("8a6b39"), "martial": Color("8a6835"), "physique": Color("47717a"),
+		"agility": Color("64558c"), "magic": Color("8a5135"), "faith": Color("77745a"), "command": Color("5b665e"),
+	}.get(track, Color("53675b"))
 
 func _magic_choice_name(choices: Dictionary, choice_id: String) -> String:
 	return String(choices[choice_id].name) if choices.has(choice_id) else "尚未選擇"
@@ -619,6 +675,12 @@ func _remove_auto_slot(index: int) -> void:
 func _move_auto_slot(index: int, direction: int) -> void:
 	model.move_auto_skill(index, direction)
 	_update_hud(model.snapshot())
+
+func _select_skill_tab(tab_id: String) -> void:
+	if tab_id not in ["auto", "martial", "physique", "agility", "magic", "faith", "command"]:
+		return
+	current_skill_tab = tab_id
+	_render_section("skills")
 
 func _select_martial_branch(branch_id: String) -> void:
 	if not model.select_martial_branch(branch_id):
