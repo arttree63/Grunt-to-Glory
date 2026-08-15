@@ -6,8 +6,11 @@ var momentum_ratio := 0.0
 var enemy_armor_ratio := 0.0
 var enemy_is_boss := false
 var enemy_heavy_windup := false
+var enemy_attack_type := "普通"
 var immovable_level := 0
 var return_blade_ready := false
+var youren_level := 0
+var shadowless_active := false
 var trauma := 0.0
 var _time := 0.0
 var _hero_action := 0.0
@@ -22,6 +25,12 @@ var _perfect_block := 0.0
 var _counter_slash := 0.0
 var _collapse_counter := 0.0
 var _heaven_return := 0.0
+var _dodge_flash := 0.0
+var _swift_step := 0.0
+var _shadow_assault := 0.0
+var _flying_swallow := 0.0
+var _opening_flash := 0.0
+var _shadowless_burst := 0.0
 var _momentum_pulse := 0.0
 var _enemy_flash := 0.0
 var _hero_flash := 0.0
@@ -56,6 +65,12 @@ func _process(delta: float) -> void:
 	_counter_slash = maxf(0.0, _counter_slash - delta / 0.56)
 	_collapse_counter = maxf(0.0, _collapse_counter - delta / 0.82)
 	_heaven_return = maxf(0.0, _heaven_return - delta / 1.05)
+	_dodge_flash = maxf(0.0, _dodge_flash - delta / 0.5)
+	_swift_step = maxf(0.0, _swift_step - delta / 0.68)
+	_shadow_assault = maxf(0.0, _shadow_assault - delta / 0.52)
+	_flying_swallow = maxf(0.0, _flying_swallow - delta / 0.64)
+	_opening_flash = maxf(0.0, _opening_flash - delta / 0.8)
+	_shadowless_burst = maxf(0.0, _shadowless_burst - delta / 1.0)
 	_momentum_pulse = maxf(0.0, _momentum_pulse - delta * 1.8)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
 	_hero_flash = maxf(0.0, _hero_flash - delta * 7.0)
@@ -65,9 +80,12 @@ func set_state(snapshot: Dictionary) -> void:
 	momentum_ratio = float(snapshot.momentum) / maxf(1.0, float(snapshot.max_momentum))
 	enemy_armor_ratio = clampf(float(snapshot.enemy_armor) / 50.0, 0.0, 1.0)
 	enemy_is_boss = bool(snapshot.enemy_is_boss)
-	enemy_heavy_windup = String(snapshot.enemy_attack_type) == "重擊" and float(snapshot.enemy_attack_remaining) <= 0.8
+	enemy_attack_type = String(snapshot.enemy_attack_type)
+	enemy_heavy_windup = enemy_attack_type != "普通" and float(snapshot.enemy_attack_remaining) <= 0.8
 	immovable_level = int(snapshot.immovable)
 	return_blade_ready = bool(snapshot.return_blade_ready)
+	youren_level = int(snapshot.youren)
+	shadowless_active = float(snapshot.shadowless_remaining) > 0.0
 
 func play_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
@@ -108,6 +126,24 @@ func play_events(events: Array[Dictionary]) -> void:
 			"heaven_return":
 				_heaven_return = 1.0
 				add_trauma(0.86)
+			"dodge":
+				_dodge_flash = 1.0
+			"swift_step_ready":
+				_dodge_flash = maxf(_dodge_flash, 0.35)
+			"swift_step":
+				_swift_step = 1.0
+				add_trauma(0.22)
+			"shadow_assault":
+				_shadow_assault = 1.0
+				add_trauma(0.25)
+			"flying_swallow":
+				_flying_swallow = 1.0
+				add_trauma(0.34)
+			"opening":
+				_opening_flash = 1.0
+			"shadowless":
+				_shadowless_burst = 1.0
+				add_trauma(0.45)
 			"momentum_full":
 				_momentum_pulse = 1.0
 			"no_beat":
@@ -146,8 +182,11 @@ func _draw() -> void:
 	var counter_lunge := sin(_counter_slash * PI) * minf(size.x * 0.2, 84.0)
 	var collapse_lunge := sin(_collapse_counter * PI) * minf(size.x * 0.25, 104.0)
 	var heaven_lunge := sin(_heaven_return * PI) * minf(size.x * 0.28, 114.0)
-	hero_pos.x += lunge + heavy_lunge + ultimate_lunge + armor_lunge + execute_lunge + first_lunge + counter_lunge + collapse_lunge + heaven_lunge
+	var agility_lunge := sin(maxf(_swift_step, _shadow_assault) * PI) * minf(size.x * 0.3, 120.0)
+	var dodge_shift := sin(_dodge_flash * PI) * minf(size.x * 0.15, 64.0)
+	hero_pos.x += lunge + heavy_lunge + ultimate_lunge + armor_lunge + execute_lunge + first_lunge + counter_lunge + collapse_lunge + heaven_lunge + agility_lunge - dodge_shift
 	_draw_enemy(enemy_pos)
+	_draw_afterimages(hero_pos)
 	_draw_hero(hero_pos)
 	_draw_skill_fx(hero_pos, enemy_pos)
 
@@ -186,7 +225,8 @@ func _draw_enemy(origin: Vector2) -> void:
 	var skin := Color.WHITE if _enemy_flash > 0.0 else Color("71964a")
 	if enemy_heavy_windup:
 		var pulse := 0.55 + sin(_time * 14.0) * 0.18
-		draw_arc(origin + Vector2(0, -30 + bob), 68.0, 0.0, TAU, 32, Color("e85a3d", pulse), 7.0)
+		var warning_color := Color("e85a3d") if enemy_attack_type == "重擊" else (Color("b76be0") if enemy_attack_type == "範圍" else Color("f0d55a"))
+		draw_arc(origin + Vector2(0, -30 + bob), 68.0, 0.0, TAU, 32, Color(warning_color, pulse), 7.0)
 	draw_circle(origin + Vector2(0, -46 + bob), 30.0, skin)
 	draw_polygon(PackedVector2Array([origin + Vector2(-30, -52 + bob), origin + Vector2(-54, -67 + bob), origin + Vector2(-27, -31 + bob)]), PackedColorArray([skin]))
 	draw_polygon(PackedVector2Array([origin + Vector2(30, -52 + bob), origin + Vector2(54, -67 + bob), origin + Vector2(27, -31 + bob)]), PackedColorArray([skin]))
@@ -201,6 +241,19 @@ func _draw_enemy(origin: Vector2) -> void:
 		draw_arc(origin + Vector2(0, -16 + bob), 47.0, 0.48, 2.65, 18, armor_color, 5.0 + enemy_armor_ratio * 5.0)
 	if enemy_is_boss:
 		draw_polyline(PackedVector2Array([origin + Vector2(-24, -86 + bob), origin + Vector2(-13, -105 + bob), origin + Vector2(0, -89 + bob), origin + Vector2(14, -107 + bob), origin + Vector2(25, -86 + bob)]), Color("e6bd62"), 7.0)
+
+func _draw_afterimages(origin: Vector2) -> void:
+	var count := 0
+	if youren_level > 0:
+		count = mini(2, 1 + floori(float(youren_level) / 3.0))
+	if shadowless_active:
+		count = 4
+	for index in count:
+		var distance := 20.0 + float(index) * 18.0
+		var offset := Vector2(-distance, sin(_time * 9.0 + float(index)) * 7.0)
+		var alpha := 0.12 + float(count - index) * 0.045
+		draw_polygon(PackedVector2Array([origin + offset + Vector2(-20, 15), origin + offset + Vector2(16, 13), origin + offset + Vector2(13, -34), origin + offset + Vector2(-15, -38)]), PackedColorArray([Color("8c72cf", alpha)]))
+		draw_circle(origin + offset + Vector2(0, -52), 15.0, Color("d9ceff", alpha))
 
 func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 	if _heavy_slash > 0.0:
@@ -267,16 +320,46 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		draw_arc(hero_pos + Vector2(0, -35), 90.0 + phase * 28.0, -2.5, 0.75, 36, Color("eaffff", alpha), 18.0)
 		draw_line(center + Vector2(-96, 74), center + Vector2(94, -82), Color("ffffff", alpha), 20.0)
 		draw_circle(center, 32.0 * alpha, Color("81ddea", alpha * 0.5))
+	if _dodge_flash > 0.0:
+		var phase := 1.0 - _dodge_flash
+		var alpha := sin(clampf(phase * 1.8, 0.0, 1.0) * PI)
+		for index in 3:
+			var y := -68.0 + float(index) * 24.0
+			draw_line(hero_pos + Vector2(-64, y), hero_pos + Vector2(-10, y - 8), Color("c8b9ff", alpha * (0.75 - float(index) * 0.12)), 4.0)
+	if _swift_step > 0.0:
+		var phase := 1.0 - _swift_step
+		var alpha := sin(clampf(phase * 1.8, 0.0, 1.0) * PI)
+		var center := hero_pos.lerp(enemy_pos, 0.63)
+		draw_line(hero_pos + Vector2(-70, -45), enemy_pos + Vector2(35, -50), Color("f1edff", alpha), 8.0)
+		draw_arc(center, 58.0, -2.3, 0.25, 24, Color("9d83e8", alpha), 7.0)
+	if _shadow_assault > 0.0:
+		var phase := 1.0 - _shadow_assault
+		var alpha := sin(clampf(phase * 2.0, 0.0, 1.0) * PI)
+		var center := hero_pos.lerp(enemy_pos, 0.72)
+		draw_arc(center, 64.0, 1.8, 4.8, 26, Color("eee9ff", alpha), 10.0)
+		draw_line(center + Vector2(-42, 42), center + Vector2(48, -48), Color("8165cf", alpha * 0.85), 5.0)
+	if _flying_swallow > 0.0:
+		var phase := 1.0 - _flying_swallow
+		var alpha := sin(clampf(phase * 1.9, 0.0, 1.0) * PI)
+		var center := hero_pos.lerp(enemy_pos, 0.7)
+		draw_arc(center + Vector2(18, -4), 76.0, -1.2, 1.55, 28, Color("c2afff", alpha), 9.0)
+	if _opening_flash > 0.0:
+		var alpha := _opening_flash * 0.55
+		draw_arc(enemy_pos + Vector2(0, -34), 52.0 + (1.0 - _opening_flash) * 14.0, 0.0, TAU, 28, Color("c49aff", alpha), 4.0)
+	if _shadowless_burst > 0.0:
+		var phase := 1.0 - _shadowless_burst
+		var alpha := sin(clampf(phase * 1.5, 0.0, 1.0) * PI)
+		draw_arc(hero_pos + Vector2(0, -35), 78.0 + phase * 34.0, 0.0, TAU, 36, Color("d9ccff", alpha), 8.0)
 
 func _spawn_damage(amount: float, source: String) -> void:
 	var label := _damage_pool[_damage_cursor]
 	_damage_cursor = (_damage_cursor + 1) % _damage_pool.size()
 	label.visible = true
 	label.modulate = Color.WHITE
-	var large := source in ["heavy_slash", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "two_cut"]
+	var large := source in ["heavy_slash", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "two_cut"]
 	label.scale = Vector2(1.75, 1.75) if source == "two_cut" else (Vector2(1.4, 1.4) if large else Vector2.ONE)
 	label.text = str(roundi(amount))
-	var color := Color("fff0a3") if source == "two_cut" else (Color("f7c0b7") if source == "execute_slash" else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0"))))
+	var color := Color("fff0a3") if source == "two_cut" else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["swift_step", "shadow_assault", "flying_swallow", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0")))))
 	label.add_theme_color_override("font_color", color)
 	label.position = Vector2(size.x * 0.64 + randf_range(-18.0, 18.0), size.y * 0.28)
 	var tween := create_tween()

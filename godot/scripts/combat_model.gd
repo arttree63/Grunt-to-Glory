@@ -7,11 +7,13 @@ const AUTO_ATTACK_INTERVAL := 0.96
 const AUTO_SLOT_COUNT := 5
 const HIGH_ARMOR_THRESHOLD := 18.0
 const MAX_IMMOVABLE := 3
+const MAX_YOUREN := 5
+const DODGE_CAP := 0.55
 const TRAINING_ORDER := ["martial", "physique", "agility", "magic", "faith", "command"]
 const TRAINING_DEFS := {
 	"martial": {"name": "武藝", "style": "一刀流", "implemented": true, "special": "攻擊、爆發、破甲"},
 	"physique": {"name": "體術", "style": "不動流", "implemented": true, "special": "生命、防禦、格擋、反擊"},
-	"agility": {"name": "敏捷", "style": "閃避流", "implemented": false, "special": "攻速、閃避、追擊"},
+	"agility": {"name": "敏捷", "style": "閃影流", "implemented": true, "special": "攻速、閃避、暴擊、追擊"},
 	"magic": {"name": "魔法", "style": "魔劍流", "implemented": false, "special": "魔力、元素、異常"},
 	"faith": {"name": "信仰", "style": "聖劍流", "implemented": false, "special": "治療、護盾、聖傷"},
 	"command": {"name": "統御", "style": "軍團劍技流", "implemented": false, "special": "軍勢、友軍、連攜"},
@@ -82,6 +84,27 @@ const SKILL_DEFS := {
 		"name": "奧義・不動返天", "short": "返天", "type": "ultimate", "track": "physique", "level": 200,
 		"condition": "滿層不動承受重擊或致命攻擊時自動發動", "tags": ["BLOCK", "COUNTER", "ULTIMATE"], "implemented": true, "reactive": true,
 	},
+	"swift_step": {
+		"name": "瞬步", "short": "瞬步", "type": "active", "track": "agility", "level": 10,
+		"cooldown": 5.0, "resource": "none", "cost": 0.0,
+		"condition": "敵人即將發動危險攻擊", "tags": ["DODGE", "FOLLOW_UP"], "implemented": true,
+	},
+	"flowing_ease": {
+		"name": "游刃", "short": "游刃", "type": "passive", "track": "agility", "level": 30,
+		"condition": "閃避累積游刃，最高 5 層；命中會中斷節奏", "tags": ["DODGE", "STACK"], "implemented": true,
+	},
+	"shadow_assault": {
+		"name": "影襲", "short": "影襲", "type": "passive", "track": "agility", "level": 50,
+		"condition": "成功閃避後立即追擊", "tags": ["DODGE", "FOLLOW_UP"], "implemented": true,
+	},
+	"exploit_opening": {
+		"name": "乘隙", "short": "乘隙", "type": "passive", "track": "agility", "level": 100,
+		"condition": "敵人攻擊落空後，2 秒內受到傷害提高 25%", "tags": ["DODGE", "VULNERABLE"], "implemented": true,
+	},
+	"shadowless": {
+		"name": "奧義・無影", "short": "無影", "type": "ultimate", "track": "agility", "level": 200,
+		"condition": "滿層游刃時自動進入 6 秒無影", "tags": ["DODGE", "FOLLOW_UP", "ULTIMATE"], "implemented": true, "reactive": true,
+	},
 }
 const MARTIAL_BRANCHES := {
 	"no_beat": {"name": "無拍子", "description": "擊殺後額外獲得 28 勢，適合連續清怪"},
@@ -92,6 +115,11 @@ const PHYSIQUE_BRANCHES := {
 	"shock_return": {"name": "震返", "description": "格擋重擊時震退敵人並強化該次反擊"},
 	"inch_power": {"name": "寸勁", "description": "連續反擊會逐次提高反擊傷害，破防時重置"},
 	"iron_wall": {"name": "鐵壁", "description": "滿層不動時，下一次普通格擋提升為完美格擋"},
+}
+const AGILITY_BRANCHES := {
+	"flying_swallow": {"name": "飛燕", "description": "影襲有 35% 機率追加一次高速追擊"},
+	"traceless": {"name": "無蹤", "description": "滿層游刃時，消耗全部游刃閃開一次原本會命中的普通攻擊"},
+	"instant_kill": {"name": "瞬殺", "description": "閃避後的下一次普通攻擊必定造成強力暴擊"},
 }
 
 var stage := 1
@@ -107,11 +135,18 @@ var training_points := 5
 var training := {"martial": 0, "physique": 0, "agility": 0, "magic": 0, "faith": 0, "command": 0}
 var martial_branch := ""
 var physique_branch := ""
+var agility_branch := ""
 var momentum := 0.0
 var immovable := 0
+var youren := 0
 var return_blade_ready := false
+var swift_step_ready := false
 var recent_prevented_damage := 0.0
 var counter_chain := 0
+var opening_remaining := 0.0
+var shadowless_remaining := 0.0
+var shadowless_cooldown := 0.0
+var instant_kill_ready := false
 var rng := RandomNumberGenerator.new()
 var auto_skill_slots: Array[String] = ["", "", "", "", ""]
 var skill_cooldowns := {}
@@ -126,6 +161,13 @@ func _init() -> void:
 func step(delta: float) -> Array[Dictionary]:
 	_events.clear()
 	_tick_cooldowns(delta)
+	opening_remaining = maxf(0.0, opening_remaining - delta)
+	shadowless_remaining = maxf(0.0, shadowless_remaining - delta)
+	shadowless_cooldown = maxf(0.0, shadowless_cooldown - delta)
+	if skill_is_unlocked("shadowless") and youren >= MAX_YOUREN and shadowless_remaining <= 0.0 and shadowless_cooldown <= 0.0:
+		shadowless_remaining = 6.0
+		shadowless_cooldown = 15.0
+		_events.append({"type": "shadowless", "duration": shadowless_remaining})
 	enemy_engagement_time += delta
 	var passive_gain := 5.0
 	if martial_branch == "spirit_focus":
@@ -167,6 +209,8 @@ func spend_training(track: String) -> Array[Dictionary]:
 		_events.append({"type": "branch_unlocked", "name": "一刀流分支", "description": "前往技能頁選擇無拍子、氣合或先之先"})
 	if track == "physique" and previous < 150 and int(training.physique) >= 150:
 		_events.append({"type": "branch_unlocked", "name": "不動流分支", "description": "前往技能頁選擇震返、寸勁或鐵壁"})
+	if track == "agility" and previous < 150 and int(training.agility) >= 150:
+		_events.append({"type": "branch_unlocked", "name": "閃影流分支", "description": "前往技能頁選擇飛燕、無蹤或瞬殺"})
 	return _events.duplicate(true)
 
 func select_martial_branch(branch_id: String) -> bool:
@@ -179,6 +223,12 @@ func select_physique_branch(branch_id: String) -> bool:
 	if int(training.physique) < 150 or not PHYSIQUE_BRANCHES.has(branch_id):
 		return false
 	physique_branch = branch_id
+	return true
+
+func select_agility_branch(branch_id: String) -> bool:
+	if int(training.agility) < 150 or not AGILITY_BRANCHES.has(branch_id):
+		return false
+	agility_branch = branch_id
 	return true
 
 func equip_auto_skill(skill_id: String, slot_index := -1) -> bool:
@@ -230,6 +280,9 @@ func snapshot() -> Dictionary:
 		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch,
 		"immovable": immovable, "max_immovable": MAX_IMMOVABLE, "physique_branch": physique_branch,
 		"return_blade_ready": return_blade_ready, "counter_chain": counter_chain,
+		"youren": youren, "max_youren": MAX_YOUREN, "agility_branch": agility_branch,
+		"swift_step_ready": swift_step_ready, "shadowless_remaining": shadowless_remaining,
+		"dodge_chance": _dodge_chance(), "critical_chance": _critical_chance(),
 		"auto_skill_slots": auto_skill_slots.duplicate(), "skill_cooldowns": skill_cooldowns.duplicate(true),
 		"attack_interval": _current_attack_interval(), "engagement_time": enemy_engagement_time,
 	}
@@ -242,6 +295,8 @@ func training_hint(track: String) -> String:
 		return "%s · 後續開放" % String(definition.style)
 	if track == "physique":
 		return physique_hint()
+	if track == "agility":
+		return agility_hint()
 	var level := int(training[track])
 	if level < 10: return "Lv.10 重斬"
 	if level < 30: return "Lv.30 殘心"
@@ -260,6 +315,16 @@ func physique_hint() -> String:
 	if level < 150: return "Lv.150 不動流分支"
 	if level < 200: return "Lv.200 不動返天"
 	return "不動流已達純流派極致"
+
+func agility_hint() -> String:
+	var level := int(training.agility)
+	if level < 10: return "Lv.10 瞬步"
+	if level < 30: return "Lv.30 游刃"
+	if level < 50: return "Lv.50 影襲"
+	if level < 100: return "Lv.100 乘隙"
+	if level < 150: return "Lv.150 閃影流分支"
+	if level < 200: return "Lv.200 奧義・無影"
+	return "閃影流已達純流派極致"
 
 func _try_auto_skill() -> bool:
 	for skill_id: String in auto_skill_slots:
@@ -287,6 +352,8 @@ func _can_cast(skill_id: String) -> bool:
 		return enemy_hp / maxf(1.0, enemy_max_hp) <= 0.25
 	if skill_id == "return_blade":
 		return enemy_attack_remaining <= 0.7 and not return_blade_ready
+	if skill_id == "swift_step":
+		return enemy_attack_remaining <= 0.7 and _next_enemy_attack_type() != "普通" and not swift_step_ready
 	return true
 
 func _cast_skill(skill_id: String) -> void:
@@ -295,6 +362,11 @@ func _cast_skill(skill_id: String) -> void:
 		return_blade_ready = true
 		skill_cooldowns[skill_id] = float(definition.cooldown)
 		_events.append({"type": "return_blade", "skill_id": skill_id, "name": String(definition.name)})
+		return
+	if skill_id == "swift_step":
+		swift_step_ready = true
+		skill_cooldowns[skill_id] = float(definition.cooldown)
+		_events.append({"type": "swift_step_ready", "skill_id": skill_id, "name": String(definition.name)})
 		return
 	if skill_id == "collapse_counter":
 		_cast_collapse_counter()
@@ -343,16 +415,26 @@ func _try_first_strike() -> bool:
 
 func _auto_attack() -> void:
 	var damage := _attack_power()
-	_events.append({"type": "attack", "damage": damage})
-	_deal_damage(damage, "attack")
+	var critical := int(training.agility) > 0 and rng.randf() < _critical_chance()
+	var instant_kill := instant_kill_ready
+	if instant_kill:
+		critical = true
+		instant_kill_ready = false
+	if critical:
+		damage *= 2.6 if instant_kill else 1.75
+	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill})
+	_deal_damage(damage, "critical_attack" if critical else "attack")
 	_add_momentum(6.0, "attack")
 
 func _enemy_attack(block_override := "") -> void:
 	enemy_attack_count += 1
-	var attack_type := "heavy" if _current_enemy_attack_is_heavy() else "normal"
-	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * (1.8 if attack_type == "heavy" else 1.0)
+	var attack_type := _current_enemy_attack_type_id()
+	var attack_multiplier: float = float({"normal": 1.0, "heavy": 1.8, "area": 1.35, "sure_hit": 1.55}.get(attack_type, 1.0))
+	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier
 	var incoming := raw_damage * 100.0 / (100.0 + _defense())
-	if skill_is_unlocked("heaven_return") and immovable >= MAX_IMMOVABLE and (attack_type == "heavy" or incoming >= hero_hp):
+	if block_override.is_empty() and _try_dodge_attack(attack_type):
+		return
+	if skill_is_unlocked("heaven_return") and immovable >= MAX_IMMOVABLE and (attack_type in ["heavy", "sure_hit"] or incoming >= hero_hp):
 		_trigger_heaven_return(incoming)
 		return_blade_ready = false
 		return
@@ -375,6 +457,7 @@ func _enemy_attack(block_override := "") -> void:
 	var prevented := incoming - damage
 	recent_prevented_damage = prevented
 	hero_hp = maxf(0.0, hero_hp - damage)
+	_lose_youren(attack_type)
 	_events.append({"type": "perfect_block" if block_quality == "perfect" else "block", "amount": damage, "prevented": prevented, "attack_type": attack_type})
 	if skill_is_unlocked("immovable_form"):
 		var gain := 2 if block_quality == "perfect" else 1
@@ -402,11 +485,70 @@ func _take_unblocked_hit(damage: float) -> void:
 	return_blade_ready = false
 	counter_chain = 0
 	recent_prevented_damage = 0.0
+	_lose_youren(_current_enemy_attack_type_id())
 	if immovable > 0:
 		immovable -= 1
 		_events.append({"type": "immovable_changed", "value": immovable})
 	if hero_hp <= 0.0:
 		_defeat_hero()
+
+func _try_dodge_attack(attack_type: String, roll_override := -1.0) -> bool:
+	var used_swift_step := swift_step_ready
+	if used_swift_step:
+		swift_step_ready = false
+		_resolve_dodge(attack_type, true)
+		return true
+	var roll := rng.randf() if roll_override < 0.0 else roll_override
+	if roll < _dodge_chance() * _dodge_modifier(attack_type):
+		_resolve_dodge(attack_type, false)
+		return true
+	if agility_branch == "traceless" and youren >= MAX_YOUREN and attack_type == "normal":
+		youren = 0
+		_events.append({"type": "traceless"})
+		_events.append({"type": "youren_changed", "value": youren})
+		_resolve_dodge(attack_type, false)
+		return true
+	return false
+
+func _dodge_modifier(attack_type: String) -> float:
+	return float({"normal": 1.0, "heavy": 1.0, "area": 0.55, "sure_hit": 0.0}.get(attack_type, 1.0))
+
+func _resolve_dodge(attack_type: String, used_swift_step: bool) -> void:
+	_events.append({"type": "dodge", "attack_type": attack_type, "chance": _dodge_chance(), "swift_step": used_swift_step})
+	if skill_is_unlocked("flowing_ease"):
+		youren = mini(MAX_YOUREN, youren + 1)
+		_events.append({"type": "youren_changed", "value": youren})
+	if skill_is_unlocked("exploit_opening"):
+		opening_remaining = 2.0
+		_events.append({"type": "opening", "duration": opening_remaining})
+	if agility_branch == "instant_kill":
+		instant_kill_ready = true
+	if used_swift_step:
+		var swift_damage := _attack_power() * 1.4
+		_events.append({"type": "swift_step", "damage": swift_damage})
+		if _deal_damage(swift_damage, "swift_step", 0.1):
+			return
+	if skill_is_unlocked("shadow_assault"):
+		var shadow_damage := _attack_power() * (1.15 + float(youren) * 0.12)
+		if shadowless_remaining > 0.0:
+			shadow_damage *= 1.8
+		_events.append({"type": "shadow_assault", "damage": shadow_damage})
+		if _deal_damage(shadow_damage, "shadow_assault", 0.15):
+			return
+		if agility_branch == "flying_swallow" and rng.randf() < 0.35:
+			var extra_damage := shadow_damage * 0.75
+			_events.append({"type": "flying_swallow", "damage": extra_damage})
+			_deal_damage(extra_damage, "flying_swallow", 0.15)
+
+func _lose_youren(attack_type: String) -> void:
+	if youren <= 0:
+		return
+	if shadowless_remaining > 0.0 and attack_type == "normal":
+		return
+	var loss := 2 if attack_type == "normal" else youren
+	youren = maxi(0, youren - loss)
+	instant_kill_ready = false
+	_events.append({"type": "youren_changed", "value": youren})
 
 func _counter_attack(prevented: float, perfect: bool, attack_type: String) -> void:
 	counter_chain += 1
@@ -441,23 +583,40 @@ func _defeat_hero() -> void:
 	stage = maxi(1, stage - 1)
 	hero_hp = _hero_max_hp()
 	immovable = 0
+	youren = 0
 	counter_chain = 0
 	return_blade_ready = false
+	swift_step_ready = false
+	shadowless_remaining = 0.0
+	instant_kill_ready = false
 	_spawn_enemy()
 	_events.append({"type": "defeat"})
 
-func _current_enemy_attack_is_heavy() -> bool:
-	return enemy_attack_count % (3 if enemy_is_boss else 5) == 0
-
 func _next_enemy_attack_type() -> String:
 	var next_count := enemy_attack_count + 1
-	return "重擊" if next_count % (3 if enemy_is_boss else 5) == 0 else "普通"
+	return _attack_type_name(_attack_type_for_count(next_count))
+
+func _current_enemy_attack_type_id() -> String:
+	return _attack_type_for_count(enemy_attack_count)
+
+func _attack_type_for_count(count: int) -> String:
+	if count % 11 == 0:
+		return "sure_hit"
+	if count % 7 == 0:
+		return "area"
+	if count % (3 if enemy_is_boss else 5) == 0:
+		return "heavy"
+	return "normal"
+
+func _attack_type_name(attack_type: String) -> String:
+	return {"normal": "普通", "heavy": "重擊", "area": "範圍", "sure_hit": "必中"}.get(attack_type, "普通")
 
 func _deal_damage(amount: float, source: String, armor_ignore := 0.0) -> bool:
 	if enemy_hp <= 0.0:
 		return false
 	var effective_armor := enemy_armor * (1.0 - clampf(armor_ignore, 0.0, 1.0))
-	var final_amount := amount * 100.0 / (100.0 + effective_armor)
+	var opening_multiplier := 1.25 if opening_remaining > 0.0 else 1.0
+	var final_amount := amount * opening_multiplier * 100.0 / (100.0 + effective_armor)
 	enemy_hp = maxf(0.0, enemy_hp - final_amount)
 	_events.append({"type": "damage", "amount": final_amount, "source": source})
 	var defeated := enemy_hp <= 0.0
@@ -490,6 +649,8 @@ func _spawn_enemy() -> void:
 	counter_chain = 0
 	recent_prevented_damage = 0.0
 	return_blade_ready = false
+	swift_step_ready = false
+	opening_remaining = 0.0
 
 func _add_momentum(amount: float, source: String) -> void:
 	if int(training.martial) <= 0:
@@ -543,4 +704,12 @@ func _hero_max_hp() -> float: return _stat_value("hp", 100.0)
 func _hero_max_mp() -> float: return _stat_value("mp", 0.0)
 func _attack_power() -> float: return _stat_value("attack", 9.5)
 func _defense() -> float: return _stat_value("defense", 2.0)
-func _current_attack_interval() -> float: return AUTO_ATTACK_INTERVAL / (1.0 + _stat_value("attack_speed", 0.0))
+func _dodge_chance() -> float:
+	return minf(DODGE_CAP, 0.05 + float(training.agility) * 0.0022)
+func _critical_chance() -> float:
+	var bonus := float(youren) * 0.025 if skill_is_unlocked("flowing_ease") else 0.0
+	return minf(0.65, 0.05 + float(training.agility) * 0.001 + bonus)
+func _current_attack_interval() -> float:
+	var youren_speed := float(youren) * 0.06 if skill_is_unlocked("flowing_ease") else 0.0
+	var shadowless_speed := 0.55 if shadowless_remaining > 0.0 else 0.0
+	return AUTO_ATTACK_INTERVAL / (1.0 + _stat_value("attack_speed", 0.0) + youren_speed + shadowless_speed)

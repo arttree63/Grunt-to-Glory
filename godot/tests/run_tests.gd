@@ -22,7 +22,15 @@ func _run_tests() -> void:
 	_test_physique_branches()
 	_test_heaven_return()
 	_test_momentum_and_immovable_coexist()
+	_test_dodge_stat_and_attack_modifiers()
+	_test_swift_step_auto_dodge()
+	_test_youren_gain_and_break()
+	_test_shadow_assault_and_opening()
+	_test_agility_branches()
+	_test_shadowless()
+	_test_three_mechanics_coexist()
 	_test_physique_playable_pace()
+	_test_agility_playable_pace()
 	_test_ultimate_priority()
 	_test_auto_slot_configuration()
 	_test_playable_pace()
@@ -31,7 +39,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 20")
+		print("Godot tests passed: 28")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -239,6 +247,110 @@ func _test_momentum_and_immovable_coexist() -> void:
 	var snapshot: Dictionary = model.snapshot()
 	_expect(float(snapshot.momentum) > 40.0 and int(snapshot.immovable) == 2, "勢與不動必須能同時存在且各自獨立運作")
 
+func _test_dodge_stat_and_attack_modifiers() -> void:
+	var model = CombatModelScript.new()
+	var base_dodge: float = model._dodge_chance()
+	model.training.agility = 200
+	var trained_dodge: float = model._dodge_chance()
+	_expect(trained_dodge > base_dodge and trained_dodge <= CombatModelScript.DODGE_CAP, "敏捷必須提高面板閃避率且不能超過上限")
+	_expect(is_equal_approx(model._dodge_modifier("normal"), 1.0), "普通攻擊必須完整套用閃避率")
+	_expect(is_equal_approx(model._dodge_modifier("area"), 0.55), "範圍攻擊必須降低閃避效果")
+	_expect(is_zero_approx(model._dodge_modifier("sure_hit")), "必中技能不可用普通閃避規避")
+
+func _test_swift_step_auto_dodge() -> void:
+	var model = CombatModelScript.new()
+	model.training.agility = 10
+	model.auto_skill_slots[0] = "swift_step"
+	model.enemy_hp = 99999.0
+	model.enemy_attack_count = 4
+	model.enemy_attack_remaining = 0.0
+	model.auto_attack_remaining = 999.0
+	var events: Array[Dictionary] = model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "swift_step"), "敵方危險攻擊前 AUTO 必須準備瞬步")
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "dodge"), "瞬步必須保證閃開一次危險攻擊")
+	_expect(not events.any(func(event: Dictionary) -> bool: return event.type == "hero_hit"), "瞬步成功時角色不可受到傷害")
+
+func _test_youren_gain_and_break() -> void:
+	var model = CombatModelScript.new()
+	model.training.agility = 30
+	model.enemy_hp = 99999.0
+	model._events.clear()
+	model._resolve_dodge("normal", false)
+	_expect(model.youren == 1, "成功閃避必須累積 1 層游刃")
+	model.youren = 5
+	model._lose_youren("normal")
+	_expect(model.youren == 3, "受到普通命中必須失去 2 層游刃")
+	model._lose_youren("heavy")
+	_expect(model.youren == 0, "受到重擊必須打斷全部游刃")
+
+func _test_shadow_assault_and_opening() -> void:
+	var model = CombatModelScript.new()
+	model.training.agility = 100
+	model.enemy_hp = 99999.0
+	model.enemy_armor = 0.0
+	model._events.clear()
+	model._resolve_dodge("normal", false)
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "shadow_assault"), "Lv.50 閃避後必須觸發影襲")
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "opening"), "Lv.100 閃避後必須揭露乘隙破綻")
+	model._events.clear()
+	model._deal_damage(100.0, "test")
+	var damage_events: Array = model._events.filter(func(event: Dictionary) -> bool: return event.type == "damage")
+	_expect(not damage_events.is_empty() and is_equal_approx(float(damage_events[0].amount), 125.0), "乘隙期間必須提高對該敵人的傷害")
+
+func _test_agility_branches() -> void:
+	var traceless = CombatModelScript.new()
+	traceless.training.agility = 150
+	traceless.select_agility_branch("traceless")
+	traceless.youren = 5
+	traceless.enemy_hp = 99999.0
+	traceless._events.clear()
+	_expect(traceless._try_dodge_attack("normal", 1.0), "無蹤必須在自然閃避失敗後保住一次普通命中")
+	_expect(traceless._events.any(func(event: Dictionary) -> bool: return event.type == "traceless"), "無蹤觸發時必須產生辨識事件")
+	var instant = CombatModelScript.new()
+	instant.training.agility = 150
+	instant.select_agility_branch("instant_kill")
+	instant.enemy_hp = 99999.0
+	instant.enemy_armor = 0.0
+	instant._resolve_dodge("normal", false)
+	instant._events.clear()
+	instant._auto_attack()
+	_expect(instant._events.any(func(event: Dictionary) -> bool: return event.type == "attack" and bool(event.instant_kill)), "瞬殺必須強化閃避後的下一次普攻")
+	var swallow = CombatModelScript.new()
+	swallow.training.agility = 150
+	swallow.select_agility_branch("flying_swallow")
+	swallow.enemy_hp = 999999.0
+	for index in 20:
+		swallow._resolve_dodge("normal", false)
+	_expect(swallow._events.any(func(event: Dictionary) -> bool: return event.type == "flying_swallow"), "飛燕必須有機率追加第二次追擊")
+
+func _test_shadowless() -> void:
+	var model = CombatModelScript.new()
+	model.training.agility = 200
+	model.youren = 5
+	model.enemy_hp = 99999.0
+	model.auto_attack_remaining = 999.0
+	model.enemy_attack_remaining = 999.0
+	var events: Array[Dictionary] = model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "shadowless"), "滿游刃時必須自動進入奧義無影")
+	model._lose_youren("normal")
+	_expect(model.youren == 5, "無影期間普通命中不可降低游刃")
+	model._lose_youren("heavy")
+	_expect(model.youren == 0, "無影仍不可免除重擊造成的節奏中斷")
+
+func _test_three_mechanics_coexist() -> void:
+	var model = CombatModelScript.new()
+	model.training.martial = 100
+	model.training.physique = 100
+	model.training.agility = 100
+	model.momentum = 40.0
+	model.immovable = 2
+	model.youren = 4
+	model.auto_attack_remaining = 999.0
+	model.enemy_attack_remaining = 999.0
+	model.step(1.0)
+	var snapshot: Dictionary = model.snapshot()
+	_expect(float(snapshot.momentum) > 40.0 and int(snapshot.immovable) == 2 and int(snapshot.youren) == 4, "勢、不動與游刃必須能同時存在且各自獨立運作")
+
 func _test_physique_playable_pace() -> void:
 	var model = CombatModelScript.new()
 	var elapsed := 0.0
@@ -249,6 +361,17 @@ func _test_physique_playable_pace() -> void:
 		elapsed += 1.0 / 60.0
 	print("Immovable unlock pace: %.1f seconds" % elapsed)
 	_expect(int(model.training.physique) >= 10, "體術核心返刃應在 90 秒內解鎖")
+
+func _test_agility_playable_pace() -> void:
+	var model = CombatModelScript.new()
+	var elapsed := 0.0
+	while elapsed < 90.0 and int(model.training.agility) < 10:
+		if model.training_points > 0:
+			model.spend_training("agility")
+		model.step(1.0 / 60.0)
+		elapsed += 1.0 / 60.0
+	print("Shadow-flow unlock pace: %.1f seconds" % elapsed)
+	_expect(int(model.training.agility) >= 10, "敏捷核心瞬步應在 90 秒內解鎖")
 
 func _test_ultimate_priority() -> void:
 	var model = CombatModelScript.new()
@@ -293,10 +416,12 @@ func _test_navigation() -> void:
 	_expect(is_instance_valid(scene.section_scroll), "功能頁內容必須可捲動")
 	scene.model.training.martial = 10
 	scene.model.training.physique = 30
+	scene.model.training.agility = 30
 	scene.model.momentum = 45.0
 	scene.model.immovable = 2
+	scene.model.youren = 3
 	scene._update_hud(scene.model.snapshot())
-	_expect(scene.momentum_head.visible and scene.immovable_hud.visible, "勢與不動同時存在時，HUD 必須同時顯示充能條與盾印")
+	_expect(scene.momentum_head.visible and scene.immovable_hud.visible and scene.youren_hud.visible, "勢、不動與游刃同時存在時，HUD 必須同時顯示三種流派狀態")
 	scene._switch_page("character")
 	await process_frame
 	_expect(scene.current_page == "character" and scene.section_overlay.visible, "角色頁必須能開啟並暫停戰鬥")
