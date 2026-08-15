@@ -24,6 +24,13 @@ func _run_tests() -> void:
 	_test_elemental_fusion()
 	_test_magic_sword_manifestation()
 	_test_magic_sword_complete_release()
+	_test_holy_seal_cycle()
+	_test_faith_active_cycle_and_divine_grace()
+	_test_faith_branches_and_milestones()
+	_test_command_momentum_and_follow_up()
+	_test_command_skills_and_branches()
+	_test_command_milestones()
+	_test_six_mechanics_coexist()
 	_test_heavy_slash_unlock_and_auto()
 	_test_remaining_heart_refund()
 	_test_armor_flash_and_auto_fallback()
@@ -54,7 +61,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 43")
+		print("Godot tests passed: 50")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -83,12 +90,13 @@ func _test_training_growth_and_locked_tracks() -> void:
 	var model = CombatModelScript.new()
 	var before: Dictionary = model.snapshot()
 	var points_before: int = model.training_points
-	_expect(model.spend_training("faith").is_empty(), "未完成流派不可消耗點數")
+	model.spend_training("faith")
+	_expect(int(model.training.faith) == 1 and model.hero_mp > 0.0, "信仰操練必須開放並同時成長 HP 與 MP")
 	model.spend_training("magic")
 	_expect(int(model.training.magic) == 1 and model.hero_mp > 0.0, "魔法操練必須開放並提高目前與最大 MP")
 	model.spend_training("martial")
 	var after: Dictionary = model.snapshot()
-	_expect(int(model.training.martial) == 1 and model.training_points == points_before - 2, "每次有效操練必須消耗 1 點")
+	_expect(int(model.training.martial) == 1 and model.training_points == points_before - 3, "每次有效操練必須消耗 1 點")
 	_expect(float(after.hero_max_hp) > float(before.hero_max_hp) and float(after.attack) > float(before.attack) and float(after.defense) > float(before.defense), "任一流派都必須提供共通基礎成長")
 
 func _test_physical_milestone_sequences() -> void:
@@ -280,6 +288,97 @@ func _test_magic_sword_complete_release() -> void:
 	model._events.clear()
 	model._basic_attack(false)
 	_expect(model.magic_marks >= 3 and model.burn_stacks >= 3 and model.lightning_stacks >= 3, "完全解放必須高速生成魔紋並自動附著雙元素")
+
+func _test_holy_seal_cycle() -> void:
+	var model = CombatModelScript.new()
+	model.training.faith = 30
+	model.hero_mp = model._hero_max_mp()
+	model.enemy_hp = 999999.0
+	model.enemy_armor = 0.0
+	for index in 6:
+		model._events.clear()
+		model._basic_attack(false)
+	_expect(model.holy_seals >= 2, "信仰 Lv.10 後連續聖劍攻擊必須穩定累積聖印")
+	model.hero_hp = model._hero_max_hp() * 0.5
+	model._events.clear()
+	model._try_grace_heal()
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "grace") and model.hero_hp > model._hero_max_hp() * 0.5, "恩典必須在低血時自動消耗聖印治療")
+	_expect(model.holy_shield > 0.0, "Lv.25 恩典治療必須同時產生護盾")
+
+func _test_faith_active_cycle_and_divine_grace() -> void:
+	var model = CombatModelScript.new()
+	model.training.faith = 200
+	model.hero_mp = model._hero_max_mp()
+	model.holy_seals = 5
+	model.enemy_hp = 999999.0
+	model.enemy_armor = 0.0
+	model.auto_skill_slots[0] = "holy_sword_descent"
+	var events := model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "holy_sword_descent") and model.holy_descent_remaining > 0.0, "信仰 Lv.200 滿聖印時必須自動施放聖劍降臨")
+	model.holy_seals = 5
+	model.hero_hp = 1.0
+	model.holy_shield = 0.0
+	model._events.clear()
+	_expect(model._trigger_divine_grace(), "滿聖印承受致命傷害時必須觸發神恩")
+	_expect(model.hero_hp > 1.0 and model.holy_shield > 0.0 and model.holy_seals == 0, "神恩必須消耗聖印、回復生命並展開護盾")
+
+func _test_faith_branches_and_milestones() -> void:
+	var model = CombatModelScript.new()
+	model.training.faith = 150
+	_expect(model.select_faith_branch("radiance") and model.faith_branch == "radiance", "信仰 Lv.150 必須能選擇光耀專精")
+	_expect(model.select_faith_branch("guardian") and model.select_faith_branch("grace"), "守護與恩典專精必須可隨時切換測試")
+	_expect(CombatModelScript.FAITH_MILESTONES.size() == 40, "信仰必須具備完整 Lv.5～200 成長節點")
+
+func _test_command_momentum_and_follow_up() -> void:
+	var model = CombatModelScript.new()
+	model.training.command = 100
+	model.enemy_hp = 999999.0
+	model.enemy_armor = 0.0
+	for index in 20:
+		model._events.clear()
+		model._basic_attack(false)
+	_expect(model.military_momentum > 0.0, "統御 Lv.10 後主角與友軍行動必須累積軍勢")
+	_expect(model._ally_count() >= 2, "統御成長必須增加可參與連攜的友軍")
+	model._events.clear()
+	for index in 30:
+		model._try_command_follow_up("test")
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "coordinated_pursuit"), "協同追擊必須讓主角出劍後的友軍回應可見")
+
+func _test_command_skills_and_branches() -> void:
+	var model = CombatModelScript.new()
+	model.training.command = 200
+	model.enemy_hp = 999999.0
+	model.enemy_armor = 30.0
+	model.military_momentum = 100.0
+	model.auto_skill_slots[0] = "ten_thousand_armies_one_sword"
+	var events := model.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "ten_thousand_armies_one_sword" and int(event.allies) == 4), "統御 Lv.200 必須讓所有友軍回應萬軍一劍")
+	_expect(model.select_command_branch("vanguard") and model.select_command_branch("formation") and model.select_command_branch("orders"), "統御三種專精必須可隨時切換測試")
+
+func _test_command_milestones() -> void:
+	_expect(CombatModelScript.COMMAND_MILESTONES.size() == 40, "統御必須具備完整 Lv.5～200 成長節點")
+	var model = CombatModelScript.new()
+	model.training.command = 14
+	model.training_points = 1
+	var events := model.spend_training("command")
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "milestone" and int(event.level) == 15), "統御 Lv.15 必須發出對應成長事件")
+
+func _test_six_mechanics_coexist() -> void:
+	var model = CombatModelScript.new()
+	for track: String in CombatModelScript.TRAINING_ORDER:
+		model.training[track] = 100
+	model.momentum = 40.0
+	model.immovable = 2
+	model.youren = 4
+	model.magic_marks = 3
+	model.holy_seals = 2
+	model.military_momentum = 55.0
+	model.hero_hp = model._hero_max_hp()
+	model.auto_attack_remaining = 999.0
+	model.enemy_attack_remaining = 999.0
+	model.step(0.1)
+	var snapshot: Dictionary = model.snapshot()
+	_expect(float(snapshot.momentum) > 40.0 and int(snapshot.immovable) == 2 and int(snapshot.youren) == 4 and int(snapshot.magic_marks) == 3 and int(snapshot.holy_seals) == 2 and float(snapshot.military_momentum) == 55.0, "六流派核心機制必須能同時存在且各自獨立運作")
 
 func _test_heavy_slash_unlock_and_auto() -> void:
 	var model = CombatModelScript.new()
@@ -667,12 +766,16 @@ func _test_navigation() -> void:
 	scene.model.training.physique = 30
 	scene.model.training.agility = 30
 	scene.model.training.magic = 30
+	scene.model.training.faith = 30
+	scene.model.training.command = 30
 	scene.model.momentum = 45.0
 	scene.model.immovable = 2
 	scene.model.youren = 3
 	scene.model.magic_marks = 3
+	scene.model.holy_seals = 3
+	scene.model.military_momentum = 45.0
 	scene._update_hud(scene.model.snapshot())
-	_expect(scene.momentum_head.visible and scene.immovable_hud.visible and scene.youren_hud.visible and scene.magic_hud.visible, "勢、不動、游刃與魔紋同時存在時，HUD 必須完整顯示")
+	_expect(scene.momentum_head.visible and scene.immovable_hud.visible and scene.youren_hud.visible and scene.magic_hud.visible and scene.faith_hud.visible and scene.command_hud.visible, "六流派機制同時存在時，HUD 必須完整顯示")
 	scene._switch_page("character")
 	await process_frame
 	_expect(scene.current_page == "character" and scene.section_overlay.visible, "角色頁必須能開啟並暫停戰鬥")
@@ -683,7 +786,11 @@ func _test_navigation() -> void:
 	_expect(scene.skill_tab_buttons.size() == 7, "技能頁必須提供 AUTO 與六流派共七個分頁")
 	scene._select_skill_tab("faith")
 	await process_frame
-	_expect(scene.current_skill_tab == "faith" and scene.skill_tab_buttons.has("command"), "信仰與統御必須保留鎖定分頁")
+	_expect(scene.current_skill_tab == "faith" and scene.skill_tab_buttons.has("command"), "信仰與統御必須提供完整獨立分頁")
+	_expect(scene.section_box.get_child_count() > 10, "信仰分頁必須顯示核心技能、專精與成長路線")
+	scene._select_skill_tab("command")
+	await process_frame
+	_expect(scene.current_skill_tab == "command" and scene.section_box.get_child_count() > 10, "統御分頁必須顯示完整 Lv.1～200 路線")
 	scene._select_skill_tab("martial")
 	await process_frame
 	_expect(scene.current_skill_tab == "martial", "已完成流派必須能獨立切換成長路線")

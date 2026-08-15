@@ -228,6 +228,29 @@ func play_events(events: Array[Dictionary]) -> void:
 			"magic_sword_complete_release":
 				_complete_release_burst = 1.0
 				add_trauma(0.82)
+			"holy_enchant", "holy_light_slash", "judgment_slash":
+				_magic_slash = 1.0
+				_resonance_burst = 0.7
+				_resonance_element = "holy"
+				add_trauma(0.42 if String(event.type) == "judgment_slash" else 0.16)
+			"holy_sword_release", "divine_manifestation":
+				_release_burst = 1.0
+				add_trauma(0.28)
+			"holy_sword_descent", "divine_grace":
+				_complete_release_burst = 1.0
+				add_trauma(0.72)
+			"coordinated_pursuit", "reverse_pursuit":
+				_flying_swallow = 1.0
+				add_trauma(0.18)
+			"vanguard_slash", "army_break_order":
+				_heavy_slash = 1.0
+				add_trauma(0.5)
+			"legion_command", "war_god":
+				_flow_burst = 1.0
+				add_trauma(0.45)
+			"ten_thousand_armies_one_sword":
+				_ultimate_slash = 1.0
+				add_trauma(0.85)
 			"momentum_full":
 				_momentum_pulse = 1.0
 			"no_beat":
@@ -492,7 +515,7 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 	if _resonance_burst > 0.0:
 		var phase := 1.0 - _resonance_burst
 		var alpha := sin(clampf(phase * 1.65, 0.0, 1.0) * PI)
-		var color := Color("a8efff") if _resonance_element == "ice" else (Color("d6a7ff") if _resonance_element == "lightning" else Color("ff9a52"))
+		var color := Color("a8efff") if _resonance_element == "ice" else (Color("d6a7ff") if _resonance_element == "lightning" else (Color("fff0a8") if _resonance_element == "holy" else Color("ff9a52")))
 		draw_arc(enemy_pos + Vector2(0, -34), 42.0 + phase * 82.0, 0.0, TAU, 34, Color(color, alpha), 10.0)
 		draw_circle(enemy_pos + Vector2(0, -34), 34.0 * alpha, Color(color, alpha * 0.28))
 	if _boundary_slash > 0.0:

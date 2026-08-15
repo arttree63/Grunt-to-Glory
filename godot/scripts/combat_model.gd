@@ -13,6 +13,8 @@ const MAX_YOUREN := 5
 const FLOW_HITS_REQUIRED := 2
 const MAX_MAGIC_MARKS := 5
 const MAX_BURN := 5
+const MAX_HOLY_SEALS := 5
+const MAX_MILITARY_MOMENTUM := 100.0
 const DODGE_CAP := 0.55
 const TRAINING_ORDER := ["martial", "physique", "agility", "magic", "faith", "command"]
 const TRAINING_DEFS := {
@@ -20,8 +22,8 @@ const TRAINING_DEFS := {
 	"physique": {"name": "體術", "style": "不動流", "implemented": true, "special": "生命、防禦、格擋、反擊"},
 	"agility": {"name": "敏捷", "style": "閃影流", "implemented": true, "special": "攻速、閃避、暴擊、追擊"},
 	"magic": {"name": "魔法", "style": "魔劍流", "implemented": true, "special": "魔紋、燃燒、元素爆發"},
-	"faith": {"name": "信仰", "style": "聖劍流", "implemented": false, "special": "治療、護盾、聖傷"},
-	"command": {"name": "統御", "style": "軍團劍技流", "implemented": false, "special": "軍勢、友軍、連攜"},
+	"faith": {"name": "信仰", "style": "聖劍流", "implemented": true, "special": "聖印、治療、護盾、制裁"},
+	"command": {"name": "統御", "style": "軍團劍技流", "implemented": true, "special": "軍勢、友軍、雙向連攜"},
 }
 const GROWTH := {
 	"common": {"hp": 1.5, "mp": 0.0, "attack": 0.25, "defense": 0.15, "attack_speed": 0.0},
@@ -29,8 +31,8 @@ const GROWTH := {
 	"physique": {"hp": 2.0, "mp": 0.0, "attack": 0.15, "defense": 0.8, "attack_speed": 0.0},
 	"agility": {"hp": 0.4, "mp": 0.0, "attack": 0.35, "defense": 0.05, "attack_speed": 0.0},
 	"magic": {"hp": 0.2, "mp": 1.5, "attack": 0.35, "defense": 0.05, "attack_speed": 0.0},
-	"faith": {"hp": 1.0, "mp": 0.8, "attack": 0.2, "defense": 0.35, "attack_speed": 0.0},
-	"command": {"hp": 0.8, "mp": 0.2, "attack": 0.25, "defense": 0.2, "attack_speed": 0.0},
+	"faith": {"hp": 1.2, "mp": 1.0, "attack": 0.28, "defense": 0.45, "attack_speed": 0.0},
+	"command": {"hp": 1.0, "mp": 0.25, "attack": 0.32, "defense": 0.3, "attack_speed": 0.0},
 }
 const SKILL_DEFS := {
 	"heavy_slash": {
@@ -177,6 +179,94 @@ const SKILL_DEFS := {
 		"cooldown": 30.0, "resource": "mp", "cost": 40.0,
 		"condition": "MP ≥ 40 且未在完全解放", "tags": ["MAGIC_SWORD", "ELEMENTAL", "ULTIMATE"], "implemented": true,
 	},
+	"holy_sword_seals": {
+		"name": "聖劍・聖印", "short": "聖印", "type": "passive", "track": "faith", "level": 10,
+		"condition": "攻擊、承傷與擊殺累積聖印，最高 5 層", "tags": ["HOLY_SWORD", "HOLY_SEAL"], "implemented": true,
+	},
+	"grace": {
+		"name": "恩典", "short": "恩典", "type": "passive", "track": "faith", "level": 20,
+		"condition": "生命低於 70% 時自動消耗 1 聖印治療", "tags": ["HOLY_SEAL", "HEAL"], "implemented": true,
+	},
+	"holy_light_slash": {
+		"name": "聖光斬", "short": "聖斬", "type": "active", "track": "faith", "level": 30,
+		"cooldown": 4.0, "resource": "holy_seals", "cost": 2.0, "mp_cost": 8.0,
+		"condition": "聖印 ≥ 2 且 MP ≥ 8", "tags": ["HOLY_SWORD", "HEAL", "SHIELD"], "implemented": true,
+	},
+	"holy_sword_release": {
+		"name": "聖劍解放", "short": "聖放", "type": "active", "track": "faith", "level": 50,
+		"cooldown": 18.0, "resource": "mp", "cost": 20.0,
+		"condition": "MP ≥ 20 且未在聖劍解放", "tags": ["HOLY_SWORD", "BURST"], "implemented": true,
+	},
+	"judgment": {
+		"name": "制裁", "short": "制裁", "type": "passive", "track": "faith", "level": 70,
+		"condition": "對高血量、精英與 Boss 造成額外聖傷", "tags": ["HOLY_SWORD", "BOSS"], "implemented": true,
+	},
+	"guardian_oath": {
+		"name": "守護誓約", "short": "守護", "type": "passive", "track": "faith", "level": 90,
+		"condition": "承受大量傷害時自動消耗聖印展開護盾", "tags": ["HOLY_SEAL", "SHIELD"], "implemented": true,
+	},
+	"martyrdom": {
+		"name": "殉身", "short": "殉身", "type": "passive", "track": "faith", "level": 120,
+		"condition": "生命越低，聖印、治療與聖傷收益越高", "tags": ["HOLY_SEAL", "HEAL"], "implemented": true,
+	},
+	"judgment_slash": {
+		"name": "審判斬", "short": "審判", "type": "active", "track": "faith", "level": 130,
+		"cooldown": 6.0, "resource": "holy_seals", "cost": 3.0, "mp_cost": 16.0,
+		"condition": "聖印 ≥ 3 且 MP ≥ 16", "tags": ["HOLY_SWORD", "JUDGMENT", "BURST"], "implemented": true,
+	},
+	"divine_grace": {
+		"name": "神恩", "short": "神恩", "type": "passive", "track": "faith", "level": 180,
+		"condition": "致命時消耗滿聖印回復生命並展開護盾", "tags": ["HOLY_SEAL", "HEAL", "SHIELD"], "implemented": true,
+	},
+	"holy_sword_descent": {
+		"name": "奧義・聖劍降臨", "short": "降臨", "type": "ultimate", "track": "faith", "level": 200,
+		"cooldown": 30.0, "resource": "mp", "cost": 40.0,
+		"condition": "滿聖印且 MP ≥ 40", "tags": ["HOLY_SWORD", "ULTIMATE"], "implemented": true,
+	},
+	"military_momentum": {
+		"name": "軍勢", "short": "軍勢", "type": "passive", "track": "command", "level": 10,
+		"condition": "主角、友軍攻擊與擊殺累積軍勢", "tags": ["COMMAND", "MILITARY_MOMENTUM"], "implemented": true,
+	},
+	"coordinated_pursuit": {
+		"name": "協同追擊", "short": "協擊", "type": "passive", "track": "command", "level": 20,
+		"condition": "主角攻擊後由存活友軍追擊", "tags": ["COMMAND", "FOLLOW_UP"], "implemented": true,
+	},
+	"vanguard_slash": {
+		"name": "先鋒斬", "short": "先鋒", "type": "active", "track": "command", "level": 30,
+		"cooldown": 4.0, "resource": "military_momentum", "cost": 30.0,
+		"condition": "軍勢 ≥ 30", "tags": ["COMMAND", "FOLLOW_UP"], "implemented": true,
+	},
+	"legion_command": {
+		"name": "軍團號令", "short": "號令", "type": "active", "track": "command", "level": 50,
+		"cooldown": 14.0, "resource": "military_momentum", "cost": 100.0,
+		"condition": "軍勢已滿", "tags": ["COMMAND", "LEGION", "BURST"], "implemented": true,
+	},
+	"formation": {
+		"name": "列陣", "short": "列陣", "type": "passive", "track": "command", "level": 70,
+		"condition": "高軍勢時前排守護、後排增傷", "tags": ["COMMAND", "FORMATION"], "implemented": true,
+	},
+	"pursuit_order": {
+		"name": "追擊令", "short": "追擊令", "type": "passive", "track": "command", "level": 90,
+		"condition": "主角破甲或斬殺後觸發全軍追擊", "tags": ["COMMAND", "FOLLOW_UP"], "implemented": true,
+	},
+	"guard_detail": {
+		"name": "護衛", "short": "護衛", "type": "passive", "track": "command", "level": 120,
+		"condition": "友軍分攤主角承受的大量傷害", "tags": ["COMMAND", "GUARD"], "implemented": true,
+	},
+	"army_break_order": {
+		"name": "破軍劍令", "short": "破軍令", "type": "active", "track": "command", "level": 130,
+		"cooldown": 7.0, "resource": "military_momentum", "cost": 60.0,
+		"condition": "軍勢 ≥ 60", "tags": ["COMMAND", "ARMOR_BREAK", "BURST"], "implemented": true,
+	},
+	"war_god": {
+		"name": "軍神", "short": "軍神", "type": "passive", "track": "command", "level": 190,
+		"condition": "高軍勢且友軍存活時進入雙向連攜", "tags": ["COMMAND", "FOLLOW_UP"], "implemented": true,
+	},
+	"ten_thousand_armies_one_sword": {
+		"name": "奧義・萬軍一劍", "short": "萬軍", "type": "ultimate", "track": "command", "level": 200,
+		"cooldown": 24.0, "resource": "military_momentum", "cost": 100.0,
+		"condition": "軍勢已滿且全軍可行動", "tags": ["COMMAND", "LEGION", "ULTIMATE"], "implemented": true,
+	},
 }
 const MARTIAL_BRANCHES := {
 	"execution": {"name": "斬首", "description": "強化低血斬殺、斷首與擊殺後的蓄勢"},
@@ -192,6 +282,16 @@ const AGILITY_BRANCHES := {
 	"chase_wind": {"name": "追風", "description": "提高攻速、疾斬與多段追擊頻率"},
 	"traceless": {"name": "無蹤", "description": "滿層游刃時，消耗全部游刃閃開一次原本會命中的普通攻擊"},
 	"instant_kill": {"name": "瞬殺", "description": "閃避後的下一次普通攻擊必定造成強力暴擊"},
+}
+const FAITH_BRANCHES := {
+	"radiance": {"name": "光耀", "description": "偏向聖傷、制裁與審判斬爆發"},
+	"guardian": {"name": "守護", "description": "偏向護盾、減傷與神恩保命"},
+	"grace": {"name": "恩典", "description": "偏向治療、聖印循環與長期作戰"},
+}
+const COMMAND_BRANCHES := {
+	"vanguard": {"name": "先鋒", "description": "強化主角與近戰友軍的高頻追擊"},
+	"formation": {"name": "陣軍", "description": "強化全體友軍的生存、陣形與增益"},
+	"orders": {"name": "號令", "description": "降低軍勢消耗並提高軍團技能頻率"},
 }
 const MARTIAL_MILESTONES := {
 	5: {"name": "鋒刃磨練", "description": "攻擊與破甲提高"}, 10: {"name": "勢與重斬", "description": "解鎖勢與第一個一刀技能"},
@@ -300,6 +400,50 @@ const MAGIC_MILESTONES := {
 	195: {"name": "顯現昇華", "description": "魔劍顯現與完全解放效果提高"},
 	200: {"name": "魔劍完全解放", "description": "解鎖純魔法終極奧義"},
 }
+const FAITH_MILESTONES := {
+	5: {"name": "信念初成", "description": "生命、MP 與聖傷提高"}, 10: {"name": "聖劍與聖印", "description": "攻擊附聖傷並開始累積聖印"},
+	15: {"name": "神聖鋒刃", "description": "聖劍普攻附傷提高"}, 20: {"name": "恩典", "description": "低血時自動消耗聖印治療"},
+	25: {"name": "護體聖光", "description": "治療時同時產生護盾"}, 30: {"name": "聖光斬", "description": "解鎖傷害、治療與護盾一體的主動技"},
+	35: {"name": "聖斬回響", "description": "聖光斬命中後回復生命"}, 40: {"name": "祝福", "description": "滿聖印時提高聖傷、治療與護盾"},
+	45: {"name": "祝福深化", "description": "祝福期間護盾與聖傷提高"}, 50: {"name": "聖劍解放", "description": "解鎖聖印循環加速的爆發狀態"},
+	55: {"name": "聖體突破", "description": "生命與聖傷提高"}, 60: {"name": "護盾鋒刃", "description": "擁有護盾時聖劍傷害提高"},
+	65: {"name": "神術效率", "description": "MP 效率與治療提高"}, 70: {"name": "制裁", "description": "對高血、精英與 Boss 增加聖傷"},
+	75: {"name": "制裁深化", "description": "對高血目標的制裁提高"}, 80: {"name": "聖印餘光", "description": "消耗聖印後獲得額外護盾"},
+	85: {"name": "神聖抵抗", "description": "抗性與護盾強度提高"}, 90: {"name": "守護誓約", "description": "承受重傷時自動消耗聖印展開護盾"},
+	95: {"name": "誓約深化", "description": "守護誓約的護盾提高"}, 100: {"name": "聖劍極意", "description": "聖印同時連結輸出、治療與護盾"},
+	105: {"name": "神聖磨練", "description": "聖傷與治療提高"}, 110: {"name": "重擊信念", "description": "承受重擊時額外獲得聖印"},
+	115: {"name": "解放延長", "description": "聖劍解放時間延長"}, 120: {"name": "殉身", "description": "低血時提高聖印、治療與聖傷收益"},
+	125: {"name": "絕境恩典", "description": "低血量時治療效率提高"}, 130: {"name": "審判斬", "description": "解鎖聖印高倍率裁決技"},
+	135: {"name": "聖印審判", "description": "審判斬依消耗聖印強化"}, 140: {"name": "聖印留存", "description": "高階聖劍技降低聖印消耗"},
+	145: {"name": "守裁突破", "description": "護盾與制裁提高"}, 150: {"name": "聖劍專精", "description": "選擇光耀、守護或恩典"},
+	155: {"name": "專精增幅", "description": "專精效果提高"}, 160: {"name": "聖印留光", "description": "滿聖印治療後保留部分聖印"},
+	165: {"name": "聖斬升華", "description": "聖光斬與審判斬提高"}, 170: {"name": "破盾聖爆", "description": "護盾破裂時造成聖光爆發"},
+	175: {"name": "聖體極境", "description": "生命與聖傷提高"}, 180: {"name": "神恩", "description": "避免一次致命傷害並恢復生命與護盾"},
+	185: {"name": "制裁恩典", "description": "制裁與治療效率提高"}, 190: {"name": "神聖顯現", "description": "滿聖印時聖傷提高，溢出治療轉護盾"},
+	195: {"name": "顯現升華", "description": "神聖顯現的輸出與護盾提高"}, 200: {"name": "聖劍降臨", "description": "解鎖純信仰終極奧義"},
+}
+const COMMAND_MILESTONES := {
+	5: {"name": "統帥初成", "description": "生命與友軍傷害提高"}, 10: {"name": "軍勢", "description": "主角與友軍行動開始累積軍勢"},
+	15: {"name": "前線鼓舞", "description": "主角攻擊獲得更多軍勢"}, 20: {"name": "協同追擊", "description": "主角命中後友軍可追擊"},
+	25: {"name": "勝勢", "description": "擊殺後額外返還軍勢"}, 30: {"name": "先鋒斬", "description": "解鎖主角先斬、前排追擊的軍團劍技"},
+	35: {"name": "先鋒突進", "description": "先鋒追擊傷害提高"}, 40: {"name": "高昂軍勢", "description": "高軍勢時友軍攻速提高"},
+	45: {"name": "軍威", "description": "滿軍勢時主角與友軍攻擊提高"}, 50: {"name": "軍團號令", "description": "命令所有存活友軍同時進攻"},
+	55: {"name": "軍備突破", "description": "友軍攻擊與生命提高"}, 60: {"name": "協擊熟練", "description": "主角技能觸發友軍追擊率提高"},
+	65: {"name": "軍勢效率", "description": "軍勢獲取效率提高"}, 70: {"name": "列陣", "description": "高軍勢時前排防禦、後排增傷"},
+	75: {"name": "戰陣深化", "description": "陣形提供的攻防收益提高"}, 80: {"name": "兵種特性", "description": "友軍依兵種提供不同追擊效果"},
+	85: {"name": "結陣固守", "description": "友軍生存能力提高"}, 90: {"name": "追擊令", "description": "破甲與斬殺後獲得全軍追擊"},
+	95: {"name": "追擊令深化", "description": "全軍追擊傷害與軍勢回收提高"}, 100: {"name": "軍團劍陣", "description": "主角、先鋒與遠程形成固定連攜"},
+	105: {"name": "戰陣磨練", "description": "軍勢與友軍傷害提高"}, 110: {"name": "追擊回勢", "description": "軍團追擊後返還軍勢"},
+	115: {"name": "號令熟練", "description": "軍團號令冷卻縮短"}, 120: {"name": "護衛", "description": "友軍分攤主角承受的大量傷害"},
+	125: {"name": "全軍固守", "description": "友軍減傷與護衛效果提高"}, 130: {"name": "破軍劍令", "description": "解鎖依存活友軍數強化的軍團劍技"},
+	135: {"name": "萬人鋒", "description": "破軍劍令依友軍數取得額外破甲"}, 140: {"name": "軍令節制", "description": "軍勢消耗降低"},
+	145: {"name": "軍團突破", "description": "軍團技能與追擊傷害提高"}, 150: {"name": "統御專精", "description": "選擇先鋒、陣軍或號令"},
+	155: {"name": "專精增幅", "description": "專精效果提高"}, 160: {"name": "號令留勢", "description": "滿軍勢時首次號令保留部分軍勢"},
+	165: {"name": "協擊升華", "description": "協同追擊頻率與傷害提高"}, 170: {"name": "雙向連攜", "description": "友軍特殊攻擊有機會反向觸發主角追擊"},
+	175: {"name": "全軍極境", "description": "友軍生命與傷害提高"}, 180: {"name": "奮戰", "description": "軍團號令後全軍暫時提高攻速與追擊"},
+	185: {"name": "軍勢永續", "description": "追擊與軍勢效率提高"}, 190: {"name": "軍神", "description": "高軍勢與友軍存活時進入雙向高頻連攜"},
+	195: {"name": "軍神深化", "description": "軍神期間連攜頻率與軍勢效率提高"}, 200: {"name": "萬軍一劍", "description": "解鎖純統御終極奧義"},
+}
 
 var stage := 1
 var hero_hp := 100.0
@@ -340,6 +484,20 @@ var minor_resonance_cooldown := 0.0
 var fusion_remaining := 0.0
 var complete_release_remaining := 0.0
 var _manifest_was_active := false
+var faith_branch := ""
+var holy_seals := 0
+var holy_hit_counter := 0
+var holy_shield := 0.0
+var grace_cooldown := 0.0
+var holy_release_remaining := 0.0
+var holy_descent_remaining := 0.0
+var divine_grace_cooldown := 0.0
+var _divine_manifest_was_active := false
+var command_branch := ""
+var military_momentum := 0.0
+var legion_fervor_remaining := 0.0
+var war_god_remaining := 0.0
+var _war_god_was_active := false
 var return_blade_ready := false
 var swift_step_ready := false
 var recent_prevented_damage := 0.0
@@ -382,12 +540,28 @@ func step(delta: float) -> Array[Dictionary]:
 	complete_release_remaining = maxf(0.0, complete_release_remaining - delta)
 	fusion_remaining = maxf(0.0, fusion_remaining - delta)
 	minor_resonance_cooldown = maxf(0.0, minor_resonance_cooldown - delta)
+	grace_cooldown = maxf(0.0, grace_cooldown - delta)
+	holy_release_remaining = maxf(0.0, holy_release_remaining - delta)
+	holy_descent_remaining = maxf(0.0, holy_descent_remaining - delta)
+	divine_grace_cooldown = maxf(0.0, divine_grace_cooldown - delta)
+	legion_fervor_remaining = maxf(0.0, legion_fervor_remaining - delta)
+	war_god_remaining = maxf(0.0, war_god_remaining - delta)
 	var manifest_active := _magic_manifest_active()
 	if manifest_active and not _manifest_was_active:
 		_events.append({"type": "magic_sword_manifestation", "name": "魔劍顯現"})
 	_manifest_was_active = manifest_active
+	var divine_manifest_active := _divine_manifest_active()
+	if divine_manifest_active and not _divine_manifest_was_active:
+		_events.append({"type": "divine_manifestation", "name": "神聖顯現"})
+	_divine_manifest_was_active = divine_manifest_active
+	var war_god_active := _war_god_active()
+	if war_god_active and not _war_god_was_active:
+		war_god_remaining = 6.0 if int(training.command) >= 195 else 4.0
+		_events.append({"type": "war_god", "name": "軍神", "duration": war_god_remaining})
+	_war_god_was_active = war_god_active
 	if _hero_max_mp() > 0.0:
 		hero_mp = minf(_hero_max_mp(), hero_mp + delta * _mp_regeneration())
+	_try_grace_heal()
 	_tick_burning(delta)
 	time_since_one_slash += delta
 	unharmed_duration += delta
@@ -427,9 +601,14 @@ func manual_attack() -> Array[Dictionary]:
 	_events.append({"type": "manual_attack", "damage": damage, "critical": critical})
 	var defeated := _deal_damage(damage, "manual_attack")
 	_add_momentum(2.0, "manual_attack")
+	_add_military_momentum(4.0, "manual_attack")
 	_record_flow_attack()
 	if not defeated:
 		_magic_enchanted_hit(true)
+	if enemy_hp > 0.0:
+		_holy_sword_hit(true)
+	if enemy_hp > 0.0:
+		_try_command_follow_up("manual_attack")
 	return _events.duplicate(true)
 
 func spend_training(track: String) -> Array[Dictionary]:
@@ -465,6 +644,10 @@ func spend_training(track: String) -> Array[Dictionary]:
 		_events.append({"type": "branch_unlocked", "name": "第二元素", "description": "前往技能頁選擇冰或雷，可隨時切換"})
 	if track == "magic" and previous < 150 and int(training.magic) >= 150:
 		_events.append({"type": "branch_unlocked", "name": "元素專精", "description": "前往技能頁選擇炎劍、霜劍或雷劍"})
+	if track == "faith" and previous < 150 and int(training.faith) >= 150:
+		_events.append({"type": "branch_unlocked", "name": "聖劍專精", "description": "前往技能頁選擇光耀、守護或恩典"})
+	if track == "command" and previous < 150 and int(training.command) >= 150:
+		_events.append({"type": "branch_unlocked", "name": "統御專精", "description": "前往技能頁選擇先鋒、陣軍或號令"})
 	return _events.duplicate(true)
 
 func select_martial_branch(branch_id: String) -> bool:
@@ -497,6 +680,18 @@ func select_magic_specialization(specialization_id: String) -> bool:
 	if int(training.magic) < 150 or not MAGIC_SPECIALIZATIONS.has(specialization_id):
 		return false
 	magic_specialization = specialization_id
+	return true
+
+func select_faith_branch(branch_id: String) -> bool:
+	if int(training.faith) < 150 or not FAITH_BRANCHES.has(branch_id):
+		return false
+	faith_branch = branch_id
+	return true
+
+func select_command_branch(branch_id: String) -> bool:
+	if int(training.command) < 150 or not COMMAND_BRANCHES.has(branch_id):
+		return false
+	command_branch = branch_id
 	return true
 
 func equip_auto_skill(skill_id: String, slot_index := -1) -> bool:
@@ -557,6 +752,12 @@ func snapshot() -> Dictionary:
 		"magic_specialization": magic_specialization, "magic_release_remaining": magic_release_remaining,
 		"fusion_remaining": fusion_remaining, "complete_release_remaining": complete_release_remaining,
 		"magic_manifest_active": _magic_manifest_active(),
+		"holy_seals": holy_seals, "max_holy_seals": MAX_HOLY_SEALS, "holy_shield": holy_shield,
+		"faith_branch": faith_branch, "holy_release_remaining": holy_release_remaining,
+		"holy_descent_remaining": holy_descent_remaining, "divine_manifest_active": _divine_manifest_active(),
+		"military_momentum": military_momentum, "max_military_momentum": MAX_MILITARY_MOMENTUM,
+		"command_branch": command_branch, "ally_count": _ally_count(), "legion_fervor_remaining": legion_fervor_remaining,
+		"war_god_active": _war_god_active(),
 		"dodge_chance": _dodge_chance(), "critical_chance": _critical_chance(),
 		"attack_speed_bonus": _agility_action_speed_bonus(), "move_speed_bonus": _agility_move_speed_bonus(),
 		"manual_attack_ready": manual_attack_remaining <= 0.0,
@@ -577,6 +778,10 @@ func training_hint(track: String) -> String:
 		return agility_hint()
 	if track == "magic":
 		return magic_hint()
+	if track == "faith":
+		return _next_milestone_hint(FAITH_MILESTONES, int(training.faith), "聖劍流已達純流派極致")
+	if track == "command":
+		return _next_milestone_hint(COMMAND_MILESTONES, int(training.command), "軍團劍技流已達純流派極致")
 	var level := int(training[track])
 	return _next_milestone_hint(MARTIAL_MILESTONES, level, "一刀流已達純流派極致")
 
@@ -632,6 +837,10 @@ func _can_cast(skill_id: String) -> bool:
 		return false
 	if String(definition.resource) == "magic_marks" and magic_marks < _magic_mark_cost(skill_id):
 		return false
+	if String(definition.resource) == "holy_seals" and holy_seals < _holy_seal_cost(skill_id):
+		return false
+	if String(definition.resource) == "military_momentum" and military_momentum < _command_cost(skill_id):
+		return false
 	var mp_cost := _skill_mp_cost(skill_id)
 	if hero_mp < mp_cost:
 		return false
@@ -649,6 +858,10 @@ func _can_cast(skill_id: String) -> bool:
 		return magic_release_remaining <= 0.0 and complete_release_remaining <= 0.0
 	if skill_id == "magic_sword_complete_release":
 		return complete_release_remaining <= 0.0
+	if skill_id == "holy_sword_release":
+		return holy_release_remaining <= 0.0 and holy_descent_remaining <= 0.0
+	if skill_id == "holy_sword_descent":
+		return holy_seals >= MAX_HOLY_SEALS and holy_descent_remaining <= 0.0
 	return true
 
 func _cast_skill(skill_id: String) -> void:
@@ -689,6 +902,12 @@ func _cast_skill(skill_id: String) -> void:
 		fusion_remaining = maxf(fusion_remaining, complete_release_remaining)
 		skill_cooldowns[skill_id] = float(definition.cooldown)
 		_events.append({"type": "magic_sword_complete_release", "skill_id": skill_id, "name": String(definition.name), "duration": complete_release_remaining})
+		return
+	if skill_id in ["holy_light_slash", "judgment_slash", "holy_sword_release", "holy_sword_descent"]:
+		_cast_faith_skill(skill_id)
+		return
+	if skill_id in ["vanguard_slash", "legion_command", "army_break_order", "ten_thousand_armies_one_sword"]:
+		_cast_command_skill(skill_id)
 		return
 	var momentum_before := momentum
 	var actual_cost := _momentum_cost(skill_id)
@@ -790,6 +1009,222 @@ func _cast_elemental_boundary_slash() -> void:
 				break
 	_trigger_elemental_fusion()
 
+func _cast_faith_skill(skill_id: String) -> void:
+	var definition: Dictionary = SKILL_DEFS[skill_id]
+	skill_cooldowns[skill_id] = float(definition.cooldown)
+	hero_mp = maxf(0.0, hero_mp - _skill_mp_cost(skill_id))
+	if skill_id == "holy_sword_release":
+		holy_release_remaining = 10.0 if int(training.faith) >= 115 else 8.0
+		_events.append({"type": "holy_sword_release", "name": String(definition.name), "duration": holy_release_remaining})
+		return
+	if skill_id == "holy_sword_descent":
+		holy_seals = 0
+		holy_descent_remaining = 12.0
+		holy_release_remaining = maxf(holy_release_remaining, holy_descent_remaining)
+		_events.append({"type": "holy_sword_descent", "name": String(definition.name), "duration": holy_descent_remaining})
+		_events.append({"type": "holy_seals_changed", "value": holy_seals})
+		return
+	var spent := _holy_seal_cost(skill_id)
+	holy_seals = maxi(0, holy_seals - spent)
+	var multiplier := 3.2 if skill_id == "holy_light_slash" else 5.6
+	var raw_damage := (_attack_power() * 0.7 + _faith_power()) * multiplier * _skill_level_multiplier(skill_id) * _holy_damage_multiplier()
+	if skill_id == "judgment_slash" and (enemy_is_boss or hero_hp / maxf(1.0, _hero_max_hp()) <= 0.4):
+		raw_damage *= 1.45
+	var heal := _faith_power() * (0.55 if skill_id == "holy_light_slash" else 0.35) * _healing_multiplier()
+	_heal_hero(heal, skill_id)
+	_add_holy_shield(heal * (0.8 if skill_id == "holy_light_slash" else 0.45), skill_id)
+	_events.append({"type": skill_id, "name": String(definition.name), "damage": raw_damage, "spent": spent})
+	_events.append({"type": "holy_seals_changed", "value": holy_seals})
+	_deal_damage(raw_damage, skill_id, 0.2 if skill_id == "judgment_slash" else 0.08)
+
+func _cast_command_skill(skill_id: String) -> void:
+	var definition: Dictionary = SKILL_DEFS[skill_id]
+	var spent := _command_cost(skill_id)
+	military_momentum = maxf(0.0, military_momentum - spent)
+	skill_cooldowns[skill_id] = float(definition.cooldown)
+	var allies := _ally_count()
+	var multiplier := 2.2
+	if skill_id == "legion_command": multiplier = 1.5 + float(allies) * 0.95
+	elif skill_id == "army_break_order": multiplier = 3.4 + float(allies) * 0.6
+	elif skill_id == "ten_thousand_armies_one_sword": multiplier = 5.0 + float(allies) * 1.35
+	var raw_damage := _attack_power() * multiplier * _skill_level_multiplier(skill_id) * _command_damage_multiplier()
+	var armor_ignore := 0.35 if skill_id == "army_break_order" else (0.45 if skill_id == "ten_thousand_armies_one_sword" else 0.1)
+	if skill_id == "legion_command" and int(training.command) >= 180:
+		legion_fervor_remaining = 7.0
+		_events.append({"type": "legion_fervor", "duration": legion_fervor_remaining})
+	_events.append({"type": skill_id, "name": String(definition.name), "damage": raw_damage, "allies": allies})
+	_events.append({"type": "military_momentum_changed", "value": military_momentum})
+	_deal_damage(raw_damage, skill_id, armor_ignore)
+	if skill_id == "army_break_order" and enemy_hp > 0.0:
+		var armor_broken := minf(enemy_armor, 6.0 + float(allies) * 2.0)
+		enemy_armor -= armor_broken
+		_events.append({"type": "armor_broken", "amount": armor_broken, "remaining": enemy_armor})
+	if int(training.command) >= 160 and spent >= 100.0:
+		_add_military_momentum(25.0, "command_retention")
+
+func _holy_sword_hit(manual: bool) -> void:
+	if not skill_is_unlocked("holy_sword_seals"):
+		return
+	var damage := _faith_power() * 0.38 * _skill_level_multiplier("holy_sword_seals") * _holy_damage_multiplier()
+	if holy_release_remaining > 0.0: damage *= 1.4
+	if holy_descent_remaining > 0.0: damage *= 1.45
+	_events.append({"type": "holy_enchant", "damage": damage, "manual": manual})
+	_deal_damage(damage, "holy_enchant", 0.08)
+	holy_hit_counter += 1
+	var required := 2 if holy_release_remaining > 0.0 else 3
+	if holy_hit_counter >= required:
+		holy_hit_counter = 0
+		_add_holy_seals(2 if holy_descent_remaining > 0.0 else 1, "holy_attack")
+
+func _try_command_follow_up(source: String) -> void:
+	if not skill_is_unlocked("coordinated_pursuit") or _ally_count() <= 0:
+		return
+	var chance := 0.35 + float(training.command) * 0.0015
+	if int(training.command) >= 60: chance += 0.12
+	if command_branch == "vanguard": chance += 0.15
+	if legion_fervor_remaining > 0.0 or _war_god_active(): chance += 0.2
+	if rng.randf() > minf(0.95, chance):
+		return
+	var damage := _attack_power() * (0.42 + float(_ally_count()) * 0.14) * _track_level_multiplier("command", 20) * _command_damage_multiplier()
+	_events.append({"type": "coordinated_pursuit", "damage": damage, "allies": _ally_count(), "source": source})
+	_deal_damage(damage, "coordinated_pursuit", 0.05)
+	_add_military_momentum(5.0 if int(training.command) >= 110 else 3.0, "ally_attack")
+	if int(training.command) >= 170 and rng.randf() < (0.5 if _war_god_active() else 0.3) and enemy_hp > 0.0:
+		var hero_follow := _attack_power() * 0.65 * _track_level_multiplier("command", 170)
+		_events.append({"type": "reverse_pursuit", "damage": hero_follow})
+		_deal_damage(hero_follow, "reverse_pursuit", 0.12)
+
+func _try_grace_heal() -> void:
+	if not skill_is_unlocked("grace") or holy_seals <= 0 or grace_cooldown > 0.0:
+		return
+	if hero_hp / maxf(1.0, _hero_max_hp()) >= 0.7:
+		return
+	var cost := 0 if int(training.faith) >= 160 and holy_seals >= MAX_HOLY_SEALS else 1
+	holy_seals = maxi(0, holy_seals - cost)
+	grace_cooldown = 4.0
+	var heal := _faith_power() * 1.2 * _healing_multiplier()
+	_heal_hero(heal, "grace")
+	if int(training.faith) >= 25:
+		_add_holy_shield(heal * 0.65, "grace")
+	_events.append({"type": "grace", "heal": heal, "cost": cost})
+	_events.append({"type": "holy_seals_changed", "value": holy_seals})
+
+func _heal_hero(amount: float, source: String) -> void:
+	var before := hero_hp
+	hero_hp = minf(_hero_max_hp(), hero_hp + amount)
+	var actual := hero_hp - before
+	var overflow := maxf(0.0, amount - actual)
+	if _divine_manifest_active() and overflow > 0.0:
+		_add_holy_shield(overflow, "overflow")
+	_events.append({"type": "heal", "amount": actual, "source": source})
+
+func _add_holy_shield(amount: float, source: String) -> void:
+	var multiplier := 1.2 if faith_branch == "guardian" else 1.0
+	if int(training.faith) >= 145: multiplier *= 1.15
+	holy_shield = minf(_hero_max_hp() * 0.8, holy_shield + amount * multiplier)
+	_events.append({"type": "holy_shield_changed", "value": holy_shield, "source": source})
+
+func _absorb_holy_shield(damage: float) -> float:
+	if holy_shield <= 0.0 or damage <= 0.0:
+		return damage
+	var absorbed := minf(holy_shield, damage)
+	holy_shield -= absorbed
+	_events.append({"type": "holy_shield_absorb", "amount": absorbed, "remaining": holy_shield})
+	if holy_shield <= 0.0 and int(training.faith) >= 170 and enemy_hp > 0.0:
+		var burst := _faith_power() * 1.15 * _holy_damage_multiplier()
+		_events.append({"type": "holy_shield_burst", "damage": burst})
+		_deal_damage(burst, "holy_shield_burst", 0.1)
+	return damage - absorbed
+
+func _trigger_divine_grace() -> bool:
+	if not skill_is_unlocked("divine_grace") or holy_seals < MAX_HOLY_SEALS or divine_grace_cooldown > 0.0:
+		return false
+	holy_seals = 0
+	divine_grace_cooldown = 45.0
+	hero_hp = maxf(hero_hp, _hero_max_hp() * 0.32)
+	_add_holy_shield(_hero_max_hp() * (0.35 if faith_branch == "guardian" else 0.25), "divine_grace")
+	_events.append({"type": "divine_grace", "heal": hero_hp, "cooldown": divine_grace_cooldown})
+	_events.append({"type": "holy_seals_changed", "value": holy_seals})
+	return true
+
+func _add_holy_seals(amount: int, source: String) -> void:
+	if not skill_is_unlocked("holy_sword_seals") or amount <= 0:
+		return
+	if int(training.faith) >= 120 and hero_hp / maxf(1.0, _hero_max_hp()) <= 0.4:
+		amount += 1
+	var previous := holy_seals
+	holy_seals = mini(MAX_HOLY_SEALS, holy_seals + amount)
+	if holy_seals != previous:
+		_events.append({"type": "holy_seals_changed", "value": holy_seals, "gain": holy_seals - previous, "source": source})
+
+func _add_military_momentum(amount: float, source: String) -> void:
+	if not skill_is_unlocked("military_momentum") or amount <= 0.0:
+		return
+	var efficiency := 1.0 + float(training.command) * 0.002
+	if int(training.command) >= 65: efficiency += 0.15
+	if int(training.command) >= 185: efficiency += 0.15
+	if _war_god_active(): efficiency += 0.2
+	var previous := military_momentum
+	military_momentum = minf(MAX_MILITARY_MOMENTUM, military_momentum + amount * efficiency)
+	if not is_equal_approx(previous, military_momentum):
+		_events.append({"type": "military_momentum_changed", "value": military_momentum, "source": source})
+
+func _holy_seal_cost(skill_id: String) -> int:
+	var cost := int(SKILL_DEFS[skill_id].cost)
+	if int(training.faith) >= 140 and skill_id == "judgment_slash": cost -= 1
+	return maxi(0, cost)
+
+func _command_cost(skill_id: String) -> float:
+	var cost := float(SKILL_DEFS[skill_id].cost)
+	if int(training.command) >= 140: cost *= 0.9
+	if command_branch == "orders": cost *= 0.85
+	return cost
+
+func _faith_power() -> float:
+	var value := 3.0 + float(_total_training_levels()) * 0.06 + float(training.faith) * 0.72
+	if int(training.faith) >= 105: value *= 1.08
+	if int(training.faith) >= 175: value *= 1.1
+	return value
+
+func _healing_multiplier() -> float:
+	var multiplier := 1.0 + float(holy_seals) * (0.04 if int(training.faith) >= 100 else 0.0)
+	if int(training.faith) >= 125 and hero_hp / maxf(1.0, _hero_max_hp()) <= 0.4: multiplier *= 1.25
+	if int(training.faith) >= 185: multiplier *= 1.15
+	if faith_branch == "grace": multiplier *= 1.25
+	if holy_descent_remaining > 0.0: multiplier *= 1.35
+	return multiplier
+
+func _holy_damage_multiplier() -> float:
+	var multiplier := 1.0 + float(holy_seals) * (0.04 if int(training.faith) >= 100 else 0.0)
+	if skill_is_unlocked("judgment") and (enemy_is_boss or enemy_hp / maxf(1.0, enemy_max_hp) >= 0.7): multiplier *= 1.3 if int(training.faith) >= 75 else 1.2
+	if int(training.faith) >= 120 and hero_hp / maxf(1.0, _hero_max_hp()) <= 0.4: multiplier *= 1.2
+	if faith_branch == "radiance": multiplier *= 1.25
+	if _divine_manifest_active(): multiplier *= 1.25 if int(training.faith) >= 195 else 1.15
+	return multiplier
+
+func _divine_manifest_active() -> bool:
+	return int(training.faith) >= 190 and holy_seals >= MAX_HOLY_SEALS
+
+func _ally_count() -> int:
+	if int(training.command) < 10: return 0
+	if int(training.command) >= 200: return 4
+	if int(training.command) >= 130: return 3
+	if int(training.command) >= 80: return 2
+	return 1
+
+func _command_damage_multiplier() -> float:
+	var multiplier := 1.0
+	if military_momentum >= 70.0: multiplier *= 1.12
+	if military_momentum >= MAX_MILITARY_MOMENTUM: multiplier *= 1.18
+	if int(training.command) >= 145: multiplier *= 1.12
+	if command_branch == "vanguard": multiplier *= 1.18
+	if legion_fervor_remaining > 0.0: multiplier *= 1.2
+	if _war_god_active(): multiplier *= 1.3 if int(training.command) >= 195 else 1.2
+	return multiplier
+
+func _war_god_active() -> bool:
+	return int(training.command) >= 190 and military_momentum >= 80.0 and _ally_count() >= 3
+
 func _try_first_strike() -> bool:
 	if martial_branch != "first_strike" or momentum < 70.0:
 		return false
@@ -820,10 +1255,15 @@ func _basic_attack(manual: bool) -> void:
 	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill, "manual": manual})
 	var defeated := _deal_damage(damage, "critical_attack" if critical else "attack")
 	_add_momentum(6.0, "attack")
+	_add_military_momentum(6.0 if int(training.command) >= 15 else 4.0, "attack")
 	_record_flow_attack()
 	if not defeated:
 		_track_swift_cut()
 		_magic_enchanted_hit(manual)
+	if enemy_hp > 0.0:
+		_holy_sword_hit(manual)
+	if enemy_hp > 0.0:
+		_try_command_follow_up("attack")
 
 func _magic_enchanted_hit(manual: bool) -> void:
 	if not skill_is_unlocked("magic_sword_marks"):
@@ -1061,6 +1501,16 @@ func _enemy_attack(block_override := "") -> void:
 		_events.append({"type": "fatal_guard"})
 	if block_override.is_empty() and _try_dodge_attack(attack_type):
 		return
+	if int(training.command) >= 120 and _ally_count() > 0 and incoming >= _hero_max_hp() * 0.15:
+		var guard_ratio := 0.28 if command_branch == "formation" else 0.2
+		var guarded := incoming * guard_ratio
+		incoming -= guarded
+		_events.append({"type": "guard_detail", "prevented": guarded, "allies": _ally_count()})
+	if skill_is_unlocked("guardian_oath") and holy_seals >= 2 and incoming >= _hero_max_hp() * 0.18 and holy_shield < incoming * 0.5:
+		holy_seals -= 2
+		_add_holy_shield(_faith_power() * 1.6 * _healing_multiplier(), "guardian_oath")
+		_events.append({"type": "guardian_oath", "cost": 2})
+		_events.append({"type": "holy_seals_changed", "value": holy_seals})
 	if skill_is_unlocked("heaven_return") and immovable >= MAX_IMMOVABLE and (attack_type in ["heavy", "sure_hit"] or incoming >= hero_hp):
 		_trigger_heaven_return(incoming)
 		return_blade_ready = false
@@ -1082,9 +1532,14 @@ func _enemy_attack(block_override := "") -> void:
 	var layer_reduction := float(immovable) * (0.1 if level >= 15 else 0.08)
 	var reduction := 0.9 if block_quality == "perfect" else minf(0.82, 0.45 + layer_reduction + float(level) * 0.0005)
 	var damage := maxf(0.0, incoming * (1.0 - reduction))
+	damage = _absorb_holy_shield(damage)
+	if damage >= hero_hp and _trigger_divine_grace():
+		damage = _absorb_holy_shield(damage)
 	var prevented := incoming - damage
 	recent_prevented_damage = prevented
 	hero_hp = maxf(0.0, hero_hp - damage)
+	if damage >= _hero_max_hp() * 0.12:
+		_add_holy_seals(2 if attack_type == "heavy" and int(training.faith) >= 110 else 1, "damage_taken")
 	_lose_youren(attack_type)
 	_events.append({"type": "perfect_block" if block_quality == "perfect" else "block", "amount": damage, "prevented": prevented, "attack_type": attack_type})
 	consecutive_blocks += 1
@@ -1112,8 +1567,13 @@ func _roll_block_quality() -> String:
 	return "block" if rng.randf() < block_chance else ""
 
 func _take_unblocked_hit(damage: float) -> void:
+	damage = _absorb_holy_shield(damage)
+	if damage >= hero_hp and _trigger_divine_grace():
+		damage = _absorb_holy_shield(damage)
 	hero_hp = maxf(0.0, hero_hp - damage)
 	_events.append({"type": "hero_hit", "amount": damage})
+	if damage >= _hero_max_hp() * 0.12:
+		_add_holy_seals(2 if _current_enemy_attack_type_id() == "heavy" and int(training.faith) >= 110 else 1, "damage_taken")
 	return_blade_ready = false
 	counter_chain = 0
 	consecutive_blocks = 0
@@ -1272,6 +1732,16 @@ func _defeat_hero() -> void:
 	fusion_remaining = 0.0
 	resonance_slash_ready = false
 	_manifest_was_active = false
+	holy_seals = 0
+	holy_hit_counter = 0
+	holy_shield = 0.0
+	holy_release_remaining = 0.0
+	holy_descent_remaining = 0.0
+	_divine_manifest_was_active = false
+	military_momentum = 0.0
+	legion_fervor_remaining = 0.0
+	war_god_remaining = 0.0
+	_war_god_was_active = false
 	_spawn_enemy()
 	_events.append({"type": "defeat"})
 
@@ -1315,6 +1785,8 @@ func _enemy_defeated() -> void:
 	training_points += point_gain
 	_add_momentum(20.0 if int(training.martial) >= 25 else 12.0, "kill")
 	_add_youren(2 if int(training.agility) >= 25 else 1, "kill")
+	_add_holy_seals(1, "kill")
+	_add_military_momentum(18.0 if int(training.command) >= 25 else 12.0, "kill")
 	if int(training.martial) >= 90:
 		var no_beat_gain := 32.0 if int(training.martial) >= 95 else 24.0
 		if martial_branch == "chain_slash": no_beat_gain += 12.0
@@ -1417,6 +1889,7 @@ func _new_track_milestones(track: String, previous: int, current: int) -> Array[
 	var table: Dictionary = {
 		"martial": MARTIAL_MILESTONES, "physique": PHYSIQUE_MILESTONES,
 		"agility": AGILITY_MILESTONES, "magic": MAGIC_MILESTONES,
+		"faith": FAITH_MILESTONES, "command": COMMAND_MILESTONES,
 	}.get(track, {})
 	for target: int in table:
 		if _has_unlock_at(track, target):
