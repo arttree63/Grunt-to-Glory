@@ -4,6 +4,7 @@ extends RefCounted
 const MAX_TRAINING_LEVEL := 200
 const MAX_MOMENTUM := 100.0
 const AUTO_ATTACK_INTERVAL := 0.96
+const MANUAL_ATTACK_GRACE := 0.12
 const AUTO_SLOT_COUNT := 5
 const HIGH_ARMOR_THRESHOLD := 18.0
 const MAX_IMMOVABLE := 3
@@ -150,7 +151,7 @@ var instant_kill_ready := false
 var rng := RandomNumberGenerator.new()
 var auto_skill_slots: Array[String] = ["", "", "", "", ""]
 var skill_cooldowns := {}
-var auto_attack_remaining := AUTO_ATTACK_INTERVAL
+var auto_attack_remaining := MANUAL_ATTACK_GRACE
 var enemy_attack_remaining := 2.25
 var _momentum_was_full := false
 var _events: Array[Dictionary] = []
@@ -177,13 +178,21 @@ func step(delta: float) -> Array[Dictionary]:
 	auto_attack_remaining -= delta
 	enemy_attack_remaining -= delta
 	if not _try_auto_skill() and auto_attack_remaining <= 0.0:
-		auto_attack_remaining += _current_attack_interval()
-		_auto_attack()
+		auto_attack_remaining = _current_attack_interval()
+		_basic_attack(false)
 		_try_auto_skill()
 	if enemy_attack_remaining <= 0.0:
 		enemy_attack_remaining += maxf(1.25, 2.25 - stage * 0.02)
 		if not _try_first_strike():
 			_enemy_attack()
+	return _events.duplicate(true)
+
+func manual_attack() -> Array[Dictionary]:
+	_events.clear()
+	if auto_attack_remaining > MANUAL_ATTACK_GRACE:
+		return []
+	auto_attack_remaining = _current_attack_interval()
+	_basic_attack(true)
 	return _events.duplicate(true)
 
 func spend_training(track: String) -> Array[Dictionary]:
@@ -283,6 +292,7 @@ func snapshot() -> Dictionary:
 		"youren": youren, "max_youren": MAX_YOUREN, "agility_branch": agility_branch,
 		"swift_step_ready": swift_step_ready, "shadowless_remaining": shadowless_remaining,
 		"dodge_chance": _dodge_chance(), "critical_chance": _critical_chance(),
+		"manual_attack_ready": auto_attack_remaining <= MANUAL_ATTACK_GRACE, "attack_remaining": maxf(0.0, auto_attack_remaining - MANUAL_ATTACK_GRACE),
 		"auto_skill_slots": auto_skill_slots.duplicate(), "skill_cooldowns": skill_cooldowns.duplicate(true),
 		"attack_interval": _current_attack_interval(), "engagement_time": enemy_engagement_time,
 	}
@@ -414,6 +424,9 @@ func _try_first_strike() -> bool:
 	return true
 
 func _auto_attack() -> void:
+	_basic_attack(false)
+
+func _basic_attack(manual: bool) -> void:
 	var damage := _attack_power()
 	var critical := int(training.agility) > 0 and rng.randf() < _critical_chance()
 	var instant_kill := instant_kill_ready
@@ -422,7 +435,7 @@ func _auto_attack() -> void:
 		instant_kill_ready = false
 	if critical:
 		damage *= 2.6 if instant_kill else 1.75
-	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill})
+	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill, "manual": manual})
 	_deal_damage(damage, "critical_attack" if critical else "attack")
 	_add_momentum(6.0, "attack")
 

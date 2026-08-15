@@ -9,6 +9,8 @@ var accumulator := 0.0
 var training_open := false
 var current_page := "combat"
 var battlefield: Battlefield
+var battle_input_area: Control
+var manual_hint_label: Label
 var enemy_label: Label
 var kills_label: Label
 var top_panel: PanelContainer
@@ -45,7 +47,7 @@ func _ready() -> void:
 	_apply_safe_area()
 	_update_hud(model.snapshot())
 	auto_slot_buttons[0].grab_focus()
-	_show_toast("戰鬥會自動進行", "武藝蓄勢、體術守勢、敏捷閃避都能獨立成長")
+	_show_toast("點擊戰場即可揮砍", "不操作時角色仍會自動戰鬥")
 
 func _process(delta: float) -> void:
 	if training_open or current_page != "combat":
@@ -110,7 +112,18 @@ func _build_ui() -> void:
 
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_STOP
+	spacer.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	spacer.gui_input.connect(_on_battlefield_input)
 	layout.add_child(spacer)
+	battle_input_area = spacer
+	manual_hint_label = _label("點擊戰場揮砍 · 不操作會自動攻擊", 14, Color("e9d9b3"))
+	manual_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	manual_hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	manual_hint_label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	manual_hint_label.offset_top = -34.0
+	manual_hint_label.offset_bottom = -8.0
+	spacer.add_child(manual_hint_label)
 	toast_panel = PanelContainer.new()
 	toast_panel.visible = false
 	toast_panel.add_theme_stylebox_override("panel", _panel_style(Color("2c2218", 0.96), Color("f0c365")))
@@ -475,6 +488,24 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"traceless": _show_toast("無蹤", "消耗滿層游刃，閃開原本會命中的攻擊")
 			"defeat": _show_toast("戰敗後重整", "保留操練，退回上一戰")
 
+func _on_battlefield_input(event: InputEvent) -> void:
+	var pressed := false
+	var position := Vector2.ZERO
+	if event is InputEventMouseButton:
+		pressed = event.button_index == MOUSE_BUTTON_LEFT and event.pressed
+		position = event.position
+	elif event is InputEventScreenTouch:
+		pressed = event.pressed
+		position = event.position
+	if not pressed or training_open or current_page != "combat":
+		return
+	var events := model.manual_attack()
+	var success := events.any(func(item: Dictionary) -> bool: return item.type == "attack" and bool(item.get("manual", false)))
+	battlefield.show_manual_tap(battle_input_area.get_global_rect().position + position, success)
+	_handle_events(events)
+	_update_hud(model.snapshot())
+	get_viewport().set_input_as_handled()
+
 func _spend_training(track: String) -> void:
 	var events := model.spend_training(track)
 	_handle_events(events)
@@ -561,6 +592,8 @@ func _update_hud(snapshot: Dictionary) -> void:
 	for index in youren_pips.size():
 		var filled := index < int(snapshot.youren)
 		youren_pips[index].add_theme_stylebox_override("panel", _slot_style(Color("9b86d6") if filled else Color("2e293b"), Color("f0eaff") if filled else Color("756a96"), 2 if filled else 1))
+	manual_hint_label.visible = int(snapshot.kills) < 3
+	manual_hint_label.text = "點擊戰場立即揮砍" if bool(snapshot.manual_attack_ready) else "下一刀 %.1f 秒後可揮砍" % float(snapshot.attack_remaining)
 	var slots: Array = snapshot.auto_skill_slots
 	for index in CombatModel.AUTO_SLOT_COUNT:
 		var skill_id := String(slots[index])

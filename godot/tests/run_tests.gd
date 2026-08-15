@@ -8,6 +8,7 @@ func _init() -> void:
 
 func _run_tests() -> void:
 	_test_auto_attack_and_momentum()
+	_test_manual_attack_and_shared_cooldown()
 	_test_training_growth_and_locked_tracks()
 	_test_heavy_slash_unlock_and_auto()
 	_test_remaining_heart_refund()
@@ -39,7 +40,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 28")
+		print("Godot tests passed: 29")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -50,6 +51,17 @@ func _test_auto_attack_and_momentum() -> void:
 	var events: Array[Dictionary] = model.step(CombatModelScript.AUTO_ATTACK_INTERVAL + 0.01)
 	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "attack"), "沒有輸入時也必須自動普攻")
 	_expect(model.momentum > before, "時間與普攻必須累積勢")
+
+func _test_manual_attack_and_shared_cooldown() -> void:
+	var model = CombatModelScript.new()
+	model.enemy_hp = 9999.0
+	var first: Array[Dictionary] = model.manual_attack()
+	_expect(first.any(func(event: Dictionary) -> bool: return event.type == "attack" and bool(event.manual)), "開場點擊戰場必須能立即手動揮砍")
+	var enemy_hp_after_first: float = model.enemy_hp
+	var repeated: Array[Dictionary] = model.manual_attack()
+	_expect(repeated.is_empty() and is_equal_approx(model.enemy_hp, enemy_hp_after_first), "連點不可突破共用攻擊冷卻")
+	var automatic: Array[Dictionary] = model.step(model._current_attack_interval() + 0.01)
+	_expect(automatic.any(func(event: Dictionary) -> bool: return event.type == "attack" and not bool(event.manual)), "玩家停止點擊後 AUTO 必須接手下一次普攻")
 
 func _test_training_growth_and_locked_tracks() -> void:
 	var model = CombatModelScript.new()
@@ -412,6 +424,7 @@ func _test_navigation() -> void:
 	await process_frame
 	_expect(scene.nav_buttons.size() == 5, "主分頁必須維持五個入口")
 	_expect(scene.auto_slot_buttons.size() == 5, "戰鬥 HUD 必須顯示五格 AUTO 優先序")
+	_expect(scene.battle_input_area.mouse_filter == Control.MOUSE_FILTER_STOP and scene.manual_hint_label.visible, "戰場必須可接收點擊並提示開場手動揮砍")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")
 	_expect(is_instance_valid(scene.section_scroll), "功能頁內容必須可捲動")
 	scene.model.training.martial = 10
