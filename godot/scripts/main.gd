@@ -493,6 +493,7 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"perfect_block": _show_toast("完美格擋", "減免 %d 傷害並立即反擊" % roundi(float(event.prevented)))
 			"heaven_return": _show_toast("奧義・不動返天", "硬接重擊，將敵人的力量反還")
 			"shadowless": _show_toast("奧義・無影", "六秒內攻速與影襲大幅提升")
+			"flow_state_entered": _show_toast("游刃有餘", "快劍節奏啟動 · 每兩次普攻觸發疾斬")
 			"traceless": _show_toast("無蹤", "消耗滿層游刃，閃開原本會命中的攻擊")
 			"defeat": _show_toast("戰敗後重整", "保留操練，退回上一戰")
 
@@ -586,7 +587,9 @@ func _update_hud(snapshot: Dictionary) -> void:
 	youren_hud.visible = agility_active
 	var shadowless_text := " · 無影 %.1fs" % float(snapshot.shadowless_remaining) if float(snapshot.shadowless_remaining) > 0.0 else ""
 	var swift_text := " · 瞬步待發" if bool(snapshot.swift_step_ready) else ""
-	var flow_text := " · 連擊 %d/%d" % [int(snapshot.flow_hits), int(snapshot.flow_hits_required)] if int(snapshot.training.agility) >= 10 else ""
+	var flow_text := ""
+	if int(snapshot.training.agility) >= 10:
+		flow_text = " · 疾斬 %d/%d" % [int(snapshot.swift_cut_hits), int(snapshot.swift_cut_hits_required)] if int(snapshot.youren) >= int(snapshot.max_youren) else " · 連擊 %d/%d" % [int(snapshot.flow_hits), int(snapshot.flow_hits_required)]
 	youren_label.text = "游刃  %d/%d%s%s%s" % [int(snapshot.youren), int(snapshot.max_youren), flow_text, swift_text, shadowless_text]
 	for index in youren_pips.size():
 		var filled := index < int(snapshot.youren)

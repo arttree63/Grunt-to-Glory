@@ -94,7 +94,7 @@ const SKILL_DEFS := {
 	},
 	"flowing_ease": {
 		"name": "游刃", "short": "游刃", "type": "passive", "track": "agility", "level": 10,
-		"condition": "連續攻擊 2 次 +1，閃避 +2，擊殺 +1；最高 5 層", "tags": ["DODGE", "STACK"], "implemented": true,
+		"condition": "疊至 5 層進入游刃有餘，每 2 次普攻追加疾斬", "tags": ["DODGE", "STACK", "FOLLOW_UP"], "implemented": true,
 	},
 	"shadow_assault": {
 		"name": "影襲", "short": "影襲", "type": "passive", "track": "agility", "level": 30,
@@ -143,6 +143,7 @@ var momentum := 0.0
 var immovable := 0
 var youren := 0
 var flow_hits := 0
+var swift_cut_hits := 0
 var return_blade_ready := false
 var swift_step_ready := false
 var recent_prevented_damage := 0.0
@@ -301,7 +302,8 @@ func snapshot() -> Dictionary:
 		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch,
 		"immovable": immovable, "max_immovable": MAX_IMMOVABLE, "physique_branch": physique_branch,
 		"return_blade_ready": return_blade_ready, "counter_chain": counter_chain,
-		"youren": youren, "max_youren": MAX_YOUREN, "flow_hits": flow_hits, "flow_hits_required": FLOW_HITS_REQUIRED, "agility_branch": agility_branch,
+		"youren": youren, "max_youren": MAX_YOUREN, "flow_hits": flow_hits, "flow_hits_required": FLOW_HITS_REQUIRED,
+		"swift_cut_hits": swift_cut_hits, "swift_cut_hits_required": 2, "agility_branch": agility_branch,
 		"swift_step_ready": swift_step_ready, "shadowless_remaining": shadowless_remaining,
 		"dodge_chance": _dodge_chance(), "critical_chance": _critical_chance(),
 		"attack_speed_bonus": _agility_action_speed_bonus(), "move_speed_bonus": _agility_move_speed_bonus(),
@@ -449,9 +451,11 @@ func _basic_attack(manual: bool) -> void:
 	if critical:
 		damage *= 2.6 if instant_kill else 1.75
 	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill, "manual": manual})
-	_deal_damage(damage, "critical_attack" if critical else "attack")
+	var defeated := _deal_damage(damage, "critical_attack" if critical else "attack")
 	_add_momentum(6.0, "attack")
 	_record_flow_attack()
+	if not defeated:
+		_track_swift_cut()
 
 func _enemy_attack(block_override := "") -> void:
 	enemy_attack_count += 1
@@ -532,6 +536,7 @@ func _try_dodge_attack(attack_type: String, roll_override := -1.0) -> bool:
 		return true
 	if agility_branch == "traceless" and youren >= MAX_YOUREN and attack_type == "normal":
 		youren = 0
+		swift_cut_hits = 0
 		_events.append({"type": "traceless"})
 		_events.append({"type": "youren_changed", "value": youren})
 		_resolve_dodge(attack_type, false)
@@ -570,6 +575,7 @@ func _lose_youren(attack_type: String) -> void:
 	if shadowless_remaining > 0.0 and attack_type == "normal":
 		return
 	flow_hits = 0
+	swift_cut_hits = 0
 	if youren <= 0:
 		return
 	var loss := youren if attack_type in ["heavy", "sure_hit"] else 1
@@ -612,6 +618,7 @@ func _defeat_hero() -> void:
 	immovable = 0
 	youren = 0
 	flow_hits = 0
+	swift_cut_hits = 0
 	counter_chain = 0
 	return_blade_ready = false
 	swift_step_ready = false
@@ -748,6 +755,9 @@ func _current_attack_interval() -> float:
 func _record_flow_attack() -> void:
 	if not skill_is_unlocked("flowing_ease"):
 		return
+	if youren >= MAX_YOUREN:
+		flow_hits = 0
+		return
 	flow_hits += 1
 	if flow_hits < FLOW_HITS_REQUIRED:
 		return
@@ -761,17 +771,32 @@ func _add_youren(amount: int, source: String) -> void:
 	youren = mini(MAX_YOUREN, youren + amount)
 	if youren != previous:
 		_events.append({"type": "youren_changed", "value": youren, "gain": youren - previous, "source": source})
+		if previous < MAX_YOUREN and youren >= MAX_YOUREN:
+			swift_cut_hits = 0
+			_events.append({"type": "flow_state_entered", "name": "游刃有餘"})
+
+func _track_swift_cut() -> void:
+	if not skill_is_unlocked("flowing_ease") or youren < MAX_YOUREN:
+		swift_cut_hits = 0
+		return
+	swift_cut_hits += 1
+	if swift_cut_hits < 2:
+		return
+	swift_cut_hits = 0
+	var damage := _attack_power() * 0.35
+	_events.append({"type": "swift_cut", "name": "疾斬", "damage": damage})
+	_deal_damage(damage, "swift_cut", 0.05)
 
 func _youren_attack_speed_bonus() -> float:
 	if not skill_is_unlocked("flowing_ease"):
 		return 0.0
-	if youren >= 5: return 0.15
-	if youren >= 2: return 0.06
-	if youren >= 1: return 0.03
-	return 0.0
+	return float(youren) * 0.03
 
 func _youren_critical_bonus() -> float:
-	return 0.05 if skill_is_unlocked("flowing_ease") and youren >= 3 else 0.0
+	if not skill_is_unlocked("flowing_ease"): return 0.0
+	if youren >= 4: return 0.05
+	if youren >= 3: return 0.03
+	return 0.0
 
 func _manual_attack_cooldown() -> float:
 	return MANUAL_ATTACK_BASE_COOLDOWN / (1.0 + _agility_action_speed_bonus() * 0.55)

@@ -31,6 +31,8 @@ var _shadow_assault := 0.0
 var _flying_swallow := 0.0
 var _opening_flash := 0.0
 var _shadowless_burst := 0.0
+var _flow_burst := 0.0
+var _swift_cut := 0.0
 var _manual_slash := 0.0
 var _manual_slash_side := 1.0
 var _momentum_pulse := 0.0
@@ -73,6 +75,8 @@ func _process(delta: float) -> void:
 	_flying_swallow = maxf(0.0, _flying_swallow - delta / 0.64)
 	_opening_flash = maxf(0.0, _opening_flash - delta / 0.8)
 	_shadowless_burst = maxf(0.0, _shadowless_burst - delta / 1.0)
+	_flow_burst = maxf(0.0, _flow_burst - delta / 0.72)
+	_swift_cut = maxf(0.0, _swift_cut - delta / 0.28)
 	_manual_slash = maxf(0.0, _manual_slash - delta / 0.18)
 	_momentum_pulse = maxf(0.0, _momentum_pulse - delta * 1.8)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
@@ -152,6 +156,12 @@ func play_events(events: Array[Dictionary]) -> void:
 			"shadowless":
 				_shadowless_burst = 1.0
 				add_trauma(0.45)
+			"flow_state_entered":
+				_flow_burst = 1.0
+				add_trauma(0.08)
+			"swift_cut":
+				_swift_cut = 1.0
+				add_trauma(0.12)
 			"momentum_full":
 				_momentum_pulse = 1.0
 			"no_beat":
@@ -190,7 +200,7 @@ func _draw() -> void:
 	var counter_lunge := sin(_counter_slash * PI) * minf(size.x * 0.2, 84.0)
 	var collapse_lunge := sin(_collapse_counter * PI) * minf(size.x * 0.25, 104.0)
 	var heaven_lunge := sin(_heaven_return * PI) * minf(size.x * 0.28, 114.0)
-	var agility_lunge := sin(maxf(_swift_step, _shadow_assault) * PI) * minf(size.x * 0.3, 120.0)
+	var agility_lunge := sin(maxf(maxf(_swift_step, _shadow_assault), _swift_cut) * PI) * minf(size.x * 0.3, 120.0)
 	var dodge_shift := sin(_dodge_flash * PI) * minf(size.x * 0.15, 64.0)
 	hero_pos.x += lunge + heavy_lunge + ultimate_lunge + armor_lunge + execute_lunge + first_lunge + counter_lunge + collapse_lunge + heaven_lunge + agility_lunge - dodge_shift
 	_draw_enemy(enemy_pos)
@@ -346,6 +356,12 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var center := hero_pos.lerp(enemy_pos, 0.72)
 		draw_arc(center, 64.0, 1.8, 4.8, 26, Color("eee9ff", alpha), 10.0)
 		draw_line(center + Vector2(-42, 42), center + Vector2(48, -48), Color("8165cf", alpha * 0.85), 5.0)
+	if _swift_cut > 0.0:
+		var phase := 1.0 - _swift_cut
+		var alpha := sin(clampf(phase * 2.2, 0.0, 1.0) * PI)
+		var center := hero_pos.lerp(enemy_pos, 0.68)
+		draw_line(center + Vector2(-46, 34), center + Vector2(48, -38), Color("f6f2ff", alpha), 8.0)
+		draw_line(center + Vector2(-32, -42), center + Vector2(42, 30), Color("9d83e8", alpha * 0.9), 5.0)
 	if _flying_swallow > 0.0:
 		var phase := 1.0 - _flying_swallow
 		var alpha := sin(clampf(phase * 1.9, 0.0, 1.0) * PI)
@@ -358,6 +374,10 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var phase := 1.0 - _shadowless_burst
 		var alpha := sin(clampf(phase * 1.5, 0.0, 1.0) * PI)
 		draw_arc(hero_pos + Vector2(0, -35), 78.0 + phase * 34.0, 0.0, TAU, 36, Color("d9ccff", alpha), 8.0)
+	if _flow_burst > 0.0:
+		var phase := 1.0 - _flow_burst
+		var alpha := sin(clampf(phase * 1.6, 0.0, 1.0) * PI)
+		draw_arc(hero_pos + Vector2(0, -35), 56.0 + phase * 24.0, 0.0, TAU, 32, Color("d8ccff", alpha), 6.0)
 	if _manual_slash > 0.0:
 		var phase := 1.0 - _manual_slash
 		var alpha := sin(clampf(phase * 2.4, 0.0, 1.0) * PI)
@@ -373,7 +393,7 @@ func _spawn_damage(amount: float, source: String) -> void:
 	var large := source in ["heavy_slash", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "two_cut"]
 	label.scale = Vector2(1.75, 1.75) if source == "two_cut" else (Vector2(1.4, 1.4) if large else Vector2.ONE)
 	label.text = str(roundi(amount))
-	var color := Color("fff0a3") if source == "two_cut" else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["swift_step", "shadow_assault", "flying_swallow", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0")))))
+	var color := Color("fff0a3") if source == "two_cut" else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["swift_step", "swift_cut", "shadow_assault", "flying_swallow", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0")))))
 	label.add_theme_color_override("font_color", color)
 	label.position = Vector2(size.x * 0.64 + randf_range(-18.0, 18.0), size.y * 0.28)
 	var tween := create_tween()

@@ -314,6 +314,19 @@ func _test_youren_gain_and_break() -> void:
 	_expect(model.youren == 4, "受到普通命中只失去 1 層游刃")
 	model._lose_youren("heavy")
 	_expect(model.youren == 0, "受到重擊必須打斷全部游刃與連擊")
+	model.youren = 1
+	_expect(is_equal_approx(model._youren_attack_speed_bonus(), 0.03), "每層游刃必須線性提供 3% 攻速")
+	model.youren = 3
+	_expect(is_equal_approx(model._youren_attack_speed_bonus(), 0.09) and is_equal_approx(model._youren_critical_bonus(), 0.03), "三層游刃必須提供 9% 攻速與 3% 暴擊")
+	model.youren = 4
+	model._events.clear()
+	model._add_youren(1, "test")
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "flow_state_entered"), "進入五層時必須觸發游刃有餘事件")
+	model.enemy_hp = 99999.0
+	model._events.clear()
+	model._basic_attack(false)
+	model._basic_attack(false)
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "swift_cut"), "游刃有餘時每兩次普攻必須追加疾斬")
 	var finisher = CombatModelScript.new()
 	finisher.training.agility = 10
 	finisher.enemy_hp = 1.0
