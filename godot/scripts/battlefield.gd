@@ -175,9 +175,16 @@ func play_events(events: Array[Dictionary]) -> void:
 		match String(event.type):
 			"attack":
 				_hero_action = 0.5
-			"heavy_slash", "mountain_break":
+			"heavy_strike":
+				_heavy_slash = 0.72
+				var modifiers: Array = event.get("modifiers", [])
+				if "體術・借力" in modifiers: _counter_slash = maxf(_counter_slash, 0.55)
+				if "敏捷・迅擊" in modifiers: _swift_cut = maxf(_swift_cut, 0.6)
+				if "魔法・附魔" in modifiers: _magic_slash = maxf(_magic_slash, 0.6)
+				add_trauma(0.3 if modifiers.is_empty() else 0.4)
+			"mountain_break":
 				_heavy_slash = 1.0
-				add_trauma(0.62 if String(event.type) == "mountain_break" else 0.42)
+				add_trauma(0.62)
 			"draw_stance":
 				_flow_burst = 1.0
 			"two_cut":
@@ -325,7 +332,7 @@ func play_events(events: Array[Dictionary]) -> void:
 func impact_tier_for_source(source: String) -> String:
 	if source in ["burn_tick", "lightning_tick", "holy_enchant", "magic_enchant"] or source.begins_with("ally_"):
 		return "light"
-	if source in ["heavy_slash", "mountain_break", "armor_flash", "execute_slash", "collapse_counter", "heaven_return", "two_cut", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "shadowless_extreme", "ten_thousand_armies_one_sword"]:
+	if source in ["heavy_strike", "mountain_break", "armor_flash", "execute_slash", "collapse_counter", "heaven_return", "two_cut", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "shadowless_extreme", "ten_thousand_armies_one_sword"]:
 		return "heavy"
 	if source in ["critical_attack", "counter", "first_strike", "swift_step", "shadow_assault", "flying_swallow", "magic_slash", "judgment_slash"]:
 		return "medium"
@@ -715,7 +722,7 @@ func _spawn_damage(amount: float, source: String) -> void:
 	_damage_cursor = (_damage_cursor + 1) % _damage_pool.size()
 	label.visible = true
 	label.modulate = Color.WHITE
-	var large := source in ["heavy_slash", "mountain_break", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "two_cut", "magic_slash", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "minor_resonance"]
+	var large := source in ["heavy_strike", "mountain_break", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "two_cut", "magic_slash", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "minor_resonance"]
 	label.scale = Vector2(1.75, 1.75) if source == "two_cut" else (Vector2(1.4, 1.4) if large else Vector2.ONE)
 	var prefix := ""
 	if source in ["execute_slash", "two_cut"]:

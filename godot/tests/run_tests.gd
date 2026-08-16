@@ -32,7 +32,7 @@ func _run_tests() -> void:
 	_test_command_skills_and_branches()
 	_test_command_milestones()
 	_test_six_mechanics_coexist()
-	_test_heavy_slash_unlock_and_auto()
+	_test_base_heavy_strike_and_stream_modifiers()
 	_test_remaining_heart_refund()
 	_test_armor_flash_and_auto_fallback()
 	_test_one_slash_mastery()
@@ -199,9 +199,9 @@ func _test_four_mechanics_coexist() -> void:
 func _test_skill_damage_scales_with_training() -> void:
 	var model = CombatModelScript.new()
 	model.training.martial = 10
-	_expect(is_equal_approx(model._skill_level_multiplier("heavy_slash"), 1.0), "技能剛解鎖時流派熟練倍率必須為 1")
+	_expect(is_equal_approx(model._skill_level_multiplier("execute_slash"), 1.0), "技能剛解鎖時流派熟練倍率必須為 1")
 	model.training.martial = 200
-	_expect(is_equal_approx(model._skill_level_multiplier("heavy_slash"), 1.76), "Lv.10 技能練到流派 Lv.200 時必須獲得 76% 熟練增傷")
+	_expect(is_equal_approx(model._skill_level_multiplier("execute_slash"), 1.68), "Lv.30 技能練到流派 Lv.200 時必須獲得 68% 熟練增傷")
 	_expect(is_equal_approx(model._skill_level_multiplier("two_cut"), 1.0), "Lv.200 奧義剛解鎖時不可重複取得熟練增傷")
 
 func _test_secondary_elements_and_resonance() -> void:
@@ -403,25 +403,38 @@ func _test_six_mechanics_coexist() -> void:
 	var snapshot: Dictionary = model.snapshot()
 	_expect(float(snapshot.momentum) > 40.0 and int(snapshot.immovable) == 2 and int(snapshot.youren) == 4 and int(snapshot.magic_marks) == 3 and int(snapshot.holy_seals) == 2 and float(snapshot.military_momentum) == 55.0, "六流派核心機制必須能同時存在且各自獨立運作")
 
-func _test_heavy_slash_unlock_and_auto() -> void:
-	var model = CombatModelScript.new()
-	model.training_points = 20
-	for index in 10:
-		model.spend_training("martial")
-	_expect(model.skill_is_unlocked("heavy_slash"), "武藝 Lv.10 必須解鎖重斬")
-	_expect(model.auto_skill_slots.has("heavy_slash"), "解鎖的第一個主動技能必須自動裝入 AUTO")
-	model.enemy_hp = 999.0
-	model.momentum = 50.0
-	var events: Array[Dictionary] = model.step(0.01)
-	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "heavy_slash"), "勢達 50 時 AUTO 必須施放重斬")
-	_expect(model.momentum < 1.0, "重斬必須消耗 50 點勢")
+func _test_base_heavy_strike_and_stream_modifiers() -> void:
+	var recruit = CombatModelScript.new()
+	_expect(recruit.skill_is_unlocked("heavy_strike"), "Lv.1 必須直接解鎖基礎重擊")
+	_expect(recruit.auto_skill_slots.has("heavy_strike"), "基礎重擊必須預設裝入 AUTO")
+	recruit.enemy_hp = 9999.0
+	recruit.skill_cooldowns.clear()
+	var events: Array[Dictionary] = recruit.step(0.01)
+	var base_hits := events.filter(func(event: Dictionary) -> bool: return event.type == "heavy_strike")
+	_expect(not base_hits.is_empty(), "戰鬥開始後 AUTO 必須施放基礎重擊")
+	var martial = CombatModelScript.new()
+	martial.training.martial = 10
+	martial.momentum = 100.0
+	martial.enemy_hp = 9999.0
+	martial.skill_cooldowns.clear()
+	events = martial.step(0.01)
+	var martial_hits := events.filter(func(event: Dictionary) -> bool: return event.type == "heavy_strike")
+	_expect(not martial_hits.is_empty() and float(martial_hits[0].damage) > float(base_hits[0].damage), "武藝必須以勢強化同一招重擊")
+	_expect(is_equal_approx(martial.momentum, 100.0), "基礎重擊的武藝改造不應把勢直接消耗掉")
+	var hybrid = CombatModelScript.new()
+	hybrid.training.martial = 10
+	hybrid.training.physique = 10
+	hybrid.training.agility = 10
+	hybrid.training.magic = 10
+	_expect(hybrid.heavy_strike_modifiers().size() == 4 and hybrid.skill_display_name("heavy_strike") == "複合重擊", "四種訓練必須能同時改造重擊")
 
 func _test_remaining_heart_refund() -> void:
 	var model = CombatModelScript.new()
 	model.training.martial = 130
-	model.auto_skill_slots[0] = "heavy_slash"
+	model.auto_skill_slots[0] = "armor_flash"
 	model.enemy_hp = 9999.0
-	model.momentum = 50.0
+	model.enemy_armor = 30.0
+	model.momentum = 70.0
 	var events: Array[Dictionary] = model.step(0.01)
 	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "remaining_heart"), "Lv.130 一刀未擊殺時必須觸發殘心")
 	_expect(model.momentum >= 20.0, "殘心必須返還勢")
@@ -430,7 +443,7 @@ func _test_armor_flash_and_auto_fallback() -> void:
 	var model = CombatModelScript.new()
 	model.training.martial = 60
 	model.auto_skill_slots[0] = "armor_flash"
-	model.auto_skill_slots[1] = "heavy_slash"
+	model.auto_skill_slots[1] = "heavy_strike"
 	model.enemy_hp = 9999.0
 	model.enemy_armor = 25.0
 	model.momentum = 70.0
@@ -441,24 +454,24 @@ func _test_armor_flash_and_auto_fallback() -> void:
 	model.enemy_armor = 5.0
 	model.momentum = 70.0
 	events = model.step(0.01)
-	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "heavy_slash"), "第一順位條件不符時必須往後判斷重斬")
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "heavy_strike"), "第一順位條件不符時必須往後判斷基礎重擊")
 
 func _test_one_slash_mastery() -> void:
 	var model = CombatModelScript.new()
 	model.training.martial = 100
-	model.auto_skill_slots[0] = "heavy_slash"
+	model.auto_skill_slots[0] = "armor_flash"
 	model.enemy_hp = 99999.0
-	model.enemy_armor = 0.0
+	model.enemy_armor = 30.0
 	model.momentum = 100.0
 	var events: Array[Dictionary] = model.step(0.01)
-	var slash := events.filter(func(event: Dictionary) -> bool: return event.type == "heavy_slash")
+	var slash := events.filter(func(event: Dictionary) -> bool: return event.type == "armor_flash")
 	_expect(not slash.is_empty() and is_equal_approx(float(slash[0].mastery), 1.85), "Lv.100 滿勢出刀必須疊加蓄勢與極意增傷")
 
 func _test_execute_slash_condition() -> void:
 	var model = CombatModelScript.new()
 	model.training.martial = 30
 	model.auto_skill_slots[0] = "execute_slash"
-	model.auto_skill_slots[1] = "heavy_slash"
+	model.auto_skill_slots[1] = "heavy_strike"
 	model.enemy_max_hp = 100.0
 	model.enemy_hp = 25.0
 	model.enemy_armor = 0.0
@@ -778,31 +791,28 @@ func _test_ultimate_priority() -> void:
 	var model = CombatModelScript.new()
 	model.training.martial = 200
 	model.auto_skill_slots[0] = "two_cut"
-	model.auto_skill_slots[1] = "heavy_slash"
+	model.auto_skill_slots[1] = "heavy_strike"
 	model.enemy_hp = 99999.0
 	model.momentum = 100.0
 	var events: Array[Dictionary] = model.step(0.01)
 	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "two_cut"), "第一順位奧義在滿勢時必須優先施放")
-	_expect(not events.any(func(event: Dictionary) -> bool: return event.type == "heavy_slash"), "同一判斷週期不可再施放後順位技能")
+	_expect(not events.any(func(event: Dictionary) -> bool: return event.type == "heavy_strike"), "同一判斷週期不可再施放後順位技能")
 
 func _test_auto_slot_configuration() -> void:
 	var model = CombatModelScript.new()
 	model.training.martial = 200
-	_expect(model.equip_auto_skill("heavy_slash", 0), "已解鎖主動技能必須能裝備")
+	_expect(model.unequip_auto_skill(0), "基礎重擊必須能從 AUTO 卸下")
+	_expect(model.equip_auto_skill("heavy_strike", 0), "基礎重擊必須能重新裝備")
 	_expect(model.equip_auto_skill("two_cut", 1), "奧義必須能裝入第二格")
 	_expect(model.move_auto_skill(1, -1) and model.auto_skill_slots[0] == "two_cut", "AUTO 技能必須能調整優先序")
 	_expect(model.unequip_auto_skill(1) and model.auto_skill_slots[1].is_empty(), "AUTO 技能必須能卸下")
 	var locked = CombatModelScript.new()
-	_expect(not locked.equip_auto_skill("heavy_slash"), "未解鎖技能不可裝備")
+	_expect(not locked.equip_auto_skill("two_cut"), "未解鎖技能不可裝備")
 
 func _test_auto_tactic_conditions() -> void:
 	var martial = CombatModelScript.new()
 	martial.training.martial = 30
-	martial.momentum = 60.0
 	martial.enemy_hp = 9999.0
-	_expect(martial.set_auto_tactic("heavy_slash", "full") and not martial._can_cast("heavy_slash"), "重斬選擇勢滿後不可提前施放")
-	martial.momentum = 100.0
-	_expect(martial._can_cast("heavy_slash"), "勢滿後必須允許重斬")
 	martial.momentum = 70.0
 	martial.enemy_max_hp = 100.0
 	martial.enemy_hp = 34.0

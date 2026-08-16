@@ -51,11 +51,6 @@ const ROUTE_ENEMY_NAMES := {
 	"battlefield": {"grunt": "徘徊亡兵", "raider": "斷刃幽魂", "brute": "鐵甲屍兵", "shield": "古戰盾靈", "caster": "戰場怨靈", "boss": "無首將軍"},
 }
 const AUTO_TACTIC_DEFS := {
-	"heavy_slash": [
-		{"id": "standard", "name": "勢≥50", "description": "勢達 50 就施放"},
-		{"id": "full", "name": "勢滿", "description": "保留勢到 100 再施放"},
-		{"id": "boss", "name": "精英+", "description": "只對精英或首領施放"},
-	],
 	"execute_slash": [
 		{"id": "hp25", "name": "血≤25%", "description": "目標生命低於 25% 才斬首"},
 		{"id": "hp35", "name": "血≤35%", "description": "更早嘗試斬首"},
@@ -95,11 +90,11 @@ const GROWTH := {
 	"command": {"hp": 1.0, "mp": 0.25, "attack": 0.32, "defense": 0.3, "attack_speed": 0.0},
 }
 const SKILL_DEFS := {
-	"heavy_slash": {
-		"name": "重斬", "short": "重斬", "type": "active", "track": "martial", "level": 10,
-		"cooldown": 1.2, "resource": "momentum", "cost": 50.0,
-		"condition": "勢 ≥ 50", "damage_multiplier": 3.2, "armor_ignore": 0.0,
-		"tags": ["ONE_SLASH"], "implemented": true,
+	"heavy_strike": {
+		"name": "重擊", "short": "重擊", "type": "active", "track": "common", "level": 1,
+		"cooldown": 8.0, "resource": "none", "cost": 0.0,
+		"condition": "敵人在攻擊範圍內", "damage_multiplier": 1.8, "armor_ignore": 0.0,
+		"tags": ["BASIC_SWORD", "HEAVY_ATTACK", "MELEE"], "implemented": true,
 	},
 	"remaining_heart": {
 		"name": "殘心", "short": "殘心", "type": "passive", "track": "martial", "level": 130,
@@ -354,8 +349,8 @@ const COMMAND_BRANCHES := {
 	"orders": {"name": "號令", "description": "降低軍勢消耗並提高軍團技能頻率"},
 }
 const MARTIAL_MILESTONES := {
-	5: {"name": "鋒刃磨練", "description": "攻擊與破甲提高"}, 10: {"name": "勢與重斬", "description": "解鎖勢與第一個一刀技能"},
-	15: {"name": "蓄勢重斬", "description": "勢越高，重斬傷害越高"}, 20: {"name": "斬殺", "description": "低血敵人受到更多一刀傷害"},
+	5: {"name": "鋒刃磨練", "description": "攻擊與破甲提高"}, 10: {"name": "勢與蓄勢重擊", "description": "解鎖勢；基礎重擊開始受到勢強化"},
+	15: {"name": "蓄勢重擊", "description": "勢越高，重擊傷害與破甲越高"}, 20: {"name": "斬殺", "description": "低血敵人受到更多一刀傷害"},
 	25: {"name": "回勢", "description": "擊殺返還額外勢"}, 30: {"name": "斷首", "description": "解鎖低血斬殺技能"},
 	35: {"name": "斷首續勢", "description": "斷首擊殺後加快下一輪蓄勢"}, 40: {"name": "裂甲蓄勢", "description": "高勢斬擊獲得額外破甲"},
 	45: {"name": "極勢", "description": "滿勢時提高一刀傷害與破甲"}, 50: {"name": "拔刀", "description": "解鎖一刀流爆發狀態"},
@@ -582,9 +577,9 @@ var full_youren_guard := true
 var unharmed_duration := 0.0
 var instant_kill_ready := false
 var rng := RandomNumberGenerator.new()
-var auto_skill_slots: Array[String] = ["", "", "", "", ""]
+var auto_skill_slots: Array[String] = ["heavy_strike", "", "", "", ""]
 var auto_tactics := {}
-var skill_cooldowns := {}
+var skill_cooldowns := {"heavy_strike": 1.2}
 var auto_attack_remaining := AUTO_ATTACK_INTERVAL
 var enemy_attack_remaining := 2.25
 var _momentum_was_full := false
@@ -833,6 +828,8 @@ func skill_is_unlocked(skill_id: String) -> bool:
 	if not SKILL_DEFS.has(skill_id):
 		return false
 	var definition: Dictionary = SKILL_DEFS[skill_id]
+	if String(definition.track) == "common":
+		return true
 	return int(training[String(definition.track)]) >= int(definition.level)
 
 func snapshot() -> Dictionary:
@@ -978,9 +975,6 @@ func _can_cast(skill_id: String) -> bool:
 
 func _passes_auto_tactic(skill_id: String) -> bool:
 	var tactic := auto_tactic_id(skill_id)
-	if skill_id == "heavy_slash":
-		if tactic == "full": return momentum >= MAX_MOMENTUM
-		if tactic == "boss": return enemy_is_elite or enemy_is_boss
 	if skill_id == "return_blade" and tactic == "heavy":
 		return _next_enemy_attack_type_id() in ["heavy", "sure_hit"]
 	if skill_id == "swift_step":
@@ -998,6 +992,9 @@ func _passes_auto_tactic(skill_id: String) -> bool:
 
 func _cast_skill(skill_id: String) -> void:
 	var definition: Dictionary = SKILL_DEFS[skill_id]
+	if skill_id == "heavy_strike":
+		_cast_heavy_strike()
+		return
 	if skill_id == "return_blade":
 		return_blade_ready = true
 		skill_cooldowns[skill_id] = float(definition.cooldown)
@@ -1068,6 +1065,75 @@ func _cast_skill(skill_id: String) -> void:
 		var refund := 30.0 if int(training.martial) >= 135 else float(SKILL_DEFS.remaining_heart.momentum_refund)
 		_add_momentum(refund, "remaining_heart")
 		_events.append({"type": "remaining_heart", "amount": refund})
+
+func _cast_heavy_strike() -> void:
+	var definition: Dictionary = SKILL_DEFS.heavy_strike
+	var modifiers := heavy_strike_modifiers()
+	var raw_damage := _attack_power() * float(definition.damage_multiplier)
+	var armor_ignore := 0.0
+	var martial_level := int(training.martial)
+	var physique_level := int(training.physique)
+	var agility_level := int(training.agility)
+	var magic_level := int(training.magic)
+	if martial_level >= 10:
+		var momentum_ratio := clampf(momentum / MAX_MOMENTUM, 0.0, 1.0)
+		raw_damage *= 1.0 + momentum_ratio * (0.45 + float(martial_level) * 0.002)
+		armor_ignore += momentum_ratio * minf(0.3, 0.1 + float(martial_level) * 0.001)
+		if martial_level >= 20 and enemy_hp / maxf(1.0, enemy_max_hp) <= 0.3:
+			raw_damage *= 1.25
+	if physique_level >= 10 and recent_prevented_damage > 0.0:
+		raw_damage += _defense() * (0.7 + float(physique_level) * 0.004)
+		raw_damage += recent_prevented_damage * minf(0.65, 0.25 + float(physique_level) * 0.002)
+		recent_prevented_damage *= 0.5
+	if agility_level >= 10:
+		raw_damage *= 1.0 + float(youren) * (0.025 + float(agility_level) * 0.00015)
+		if rng.randf() < _critical_chance():
+			raw_damage *= 1.5
+		skill_cooldowns["heavy_strike"] = _heavy_strike_cooldown()
+	else:
+		skill_cooldowns["heavy_strike"] = float(definition.cooldown)
+	_events.append({"type": "heavy_strike", "skill_id": "heavy_strike", "name": skill_display_name("heavy_strike"), "damage": raw_damage, "modifiers": modifiers})
+	var defeated := _deal_damage(raw_damage, "heavy_strike", armor_ignore)
+	if magic_level >= 10 and not defeated:
+		_magic_enchanted_hit(false)
+
+func _heavy_strike_cooldown() -> float:
+	var speed_bonus := _agility_action_speed_bonus() * 0.45 + float(youren) * 0.025
+	return maxf(4.0, float(SKILL_DEFS.heavy_strike.cooldown) / (1.0 + speed_bonus))
+
+func heavy_strike_modifiers() -> Array[String]:
+	var modifiers: Array[String] = []
+	if int(training.martial) >= 10: modifiers.append("武藝・蓄勢")
+	if int(training.physique) >= 10: modifiers.append("體術・借力")
+	if int(training.agility) >= 10: modifiers.append("敏捷・迅擊")
+	if int(training.magic) >= 10: modifiers.append("魔法・附魔")
+	return modifiers
+
+func skill_display_name(skill_id: String, short := false) -> String:
+	if skill_id != "heavy_strike":
+		return String(SKILL_DEFS[skill_id].short if short else SKILL_DEFS[skill_id].name)
+	var modifiers := heavy_strike_modifiers()
+	if modifiers.size() > 1:
+		return "複合重擊"
+	if int(training.martial) >= 10:
+		if int(training.martial) >= 150: return "斷嶽一擊"
+		if int(training.martial) >= 100: return "極勢重斬"
+		if int(training.martial) >= 50: return "重斬"
+		return "重擊・蓄勢"
+	if int(training.physique) >= 10: return "重擊・返勢"
+	if int(training.agility) >= 10: return "重擊・迅擊"
+	if int(training.magic) >= 10: return "魔力重擊"
+	return "重擊"
+
+func base_skill_description(skill_id: String) -> String:
+	if skill_id != "heavy_strike":
+		return ""
+	var lines: Array[String] = ["180% ATK｜基礎冷卻 8 秒｜所有小兵 Lv.1 取得"]
+	if int(training.martial) >= 10: lines.append("武藝：勢越高，傷害與破甲越高")
+	if int(training.physique) >= 10: lines.append("體術：將近期格擋減傷與防禦轉成傷害")
+	if int(training.agility) >= 10: lines.append("敏捷：游刃增傷，攻速縮短冷卻，並可暴擊")
+	if int(training.magic) >= 10: lines.append("魔法：命中追加附魔傷害、魔紋與元素效果")
+	return "\n".join(lines)
 
 func _cast_collapse_counter() -> void:
 	var definition: Dictionary = SKILL_DEFS.collapse_counter
@@ -2195,6 +2261,8 @@ func skill_power_hint(skill_id: String) -> String:
 	if not SKILL_DEFS.has(skill_id):
 		return ""
 	var definition: Dictionary = SKILL_DEFS[skill_id]
+	if String(definition.track) == "common":
+		return "依目前訓練進化"
 	if String(definition.type) == "passive" and skill_id not in ["flowing_ease", "shadow_assault", "burning_enchant", "magic_sword_marks"]:
 		return "被動機制"
 	return "流派熟練 ×%.2f" % _skill_level_multiplier(skill_id)
@@ -2207,6 +2275,8 @@ func auto_skill_state(skill_id: String) -> String:
 
 func _skill_level_multiplier(skill_id: String) -> float:
 	var definition: Dictionary = SKILL_DEFS[skill_id]
+	if String(definition.track) == "common":
+		return 1.0
 	return _track_level_multiplier(String(definition.track), int(definition.level))
 
 func _track_level_multiplier(track: String, unlock_level: int) -> float:

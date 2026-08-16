@@ -425,6 +425,18 @@ func _render_skill_tabs() -> void:
 		skill_tab_buttons[tab_id] = button
 
 func _render_auto_setup(slots: Array) -> void:
+	section_box.add_child(_label("基礎劍技", 18, Color("f1d590")))
+	var base_row := HBoxContainer.new()
+	base_row.add_theme_constant_override("separation", 6)
+	section_box.add_child(base_row)
+	var base_card := _section_row(model.skill_display_name("heavy_strike"), model.base_skill_description("heavy_strike"))
+	base_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	base_row.add_child(base_card)
+	if not slots.has("heavy_strike"):
+		var equip_base := _button("裝備", Color("71552f"), 44)
+		equip_base.disabled = not slots.has("")
+		equip_base.pressed.connect(_equip_auto_skill.bind("heavy_strike"))
+		base_row.add_child(equip_base)
 	section_box.add_child(_label("由 1 → 5 判斷；每次施放第一個符合條件的技能。", 14, Color("cbd5cc")))
 	for index in CombatModel.AUTO_SLOT_COUNT:
 		var row := HBoxContainer.new()
@@ -435,7 +447,7 @@ func _render_auto_setup(slots: Array) -> void:
 		var detail := "不參與 AUTO 判斷"
 		if not skill_id.is_empty():
 			var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
-			title = "%d  %s" % [index + 1, String(definition.name)]
+			title = "%d  %s" % [index + 1, model.skill_display_name(skill_id)]
 			detail = "%s｜戰術：%s" % [String(definition.condition), model.auto_tactic_label(skill_id)]
 		var card := _section_row(title, detail)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -953,10 +965,11 @@ func _update_hud(snapshot: Dictionary) -> void:
 			var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
 			var state := model.auto_skill_state(skill_id)
 			var tactic_text := model.auto_tactic_label(skill_id) if CombatModel.AUTO_TACTIC_DEFS.has(skill_id) else state
-			button.text = "%d  %s\n%s · %s" % [index + 1, String(definition.short), tactic_text, state]
+			button.text = "%d  %s\n%s · %s" % [index + 1, model.skill_display_name(skill_id, true), tactic_text, state]
 			button.tooltip_text = "第 %d 優先｜%s｜%s" % [index + 1, model.auto_tactic_description(skill_id), model.skill_power_hint(skill_id)]
 			var track := String(definition.track)
 			var base: Color = {
+				"common": Color("5a4f38"),
 				"martial": Color("654c27"), "physique": Color("31545c"), "agility": Color("4b416d"),
 				"magic": Color("70452d"), "faith": Color("6b6335"), "command": Color("36533e"),
 			}.get(track, Color("3a403b"))
