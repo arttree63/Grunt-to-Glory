@@ -381,11 +381,11 @@ func add_trauma(amount: float) -> void:
 	trauma = clampf(trauma + amount, 0.0, 1.0)
 
 func _draw() -> void:
-	var background := Color("263027") if journey_route == "mountain" else (Color("30291f") if journey_route == "village" else (Color("252431") if journey_route == "battlefield" else Color("17251f")))
+	var background := Color("819cab") if journey_route == "mountain" else (Color("a7bbb4") if journey_route == "village" else (Color("8f91a5") if journey_route == "battlefield" else Color("86aeb8")))
 	draw_rect(Rect2(Vector2.ZERO, size), background)
 	for band in 7:
 		var y := size.y * float(band) / 7.0
-		var lower_color := Color("5a5040") if journey_route == "mountain" else (Color("73543a") if journey_route == "village" else (Color("51455b") if journey_route == "battlefield" else Color("6b4c2f")))
+		var lower_color := Color("887966") if journey_route == "mountain" else (Color("aa805c") if journey_route == "village" else (Color("796a80") if journey_route == "battlefield" else Color("9a7755")))
 		var color := background.darkened(0.08).lerp(lower_color, float(band) / 7.0)
 		draw_rect(Rect2(0.0, y, size.x, size.y / 7.0 + 1.0), color)
 	_draw_forest()
@@ -439,8 +439,8 @@ func _draw_forest() -> void:
 	for index in 9:
 		var x := size.x * (float(index) / 8.0)
 		var height := (72.0 if journey_route == "mountain" else 48.0) + float((index * 23) % 64)
-		var trunk_color := Color("3d3c35") if journey_route == "mountain" else Color("26382b")
-		var leaf_color := Color("4e5547") if journey_route == "mountain" else Color("304b35")
+		var trunk_color := Color("574f43") if journey_route == "mountain" else Color("5b4635")
+		var leaf_color := Color("626f5e") if journey_route == "mountain" else Color("55715a")
 		draw_rect(Rect2(x - 7.0, size.y * 0.52 - height, 14.0, height), trunk_color)
 		draw_circle(Vector2(x, size.y * 0.52 - height), 34.0, leaf_color)
 	for index in 16:

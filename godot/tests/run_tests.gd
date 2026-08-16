@@ -888,7 +888,12 @@ func _test_navigation() -> void:
 	root.add_child(scene)
 	await process_frame
 	_expect(scene.nav_buttons.size() == 5, "主分頁必須維持五個入口")
-	_expect(scene.auto_slot_buttons.size() == 5, "戰鬥 HUD 必須顯示五格 AUTO 優先序")
+	_expect(scene.auto_slot_buttons.size() == 5, "AUTO 編成底層必須保留五格優先序")
+	var visible_auto_slots := 0
+	for button: Button in scene.auto_slot_buttons:
+		if button.visible: visible_auto_slots += 1
+	_expect(visible_auto_slots == 3, "手機戰鬥 HUD 必須只突出三個主技能")
+	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text.begins_with("可用操練"), "戰鬥頁必須提供固定操練點入口")
 	_expect(is_instance_valid(scene.journey_overlay) and scene.journey_buttons.size() == 3, "Boss 後旅途抉擇必須提供三條手機可操作路線")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")
 	_expect(is_instance_valid(scene.section_scroll), "功能頁內容必須可捲動")
