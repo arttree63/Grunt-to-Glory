@@ -5,12 +5,44 @@ const GORGE_BACKGROUND := preload("res://assets/visual/battle_hud_v2/ruins-arena
 const RECRUIT_TEXTURE := preload("res://assets/visual/battle_hud_v2/hero-back.png")
 const GRAY_WOLF_TEXTURE := preload("res://assets/visual/battle_hud_v2/gray-wolf.png")
 const TARGET_RING_TEXTURE := preload("res://assets/visual/battle_hud_v2/target-ring.png")
+const HERO_SLASH_FRAMES := [
+	preload("res://assets/visual/animations/hero/slash-v1/attack-1.png"),
+	preload("res://assets/visual/animations/hero/slash-v1/attack-2.png"),
+	preload("res://assets/visual/animations/hero/slash-v1/attack-3.png"),
+	preload("res://assets/visual/animations/hero/slash-v1/attack-4.png"),
+	preload("res://assets/visual/animations/hero/slash-v1/attack-5.png"),
+	preload("res://assets/visual/animations/hero/slash-v1/attack-6.png"),
+]
+const HERO_BLOCK_FRAMES := [
+	preload("res://assets/visual/animations/hero/block-v1/block-1.png"),
+	preload("res://assets/visual/animations/hero/block-v1/block-2.png"),
+	preload("res://assets/visual/animations/hero/block-v1/block-3.png"),
+	preload("res://assets/visual/animations/hero/block-v1/block-4.png"),
+]
+const HERO_DODGE_FRAMES := [
+	preload("res://assets/visual/animations/hero/dodge-v1/dodge-1.png"),
+	preload("res://assets/visual/animations/hero/dodge-v1/dodge-2.png"),
+	preload("res://assets/visual/animations/hero/dodge-v1/dodge-3.png"),
+	preload("res://assets/visual/animations/hero/dodge-v1/dodge-4.png"),
+	preload("res://assets/visual/animations/hero/dodge-v1/dodge-5.png"),
+	preload("res://assets/visual/animations/hero/dodge-v1/dodge-6.png"),
+]
+const WOLF_POUNCE_FRAMES := [
+	preload("res://assets/visual/animations/wolf/pounce-v1/attack-1.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v1/attack-2.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v1/attack-3.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v1/attack-4.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v1/attack-5.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v1/attack-6.png"),
+]
 
 var reduced_motion := false
 var momentum_ratio := 0.0
 var enemy_armor_ratio := 0.0
 var enemy_is_boss := false
 var enemy_heavy_windup := false
+var enemy_windup_ratio := 0.0
+var hero_attack_windup_ratio := 0.0
 var enemy_attack_type := "普通"
 var enemy_archetype := "grunt"
 var journey_route := "frontier"
@@ -32,6 +64,11 @@ var stage_top := 160.0
 var stage_bottom := 610.0
 var _time := 0.0
 var _hero_action := 0.0
+var _hero_slash_motion := 0.0
+var _hero_block_motion := 0.0
+var _hero_dodge_motion := 0.0
+var _enemy_attack_recover := 0.0
+var _enemy_death_motion := 0.0
 var _heavy_slash := 0.0
 var _heavy_strike_power := 0.0
 var _ultimate_slash := 0.0
@@ -120,6 +157,11 @@ func _process(delta: float) -> void:
 		return
 	trauma = maxf(0.0, trauma - delta * 1.45)
 	_hero_action = maxf(0.0, _hero_action - delta * 3.4)
+	_hero_slash_motion = maxf(0.0, _hero_slash_motion - delta / 0.3)
+	_hero_block_motion = maxf(0.0, _hero_block_motion - delta / 0.44)
+	_hero_dodge_motion = maxf(0.0, _hero_dodge_motion - delta / 0.46)
+	_enemy_attack_recover = maxf(0.0, _enemy_attack_recover - delta / 0.34)
+	_enemy_death_motion = maxf(0.0, _enemy_death_motion - delta / 0.62)
 	_heavy_slash = maxf(0.0, _heavy_slash - delta / 0.72)
 	_ultimate_slash = maxf(0.0, _ultimate_slash - delta / 0.92)
 	_armor_flash = maxf(0.0, _armor_flash - delta / 0.78)
@@ -166,7 +208,12 @@ func set_state(snapshot: Dictionary) -> void:
 	enemy_attack_type = String(snapshot.enemy_attack_type)
 	enemy_archetype = String(snapshot.enemy_archetype)
 	journey_route = String(snapshot.journey_route)
-	enemy_heavy_windup = enemy_attack_type != "普通" and float(snapshot.enemy_attack_remaining) <= 0.8
+	var attack_remaining := float(snapshot.enemy_attack_remaining)
+	var windup_window := 0.75 if enemy_attack_type != "普通" else 0.35
+	enemy_windup_ratio = clampf((windup_window - attack_remaining) / windup_window, 0.0, 1.0)
+	enemy_heavy_windup = enemy_attack_type != "普通" and attack_remaining <= 0.8
+	var auto_attack_remaining := float(snapshot.get("auto_attack_remaining", 1.0))
+	hero_attack_windup_ratio = clampf((0.28 - auto_attack_remaining) / 0.28, 0.0, 1.0)
 	immovable_level = int(snapshot.immovable)
 	return_blade_ready = bool(snapshot.return_blade_ready)
 	guard_stance_active = float(snapshot.guard_stance_remaining) > 0.0
@@ -191,7 +238,9 @@ func play_events(events: Array[Dictionary]) -> void:
 			"attack":
 				var flow_level := int(event.get("youren", 0))
 				_hero_action = minf(0.9, 0.5 + float(flow_level) * 0.07)
+				_hero_slash_motion = 1.0
 			"heavy_strike":
+				_hero_slash_motion = 1.0
 				_heavy_strike_power = clampf(float(event.get("momentum_ratio", 0.0)), 0.0, 1.0)
 				_heavy_slash = 0.62 + _heavy_strike_power * 0.38
 				var modifiers: Array = event.get("modifiers", [])
@@ -203,20 +252,25 @@ func play_events(events: Array[Dictionary]) -> void:
 			"momentum_pierce":
 				_armor_break_flash = maxf(_armor_break_flash, 0.72 if float(event.get("armor_ignore", 0.0)) < 0.25 else 1.0)
 			"mountain_break":
+				_hero_slash_motion = 1.0
 				_heavy_slash = 1.0
 				add_trauma(0.62)
 			"draw_stance":
 				_flow_burst = 1.0
 			"two_cut":
+				_hero_slash_motion = 1.0
 				_ultimate_slash = 1.0
 				add_trauma(0.72)
 			"armor_flash":
+				_hero_slash_motion = 1.0
 				_armor_flash = 1.0
 				add_trauma(0.5)
 			"execute_slash":
+				_hero_slash_motion = 1.0
 				_execute_slash = 1.0
 				add_trauma(0.58)
 			"first_strike":
+				_hero_slash_motion = 1.0
 				_first_strike = 1.0
 				add_trauma(0.46)
 			"armor_broken":
@@ -224,35 +278,46 @@ func play_events(events: Array[Dictionary]) -> void:
 			"return_blade":
 				_block_flash = maxf(_block_flash, 0.45)
 			"guard_stance":
+				_hero_block_motion = 1.0
 				_block_flash = maxf(_block_flash, 0.62)
 			"block":
+				_enemy_attack_recover = 1.0
+				_hero_block_motion = 1.0
 				_block_flash = 1.0
 				add_trauma(0.1)
 				_hit_stop(0.025)
 				_play_sfx("block")
 			"perfect_block":
+				_enemy_attack_recover = 1.0
+				_hero_block_motion = 1.0
 				_perfect_block = 1.0
 				add_trauma(0.28)
 				_hit_stop(0.05)
 				_play_sfx("perfect")
 			"counter":
+				_hero_slash_motion = 1.0
 				_counter_slash = 1.0
 				add_trauma(0.32)
 			"collapse_counter":
+				_hero_slash_motion = 1.0
 				_collapse_counter = 1.0
 				add_trauma(0.62)
 			"heaven_return":
+				_hero_slash_motion = 1.0
 				_heaven_return = 1.0
 				add_trauma(0.86)
 			"immovable_king":
 				_perfect_block = 1.0
 				add_trauma(0.2)
 			"dodge":
+				_enemy_attack_recover = 1.0
+				_hero_dodge_motion = 1.0
 				_dodge_flash = 1.0
 				_play_sfx("dodge")
 			"swift_step_ready":
 				_dodge_flash = maxf(_dodge_flash, 0.35)
 			"swift_step":
+				_hero_dodge_motion = 1.0
 				_swift_step = 1.0
 				add_trauma(0.22)
 			"shadow_assault":
@@ -343,6 +408,7 @@ func play_events(events: Array[Dictionary]) -> void:
 				_spawn_damage(float(event.amount), source)
 				_apply_impact(tier, source)
 			"hero_hit":
+				_enemy_attack_recover = 1.0
 				_hero_flash = 1.0
 				_hero_recoil = 1.0
 				_hurt_vignette = 1.0
@@ -350,6 +416,7 @@ func play_events(events: Array[Dictionary]) -> void:
 				_hit_stop(0.035)
 				_play_sfx("hurt")
 			"enemy_defeated":
+				_enemy_death_motion = 1.0
 				_defeat_burst = 1.0
 				_defeat_was_boss = bool(event.get("boss", false))
 				add_trauma(0.88 if _defeat_was_boss else 0.3)
@@ -409,6 +476,9 @@ func _draw() -> void:
 	var visible_bottom := minf(stage_bottom - 10.0, size.y - 120.0)
 	var enemy_pos := Vector2(size.x * 0.69, lerpf(stage_top, visible_bottom, 0.62)) + shake_offset
 	var hero_pos := Vector2(size.x * 0.33, lerpf(stage_top, visible_bottom, 0.97)) + shake_offset
+	var enemy_strike := pow(_enemy_attack_recover, 1.7)
+	var enemy_windup := enemy_windup_ratio * (1.0 - _enemy_attack_recover)
+	enemy_pos += Vector2(enemy_windup * 12.0 - enemy_strike * minf(size.x * 0.24, 94.0), enemy_strike * 18.0)
 	enemy_pos.x += sin(_enemy_knockback * PI) * minf(size.x * 0.055, 24.0) * _impact_strength
 	hero_pos.x -= sin(_hero_recoil * PI) * minf(size.x * 0.045, 20.0)
 	var ally_lunge := sin(_ally_action * PI) * minf(size.x * 0.12, 46.0)
@@ -490,6 +560,11 @@ func _draw_ally(origin: Vector2, index: int) -> void:
 func _draw_hero(origin: Vector2) -> void:
 	var bob := sin(_time * 4.2) * 2.0
 	var sprite_modulate := Color(1.8, 1.8, 1.8, 1.0) if _hero_flash > 0.0 else Color.WHITE
+	var slash_pose := maxf(maxf(_hero_action, _heavy_slash), maxf(_counter_slash, _swift_cut))
+	var guard_pose := maxf(_block_flash, _perfect_block)
+	var dodge_pose := maxf(_dodge_flash, _swift_step)
+	var pose_rotation := -0.085 * slash_pose + 0.045 * guard_pose - 0.11 * dodge_pose
+	var pose_scale := Vector2(1.0 + dodge_pose * 0.055 - guard_pose * 0.025, 1.0 - dodge_pose * 0.04 + guard_pose * 0.035)
 	if momentum_ratio > 0.68:
 		var aura_alpha := (momentum_ratio - 0.68) * 1.2 + _momentum_pulse * 0.32
 		draw_arc(origin + Vector2(0.0, -34.0), 50.0 + sin(_time * 8.0) * 3.0, 0.0, TAU, 32, Color("f1bb54", aura_alpha), 4.0)
@@ -505,10 +580,34 @@ func _draw_hero(origin: Vector2) -> void:
 		for index in magic_marks_level:
 			var angle := _time * 0.8 + float(index) * TAU / 5.0
 			draw_circle(origin + Vector2(0, -35) + Vector2.from_angle(angle) * 48.0, 3.5, Color("ffd09c", 0.9))
-	_draw_sprite_bottom(RECRUIT_TEXTURE, origin + Vector2(0.0, 45.0 + bob), 252.0, sprite_modulate)
+	var hero_texture: Texture2D = RECRUIT_TEXTURE
+	var canvas_height := 252.0
+	var feet_ratio := 1.0
+	if _hero_dodge_motion > 0.0:
+		var dodge_index := mini(5, floori((1.0 - _hero_dodge_motion) * 6.0))
+		hero_texture = HERO_DODGE_FRAMES[dodge_index]
+		canvas_height = 380.0
+		feet_ratio = 0.92
+	elif _hero_block_motion > 0.0:
+		var block_index := mini(3, floori((1.0 - _hero_block_motion) * 4.0))
+		hero_texture = HERO_BLOCK_FRAMES[block_index]
+		canvas_height = 370.0
+		feet_ratio = 0.882
+	elif _hero_slash_motion > 0.0:
+		var slash_index := 3 + mini(2, floori((1.0 - _hero_slash_motion) * 3.0))
+		hero_texture = HERO_SLASH_FRAMES[slash_index]
+		canvas_height = 380.0
+		feet_ratio = 0.927
+	elif hero_attack_windup_ratio > 0.0:
+		var windup_index := mini(2, floori(hero_attack_windup_ratio * 3.0))
+		hero_texture = HERO_SLASH_FRAMES[windup_index]
+		canvas_height = 380.0
+		feet_ratio = 0.927
+	_draw_anchored_animation_frame(hero_texture, origin + Vector2(0.0, 45.0 + bob), canvas_height, feet_ratio, pose_rotation, pose_scale, sprite_modulate)
 
 func _draw_enemy(origin: Vector2) -> void:
-	var bob := sin(_time * 3.2) * 3.0
+	var idle_breath := sin(_time * 3.2)
+	var bob := idle_breath * 1.0
 	var sprite_modulate := Color(1.8, 1.8, 1.8, 1.0) if _enemy_flash > 0.0 else Color.WHITE
 	var body_scale := 1.18 if enemy_archetype == "brute" else (0.86 if enemy_archetype in ["raider", "caster"] else 1.0)
 	var ring_size := 126.0 * body_scale + sin(_time * 2.4) * 4.0
@@ -535,7 +634,32 @@ func _draw_enemy(origin: Vector2) -> void:
 			var x := -30.0 + float(index) * 15.0
 			draw_polyline(PackedVector2Array([origin + Vector2(x, -82), origin + Vector2(x + 7, -65), origin + Vector2(x - 2, -48)]), Color("e7c8ff", 0.72), 3.0)
 	var enemy_height := 176.0 * body_scale
-	_draw_sprite_bottom(GRAY_WOLF_TEXTURE, ground_center + Vector2(0.0, 20.0), enemy_height, sprite_modulate)
+	var windup_pose := enemy_windup_ratio * (1.0 - _enemy_attack_recover)
+	var strike_pose := pow(_enemy_attack_recover, 1.45)
+	var hit_pose := sin(_enemy_knockback * PI)
+	var death_phase := 1.0 - _enemy_death_motion
+	var pose_rotation := -0.045 * windup_pose + 0.075 * strike_pose + 0.1 * hit_pose
+	var pose_scale := Vector2(1.0 + strike_pose * 0.09 + hit_pose * 0.035, 1.0 - windup_pose * 0.1 - strike_pose * 0.055 + idle_breath * 0.008)
+	var sprite_bottom := ground_center + Vector2(0.0, 20.0 + windup_pose * 5.0)
+	if _enemy_death_motion > 0.0:
+		pose_rotation += death_phase * 0.48
+		pose_scale *= Vector2(1.0 + death_phase * 0.08, 1.0 - death_phase * 0.22)
+		sprite_modulate.a = clampf(_enemy_death_motion * 1.8, 0.0, 1.0)
+		sprite_bottom += Vector2(18.0 * death_phase, 10.0 * death_phase)
+	var enemy_texture: Texture2D = GRAY_WOLF_TEXTURE
+	var enemy_canvas_height := enemy_height
+	var enemy_feet_ratio := 1.0
+	if _enemy_attack_recover > 0.0:
+		var recover_index := 3 + mini(2, floori((1.0 - _enemy_attack_recover) * 3.0))
+		enemy_texture = WOLF_POUNCE_FRAMES[recover_index]
+		enemy_canvas_height = 380.0 * body_scale
+		enemy_feet_ratio = 0.834
+	elif enemy_windup_ratio > 0.0:
+		var pounce_index := mini(2, floori(enemy_windup_ratio * 3.0))
+		enemy_texture = WOLF_POUNCE_FRAMES[pounce_index]
+		enemy_canvas_height = 380.0 * body_scale
+		enemy_feet_ratio = 0.834
+	_draw_anchored_animation_frame(enemy_texture, sprite_bottom, enemy_canvas_height, enemy_feet_ratio, pose_rotation, pose_scale, sprite_modulate)
 	if enemy_armor_ratio > 0.05:
 		var armor_color := Color("e7eff2") if _armor_break_flash > 0.0 else Color("778a93")
 		draw_arc(origin + Vector2(0, -16 + bob), 47.0, -2.65, -0.48, 18, armor_color, 5.0 + enemy_armor_ratio * 5.0)
@@ -557,6 +681,19 @@ func _draw_sprite_bottom(texture: Texture2D, bottom_center: Vector2, target_heig
 	var target_width := target_height * texture_size.x / texture_size.y
 	var rect := Rect2(bottom_center.x - target_width * 0.5, bottom_center.y - target_height, target_width, target_height)
 	draw_texture_rect(texture, rect, false, modulate)
+
+func _draw_sprite_bottom_transformed(texture: Texture2D, bottom_center: Vector2, target_height: float, rotation: float, sprite_scale: Vector2, modulate: Color = Color.WHITE) -> void:
+	var texture_size := texture.get_size()
+	if texture_size.y <= 0.0:
+		return
+	var target_width := target_height * texture_size.x / texture_size.y
+	draw_set_transform(bottom_center, rotation, sprite_scale)
+	draw_texture_rect(texture, Rect2(-target_width * 0.5, -target_height, target_width, target_height), false, modulate)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func _draw_anchored_animation_frame(texture: Texture2D, feet_center: Vector2, canvas_height: float, feet_ratio: float, rotation: float, sprite_scale: Vector2, modulate: Color = Color.WHITE) -> void:
+	var corrected_bottom := feet_center + Vector2(0.0, canvas_height * (1.0 - feet_ratio))
+	_draw_sprite_bottom_transformed(texture, corrected_bottom, canvas_height, rotation, sprite_scale, modulate)
 
 func _draw_cover_texture(texture: Texture2D, destination: Rect2, focus: Vector2) -> void:
 	var texture_size := texture.get_size()

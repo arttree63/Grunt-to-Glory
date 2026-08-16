@@ -878,7 +878,7 @@ func snapshot() -> Dictionary:
 		"dodge_chance": _dodge_chance(), "critical_chance": _critical_chance(),
 		"attack_speed_bonus": _agility_action_speed_bonus(), "move_speed_bonus": _agility_move_speed_bonus(),
 		"auto_skill_slots": auto_skill_slots.duplicate(), "auto_tactics": auto_tactics.duplicate(true), "skill_cooldowns": skill_cooldowns.duplicate(true),
-		"attack_interval": _current_attack_interval(), "engagement_time": enemy_engagement_time,
+		"attack_interval": _current_attack_interval(), "auto_attack_remaining": auto_attack_remaining, "engagement_time": enemy_engagement_time,
 	}
 
 func training_hint(track: String) -> String:

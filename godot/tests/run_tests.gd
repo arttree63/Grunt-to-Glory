@@ -86,12 +86,18 @@ func _test_auto_attack_and_momentum() -> void:
 
 func _test_battlefield_impact_tiers() -> void:
 	var battlefield = BattlefieldScript.new()
+	_expect(BattlefieldScript.HERO_SLASH_FRAMES.size() == 6, "主角揮劍必須載入完整六幀")
+	_expect(BattlefieldScript.HERO_BLOCK_FRAMES.size() == 4, "主角格擋必須載入完整四幀")
+	_expect(BattlefieldScript.HERO_DODGE_FRAMES.size() == 6, "主角閃躲必須載入完整六幀")
+	_expect(BattlefieldScript.WOLF_POUNCE_FRAMES.size() == 6, "狼撲擊必須載入完整六幀")
 	_expect(battlefield.impact_tier_for_source("attack") == "light", "普通攻擊必須使用輕量命中回饋")
 	_expect(battlefield.impact_tier_for_source("critical_attack") == "medium", "暴擊必須使用中量命中回饋")
 	_expect(battlefield.impact_tier_for_source("heavy_strike_base") == "medium", "基礎重擊不可使用極勢等級的重型回饋")
 	_expect(battlefield.impact_tier_for_source("heavy_strike_extreme") == "heavy", "滿勢重擊必須使用重型命中回饋")
 	_expect(battlefield.impact_tier_for_source("heavy_strike_swift") == "medium", "敏捷迅擊必須使用中量高速回饋")
 	_expect(battlefield.impact_tier_for_source("mountain_break") == "heavy", "斷嶽必須使用重型命中回饋")
+	battlefield.play_events([{"type": "block"}, {"type": "dodge"}])
+	_expect(battlefield._hero_block_motion == 1.0 and battlefield._hero_dodge_motion == 1.0, "格擋與閃躲事件必須啟動對應逐格動作")
 	battlefield.free()
 
 func _test_training_growth_and_locked_tracks() -> void:
