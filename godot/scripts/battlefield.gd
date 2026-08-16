@@ -407,7 +407,7 @@ func _draw() -> void:
 	var shake := trauma * trauma
 	var shake_offset := Vector2(sin(_time * 31.0) * 10.0, sin(_time * 43.0) * 7.0) * shake
 	var visible_bottom := minf(stage_bottom - 10.0, size.y - 120.0)
-	var enemy_pos := Vector2(size.x * 0.69, lerpf(stage_top, visible_bottom, 0.46)) + shake_offset
+	var enemy_pos := Vector2(size.x * 0.69, lerpf(stage_top, visible_bottom, 0.62)) + shake_offset
 	var hero_pos := Vector2(size.x * 0.33, lerpf(stage_top, visible_bottom, 0.97)) + shake_offset
 	enemy_pos.x += sin(_enemy_knockback * PI) * minf(size.x * 0.055, 24.0) * _impact_strength
 	hero_pos.x -= sin(_hero_recoil * PI) * minf(size.x * 0.045, 20.0)
@@ -512,7 +512,9 @@ func _draw_enemy(origin: Vector2) -> void:
 	var sprite_modulate := Color(1.8, 1.8, 1.8, 1.0) if _enemy_flash > 0.0 else Color.WHITE
 	var body_scale := 1.18 if enemy_archetype == "brute" else (0.86 if enemy_archetype in ["raider", "caster"] else 1.0)
 	var ring_size := 126.0 * body_scale + sin(_time * 2.4) * 4.0
-	var ring_rect := Rect2(origin.x - ring_size * 0.5, origin.y - ring_size * 0.36, ring_size, ring_size * 0.58)
+	var ground_center := origin + Vector2(0.0, 31.0)
+	_draw_ground_shadow(ground_center + Vector2(0.0, 4.0), Vector2(ring_size * 0.48, ring_size * 0.13))
+	var ring_rect := Rect2(origin.x - ring_size * 0.5, ground_center.y - ring_size * 0.29, ring_size, ring_size * 0.58)
 	draw_texture_rect(TARGET_RING_TEXTURE, ring_rect, false, Color(1.0, 1.0, 1.0, 0.5 if enemy_is_boss else 0.3))
 	if enemy_heavy_windup:
 		var pulse := 0.55 + sin(_time * 14.0) * 0.18
@@ -533,13 +535,20 @@ func _draw_enemy(origin: Vector2) -> void:
 			var x := -30.0 + float(index) * 15.0
 			draw_polyline(PackedVector2Array([origin + Vector2(x, -82), origin + Vector2(x + 7, -65), origin + Vector2(x - 2, -48)]), Color("e7c8ff", 0.72), 3.0)
 	var enemy_height := 176.0 * body_scale
-	_draw_sprite_bottom(GRAY_WOLF_TEXTURE, origin + Vector2(0.0, 34.0 + bob), enemy_height, sprite_modulate)
+	_draw_sprite_bottom(GRAY_WOLF_TEXTURE, ground_center + Vector2(0.0, 20.0), enemy_height, sprite_modulate)
 	if enemy_armor_ratio > 0.05:
 		var armor_color := Color("e7eff2") if _armor_break_flash > 0.0 else Color("778a93")
 		draw_arc(origin + Vector2(0, -16 + bob), 47.0, -2.65, -0.48, 18, armor_color, 5.0 + enemy_armor_ratio * 5.0)
 		draw_arc(origin + Vector2(0, -16 + bob), 47.0, 0.48, 2.65, 18, armor_color, 5.0 + enemy_armor_ratio * 5.0)
 	if enemy_is_boss:
 		draw_polyline(PackedVector2Array([origin + Vector2(-24, -86 + bob), origin + Vector2(-13, -105 + bob), origin + Vector2(0, -89 + bob), origin + Vector2(14, -107 + bob), origin + Vector2(25, -86 + bob)]), Color("e6bd62"), 7.0)
+
+func _draw_ground_shadow(center: Vector2, radius: Vector2) -> void:
+	var points := PackedVector2Array()
+	for index in 32:
+		var angle := TAU * float(index) / 32.0
+		points.append(center + Vector2(cos(angle) * radius.x, sin(angle) * radius.y))
+	draw_colored_polygon(points, Color("293336", 0.3))
 
 func _draw_sprite_bottom(texture: Texture2D, bottom_center: Vector2, target_height: float, modulate: Color = Color.WHITE) -> void:
 	var texture_size := texture.get_size()
