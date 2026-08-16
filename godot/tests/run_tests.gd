@@ -412,6 +412,7 @@ func _test_base_heavy_strike_and_stream_modifiers() -> void:
 	var events: Array[Dictionary] = recruit.step(0.01)
 	var base_hits := events.filter(func(event: Dictionary) -> bool: return event.type == "heavy_strike")
 	_expect(not base_hits.is_empty(), "戰鬥開始後 AUTO 必須施放基礎重擊")
+	_expect(is_equal_approx(float(recruit.skill_cooldowns.heavy_strike), 4.5), "基礎重擊冷卻必須維持 4.5 秒快節奏")
 	var martial = CombatModelScript.new()
 	martial.training.martial = 10
 	martial.momentum = 100.0
@@ -427,6 +428,8 @@ func _test_base_heavy_strike_and_stream_modifiers() -> void:
 	hybrid.training.agility = 10
 	hybrid.training.magic = 10
 	_expect(hybrid.heavy_strike_modifiers().size() == 4 and hybrid.skill_display_name("heavy_strike") == "複合重擊", "四種訓練必須能同時改造重擊")
+	hybrid.youren = 5
+	_expect(hybrid._heavy_strike_cooldown() < 4.5 and hybrid._heavy_strike_cooldown() >= 2.5, "敏捷必須縮短重擊冷卻，但保留 2.5 秒下限")
 
 func _test_remaining_heart_refund() -> void:
 	var model = CombatModelScript.new()

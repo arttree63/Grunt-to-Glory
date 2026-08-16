@@ -92,7 +92,7 @@ const GROWTH := {
 const SKILL_DEFS := {
 	"heavy_strike": {
 		"name": "重擊", "short": "重擊", "type": "active", "track": "common", "level": 1,
-		"cooldown": 8.0, "resource": "none", "cost": 0.0,
+		"cooldown": 4.5, "resource": "none", "cost": 0.0,
 		"condition": "敵人在攻擊範圍內", "damage_multiplier": 1.8, "armor_ignore": 0.0,
 		"tags": ["BASIC_SWORD", "HEAVY_ATTACK", "MELEE"], "implemented": true,
 	},
@@ -1099,7 +1099,7 @@ func _cast_heavy_strike() -> void:
 
 func _heavy_strike_cooldown() -> float:
 	var speed_bonus := _agility_action_speed_bonus() * 0.45 + float(youren) * 0.025
-	return maxf(4.0, float(SKILL_DEFS.heavy_strike.cooldown) / (1.0 + speed_bonus))
+	return maxf(2.5, float(SKILL_DEFS.heavy_strike.cooldown) / (1.0 + speed_bonus))
 
 func heavy_strike_modifiers() -> Array[String]:
 	var modifiers: Array[String] = []
@@ -1128,7 +1128,7 @@ func skill_display_name(skill_id: String, short := false) -> String:
 func base_skill_description(skill_id: String) -> String:
 	if skill_id != "heavy_strike":
 		return ""
-	var lines: Array[String] = ["180% ATK｜基礎冷卻 8 秒｜所有小兵 Lv.1 取得"]
+	var lines: Array[String] = ["180% ATK｜基礎冷卻 4.5 秒｜所有小兵 Lv.1 取得"]
 	if int(training.martial) >= 10: lines.append("武藝：勢越高，傷害與破甲越高")
 	if int(training.physique) >= 10: lines.append("體術：將近期格擋減傷與防禦轉成傷害")
 	if int(training.agility) >= 10: lines.append("敏捷：游刃增傷，攻速縮短冷卻，並可暴擊")
