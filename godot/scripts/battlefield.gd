@@ -1,9 +1,10 @@
 class_name Battlefield
 extends Control
 
-const GORGE_BACKGROUND := preload("res://assets/visual/gray_wolf_gorge/gorge-background-v1.png")
-const RECRUIT_TEXTURE := preload("res://assets/visual/gray_wolf_gorge/recruit-idle-v1.png")
-const GRAY_WOLF_TEXTURE := preload("res://assets/visual/gray_wolf_gorge/gray-wolf-idle-v1.png")
+const GORGE_BACKGROUND := preload("res://assets/visual/battle_hud_v2/ruins-arena.png")
+const RECRUIT_TEXTURE := preload("res://assets/visual/battle_hud_v2/hero-back.png")
+const GRAY_WOLF_TEXTURE := preload("res://assets/visual/battle_hud_v2/gray-wolf.png")
+const TARGET_RING_TEXTURE := preload("res://assets/visual/battle_hud_v2/target-ring.png")
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -399,8 +400,8 @@ func _draw() -> void:
 	_draw_forest()
 	var shake := trauma * trauma
 	var shake_offset := Vector2(sin(_time * 31.0) * 10.0, sin(_time * 43.0) * 7.0) * shake
-	var enemy_pos := Vector2(size.x * 0.68, size.y * 0.36) + shake_offset
-	var hero_pos := Vector2(size.x * 0.33, size.y * 0.68) + shake_offset
+	var enemy_pos := Vector2(size.x * 0.69, size.y * 0.45) + shake_offset
+	var hero_pos := Vector2(size.x * 0.33, size.y * 0.72) + shake_offset
 	enemy_pos.x += sin(_enemy_knockback * PI) * minf(size.x * 0.055, 24.0) * _impact_strength
 	hero_pos.x -= sin(_hero_recoil * PI) * minf(size.x * 0.045, 20.0)
 	var ally_lunge := sin(_ally_action * PI) * minf(size.x * 0.12, 46.0)
@@ -495,12 +496,15 @@ func _draw_hero(origin: Vector2) -> void:
 		for index in magic_marks_level:
 			var angle := _time * 0.8 + float(index) * TAU / 5.0
 			draw_circle(origin + Vector2(0, -35) + Vector2.from_angle(angle) * 48.0, 3.5, Color("ffd09c", 0.9))
-	_draw_sprite_bottom(RECRUIT_TEXTURE, origin + Vector2(0.0, 27.0 + bob), 206.0, sprite_modulate)
+	_draw_sprite_bottom(RECRUIT_TEXTURE, origin + Vector2(0.0, 29.0 + bob), 252.0, sprite_modulate)
 
 func _draw_enemy(origin: Vector2) -> void:
 	var bob := sin(_time * 3.2) * 3.0
 	var sprite_modulate := Color(1.8, 1.8, 1.8, 1.0) if _enemy_flash > 0.0 else Color.WHITE
 	var body_scale := 1.18 if enemy_archetype == "brute" else (0.86 if enemy_archetype in ["raider", "caster"] else 1.0)
+	var ring_size := 126.0 * body_scale + sin(_time * 2.4) * 4.0
+	var ring_rect := Rect2(origin.x - ring_size * 0.5, origin.y - ring_size * 0.36, ring_size, ring_size * 0.58)
+	draw_texture_rect(TARGET_RING_TEXTURE, ring_rect, false, Color(1.0, 1.0, 1.0, 0.5 if enemy_is_boss else 0.3))
 	if enemy_heavy_windup:
 		var pulse := 0.55 + sin(_time * 14.0) * 0.18
 		var warning_color := Color("e85a3d") if enemy_attack_type == "重擊" else (Color("b76be0") if enemy_attack_type == "範圍" else Color("f0d55a"))
@@ -519,7 +523,7 @@ func _draw_enemy(origin: Vector2) -> void:
 		for index in lightning_level:
 			var x := -30.0 + float(index) * 15.0
 			draw_polyline(PackedVector2Array([origin + Vector2(x, -82), origin + Vector2(x + 7, -65), origin + Vector2(x - 2, -48)]), Color("e7c8ff", 0.72), 3.0)
-	var enemy_height := 164.0 * body_scale
+	var enemy_height := 176.0 * body_scale
 	_draw_sprite_bottom(GRAY_WOLF_TEXTURE, origin + Vector2(0.0, 34.0 + bob), enemy_height, sprite_modulate)
 	if enemy_armor_ratio > 0.05:
 		var armor_color := Color("e7eff2") if _armor_break_flash > 0.0 else Color("778a93")
