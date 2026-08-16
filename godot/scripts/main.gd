@@ -3,6 +3,21 @@ extends Control
 const FIXED_STEP := 1.0 / 60.0
 const PAGE_NAMES := {"combat": "戰鬥", "character": "角色", "skills": "技能", "equipment": "裝備", "shop": "商店"}
 const UI_FONT := preload("res://assets/fonts/NotoSansTC-Variable.ttf")
+const CREST_ICON := preload("res://assets/ui/hud_v2/crest.png")
+const SKILL_SLOT_ICONS: Array[Texture2D] = [
+	preload("res://assets/ui/hud_v2/skill-heavy.png"),
+	preload("res://assets/ui/hud_v2/skill-guard.png"),
+	preload("res://assets/ui/hud_v2/skill-thrust.png"),
+	preload("res://assets/ui/hud_v2/skill-wind.png"),
+	preload("res://assets/ui/hud_v2/skill-roar.png"),
+]
+const NAV_ICONS := {
+	"combat": preload("res://assets/ui/hud_v2/nav-combat.png"),
+	"character": preload("res://assets/ui/hud_v2/nav-character.png"),
+	"skills": preload("res://assets/ui/hud_v2/nav-skills.png"),
+	"equipment": preload("res://assets/ui/hud_v2/nav-equipment.png"),
+	"shop": preload("res://assets/ui/hud_v2/nav-shop.png"),
+}
 
 var model := CombatModel.new()
 var accumulator := 0.0
@@ -25,16 +40,16 @@ var momentum_label: Label
 var momentum_head: HBoxContainer
 var momentum_hud: VBoxContainer
 var state_panel: PanelContainer
-var immovable_hud: HBoxContainer
+var immovable_hud: VBoxContainer
 var immovable_label: Label
 var immovable_pips: Array[PanelContainer] = []
-var youren_hud: HBoxContainer
+var youren_hud: VBoxContainer
 var youren_label: Label
 var youren_pips: Array[PanelContainer] = []
-var magic_hud: HBoxContainer
+var magic_hud: VBoxContainer
 var magic_label: Label
 var magic_pips: Array[PanelContainer] = []
-var faith_hud: HBoxContainer
+var faith_hud: VBoxContainer
 var faith_label: Label
 var faith_pips: Array[PanelContainer] = []
 var command_hud: VBoxContainer
@@ -119,9 +134,12 @@ func _build_ui() -> void:
 	top_panel.add_child(top_box)
 	var identity := HBoxContainer.new()
 	top_box.add_child(identity)
-	var crest := _label("⚔", 25, Color("756b5b"))
-	crest.custom_minimum_size.x = 34
-	crest.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var crest := TextureRect.new()
+	crest.texture = CREST_ICON
+	crest.custom_minimum_size = Vector2(44, 44)
+	crest.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	crest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	crest.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	identity.add_child(crest)
 	var hero_name := _label("無名小兵", 22, Color("292824"))
 	hero_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -135,13 +153,14 @@ func _build_ui() -> void:
 	training_alert_button.add_theme_color_override("font_pressed_color", Color("2b1e10"))
 	training_alert_button.pressed.connect(_open_training)
 	identity.add_child(training_alert_button)
-	kills_label = _label("擊倒 0", 14, Color("4e514f"))
-	kills_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	identity.add_child(kills_label)
 	enemy_label = _label("林地哥布林 · 第 1 戰", 16, Color("373733"))
+	enemy_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	top_box.add_child(enemy_label)
 	enemy_bar = _progress_bar(Color("d8cbbb"), Color("9c4138"), 16)
 	top_box.add_child(enemy_bar)
+	kills_label = _label("擊倒 0", 14, Color("4e514f"))
+	kills_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	top_box.add_child(kills_label)
 
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -173,14 +192,14 @@ func _build_ui() -> void:
 	var hp_box := VBoxContainer.new()
 	hp_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	resource_row.add_child(hp_box)
-	hp_label = _label("HP", 15, Color("5f332e"))
+	hp_label = _label("♥ 生命", 15, Color("a33d32"))
 	hp_box.add_child(hp_label)
 	hp_bar = _progress_bar(Color("d9cbc0"), Color("b85245"), 18)
 	hp_box.add_child(hp_bar)
 	var mp_box := VBoxContainer.new()
 	mp_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	resource_row.add_child(mp_box)
-	mp_label = _label("MP  尚未啟用", 15, Color("36586a"))
+	mp_label = _label("◆ MP  尚未啟用", 15, Color("36586a"))
 	mp_box.add_child(mp_label)
 	mp_bar = _progress_bar(Color("c8d1d3"), Color("477d91"), 18)
 	mp_box.add_child(mp_bar)
@@ -189,7 +208,7 @@ func _build_ui() -> void:
 	resource_row.add_child(momentum_hud)
 	momentum_head = HBoxContainer.new()
 	momentum_hud.add_child(momentum_head)
-	momentum_label = _label("勢  0/100", 15, Color("9c4a24"))
+	momentum_label = _label("♨ 勢  0/100", 15, Color("9c4a24"))
 	momentum_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	momentum_head.add_child(momentum_label)
 	momentum_bar = _progress_bar(Color("dac9b7"), Color("c65d20"), 18)
@@ -203,57 +222,69 @@ func _build_ui() -> void:
 	state_grid.add_theme_constant_override("h_separation", 7)
 	state_grid.add_theme_constant_override("v_separation", 6)
 	state_panel.add_child(state_grid)
-	immovable_hud = HBoxContainer.new()
-	immovable_hud.add_theme_constant_override("separation", 6)
+	immovable_hud = VBoxContainer.new()
+	immovable_hud.add_theme_constant_override("separation", 3)
 	immovable_hud.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	state_grid.add_child(immovable_hud)
 	immovable_label = _label("不動  0/3", 14, Color("315b70"))
 	immovable_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	immovable_hud.add_child(immovable_label)
+	var immovable_row := HBoxContainer.new()
+	immovable_row.add_theme_constant_override("separation", 5)
+	immovable_hud.add_child(immovable_row)
 	for index in CombatModel.MAX_IMMOVABLE:
 		var pip := PanelContainer.new()
-		pip.custom_minimum_size = Vector2(28, 18)
+		pip.custom_minimum_size = Vector2(18, 15)
 		pip.add_theme_stylebox_override("panel", _state_pip_style(Color("bdc7c9"), Color("70848b"), "shield"))
-		immovable_hud.add_child(pip)
+		immovable_row.add_child(pip)
 		immovable_pips.append(pip)
-	youren_hud = HBoxContainer.new()
-	youren_hud.add_theme_constant_override("separation", 5)
+	youren_hud = VBoxContainer.new()
+	youren_hud.add_theme_constant_override("separation", 3)
 	youren_hud.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	state_grid.add_child(youren_hud)
 	youren_label = _label("游刃  0/5", 14, Color("28766f"))
 	youren_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	youren_hud.add_child(youren_label)
+	var youren_row := HBoxContainer.new()
+	youren_row.add_theme_constant_override("separation", 4)
+	youren_hud.add_child(youren_row)
 	for index in CombatModel.MAX_YOUREN:
 		var pip := PanelContainer.new()
-		pip.custom_minimum_size = Vector2(21, 10)
+		pip.custom_minimum_size = Vector2(14, 10)
 		pip.add_theme_stylebox_override("panel", _state_pip_style(Color("bdcbc8"), Color("5d8781"), "slash"))
-		youren_hud.add_child(pip)
+		youren_row.add_child(pip)
 		youren_pips.append(pip)
-	magic_hud = HBoxContainer.new()
-	magic_hud.add_theme_constant_override("separation", 5)
+	magic_hud = VBoxContainer.new()
+	magic_hud.add_theme_constant_override("separation", 3)
 	magic_hud.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	state_grid.add_child(magic_hud)
 	magic_label = _label("魔紋  0/5", 14, Color("67458f"))
 	magic_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	magic_hud.add_child(magic_label)
+	var magic_row := HBoxContainer.new()
+	magic_row.add_theme_constant_override("separation", 4)
+	magic_hud.add_child(magic_row)
 	for index in CombatModel.MAX_MAGIC_MARKS:
 		var pip := PanelContainer.new()
-		pip.custom_minimum_size = Vector2(16, 16)
+		pip.custom_minimum_size = Vector2(14, 14)
 		pip.add_theme_stylebox_override("panel", _state_pip_style(Color("c9bfd1"), Color("79638e"), "rune"))
-		magic_hud.add_child(pip)
+		magic_row.add_child(pip)
 		magic_pips.append(pip)
-	faith_hud = HBoxContainer.new()
-	faith_hud.add_theme_constant_override("separation", 5)
+	faith_hud = VBoxContainer.new()
+	faith_hud.add_theme_constant_override("separation", 3)
 	faith_hud.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	state_grid.add_child(faith_hud)
 	faith_label = _label("聖印  0/5", 14, Color("8a6a24"))
 	faith_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	faith_hud.add_child(faith_label)
+	var faith_row := HBoxContainer.new()
+	faith_row.add_theme_constant_override("separation", 4)
+	faith_hud.add_child(faith_row)
 	for index in CombatModel.MAX_HOLY_SEALS:
 		var pip := PanelContainer.new()
-		pip.custom_minimum_size = Vector2(17, 17)
+		pip.custom_minimum_size = Vector2(14, 14)
 		pip.add_theme_stylebox_override("panel", _state_pip_style(Color("d5ccb0"), Color("9d8849"), "seal"))
-		faith_hud.add_child(pip)
+		faith_row.add_child(pip)
 		faith_pips.append(pip)
 	command_hud = VBoxContainer.new()
 	command_hud.add_theme_constant_override("separation", 3)
@@ -274,10 +305,9 @@ func _build_ui() -> void:
 	actions.add_theme_constant_override("separation", 5)
 	bottom_box.add_child(actions)
 	for index in CombatModel.AUTO_SLOT_COUNT:
-		var slot := _skill_button("%d\n＋" % (index + 1), Color("252c2b"))
+		var slot := _skill_button("", Color("252c2b"), SKILL_SLOT_ICONS[index])
 		slot.custom_minimum_size.x = 0
 		slot.size_flags_stretch_ratio = 1.0
-		slot.clip_text = true
 		slot.tooltip_text = "空槽會開啟技能頁；已裝備技能可點擊切換戰術"
 		slot.pressed.connect(_on_auto_slot_pressed.bind(index))
 		actions.add_child(slot)
@@ -294,6 +324,8 @@ func _build_navigation(parent: VBoxContainer) -> void:
 	parent.add_child(nav)
 	for page: String in PAGE_NAMES:
 		var button := _nav_button(String(PAGE_NAMES[page]))
+		button.icon = NAV_ICONS[page]
+		button.expand_icon = true
 		button.pressed.connect(_switch_page.bind(page))
 		nav.add_child(button)
 		nav_buttons[page] = button
@@ -938,25 +970,28 @@ func _update_hud(snapshot: Dictionary) -> void:
 	enemy_bar.value = float(snapshot.enemy_hp)
 	hp_bar.max_value = float(snapshot.hero_max_hp)
 	hp_bar.value = float(snapshot.hero_hp)
-	hp_label.text = "生命  %d/%d" % [roundi(snapshot.hero_hp), roundi(snapshot.hero_max_hp)]
+	hp_label.text = "♥ 生命  %d/%d" % [roundi(snapshot.hero_hp), roundi(snapshot.hero_max_hp)]
 	mp_bar.max_value = maxf(1.0, float(snapshot.hero_max_mp))
 	mp_bar.value = float(snapshot.hero_mp)
-	mp_label.text = "MP  %d/%d" % [roundi(snapshot.hero_mp), roundi(snapshot.hero_max_mp)]
+	mp_label.text = "◆ MP  %d/%d" % [roundi(snapshot.hero_mp), roundi(snapshot.hero_max_mp)]
 	momentum_bar.max_value = float(snapshot.max_momentum)
 	momentum_bar.value = float(snapshot.momentum)
 	var draw_text := " · 拔刀 %.1fs" % float(snapshot.draw_stance_remaining) if float(snapshot.draw_stance_remaining) > 0.0 else ""
-	momentum_label.text = "勢  %d/%d%s" % [roundi(snapshot.momentum), roundi(snapshot.max_momentum), draw_text]
+	momentum_label.text = "♨ 勢  %d/%d%s" % [roundi(snapshot.momentum), roundi(snapshot.max_momentum), draw_text]
 	var martial_active := int(snapshot.training.martial) >= 10
-	momentum_hud.visible = martial_active
+	momentum_hud.visible = true
+	momentum_hud.modulate = Color.WHITE if martial_active else Color(1.0, 1.0, 1.0, 0.38)
 	var physique_active := int(snapshot.training.physique) >= 10
-	immovable_hud.visible = physique_active
+	immovable_hud.visible = true
+	immovable_hud.modulate = Color.WHITE if physique_active else Color(1.0, 1.0, 1.0, 0.38)
 	var guard_text := " · 守勢 %.1f" % float(snapshot.guard_stance_remaining) if float(snapshot.guard_stance_remaining) > 0.0 else (" · 返刃" if bool(snapshot.return_blade_ready) else "")
 	immovable_label.text = "不動  %d/%d%s" % [int(snapshot.immovable), int(snapshot.max_immovable), guard_text]
 	for index in immovable_pips.size():
 		var filled := index < int(snapshot.immovable)
 		immovable_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("6a98aa") if filled else Color("bdc7c9"), Color("dff5fa") if filled else Color("70848b"), "shield", 2 if filled else 1))
 	var agility_active := int(snapshot.training.agility) >= 10
-	youren_hud.visible = agility_active
+	youren_hud.visible = true
+	youren_hud.modulate = Color.WHITE if agility_active else Color(1.0, 1.0, 1.0, 0.38)
 	var shadowless_text := " · 無影" if float(snapshot.shadowless_remaining) > 0.0 else ""
 	var swift_text := " · 瞬步" if bool(snapshot.swift_step_ready) else ""
 	var flow_text := ""
@@ -967,7 +1002,8 @@ func _update_hud(snapshot: Dictionary) -> void:
 		var filled := index < int(snapshot.youren)
 		youren_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("45a69b") if filled else Color("bdcbc8"), Color("dcfff8") if filled else Color("5d8781"), "slash", 2 if filled else 1))
 	var magic_active := int(snapshot.training.magic) >= 10
-	magic_hud.visible = magic_active
+	magic_hud.visible = true
+	magic_hud.modulate = Color.WHITE if magic_active else Color(1.0, 1.0, 1.0, 0.38)
 	var release_text := " · 全解放" if float(snapshot.complete_release_remaining) > 0.0 else (" · 解放" if float(snapshot.magic_release_remaining) > 0.0 else "")
 	var element_text := "火%d" % int(snapshot.burn_stacks)
 	if String(snapshot.secondary_element) == "ice": element_text += " 冰%d" % int(snapshot.frost_stacks)
@@ -978,31 +1014,33 @@ func _update_hud(snapshot: Dictionary) -> void:
 		var filled := index < int(snapshot.magic_marks)
 		magic_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("865caf") if filled else Color("c9bfd1"), Color("ead7ff") if filled else Color("79638e"), "rune", 2 if filled else 1))
 	var faith_active := int(snapshot.training.faith) >= 10
-	faith_hud.visible = faith_active
+	faith_hud.visible = true
+	faith_hud.modulate = Color.WHITE if faith_active else Color(1.0, 1.0, 1.0, 0.38)
 	var holy_state := " · 降臨" if float(snapshot.holy_descent_remaining) > 0.0 else (" · 解放" if float(snapshot.holy_release_remaining) > 0.0 else "")
 	faith_label.text = "聖印 %d/%d · 盾%d%s" % [int(snapshot.holy_seals), int(snapshot.max_holy_seals), roundi(float(snapshot.holy_shield)), holy_state]
 	for index in faith_pips.size():
 		var filled := index < int(snapshot.holy_seals)
 		faith_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("d8b94f") if filled else Color("d5ccb0"), Color("fff2ae") if filled else Color("9d8849"), "seal", 2 if filled else 1))
 	var command_active := int(snapshot.training.command) >= 10
-	command_hud.visible = command_active
+	command_hud.visible = true
+	command_hud.modulate = Color.WHITE if command_active else Color(1.0, 1.0, 1.0, 0.38)
 	command_bar.max_value = float(snapshot.max_military_momentum)
 	command_bar.value = float(snapshot.military_momentum)
 	var war_text := " · 軍神" if bool(snapshot.war_god_active) else (" · 奮戰" if float(snapshot.legion_fervor_remaining) > 0.0 else "")
 	command_label.text = "軍勢 %d%% · 友%d%s" % [roundi(float(snapshot.military_momentum)), int(snapshot.ally_count), war_text]
-	state_panel.visible = martial_active or physique_active or agility_active or magic_active or faith_active or command_active
+	state_panel.visible = true
 	var slots: Array = snapshot.auto_skill_slots
 	for index in CombatModel.AUTO_SLOT_COUNT:
 		var skill_id := String(slots[index])
 		var button := auto_slot_buttons[index]
 		if skill_id.is_empty():
-			button.text = "%d\n＋" % (index + 1)
+			_set_skill_card(button, "%d" % (index + 1), "未解鎖", false)
 			button.tooltip_text = "第 %d 優先：尚未配置" % (index + 1)
 			button.add_theme_stylebox_override("normal", _slot_style(Color("313833"), Color("667169"), 1))
 		else:
 			var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
 			var state := model.auto_skill_state(skill_id)
-			button.text = "%d  %s\n%s" % [index + 1, model.skill_display_name(skill_id, true), state]
+			_set_skill_card(button, "%d  %s" % [index + 1, model.skill_display_name(skill_id, true)], state, state == "就緒")
 			button.tooltip_text = "第 %d 優先｜%s｜%s" % [index + 1, model.auto_tactic_description(skill_id), model.skill_power_hint(skill_id)]
 			var track := String(definition.track)
 			var base: Color = {
@@ -1033,7 +1071,7 @@ func _refresh_navigation() -> void:
 	for page: String in PAGE_NAMES:
 		var button := nav_buttons[page] as Button
 		var selected := page == current_page
-		button.text = ("● " if selected else "") + String(PAGE_NAMES[page])
+		button.text = String(PAGE_NAMES[page])
 		button.add_theme_color_override("font_color", Color("8a5b16") if selected else Color("595b57"))
 		button.add_theme_stylebox_override("normal", _slot_style(Color("f8e9c6") if selected else Color("f4efe5"), Color("c68e2f") if selected else Color("d3c6b3"), 2 if selected else 1))
 
@@ -1114,8 +1152,8 @@ func _button(text_value: String, color: Color, height := 58) -> Button:
 	button.add_theme_stylebox_override("disabled", _panel_style(Color("383a36"), Color("686d65")))
 	return button
 
-func _skill_button(text_value: String, color: Color) -> Button:
-	var button := _button(text_value, color, 84)
+func _skill_button(text_value: String, color: Color, icon_texture: Texture2D) -> Button:
+	var button := _button(text_value, color, 104)
 	button.add_theme_font_size_override("font_size", 14)
 	button.add_theme_color_override("font_color", Color("f2ede3"))
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
@@ -1123,11 +1161,50 @@ func _skill_button(text_value: String, color: Color) -> Button:
 	button.add_theme_stylebox_override("normal", _slot_style(color, Color("c8aa70")))
 	button.add_theme_stylebox_override("hover", _slot_style(color.lightened(0.12), Color("f1d590")))
 	button.add_theme_stylebox_override("focus", _slot_style(color.lightened(0.08), Color("fff2ac"), 4))
+	var content := VBoxContainer.new()
+	content.name = "Content"
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	content.offset_left = 4
+	content.offset_top = 4
+	content.offset_right = -4
+	content.offset_bottom = -4
+	content.add_theme_constant_override("separation", 1)
+	button.add_child(content)
+	var title := _label("", 14, Color("f5f2ea"))
+	title.name = "Title"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	content.add_child(title)
+	var icon := TextureRect.new()
+	icon.name = "Icon"
+	icon.texture = icon_texture
+	icon.custom_minimum_size = Vector2(34, 48)
+	icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(icon)
+	var status := _label("", 14, Color("d9d7cf"))
+	status.name = "Status"
+	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	content.add_child(status)
 	return button
+
+func _set_skill_card(button: Button, title_text: String, status_text: String, ready: bool) -> void:
+	var title := button.get_node("Content/Title") as Label
+	var icon := button.get_node("Content/Icon") as TextureRect
+	var status := button.get_node("Content/Status") as Label
+	title.text = title_text
+	status.text = status_text
+	icon.modulate = Color.WHITE if ready else Color(0.72, 0.75, 0.75, 0.72)
+	status.add_theme_color_override("font_color", Color("fff0a8") if ready else Color("c8cbc8"))
 
 func _nav_button(text_value: String) -> Button:
 	var button := _button(text_value, Color("f4efe5"), 50)
 	button.add_theme_font_size_override("font_size", 14)
+	button.add_theme_constant_override("h_separation", 1)
 	button.add_theme_color_override("font_color", Color("344750"))
 	button.add_theme_stylebox_override("normal", _slot_style(Color("f4efe5"), Color("d3c6b3"), 1))
 	button.add_theme_stylebox_override("hover", _slot_style(Color("fff4dc"), Color("b88a3d"), 2))
