@@ -1,6 +1,10 @@
 class_name Battlefield
 extends Control
 
+const GORGE_BACKGROUND := preload("res://assets/visual/gray_wolf_gorge/gorge-background-v1.png")
+const RECRUIT_TEXTURE := preload("res://assets/visual/gray_wolf_gorge/recruit-idle-v1.png")
+const GRAY_WOLF_TEXTURE := preload("res://assets/visual/gray_wolf_gorge/gray-wolf-idle-v1.png")
+
 var reduced_motion := false
 var momentum_ratio := 0.0
 var enemy_armor_ratio := 0.0
@@ -381,13 +385,17 @@ func add_trauma(amount: float) -> void:
 	trauma = clampf(trauma + amount, 0.0, 1.0)
 
 func _draw() -> void:
-	var background := Color("819cab") if journey_route == "mountain" else (Color("a7bbb4") if journey_route == "village" else (Color("8f91a5") if journey_route == "battlefield" else Color("86aeb8")))
-	draw_rect(Rect2(Vector2.ZERO, size), background)
-	for band in 7:
-		var y := size.y * float(band) / 7.0
-		var lower_color := Color("887966") if journey_route == "mountain" else (Color("aa805c") if journey_route == "village" else (Color("796a80") if journey_route == "battlefield" else Color("9a7755")))
-		var color := background.darkened(0.08).lerp(lower_color, float(band) / 7.0)
-		draw_rect(Rect2(0.0, y, size.x, size.y / 7.0 + 1.0), color)
+	if journey_route == "frontier":
+		_draw_cover_texture(GORGE_BACKGROUND, Rect2(Vector2.ZERO, size), Vector2(0.5, 0.54))
+		draw_rect(Rect2(Vector2.ZERO, size), Color("284451", 0.07))
+	else:
+		var background := Color("819cab") if journey_route == "mountain" else (Color("a7bbb4") if journey_route == "village" else Color("8f91a5"))
+		draw_rect(Rect2(Vector2.ZERO, size), background)
+		for band in 7:
+			var y := size.y * float(band) / 7.0
+			var lower_color := Color("887966") if journey_route == "mountain" else (Color("aa805c") if journey_route == "village" else Color("796a80"))
+			var color := background.darkened(0.08).lerp(lower_color, float(band) / 7.0)
+			draw_rect(Rect2(0.0, y, size.x, size.y / 7.0 + 1.0), color)
 	_draw_forest()
 	var shake := trauma * trauma
 	var shake_offset := Vector2(sin(_time * 31.0) * 10.0, sin(_time * 43.0) * 7.0) * shake
@@ -422,6 +430,8 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("c83232", vignette_alpha), false, 14.0)
 
 func _draw_forest() -> void:
+	if journey_route == "frontier":
+		return
 	if journey_route == "village":
 		for index in 5:
 			var house_x := size.x * (0.08 + float(index) * 0.22)
@@ -469,7 +479,7 @@ func _draw_ally(origin: Vector2, index: int) -> void:
 
 func _draw_hero(origin: Vector2) -> void:
 	var bob := sin(_time * 4.2) * 2.0
-	var color := Color.WHITE if _hero_flash > 0.0 else Color("d7b071")
+	var sprite_modulate := Color(1.8, 1.8, 1.8, 1.0) if _hero_flash > 0.0 else Color.WHITE
 	if momentum_ratio > 0.68:
 		var aura_alpha := (momentum_ratio - 0.68) * 1.2 + _momentum_pulse * 0.32
 		draw_arc(origin + Vector2(0.0, -34.0), 50.0 + sin(_time * 8.0) * 3.0, 0.0, TAU, 32, Color("f1bb54", aura_alpha), 4.0)
@@ -485,17 +495,11 @@ func _draw_hero(origin: Vector2) -> void:
 		for index in magic_marks_level:
 			var angle := _time * 0.8 + float(index) * TAU / 5.0
 			draw_circle(origin + Vector2(0, -35) + Vector2.from_angle(angle) * 48.0, 3.5, Color("ffd09c", 0.9))
-	draw_polygon(PackedVector2Array([origin + Vector2(-26, 18 + bob), origin + Vector2(20, 15 + bob), origin + Vector2(16, -36 + bob), origin + Vector2(-18, -42 + bob)]), PackedColorArray([Color("7d2f2a")]))
-	draw_circle(origin + Vector2(0, -55 + bob), 18.0, color)
-	draw_polygon(PackedVector2Array([origin + Vector2(-20, -58 + bob), origin + Vector2(0, -82 + bob), origin + Vector2(21, -58 + bob)]), PackedColorArray([Color("495a63")]))
-	draw_line(origin + Vector2(16, -34 + bob), origin + Vector2(52, -72 + bob), Color("e9e0c8"), 7.0)
-	draw_line(origin + Vector2(52, -72 + bob), origin + Vector2(60, -82 + bob), Color("fff2be"), 3.0)
-	draw_circle(origin + Vector2(-22, -16 + bob), 19.0, Color("596b71"))
-	draw_arc(origin + Vector2(-22, -16 + bob), 14.0, 0.0, TAU, 24, Color("c99b4f"), 3.0)
+	_draw_sprite_bottom(RECRUIT_TEXTURE, origin + Vector2(0.0, 27.0 + bob), 206.0, sprite_modulate)
 
 func _draw_enemy(origin: Vector2) -> void:
 	var bob := sin(_time * 3.2) * 3.0
-	var skin := Color.WHITE if _enemy_flash > 0.0 else Color("71964a")
+	var sprite_modulate := Color(1.8, 1.8, 1.8, 1.0) if _enemy_flash > 0.0 else Color.WHITE
 	var body_scale := 1.18 if enemy_archetype == "brute" else (0.86 if enemy_archetype in ["raider", "caster"] else 1.0)
 	if enemy_heavy_windup:
 		var pulse := 0.55 + sin(_time * 14.0) * 0.18
@@ -515,32 +519,39 @@ func _draw_enemy(origin: Vector2) -> void:
 		for index in lightning_level:
 			var x := -30.0 + float(index) * 15.0
 			draw_polyline(PackedVector2Array([origin + Vector2(x, -82), origin + Vector2(x + 7, -65), origin + Vector2(x - 2, -48)]), Color("e7c8ff", 0.72), 3.0)
-	draw_circle(origin + Vector2(0, -46 + bob), 30.0 * body_scale, skin)
-	draw_polygon(PackedVector2Array([origin + Vector2(-30, -52 + bob), origin + Vector2(-54, -67 + bob), origin + Vector2(-27, -31 + bob)]), PackedColorArray([skin]))
-	draw_polygon(PackedVector2Array([origin + Vector2(30, -52 + bob), origin + Vector2(54, -67 + bob), origin + Vector2(27, -31 + bob)]), PackedColorArray([skin]))
-	draw_circle(origin + Vector2(-10, -51 + bob), 4.5, Color("f6d56a"))
-	draw_circle(origin + Vector2(10, -51 + bob), 4.5, Color("f6d56a"))
-	draw_polygon(PackedVector2Array([origin + Vector2(-28, -20 + bob), origin + Vector2(30, -20 + bob), origin + Vector2(38, 31 + bob), origin + Vector2(-38, 31 + bob)]), PackedColorArray([Color("4d382d")]))
-	draw_line(origin + Vector2(-27, 5 + bob), origin + Vector2(-52, 42 + bob), Color("8f6743"), 8.0)
-	draw_line(origin + Vector2(27, 5 + bob), origin + Vector2(52, 42 + bob), Color("8f6743"), 8.0)
-	if enemy_archetype == "raider":
-		draw_line(origin + Vector2(-25, -5 + bob), origin + Vector2(-58, -35 + bob), Color("d7dce0"), 5.0)
-		draw_line(origin + Vector2(25, -5 + bob), origin + Vector2(58, -35 + bob), Color("d7dce0"), 5.0)
-	elif enemy_archetype == "brute":
-		draw_line(origin + Vector2(22, -8 + bob), origin + Vector2(67, -74 + bob), Color("74543c"), 10.0)
-		draw_rect(Rect2(origin + Vector2(51, -91 + bob), Vector2(35, 26)), Color("68747a"))
-	elif enemy_archetype == "shield":
-		draw_polygon(PackedVector2Array([origin + Vector2(-62, -42 + bob), origin + Vector2(-20, -55 + bob), origin + Vector2(-16, 20 + bob), origin + Vector2(-48, 40 + bob)]), PackedColorArray([Color("596a72")]))
-		draw_line(origin + Vector2(-46, -33 + bob), origin + Vector2(-27, 22 + bob), Color("a6b2b7"), 4.0)
-	elif enemy_archetype == "caster":
-		draw_line(origin + Vector2(31, 8 + bob), origin + Vector2(63, -80 + bob), Color("806044"), 7.0)
-		draw_circle(origin + Vector2(65, -87 + bob), 11.0, Color("b76be0", 0.8))
+	var enemy_height := 164.0 * body_scale
+	_draw_sprite_bottom(GRAY_WOLF_TEXTURE, origin + Vector2(0.0, 34.0 + bob), enemy_height, sprite_modulate)
 	if enemy_armor_ratio > 0.05:
 		var armor_color := Color("e7eff2") if _armor_break_flash > 0.0 else Color("778a93")
 		draw_arc(origin + Vector2(0, -16 + bob), 47.0, -2.65, -0.48, 18, armor_color, 5.0 + enemy_armor_ratio * 5.0)
 		draw_arc(origin + Vector2(0, -16 + bob), 47.0, 0.48, 2.65, 18, armor_color, 5.0 + enemy_armor_ratio * 5.0)
 	if enemy_is_boss:
 		draw_polyline(PackedVector2Array([origin + Vector2(-24, -86 + bob), origin + Vector2(-13, -105 + bob), origin + Vector2(0, -89 + bob), origin + Vector2(14, -107 + bob), origin + Vector2(25, -86 + bob)]), Color("e6bd62"), 7.0)
+
+func _draw_sprite_bottom(texture: Texture2D, bottom_center: Vector2, target_height: float, modulate: Color = Color.WHITE) -> void:
+	var texture_size := texture.get_size()
+	if texture_size.y <= 0.0:
+		return
+	var target_width := target_height * texture_size.x / texture_size.y
+	var rect := Rect2(bottom_center.x - target_width * 0.5, bottom_center.y - target_height, target_width, target_height)
+	draw_texture_rect(texture, rect, false, modulate)
+
+func _draw_cover_texture(texture: Texture2D, destination: Rect2, focus: Vector2) -> void:
+	var texture_size := texture.get_size()
+	if texture_size.x <= 0.0 or texture_size.y <= 0.0:
+		return
+	var source_aspect := texture_size.x / texture_size.y
+	var destination_aspect := destination.size.x / destination.size.y
+	var source_rect := Rect2(Vector2.ZERO, texture_size)
+	if source_aspect > destination_aspect:
+		var crop_width := texture_size.y * destination_aspect
+		source_rect.position.x = (texture_size.x - crop_width) * focus.x
+		source_rect.size.x = crop_width
+	else:
+		var crop_height := texture_size.x / destination_aspect
+		source_rect.position.y = (texture_size.y - crop_height) * focus.y
+		source_rect.size.y = crop_height
+	draw_texture_rect_region(texture, destination, source_rect)
 
 func _draw_afterimages(origin: Vector2) -> void:
 	var count := 0
