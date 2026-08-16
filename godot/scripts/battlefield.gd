@@ -393,7 +393,7 @@ func add_trauma(amount: float) -> void:
 
 func _draw() -> void:
 	if journey_route == "frontier":
-		_draw_cover_texture(GORGE_BACKGROUND, Rect2(Vector2.ZERO, size), Vector2(0.5, 0.54))
+		_draw_cover_texture(GORGE_BACKGROUND, Rect2(0.0, -42.0, size.x, size.y + 42.0), Vector2(0.5, 0.54))
 		draw_rect(Rect2(Vector2.ZERO, size), Color("284451", 0.07))
 	else:
 		var background := Color("819cab") if journey_route == "mountain" else (Color("a7bbb4") if journey_route == "village" else Color("8f91a5"))
@@ -407,8 +407,8 @@ func _draw() -> void:
 	var shake := trauma * trauma
 	var shake_offset := Vector2(sin(_time * 31.0) * 10.0, sin(_time * 43.0) * 7.0) * shake
 	var visible_bottom := minf(stage_bottom - 10.0, size.y - 120.0)
-	var enemy_pos := Vector2(size.x * 0.69, lerpf(stage_top, visible_bottom, 0.39)) + shake_offset
-	var hero_pos := Vector2(size.x * 0.33, lerpf(stage_top, visible_bottom, 0.82)) + shake_offset
+	var enemy_pos := Vector2(size.x * 0.69, lerpf(stage_top, visible_bottom, 0.46)) + shake_offset
+	var hero_pos := Vector2(size.x * 0.33, lerpf(stage_top, visible_bottom, 0.97)) + shake_offset
 	enemy_pos.x += sin(_enemy_knockback * PI) * minf(size.x * 0.055, 24.0) * _impact_strength
 	hero_pos.x -= sin(_hero_recoil * PI) * minf(size.x * 0.045, 20.0)
 	var ally_lunge := sin(_ally_action * PI) * minf(size.x * 0.12, 46.0)
@@ -505,7 +505,7 @@ func _draw_hero(origin: Vector2) -> void:
 		for index in magic_marks_level:
 			var angle := _time * 0.8 + float(index) * TAU / 5.0
 			draw_circle(origin + Vector2(0, -35) + Vector2.from_angle(angle) * 48.0, 3.5, Color("ffd09c", 0.9))
-	_draw_sprite_bottom(RECRUIT_TEXTURE, origin + Vector2(0.0, 29.0 + bob), 252.0, sprite_modulate)
+	_draw_sprite_bottom(RECRUIT_TEXTURE, origin + Vector2(0.0, 45.0 + bob), 252.0, sprite_modulate)
 
 func _draw_enemy(origin: Vector2) -> void:
 	var bob := sin(_time * 3.2) * 3.0
