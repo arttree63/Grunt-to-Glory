@@ -88,6 +88,8 @@ func _test_battlefield_impact_tiers() -> void:
 	var battlefield = BattlefieldScript.new()
 	_expect(battlefield.impact_tier_for_source("attack") == "light", "普通攻擊必須使用輕量命中回饋")
 	_expect(battlefield.impact_tier_for_source("critical_attack") == "medium", "暴擊必須使用中量命中回饋")
+	_expect(battlefield.impact_tier_for_source("heavy_strike_base") == "medium", "基礎重擊不可使用極勢等級的重型回饋")
+	_expect(battlefield.impact_tier_for_source("heavy_strike_extreme") == "heavy", "滿勢重擊必須使用重型命中回饋")
 	_expect(battlefield.impact_tier_for_source("mountain_break") == "heavy", "斷嶽必須使用重型命中回饋")
 	battlefield.free()
 
@@ -422,6 +424,8 @@ func _test_base_heavy_strike_and_stream_modifiers() -> void:
 	events = martial.step(0.01)
 	var martial_hits := events.filter(func(event: Dictionary) -> bool: return event.type == "heavy_strike")
 	_expect(not martial_hits.is_empty() and float(martial_hits[0].damage) > float(base_hits[0].damage), "武藝必須以勢強化同一招重擊")
+	_expect(String(martial_hits[0].name) == "極勢重擊" and is_equal_approx(float(martial_hits[0].momentum_ratio), 1.0), "滿勢重擊必須送出極勢名稱與演出強度")
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "momentum_pierce"), "高勢重擊必須顯示破甲回饋")
 	_expect(is_equal_approx(martial.momentum, 100.0), "基礎重擊的武藝改造不應把勢直接消耗掉")
 	var hybrid = CombatModelScript.new()
 	hybrid.training.martial = 10

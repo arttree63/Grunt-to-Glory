@@ -26,6 +26,7 @@ var trauma := 0.0
 var _time := 0.0
 var _hero_action := 0.0
 var _heavy_slash := 0.0
+var _heavy_strike_power := 0.0
 var _ultimate_slash := 0.0
 var _armor_flash := 0.0
 var _execute_slash := 0.0
@@ -178,12 +179,16 @@ func play_events(events: Array[Dictionary]) -> void:
 			"attack":
 				_hero_action = 0.5
 			"heavy_strike":
-				_heavy_slash = 0.72
+				_heavy_strike_power = clampf(float(event.get("momentum_ratio", 0.0)), 0.0, 1.0)
+				_heavy_slash = 0.62 + _heavy_strike_power * 0.38
 				var modifiers: Array = event.get("modifiers", [])
 				if "體術・借力" in modifiers: _counter_slash = maxf(_counter_slash, 0.55)
 				if "敏捷・迅擊" in modifiers: _swift_cut = maxf(_swift_cut, 0.6)
 				if "魔法・附魔" in modifiers: _magic_slash = maxf(_magic_slash, 0.6)
-				add_trauma(0.3 if modifiers.is_empty() else 0.4)
+				if _heavy_strike_power >= 1.0: _momentum_pulse = 1.0
+				add_trauma(0.12 + _heavy_strike_power * 0.2)
+			"momentum_pierce":
+				_armor_break_flash = maxf(_armor_break_flash, 0.72 if float(event.get("armor_ignore", 0.0)) < 0.25 else 1.0)
 			"mountain_break":
 				_heavy_slash = 1.0
 				add_trauma(0.62)
@@ -336,9 +341,9 @@ func play_events(events: Array[Dictionary]) -> void:
 func impact_tier_for_source(source: String) -> String:
 	if source in ["burn_tick", "lightning_tick", "holy_enchant", "magic_enchant"] or source.begins_with("ally_"):
 		return "light"
-	if source in ["heavy_strike", "mountain_break", "armor_flash", "execute_slash", "collapse_counter", "heaven_return", "two_cut", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "shadowless_extreme", "ten_thousand_armies_one_sword"]:
+	if source in ["heavy_strike_high", "heavy_strike_extreme", "mountain_break", "armor_flash", "execute_slash", "collapse_counter", "heaven_return", "two_cut", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "shadowless_extreme", "ten_thousand_armies_one_sword"]:
 		return "heavy"
-	if source in ["critical_attack", "counter", "first_strike", "swift_step", "shadow_assault", "flying_swallow", "magic_slash", "judgment_slash"]:
+	if source in ["heavy_strike_base", "heavy_strike_martial", "critical_attack", "counter", "first_strike", "swift_step", "shadow_assault", "flying_swallow", "magic_slash", "judgment_slash"]:
 		return "medium"
 	return "light"
 
@@ -385,7 +390,7 @@ func _draw() -> void:
 	hero_pos.x -= sin(_hero_recoil * PI) * minf(size.x * 0.045, 20.0)
 	var ally_lunge := sin(_ally_action * PI) * minf(size.x * 0.12, 46.0)
 	var lunge := sin(_hero_action * PI) * minf(size.x * 0.16, 72.0)
-	var heavy_lunge := sin(_heavy_slash * PI) * minf(size.x * 0.22, 92.0)
+	var heavy_lunge := sin(_heavy_slash * PI) * minf(size.x * (0.17 + _heavy_strike_power * 0.08), 70.0 + _heavy_strike_power * 32.0)
 	var ultimate_lunge := sin(_ultimate_slash * PI) * minf(size.x * 0.27, 110.0)
 	var armor_lunge := sin(_armor_flash * PI) * minf(size.x * 0.24, 96.0)
 	var execute_lunge := sin(_execute_slash * PI) * minf(size.x * 0.28, 112.0)
@@ -548,8 +553,10 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var phase := 1.0 - _heavy_slash
 		var alpha := sin(clampf(phase * 1.7, 0.0, 1.0) * PI)
 		var center := hero_pos.lerp(enemy_pos, 0.63)
-		draw_arc(center, 74.0, -2.2, 0.45, 28, Color("fff0a3", alpha), 12.0)
-		draw_arc(center, 58.0, -2.2, 0.45, 24, Color("f29a3d", alpha * 0.8), 5.0)
+		var reach := 62.0 + _heavy_strike_power * 38.0
+		var core_color := Color("fff8c9") if _heavy_strike_power >= 1.0 else Color("fff0a3")
+		draw_arc(center, reach, -2.2, 0.45, 28, Color(core_color, alpha), 9.0 + _heavy_strike_power * 8.0)
+		draw_arc(center, reach - 16.0, -2.2, 0.45, 24, Color("f29a3d", alpha * 0.8), 4.0 + _heavy_strike_power * 4.0)
 	if _ultimate_slash > 0.0:
 		var phase := 1.0 - _ultimate_slash
 		var alpha := sin(clampf(phase * 1.55, 0.0, 1.0) * PI)
@@ -726,11 +733,13 @@ func _spawn_damage(amount: float, source: String) -> void:
 	_damage_cursor = (_damage_cursor + 1) % _damage_pool.size()
 	label.visible = true
 	label.modulate = Color.WHITE
-	var large := source in ["heavy_strike", "mountain_break", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "two_cut", "magic_slash", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "minor_resonance"]
+	var large := source in ["heavy_strike_high", "heavy_strike_extreme", "mountain_break", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "two_cut", "magic_slash", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "minor_resonance"]
 	label.scale = Vector2(1.75, 1.75) if source == "two_cut" else (Vector2(1.4, 1.4) if large else Vector2.ONE)
 	var prefix := ""
 	if source in ["execute_slash", "two_cut"]:
 		prefix = "斬 "
+	elif source in ["heavy_strike_high", "heavy_strike_extreme"]:
+		prefix = "勢 "
 	elif source in ["counter", "collapse_counter", "heaven_return", "first_strike"]:
 		prefix = "反 "
 	elif source in ["swift_step", "swift_cut", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme"]:

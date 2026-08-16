@@ -1090,8 +1090,9 @@ func _cast_heavy_strike() -> void:
 	var physique_level := int(training.physique)
 	var agility_level := int(training.agility)
 	var magic_level := int(training.magic)
+	var momentum_ratio := 0.0
 	if martial_level >= 10:
-		var momentum_ratio := clampf(momentum / MAX_MOMENTUM, 0.0, 1.0)
+		momentum_ratio = clampf(momentum / MAX_MOMENTUM, 0.0, 1.0)
 		raw_damage *= 1.0 + momentum_ratio * (0.45 + float(martial_level) * 0.002)
 		armor_ignore += momentum_ratio * minf(0.3, 0.1 + float(martial_level) * 0.001)
 		if martial_level >= 20 and enemy_hp / maxf(1.0, enemy_max_hp) <= 0.3:
@@ -1107,14 +1108,28 @@ func _cast_heavy_strike() -> void:
 		skill_cooldowns["heavy_strike"] = _heavy_strike_cooldown()
 	else:
 		skill_cooldowns["heavy_strike"] = float(definition.cooldown)
-	_events.append({"type": "heavy_strike", "skill_id": "heavy_strike", "name": skill_display_name("heavy_strike"), "damage": raw_damage, "modifiers": modifiers})
-	var defeated := _deal_damage(raw_damage, "heavy_strike", armor_ignore)
+	var damage_source := "heavy_strike_base"
+	if martial_level >= 10:
+		damage_source = "heavy_strike_extreme" if momentum_ratio >= 1.0 else ("heavy_strike_high" if momentum_ratio >= 0.8 else "heavy_strike_martial")
+	_events.append({"type": "heavy_strike", "skill_id": "heavy_strike", "name": _heavy_strike_cast_name(momentum_ratio), "damage": raw_damage, "modifiers": modifiers, "momentum_ratio": momentum_ratio, "armor_ignore": armor_ignore})
+	if momentum_ratio >= 0.8:
+		_events.append({"type": "momentum_pierce", "name": "極勢破甲" if momentum_ratio >= 1.0 else "高勢破甲", "armor_ignore": armor_ignore})
+	var defeated := _deal_damage(raw_damage, damage_source, armor_ignore)
 	if magic_level >= 10 and not defeated:
 		_magic_enchanted_hit(false)
 
 func _heavy_strike_cooldown() -> float:
 	var speed_bonus := _agility_action_speed_bonus() * 0.45 + float(youren) * 0.025
 	return maxf(2.5, float(SKILL_DEFS.heavy_strike.cooldown) / (1.0 + speed_bonus))
+
+func _heavy_strike_cast_name(momentum_ratio: float) -> String:
+	if int(training.martial) < 10:
+		return skill_display_name("heavy_strike")
+	if momentum_ratio >= 1.0:
+		return "極勢重擊"
+	if momentum_ratio >= 0.8:
+		return "高勢重擊"
+	return skill_display_name("heavy_strike")
 
 func heavy_strike_modifiers() -> Array[String]:
 	var modifiers: Array[String] = []
