@@ -90,6 +90,7 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(battlefield.impact_tier_for_source("critical_attack") == "medium", "暴擊必須使用中量命中回饋")
 	_expect(battlefield.impact_tier_for_source("heavy_strike_base") == "medium", "基礎重擊不可使用極勢等級的重型回饋")
 	_expect(battlefield.impact_tier_for_source("heavy_strike_extreme") == "heavy", "滿勢重擊必須使用重型命中回饋")
+	_expect(battlefield.impact_tier_for_source("heavy_strike_swift") == "medium", "敏捷迅擊必須使用中量高速回饋")
 	_expect(battlefield.impact_tier_for_source("mountain_break") == "heavy", "斷嶽必須使用重型命中回饋")
 	battlefield.free()
 
@@ -435,6 +436,17 @@ func _test_base_heavy_strike_and_stream_modifiers() -> void:
 	_expect(hybrid.heavy_strike_modifiers().size() == 4 and hybrid.skill_display_name("heavy_strike") == "複合重擊", "四種訓練必須能同時改造重擊")
 	hybrid.youren = 5
 	_expect(hybrid._heavy_strike_cooldown() < 4.5 and hybrid._heavy_strike_cooldown() >= 2.5, "敏捷必須縮短重擊冷卻，但保留 2.5 秒下限")
+	var agile = CombatModelScript.new()
+	agile.training.agility = 10
+	agile.youren = 5
+	agile.enemy_hp = 9999.0
+	agile.skill_cooldowns.clear()
+	events = agile.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "damage" and event.source == "heavy_strike_swift"), "敏捷改造後的重擊必須使用迅擊回饋")
+	agile.skill_cooldowns.heavy_strike = 999.0
+	agile.auto_attack_remaining = 0.0
+	events = agile.step(0.01)
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "attack" and int(event.youren) == 5), "滿游刃普攻必須把高速層數送給戰場演出")
 
 func _test_guard_stance_window() -> void:
 	var model = CombatModelScript.new()

@@ -1111,6 +1111,8 @@ func _cast_heavy_strike() -> void:
 	var damage_source := "heavy_strike_base"
 	if martial_level >= 10:
 		damage_source = "heavy_strike_extreme" if momentum_ratio >= 1.0 else ("heavy_strike_high" if momentum_ratio >= 0.8 else "heavy_strike_martial")
+	elif agility_level >= 10:
+		damage_source = "heavy_strike_swift"
 	_events.append({"type": "heavy_strike", "skill_id": "heavy_strike", "name": _heavy_strike_cast_name(momentum_ratio), "damage": raw_damage, "modifiers": modifiers, "momentum_ratio": momentum_ratio, "armor_ignore": armor_ignore})
 	if momentum_ratio >= 0.8:
 		_events.append({"type": "momentum_pierce", "name": "極勢破甲" if momentum_ratio >= 1.0 else "高勢破甲", "armor_ignore": armor_ignore})
@@ -1511,8 +1513,9 @@ func _basic_attack(manual: bool) -> void:
 		if int(training.agility) >= 130:
 			var cap := 14.0 if int(training.agility) >= 135 else 10.0
 			damage *= 1.0 + minf(cap, unharmed_duration) * 0.02
-	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill, "manual": manual})
-	var defeated := _deal_damage(damage, "critical_attack" if critical else "attack")
+	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill, "manual": manual, "youren": youren})
+	var attack_source := "critical_attack" if critical else ("flow_attack_full" if youren >= MAX_YOUREN else ("flow_attack" if youren >= 3 else "attack"))
+	var defeated := _deal_damage(damage, attack_source)
 	_add_momentum(6.0, "attack")
 	_add_military_momentum(6.0 if int(training.command) >= 15 else 4.0, "attack")
 	_record_flow_attack()

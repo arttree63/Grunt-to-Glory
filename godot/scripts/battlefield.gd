@@ -44,6 +44,7 @@ var _flying_swallow := 0.0
 var _opening_flash := 0.0
 var _shadowless_burst := 0.0
 var _flow_burst := 0.0
+var _flow_burst_strength := 0.0
 var _swift_cut := 0.0
 var _magic_enchant := 0.0
 var _magic_slash := 0.0
@@ -177,7 +178,8 @@ func play_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
 		match String(event.type):
 			"attack":
-				_hero_action = 0.5
+				var flow_level := int(event.get("youren", 0))
+				_hero_action = minf(0.9, 0.5 + float(flow_level) * 0.07)
 			"heavy_strike":
 				_heavy_strike_power = clampf(float(event.get("momentum_ratio", 0.0)), 0.0, 1.0)
 				_heavy_slash = 0.62 + _heavy_strike_power * 0.38
@@ -254,8 +256,13 @@ func play_events(events: Array[Dictionary]) -> void:
 				_shadowless_burst = 1.0
 				add_trauma(0.65 if String(event.type) == "shadowless_extreme" else 0.45)
 			"flow_state_entered":
+				_flow_burst_strength = 1.0
 				_flow_burst = 1.0
 				add_trauma(0.08)
+			"youren_changed":
+				if int(event.get("gain", 0)) > 0:
+					_flow_burst_strength = 0.25 + float(event.get("value", 0)) * 0.1
+					_flow_burst = maxf(_flow_burst, 0.55)
 			"swift_cut":
 				_swift_cut = 1.0
 				add_trauma(0.12)
@@ -343,7 +350,7 @@ func impact_tier_for_source(source: String) -> String:
 		return "light"
 	if source in ["heavy_strike_high", "heavy_strike_extreme", "mountain_break", "armor_flash", "execute_slash", "collapse_counter", "heaven_return", "two_cut", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "shadowless_extreme", "ten_thousand_armies_one_sword"]:
 		return "heavy"
-	if source in ["heavy_strike_base", "heavy_strike_martial", "critical_attack", "counter", "first_strike", "swift_step", "shadow_assault", "flying_swallow", "magic_slash", "judgment_slash"]:
+	if source in ["heavy_strike_base", "heavy_strike_martial", "heavy_strike_swift", "critical_attack", "counter", "first_strike", "swift_step", "shadow_assault", "flying_swallow", "magic_slash", "judgment_slash"]:
 		return "medium"
 	return "light"
 
@@ -654,7 +661,11 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 	if _flow_burst > 0.0:
 		var phase := 1.0 - _flow_burst
 		var alpha := sin(clampf(phase * 1.6, 0.0, 1.0) * PI)
-		draw_arc(hero_pos + Vector2(0, -35), 56.0 + phase * 24.0, 0.0, TAU, 32, Color("d8ccff", alpha), 6.0)
+		var flow_radius := 42.0 + _flow_burst_strength * 20.0 + phase * 24.0
+		draw_arc(hero_pos + Vector2(0, -35), flow_radius, 0.0, TAU, 32, Color("d8ccff", alpha * (0.55 + _flow_burst_strength * 0.45)), 3.0 + _flow_burst_strength * 5.0)
+		for index in maxi(1, roundi(_flow_burst_strength * 5.0)):
+			var angle := float(index) * 1.37 + phase * 3.0
+			draw_line(hero_pos + Vector2(0, -35) + Vector2.from_angle(angle) * 30.0, hero_pos + Vector2(0, -35) + Vector2.from_angle(angle) * (48.0 + phase * 24.0), Color("c8b9ff", alpha * 0.8), 2.0)
 	if _magic_enchant > 0.0:
 		var alpha := sin((1.0 - _magic_enchant) * PI)
 		draw_line(hero_pos + Vector2(25, -48), enemy_pos + Vector2(-16, -42), Color("ffad68", alpha * 0.7), 4.0)
@@ -740,6 +751,8 @@ func _spawn_damage(amount: float, source: String) -> void:
 		prefix = "斬 "
 	elif source in ["heavy_strike_high", "heavy_strike_extreme"]:
 		prefix = "勢 "
+	elif source == "heavy_strike_swift":
+		prefix = "迅 "
 	elif source in ["counter", "collapse_counter", "heaven_return", "first_strike"]:
 		prefix = "反 "
 	elif source in ["swift_step", "swift_cut", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme"]:
@@ -751,7 +764,7 @@ func _spawn_damage(amount: float, source: String) -> void:
 	elif source == "critical_attack":
 		prefix = "暴 "
 	label.text = "%s%d%s" % [prefix, roundi(amount), "!" if source == "critical_attack" else ""]
-	var color := Color("fff0a3") if source == "two_cut" else (Color("d7b2ff") if source in ["lightning_tick", "lightning_chain"] else (Color("a9edff") if source in ["elemental_resonance", "minor_resonance"] else (Color("ffb16f") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash", "elemental_boundary_slash"] else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["swift_step", "swift_cut", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0"))))))))
+	var color := Color("fff0a3") if source == "two_cut" else (Color("d7b2ff") if source in ["lightning_tick", "lightning_chain"] else (Color("a9edff") if source in ["elemental_resonance", "minor_resonance"] else (Color("ffb16f") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash", "elemental_boundary_slash"] else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["heavy_strike_swift", "flow_attack", "flow_attack_full", "swift_step", "swift_cut", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0"))))))))
 	label.add_theme_color_override("font_color", color)
 	label.position = Vector2(size.x * 0.64 + randf_range(-18.0, 18.0), size.y * 0.28)
 	var tween := create_tween()
