@@ -42,6 +42,7 @@ func _run_tests() -> void:
 	_test_enemy_archetypes_and_route_rhythm()
 	_test_journey_choice_controls_next_area()
 	_test_return_blade_auto_counter()
+	_test_guard_stance_window()
 	_test_immovable_layers()
 	_test_borrow_force_and_collapse_counter()
 	_test_physique_branches()
@@ -66,7 +67,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 54")
+		print("Godot tests passed: 55")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -430,6 +431,20 @@ func _test_base_heavy_strike_and_stream_modifiers() -> void:
 	_expect(hybrid.heavy_strike_modifiers().size() == 4 and hybrid.skill_display_name("heavy_strike") == "複合重擊", "四種訓練必須能同時改造重擊")
 	hybrid.youren = 5
 	_expect(hybrid._heavy_strike_cooldown() < 4.5 and hybrid._heavy_strike_cooldown() >= 2.5, "敏捷必須縮短重擊冷卻，但保留 2.5 秒下限")
+
+func _test_guard_stance_window() -> void:
+	var model = CombatModelScript.new()
+	model.training.physique = 10
+	model.auto_skill_slots[1] = "guard_stance"
+	model.step(0.01)
+	_expect(model.guard_stance_remaining > 3.9, "體術 Lv.10 的守勢必須自動開啟 4 秒格擋窗口")
+	_expect(is_equal_approx(float(model.skill_cooldowns.guard_stance), 10.0), "守勢冷卻必須為 10 秒")
+	_expect(is_equal_approx(model._block_chance(), 0.44), "Lv.10 守勢期間普通格擋率必須提高到 44%")
+	_expect(is_equal_approx(model._perfect_block_chance(), 0.09), "Lv.10 守勢期間完美格擋率必須提高到 9%")
+	model.immovable = CombatModelScript.MAX_IMMOVABLE
+	model.guard_stance_remaining = 0.0
+	model.skill_cooldowns.clear()
+	_expect(not model._can_cast("guard_stance"), "不動滿層時 AUTO 不應浪費守勢")
 
 func _test_remaining_heart_refund() -> void:
 	var model = CombatModelScript.new()

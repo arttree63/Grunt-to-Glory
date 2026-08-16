@@ -140,6 +140,12 @@ const SKILL_DEFS := {
 		"cooldown": 4.0, "resource": "none", "cost": 0.0,
 		"condition": "敵人即將攻擊", "tags": ["BLOCK", "COUNTER"], "implemented": true,
 	},
+	"guard_stance": {
+		"name": "守勢", "short": "守勢", "type": "active", "track": "physique", "level": 10,
+		"cooldown": 10.0, "resource": "none", "cost": 0.0,
+		"condition": "不動未滿時，4 秒內格擋率 +30%、完美格擋率 +5%",
+		"tags": ["BLOCK", "STANCE"], "implemented": true,
+	},
 	"immovable_form": {
 		"name": "不動", "short": "不動", "type": "passive", "track": "physique", "level": 10,
 		"condition": "格擋累積不動，最高 3 層", "tags": ["BLOCK", "STANCE"], "implemented": true,
@@ -371,7 +377,7 @@ const MARTIAL_MILESTONES := {
 	195: {"name": "無心深化", "description": "無心傷害與破甲提高"}, 200: {"name": "一刀兩斷", "description": "解鎖純武藝終極奧義"},
 }
 const PHYSIQUE_MILESTONES := {
-	5: {"name": "鍛體", "description": "生命與防禦提高"}, 10: {"name": "不動", "description": "格擋累積不動並強化反擊"},
+	5: {"name": "鍛體", "description": "生命與防禦提高"}, 10: {"name": "守勢與不動", "description": "守勢提高格擋率，格擋開始累積不動"},
 	15: {"name": "穩架", "description": "不動層數提高格擋效果"}, 20: {"name": "借力", "description": "格擋減免轉為反擊傷害"},
 	25: {"name": "借力反制", "description": "格擋後反擊傷害提高"}, 30: {"name": "返刃", "description": "解鎖待發型格擋反擊"},
 	35: {"name": "返刃守勢", "description": "返刃成功保留不動"}, 40: {"name": "不動境", "description": "滿層時提高格擋、反擊與韌性"},
@@ -562,6 +568,7 @@ var _war_god_was_active := false
 var ally_attack_remaining := ALLY_ATTACK_INTERVAL
 var ally_attack_cursor := 0
 var return_blade_ready := false
+var guard_stance_remaining := 0.0
 var swift_step_ready := false
 var recent_prevented_damage := 0.0
 var counter_chain := 0
@@ -598,6 +605,7 @@ func step(delta: float) -> Array[Dictionary]:
 	extreme_momentum_remaining = maxf(0.0, extreme_momentum_remaining - delta)
 	enemy_weakened_remaining = maxf(0.0, enemy_weakened_remaining - delta)
 	immovable_king_remaining = maxf(0.0, immovable_king_remaining - delta)
+	guard_stance_remaining = maxf(0.0, guard_stance_remaining - delta)
 	shadowless_remaining = maxf(0.0, shadowless_remaining - delta)
 	shadowless_cooldown = maxf(0.0, shadowless_cooldown - delta)
 	magic_release_remaining = maxf(0.0, magic_release_remaining - delta)
@@ -850,7 +858,7 @@ func snapshot() -> Dictionary:
 		"kills": kills, "training_points": training_points, "training": training.duplicate(true),
 		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch, "draw_stance_remaining": draw_stance_remaining,
 		"immovable": immovable, "max_immovable": MAX_IMMOVABLE, "physique_branch": physique_branch,
-		"return_blade_ready": return_blade_ready, "counter_chain": counter_chain,
+		"return_blade_ready": return_blade_ready, "guard_stance_remaining": guard_stance_remaining, "counter_chain": counter_chain,
 		"youren": youren, "max_youren": MAX_YOUREN, "flow_hits": flow_hits, "flow_hits_required": FLOW_HITS_REQUIRED,
 		"swift_cut_hits": swift_cut_hits, "swift_cut_hits_required": 1 if int(training.agility) >= 140 else (2 if int(training.agility) >= 45 else 3), "agility_branch": agility_branch,
 		"swift_step_ready": swift_step_ready, "shadowless_remaining": shadowless_remaining,
@@ -959,6 +967,8 @@ func _can_cast(skill_id: String) -> bool:
 		return enemy_hp / maxf(1.0, enemy_max_hp) <= (0.35 if auto_tactic_id(skill_id) == "hp35" else 0.25)
 	if skill_id == "return_blade":
 		return enemy_attack_remaining <= 0.7 and not return_blade_ready
+	if skill_id == "guard_stance":
+		return immovable < MAX_IMMOVABLE and guard_stance_remaining <= 0.0
 	if skill_id == "swift_step":
 		return not swift_step_ready
 	if skill_id == "flame_burst_slash":
@@ -999,6 +1009,11 @@ func _cast_skill(skill_id: String) -> void:
 		return_blade_ready = true
 		skill_cooldowns[skill_id] = float(definition.cooldown)
 		_events.append({"type": "return_blade", "skill_id": skill_id, "name": String(definition.name)})
+		return
+	if skill_id == "guard_stance":
+		guard_stance_remaining = 4.0
+		skill_cooldowns[skill_id] = float(definition.cooldown)
+		_events.append({"type": "guard_stance", "skill_id": skill_id, "name": String(definition.name), "duration": guard_stance_remaining})
 		return
 	if skill_id == "draw_stance":
 		draw_stance_remaining = 10.0 if int(training.martial) >= 115 else 8.0
@@ -1792,11 +1807,15 @@ func _roll_block_quality() -> String:
 	var level := int(training.physique)
 	if level <= 0:
 		return ""
-	var perfect_chance := minf(0.25, 0.03 + float(level) * 0.001)
-	if rng.randf() < perfect_chance:
+	if rng.randf() < _perfect_block_chance():
 		return "perfect"
-	var block_chance := minf(0.65, 0.12 + float(level) * 0.002 + float(immovable) * 0.05)
-	return "block" if rng.randf() < block_chance else ""
+	return "block" if rng.randf() < _block_chance() else ""
+
+func _perfect_block_chance() -> float:
+	return minf(0.3, 0.03 + float(training.physique) * 0.001 + (0.05 if guard_stance_remaining > 0.0 else 0.0))
+
+func _block_chance() -> float:
+	return minf(0.8, 0.12 + float(training.physique) * 0.002 + float(immovable) * 0.05 + (0.3 if guard_stance_remaining > 0.0 else 0.0))
 
 func _take_unblocked_hit(damage: float) -> void:
 	damage = _absorb_holy_shield(damage)

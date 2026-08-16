@@ -11,6 +11,7 @@ var enemy_archetype := "grunt"
 var journey_route := "frontier"
 var immovable_level := 0
 var return_blade_ready := false
+var guard_stance_active := false
 var youren_level := 0
 var shadowless_active := false
 var magic_marks_level := 0
@@ -159,6 +160,7 @@ func set_state(snapshot: Dictionary) -> void:
 	enemy_heavy_windup = enemy_attack_type != "普通" and float(snapshot.enemy_attack_remaining) <= 0.8
 	immovable_level = int(snapshot.immovable)
 	return_blade_ready = bool(snapshot.return_blade_ready)
+	guard_stance_active = float(snapshot.guard_stance_remaining) > 0.0
 	youren_level = int(snapshot.youren)
 	shadowless_active = float(snapshot.shadowless_remaining) > 0.0
 	magic_marks_level = int(snapshot.magic_marks)
@@ -203,6 +205,8 @@ func play_events(events: Array[Dictionary]) -> void:
 				_armor_break_flash = 1.0
 			"return_blade":
 				_block_flash = maxf(_block_flash, 0.45)
+			"guard_stance":
+				_block_flash = maxf(_block_flash, 0.62)
 			"block":
 				_block_flash = 1.0
 				add_trauma(0.1)
@@ -457,8 +461,8 @@ func _draw_hero(origin: Vector2) -> void:
 	if momentum_ratio > 0.68:
 		var aura_alpha := (momentum_ratio - 0.68) * 1.2 + _momentum_pulse * 0.32
 		draw_arc(origin + Vector2(0.0, -34.0), 50.0 + sin(_time * 8.0) * 3.0, 0.0, TAU, 32, Color("f1bb54", aura_alpha), 4.0)
-	if immovable_level > 0 or return_blade_ready:
-		var guard_alpha := 0.35 + float(immovable_level) * 0.16 + (0.25 if return_blade_ready else 0.0)
+	if immovable_level > 0 or return_blade_ready or guard_stance_active:
+		var guard_alpha := 0.35 + float(immovable_level) * 0.16 + (0.25 if return_blade_ready else 0.0) + (0.18 if guard_stance_active else 0.0)
 		draw_arc(origin + Vector2(-4, -32), 45.0 + float(immovable_level) * 4.0, -2.35, 0.65, 28, Color("9ee7f2", guard_alpha), 5.0)
 		for index in immovable_level:
 			draw_circle(origin + Vector2(-26.0 + float(index) * 26.0, 30.0), 6.0, Color("bceef4", 0.9))

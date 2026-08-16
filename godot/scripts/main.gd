@@ -914,7 +914,8 @@ func _update_hud(snapshot: Dictionary) -> void:
 	momentum_bar.visible = martial_active
 	var physique_active := int(snapshot.training.physique) >= 10
 	immovable_hud.visible = physique_active
-	immovable_label.text = "不動  %d/%d%s" % [int(snapshot.immovable), int(snapshot.max_immovable), " · 返刃待發" if bool(snapshot.return_blade_ready) else ""]
+	var guard_text := " · 守勢 %.1fs" % float(snapshot.guard_stance_remaining) if float(snapshot.guard_stance_remaining) > 0.0 else (" · 返刃待發" if bool(snapshot.return_blade_ready) else "")
+	immovable_label.text = "不動  %d/%d%s" % [int(snapshot.immovable), int(snapshot.max_immovable), guard_text]
 	for index in immovable_pips.size():
 		var filled := index < int(snapshot.immovable)
 		immovable_pips[index].add_theme_stylebox_override("panel", _slot_style(Color("8ec5d1") if filled else Color("26353a"), Color("e8fbff") if filled else Color("70848b"), 2 if filled else 1))
