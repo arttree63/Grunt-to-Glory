@@ -28,6 +28,8 @@ var magic_manifest_active := false
 var complete_release_active := false
 var ally_count := 0
 var trauma := 0.0
+var stage_top := 160.0
+var stage_bottom := 610.0
 var _time := 0.0
 var _hero_action := 0.0
 var _heavy_slash := 0.0
@@ -178,6 +180,10 @@ func set_state(snapshot: Dictionary) -> void:
 	magic_manifest_active = bool(snapshot.magic_manifest_active)
 	complete_release_active = float(snapshot.complete_release_remaining) > 0.0
 	ally_count = int(snapshot.ally_count)
+
+func set_stage_bounds(top: float, bottom: float) -> void:
+	stage_top = maxf(130.0, top)
+	stage_bottom = maxf(stage_top + 250.0, bottom)
 
 func play_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
@@ -400,8 +406,9 @@ func _draw() -> void:
 	_draw_forest()
 	var shake := trauma * trauma
 	var shake_offset := Vector2(sin(_time * 31.0) * 10.0, sin(_time * 43.0) * 7.0) * shake
-	var enemy_pos := Vector2(size.x * 0.69, size.y * 0.45) + shake_offset
-	var hero_pos := Vector2(size.x * 0.33, size.y * 0.72) + shake_offset
+	var visible_bottom := minf(stage_bottom - 10.0, size.y - 120.0)
+	var enemy_pos := Vector2(size.x * 0.69, lerpf(stage_top, visible_bottom, 0.39)) + shake_offset
+	var hero_pos := Vector2(size.x * 0.33, lerpf(stage_top, visible_bottom, 0.82)) + shake_offset
 	enemy_pos.x += sin(_enemy_knockback * PI) * minf(size.x * 0.055, 24.0) * _impact_strength
 	hero_pos.x -= sin(_hero_recoil * PI) * minf(size.x * 0.045, 20.0)
 	var ally_lunge := sin(_ally_action * PI) * minf(size.x * 0.12, 46.0)
@@ -417,6 +424,8 @@ func _draw() -> void:
 	var agility_lunge := sin(maxf(maxf(_swift_step, _shadow_assault), _swift_cut) * PI) * minf(size.x * 0.3, 120.0)
 	var dodge_shift := sin(_dodge_flash * PI) * minf(size.x * 0.15, 64.0)
 	hero_pos.x += lunge + heavy_lunge + ultimate_lunge + armor_lunge + execute_lunge + first_lunge + counter_lunge + collapse_lunge + heaven_lunge + agility_lunge - dodge_shift
+	hero_pos.x = clampf(hero_pos.x, 54.0, size.x - 76.0)
+	enemy_pos.x = clampf(enemy_pos.x, 92.0, size.x - 72.0)
 	_draw_enemy(enemy_pos)
 	for index in ally_count:
 		var row := index / 2

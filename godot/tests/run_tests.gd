@@ -893,6 +893,7 @@ func _test_navigation() -> void:
 	for button: Button in scene.auto_slot_buttons:
 		if button.visible: visible_auto_slots += 1
 	_expect(visible_auto_slots == 5, "手機戰鬥 HUD 必須呈現完整五格技能優先序")
+	_expect(not scene.mp_hud.visible and not scene.momentum_hud.visible and not scene.state_panel.visible, "未投入的流派資源不可預先出現在戰鬥 HUD")
 	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text.begins_with("可用操練"), "戰鬥頁必須提供固定操練點入口")
 	_expect(is_instance_valid(scene.journey_overlay) and scene.journey_buttons.size() == 3, "Boss 後旅途抉擇必須提供三條手機可操作路線")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")
@@ -910,7 +911,7 @@ func _test_navigation() -> void:
 	scene.model.holy_seals = 3
 	scene.model.military_momentum = 45.0
 	scene._update_hud(scene.model.snapshot())
-	_expect(scene.momentum_head.visible and scene.immovable_hud.visible and scene.youren_hud.visible and scene.magic_hud.visible and scene.faith_hud.visible and scene.command_hud.visible, "六流派機制同時存在時，HUD 必須完整顯示")
+	_expect(scene.mp_hud.visible and scene.momentum_hud.visible and scene.immovable_hud.visible and scene.youren_hud.visible and scene.magic_hud.visible and scene.faith_hud.visible and scene.command_hud.visible, "六流派機制同時存在時，HUD 必須完整顯示")
 	scene._switch_page("character")
 	await process_frame
 	_expect(scene.current_page == "character" and scene.section_overlay.visible, "角色頁必須能開啟並暫停戰鬥")

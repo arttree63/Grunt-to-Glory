@@ -35,6 +35,7 @@ var hp_bar: ProgressBar
 var hp_label: Label
 var mp_bar: ProgressBar
 var mp_label: Label
+var mp_hud: VBoxContainer
 var momentum_bar: ProgressBar
 var momentum_label: Label
 var momentum_head: HBoxContainer
@@ -196,13 +197,13 @@ func _build_ui() -> void:
 	hp_box.add_child(hp_label)
 	hp_bar = _progress_bar(Color("d9cbc0"), Color("b85245"), 18)
 	hp_box.add_child(hp_bar)
-	var mp_box := VBoxContainer.new()
-	mp_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	resource_row.add_child(mp_box)
+	mp_hud = VBoxContainer.new()
+	mp_hud.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	resource_row.add_child(mp_hud)
 	mp_label = _label("◆ MP  尚未啟用", 15, Color("36586a"))
-	mp_box.add_child(mp_label)
+	mp_hud.add_child(mp_label)
 	mp_bar = _progress_bar(Color("c8d1d3"), Color("477d91"), 18)
-	mp_box.add_child(mp_bar)
+	mp_hud.add_child(mp_bar)
 	momentum_hud = VBoxContainer.new()
 	momentum_hud.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	resource_row.add_child(momentum_hud)
@@ -323,9 +324,7 @@ func _build_navigation(parent: VBoxContainer) -> void:
 	nav.add_theme_constant_override("separation", 2)
 	parent.add_child(nav)
 	for page: String in PAGE_NAMES:
-		var button := _nav_button(String(PAGE_NAMES[page]))
-		button.icon = NAV_ICONS[page]
-		button.expand_icon = true
+		var button := _nav_button(String(PAGE_NAMES[page]), NAV_ICONS[page])
 		button.pressed.connect(_switch_page.bind(page))
 		nav.add_child(button)
 		nav_buttons[page] = button
@@ -974,24 +973,22 @@ func _update_hud(snapshot: Dictionary) -> void:
 	mp_bar.max_value = maxf(1.0, float(snapshot.hero_max_mp))
 	mp_bar.value = float(snapshot.hero_mp)
 	mp_label.text = "◆ MP  %d/%d" % [roundi(snapshot.hero_mp), roundi(snapshot.hero_max_mp)]
+	mp_hud.visible = float(snapshot.hero_max_mp) > 0.0
 	momentum_bar.max_value = float(snapshot.max_momentum)
 	momentum_bar.value = float(snapshot.momentum)
 	var draw_text := " · 拔刀 %.1fs" % float(snapshot.draw_stance_remaining) if float(snapshot.draw_stance_remaining) > 0.0 else ""
 	momentum_label.text = "♨ 勢  %d/%d%s" % [roundi(snapshot.momentum), roundi(snapshot.max_momentum), draw_text]
 	var martial_active := int(snapshot.training.martial) >= 10
-	momentum_hud.visible = true
-	momentum_hud.modulate = Color.WHITE if martial_active else Color(1.0, 1.0, 1.0, 0.38)
+	momentum_hud.visible = martial_active
 	var physique_active := int(snapshot.training.physique) >= 10
-	immovable_hud.visible = true
-	immovable_hud.modulate = Color.WHITE if physique_active else Color(1.0, 1.0, 1.0, 0.38)
+	immovable_hud.visible = physique_active
 	var guard_text := " · 守勢 %.1f" % float(snapshot.guard_stance_remaining) if float(snapshot.guard_stance_remaining) > 0.0 else (" · 返刃" if bool(snapshot.return_blade_ready) else "")
 	immovable_label.text = "不動  %d/%d%s" % [int(snapshot.immovable), int(snapshot.max_immovable), guard_text]
 	for index in immovable_pips.size():
 		var filled := index < int(snapshot.immovable)
 		immovable_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("6a98aa") if filled else Color("bdc7c9"), Color("dff5fa") if filled else Color("70848b"), "shield", 2 if filled else 1))
 	var agility_active := int(snapshot.training.agility) >= 10
-	youren_hud.visible = true
-	youren_hud.modulate = Color.WHITE if agility_active else Color(1.0, 1.0, 1.0, 0.38)
+	youren_hud.visible = agility_active
 	var shadowless_text := " · 無影" if float(snapshot.shadowless_remaining) > 0.0 else ""
 	var swift_text := " · 瞬步" if bool(snapshot.swift_step_ready) else ""
 	var flow_text := ""
@@ -1002,8 +999,7 @@ func _update_hud(snapshot: Dictionary) -> void:
 		var filled := index < int(snapshot.youren)
 		youren_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("45a69b") if filled else Color("bdcbc8"), Color("dcfff8") if filled else Color("5d8781"), "slash", 2 if filled else 1))
 	var magic_active := int(snapshot.training.magic) >= 10
-	magic_hud.visible = true
-	magic_hud.modulate = Color.WHITE if magic_active else Color(1.0, 1.0, 1.0, 0.38)
+	magic_hud.visible = magic_active
 	var release_text := " · 全解放" if float(snapshot.complete_release_remaining) > 0.0 else (" · 解放" if float(snapshot.magic_release_remaining) > 0.0 else "")
 	var element_text := "火%d" % int(snapshot.burn_stacks)
 	if String(snapshot.secondary_element) == "ice": element_text += " 冰%d" % int(snapshot.frost_stacks)
@@ -1014,33 +1010,31 @@ func _update_hud(snapshot: Dictionary) -> void:
 		var filled := index < int(snapshot.magic_marks)
 		magic_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("865caf") if filled else Color("c9bfd1"), Color("ead7ff") if filled else Color("79638e"), "rune", 2 if filled else 1))
 	var faith_active := int(snapshot.training.faith) >= 10
-	faith_hud.visible = true
-	faith_hud.modulate = Color.WHITE if faith_active else Color(1.0, 1.0, 1.0, 0.38)
+	faith_hud.visible = faith_active
 	var holy_state := " · 降臨" if float(snapshot.holy_descent_remaining) > 0.0 else (" · 解放" if float(snapshot.holy_release_remaining) > 0.0 else "")
 	faith_label.text = "聖印 %d/%d · 盾%d%s" % [int(snapshot.holy_seals), int(snapshot.max_holy_seals), roundi(float(snapshot.holy_shield)), holy_state]
 	for index in faith_pips.size():
 		var filled := index < int(snapshot.holy_seals)
 		faith_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("d8b94f") if filled else Color("d5ccb0"), Color("fff2ae") if filled else Color("9d8849"), "seal", 2 if filled else 1))
 	var command_active := int(snapshot.training.command) >= 10
-	command_hud.visible = true
-	command_hud.modulate = Color.WHITE if command_active else Color(1.0, 1.0, 1.0, 0.38)
+	command_hud.visible = command_active
 	command_bar.max_value = float(snapshot.max_military_momentum)
 	command_bar.value = float(snapshot.military_momentum)
 	var war_text := " · 軍神" if bool(snapshot.war_god_active) else (" · 奮戰" if float(snapshot.legion_fervor_remaining) > 0.0 else "")
 	command_label.text = "軍勢 %d%% · 友%d%s" % [roundi(float(snapshot.military_momentum)), int(snapshot.ally_count), war_text]
-	state_panel.visible = true
+	state_panel.visible = physique_active or agility_active or magic_active or faith_active or command_active
 	var slots: Array = snapshot.auto_skill_slots
 	for index in CombatModel.AUTO_SLOT_COUNT:
 		var skill_id := String(slots[index])
 		var button := auto_slot_buttons[index]
 		if skill_id.is_empty():
-			_set_skill_card(button, "%d" % (index + 1), "未解鎖", false)
+			_set_skill_card(button, "%d" % (index + 1), "未解鎖", false, false)
 			button.tooltip_text = "第 %d 優先：尚未配置" % (index + 1)
 			button.add_theme_stylebox_override("normal", _slot_style(Color("313833"), Color("667169"), 1))
 		else:
 			var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
 			var state := model.auto_skill_state(skill_id)
-			_set_skill_card(button, "%d  %s" % [index + 1, model.skill_display_name(skill_id, true)], state, state == "就緒")
+			_set_skill_card(button, "%d  %s" % [index + 1, model.skill_display_name(skill_id, true)], state, state == "就緒", true)
 			button.tooltip_text = "第 %d 優先｜%s｜%s" % [index + 1, model.auto_tactic_description(skill_id), model.skill_power_hint(skill_id)]
 			var track := String(definition.track)
 			var base: Color = {
@@ -1051,6 +1045,7 @@ func _update_hud(snapshot: Dictionary) -> void:
 			var border := Color("f1d590") if state == "就緒" else Color("7b817a")
 			button.add_theme_stylebox_override("normal", _slot_style(base if state == "就緒" else base.darkened(0.32), border, 2 if state == "就緒" else 1))
 	battlefield.set_state(snapshot)
+	battlefield.set_stage_bounds(top_panel.position.y + top_panel.size.y, combat_panel.position.y)
 	_update_training_rows(snapshot)
 	if current_page != "combat" and is_instance_valid(section_box):
 		_render_section(current_page)
@@ -1071,8 +1066,9 @@ func _refresh_navigation() -> void:
 	for page: String in PAGE_NAMES:
 		var button := nav_buttons[page] as Button
 		var selected := page == current_page
-		button.text = String(PAGE_NAMES[page])
-		button.add_theme_color_override("font_color", Color("8a5b16") if selected else Color("595b57"))
+		var label := button.get_node("Content/Label") as Label
+		label.text = String(PAGE_NAMES[page])
+		label.add_theme_color_override("font_color", Color("8a5b16") if selected else Color("595b57"))
 		button.add_theme_stylebox_override("normal", _slot_style(Color("f8e9c6") if selected else Color("f4efe5"), Color("c68e2f") if selected else Color("d3c6b3"), 2 if selected else 1))
 
 func _show_toast(title: String, detail: String) -> void:
@@ -1192,23 +1188,38 @@ func _skill_button(text_value: String, color: Color, icon_texture: Texture2D) ->
 	content.add_child(status)
 	return button
 
-func _set_skill_card(button: Button, title_text: String, status_text: String, ready: bool) -> void:
+func _set_skill_card(button: Button, title_text: String, status_text: String, ready: bool, has_skill: bool) -> void:
 	var title := button.get_node("Content/Title") as Label
 	var icon := button.get_node("Content/Icon") as TextureRect
 	var status := button.get_node("Content/Status") as Label
 	title.text = title_text
 	status.text = status_text
+	icon.visible = has_skill
 	icon.modulate = Color.WHITE if ready else Color(0.72, 0.75, 0.75, 0.72)
 	status.add_theme_color_override("font_color", Color("fff0a8") if ready else Color("c8cbc8"))
 
-func _nav_button(text_value: String) -> Button:
-	var button := _button(text_value, Color("f4efe5"), 50)
-	button.add_theme_font_size_override("font_size", 14)
-	button.add_theme_constant_override("h_separation", 1)
-	button.add_theme_color_override("font_color", Color("344750"))
+func _nav_button(text_value: String, icon_texture: Texture2D) -> Button:
+	var button := _button("", Color("f4efe5"), 50)
 	button.add_theme_stylebox_override("normal", _slot_style(Color("f4efe5"), Color("d3c6b3"), 1))
 	button.add_theme_stylebox_override("hover", _slot_style(Color("fff4dc"), Color("b88a3d"), 2))
 	button.add_theme_stylebox_override("focus", _slot_style(Color("fff0ce"), Color("704f1f"), 4))
+	var content := HBoxContainer.new()
+	content.name = "Content"
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	content.add_theme_constant_override("separation", 2)
+	button.add_child(content)
+	var icon := TextureRect.new()
+	icon.texture = icon_texture
+	icon.custom_minimum_size = Vector2(24, 24)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(icon)
+	var label := _label(text_value, 14, Color("344750"))
+	label.name = "Label"
+	content.add_child(label)
 	return button
 
 func _state_pip_style(color: Color, border: Color, kind: String, border_width := 1) -> StyleBoxFlat:
