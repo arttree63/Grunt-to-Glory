@@ -96,6 +96,7 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(BattlefieldScript.WOLF_DEATH_FRAMES.size() == 10, "狼倒下必須載入完整十幀")
 	_expect(BattlefieldScript.MOTION_TRAUMA_CAP <= 0.42, "戰場震動必須限制在舒適範圍")
 	_expect(BattlefieldScript.CAMERA_SHAKE_OFFSET.x <= 6.0, "戰場水平震動不可干擾持續觀看")
+	_expect(BattlefieldScript.STABLE_CHARACTER_PRESENTATION, "高速 AUTO 戰鬥必須使用固定角色本體避免輪廓閃爍")
 	_expect(BattlefieldScript.SLASH_FX_FRAMES.size() == 6, "刀光必須以獨立六幀特效載入")
 	_expect(BattlefieldScript.IMPACT_FX_FRAMES.size() == 6, "命中火花必須以獨立六幀特效載入")
 	_expect(battlefield.impact_tier_for_source("attack") == "light", "普通攻擊必須使用輕量命中回饋")

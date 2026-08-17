@@ -124,6 +124,7 @@ const WOLF_DEATH_WEIGHTS := [0.06, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12, 0.12, 0.11
 const MOTION_TRAUMA_SCALE := 0.22
 const MOTION_TRAUMA_CAP := 0.42
 const CAMERA_SHAKE_OFFSET := Vector2(6.0, 4.0)
+const STABLE_CHARACTER_PRESENTATION := true
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -597,15 +598,7 @@ func _draw() -> void:
 	var visible_bottom := minf(stage_bottom - 10.0, size.y - 120.0)
 	var enemy_pos := Vector2(size.x * 0.69, lerpf(stage_top, visible_bottom, 0.62)) + shake_offset
 	var hero_pos := Vector2(size.x * 0.33, lerpf(stage_top, visible_bottom, 0.97)) + shake_offset
-	var enemy_strike := pow(_enemy_attack_recover, 1.7)
-	var enemy_windup := enemy_windup_ratio * (1.0 - _enemy_attack_recover)
-	enemy_pos += Vector2(enemy_windup * 7.0 - enemy_strike * minf(size.x * 0.12, 46.0), enemy_strike * 8.0)
-	enemy_pos.x += sin(_enemy_knockback * PI) * minf(size.x * 0.055, 24.0) * _impact_strength
-	hero_pos.x -= sin(_hero_recoil * PI) * minf(size.x * 0.045, 20.0)
 	var ally_lunge := sin(_ally_action * PI) * minf(size.x * 0.12, 46.0)
-	var dodge_shift := sin(_dodge_flash * PI) * minf(size.x * 0.1, 40.0)
-	if not death_active:
-		hero_pos.x -= dodge_shift
 	hero_pos.x = clampf(hero_pos.x, 54.0, size.x - 76.0)
 	enemy_pos.x = clampf(enemy_pos.x, 92.0, size.x - 72.0)
 	_draw_enemy(enemy_pos)
@@ -671,12 +664,9 @@ func _draw_ally(origin: Vector2, index: int) -> void:
 
 func _draw_hero(origin: Vector2) -> void:
 	var bob := 0.0
-	var sprite_modulate := Color(1.8, 1.8, 1.8, 1.0) if _hero_flash > 0.0 else Color.WHITE
-	var slash_pose := maxf(maxf(_hero_action, _heavy_slash), maxf(_counter_slash, _swift_cut))
-	var guard_pose := maxf(_block_flash, _perfect_block)
-	var dodge_pose := maxf(_dodge_flash, _swift_step)
-	var pose_rotation := -0.085 * slash_pose + 0.045 * guard_pose - 0.11 * dodge_pose
-	var pose_scale := Vector2(1.0 + dodge_pose * 0.055 - guard_pose * 0.025, 1.0 - dodge_pose * 0.04 + guard_pose * 0.035)
+	var sprite_modulate := Color(1.18, 1.18, 1.18, 1.0) if _hero_flash > 0.0 else Color.WHITE
+	var pose_rotation := 0.0
+	var pose_scale := Vector2.ONE
 	if momentum_ratio > 0.68:
 		var aura_alpha := (momentum_ratio - 0.68) * 1.2 + _momentum_pulse * 0.32
 		draw_arc(origin + Vector2(0.0, -34.0), 50.0 + sin(_time * 8.0) * 3.0, 0.0, TAU, 32, Color("f1bb54", aura_alpha), 4.0)
@@ -696,44 +686,12 @@ func _draw_hero(origin: Vector2) -> void:
 	var canvas_height := 252.0
 	var feet_ratio := 1.0
 	if _hero_death_motion > 0.0:
-		var death_index := _weighted_frame_index(1.0 - _hero_death_motion, 0, HERO_DEATH_WEIGHTS)
-		hero_texture = HERO_DEATH_FRAMES[death_index]
-		canvas_height = 300.0
-		feet_ratio = 0.834
-		bob = 0.0
-		pose_rotation = 0.0
-		pose_scale = Vector2.ONE
-	elif _hero_hurt_motion > 0.0:
-		var hurt_index := _weighted_frame_index(1.0 - _hero_hurt_motion, 0, HERO_HURT_WEIGHTS)
-		hero_texture = HERO_HURT_FRAMES[hurt_index]
-		canvas_height = 480.0
-		feet_ratio = 0.809
-	elif _hero_dodge_motion > 0.0:
-		var dodge_index := _weighted_frame_index(1.0 - _hero_dodge_motion, 0, HERO_DODGE_WEIGHTS)
-		hero_texture = HERO_DODGE_FRAMES[dodge_index]
-		canvas_height = 500.0
-		feet_ratio = 0.807
-	elif _hero_block_motion > 0.0:
-		var block_index := _weighted_frame_index(1.0 - _hero_block_motion, 0, HERO_BLOCK_WEIGHTS)
-		hero_texture = HERO_BLOCK_FRAMES[block_index]
-		canvas_height = 470.0
-		feet_ratio = 0.802
-	elif _hero_slash_motion > 0.0:
-		var slash_index := _weighted_frame_index(1.0 - _hero_slash_motion, 8, HERO_SLASH_RECOVERY_WEIGHTS)
-		hero_texture = HERO_SLASH_FRAMES[slash_index]
-		canvas_height = 470.0
-		feet_ratio = 0.774
-	elif hero_attack_windup_ratio > 0.0:
-		var windup_index := _weighted_frame_index(hero_attack_windup_ratio, 0, HERO_SLASH_WINDUP_WEIGHTS)
-		hero_texture = HERO_SLASH_FRAMES[windup_index]
-		canvas_height = 470.0
-		feet_ratio = 0.774
+		sprite_modulate = Color(0.55, 0.58, 0.62, 1.0)
 	_draw_anchored_animation_frame(hero_texture, origin + Vector2(0.0, 45.0 + bob), canvas_height, feet_ratio, pose_rotation, pose_scale, sprite_modulate)
 
 func _draw_enemy(origin: Vector2) -> void:
-	var idle_breath := 0.0
 	var bob := 0.0
-	var sprite_modulate := Color(1.8, 1.8, 1.8, 1.0) if _enemy_flash > 0.0 else Color.WHITE
+	var sprite_modulate := Color(1.18, 1.18, 1.18, 1.0) if _enemy_flash > 0.0 else Color.WHITE
 	var body_scale := 1.18 if enemy_archetype == "brute" else (0.86 if enemy_archetype in ["raider", "caster"] else 1.0)
 	var ring_size := 126.0 * body_scale
 	var ground_center := origin + Vector2(0.0, 31.0)
@@ -759,39 +717,18 @@ func _draw_enemy(origin: Vector2) -> void:
 			var x := -30.0 + float(index) * 15.0
 			draw_polyline(PackedVector2Array([origin + Vector2(x, -82), origin + Vector2(x + 7, -65), origin + Vector2(x - 2, -48)]), Color("e7c8ff", 0.72), 3.0)
 	var enemy_height := 176.0 * body_scale
-	var windup_pose := enemy_windup_ratio * (1.0 - _enemy_attack_recover)
-	var strike_pose := pow(_enemy_attack_recover, 1.45)
-	var hit_pose := sin(_enemy_knockback * PI)
-	var pose_rotation := -0.045 * windup_pose + 0.075 * strike_pose + 0.1 * hit_pose
-	var pose_scale := Vector2(1.0 + strike_pose * 0.02 + hit_pose * 0.015, 1.0 - windup_pose * 0.08 - strike_pose * 0.025 + idle_breath * 0.008)
-	var sprite_bottom := ground_center + Vector2(0.0, 20.0 + windup_pose * 5.0)
+	var pose_rotation := 0.0
+	var pose_scale := Vector2.ONE
+	var sprite_bottom := ground_center + Vector2(0.0, 20.0)
 	var enemy_texture: Texture2D = GRAY_WOLF_TEXTURE
 	var enemy_canvas_height := enemy_height
 	var enemy_feet_ratio := 1.0
 	if _enemy_death_motion > 0.0:
-		var death_index := _weighted_frame_index(1.0 - _enemy_death_motion, 0, WOLF_DEATH_WEIGHTS)
-		enemy_texture = WOLF_DEATH_FRAMES[death_index]
-		enemy_canvas_height = 245.0 * body_scale
-		enemy_feet_ratio = 0.742
 		pose_rotation = 0.0
 		pose_scale = Vector2.ONE
-		sprite_modulate.a = clampf(_enemy_death_motion * 5.0, 0.0, 1.0)
+		sprite_modulate = Color(0.58, 0.58, 0.58, clampf(_enemy_death_motion * 3.0, 0.0, 1.0))
 	elif _enemy_hurt_motion > 0.0:
-		var hurt_index := _weighted_frame_index(1.0 - _enemy_hurt_motion, 0, WOLF_HURT_WEIGHTS)
-		enemy_texture = WOLF_HURT_FRAMES[hurt_index]
-		enemy_canvas_height = 300.0 * body_scale
-		enemy_feet_ratio = 0.798
 		pose_scale = Vector2.ONE
-	elif _enemy_attack_recover > 0.0:
-		var recover_index := _weighted_frame_index(1.0 - _enemy_attack_recover, 7, WOLF_POUNCE_RECOVERY_WEIGHTS)
-		enemy_texture = WOLF_POUNCE_FRAMES[recover_index]
-		enemy_canvas_height = 410.0 * body_scale
-		enemy_feet_ratio = 0.742
-	elif enemy_windup_ratio > 0.0:
-		var pounce_index := _weighted_frame_index(enemy_windup_ratio, 0, WOLF_POUNCE_WINDUP_WEIGHTS)
-		enemy_texture = WOLF_POUNCE_FRAMES[pounce_index]
-		enemy_canvas_height = 410.0 * body_scale
-		enemy_feet_ratio = 0.742
 	_draw_anchored_animation_frame(enemy_texture, sprite_bottom, enemy_canvas_height, enemy_feet_ratio, pose_rotation, pose_scale, sprite_modulate)
 	if enemy_armor_ratio > 0.05:
 		var armor_color := Color("e7eff2") if _armor_break_flash > 0.0 else Color("778a93")
