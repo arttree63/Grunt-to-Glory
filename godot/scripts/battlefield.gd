@@ -121,6 +121,9 @@ const WOLF_POUNCE_WINDUP_WEIGHTS := [0.14, 0.18, 0.21, 0.2, 0.13, 0.08, 0.06]
 const WOLF_POUNCE_RECOVERY_WEIGHTS := [0.17, 0.14, 0.2, 0.23, 0.26]
 const WOLF_HURT_WEIGHTS := [0.1, 0.13, 0.22, 0.2, 0.17, 0.18]
 const WOLF_DEATH_WEIGHTS := [0.06, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12, 0.12, 0.11, 0.14]
+const MOTION_TRAUMA_SCALE := 0.22
+const MOTION_TRAUMA_CAP := 0.42
+const CAMERA_SHAKE_OFFSET := Vector2(6.0, 4.0)
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -557,7 +560,7 @@ func _hit_stop(duration: float) -> void:
 func add_trauma(amount: float) -> void:
 	if reduced_motion:
 		return
-	trauma = clampf(trauma + amount, 0.0, 1.0)
+	trauma = clampf(trauma + amount * MOTION_TRAUMA_SCALE, 0.0, MOTION_TRAUMA_CAP)
 
 func _weighted_frame_index(progress: float, first_index: int, weights: Array) -> int:
 	var cursor := 0.0
@@ -582,27 +585,27 @@ func _draw() -> void:
 			draw_rect(Rect2(0.0, y, size.x, size.y / 7.0 + 1.0), color)
 	_draw_forest()
 	var shake := trauma * trauma
-	var shake_offset := Vector2(sin(_time * 31.0) * 10.0, sin(_time * 43.0) * 7.0) * shake
+	var shake_offset := Vector2(sin(_time * 25.0) * CAMERA_SHAKE_OFFSET.x, sin(_time * 33.0) * CAMERA_SHAKE_OFFSET.y) * shake
 	var visible_bottom := minf(stage_bottom - 10.0, size.y - 120.0)
 	var enemy_pos := Vector2(size.x * 0.69, lerpf(stage_top, visible_bottom, 0.62)) + shake_offset
 	var hero_pos := Vector2(size.x * 0.33, lerpf(stage_top, visible_bottom, 0.97)) + shake_offset
 	var enemy_strike := pow(_enemy_attack_recover, 1.7)
 	var enemy_windup := enemy_windup_ratio * (1.0 - _enemy_attack_recover)
-	enemy_pos += Vector2(enemy_windup * 12.0 - enemy_strike * minf(size.x * 0.24, 94.0), enemy_strike * 18.0)
+	enemy_pos += Vector2(enemy_windup * 7.0 - enemy_strike * minf(size.x * 0.12, 46.0), enemy_strike * 8.0)
 	enemy_pos.x += sin(_enemy_knockback * PI) * minf(size.x * 0.055, 24.0) * _impact_strength
 	hero_pos.x -= sin(_hero_recoil * PI) * minf(size.x * 0.045, 20.0)
 	var ally_lunge := sin(_ally_action * PI) * minf(size.x * 0.12, 46.0)
-	var lunge := sin(_hero_action * PI) * minf(size.x * 0.16, 72.0)
-	var heavy_lunge := sin(_heavy_slash * PI) * minf(size.x * (0.17 + _heavy_strike_power * 0.08), 70.0 + _heavy_strike_power * 32.0)
-	var ultimate_lunge := sin(_ultimate_slash * PI) * minf(size.x * 0.27, 110.0)
-	var armor_lunge := sin(_armor_flash * PI) * minf(size.x * 0.24, 96.0)
-	var execute_lunge := sin(_execute_slash * PI) * minf(size.x * 0.28, 112.0)
-	var first_lunge := sin(_first_strike * PI) * minf(size.x * 0.3, 120.0)
-	var counter_lunge := sin(_counter_slash * PI) * minf(size.x * 0.2, 84.0)
-	var collapse_lunge := sin(_collapse_counter * PI) * minf(size.x * 0.25, 104.0)
-	var heaven_lunge := sin(_heaven_return * PI) * minf(size.x * 0.28, 114.0)
-	var agility_lunge := sin(maxf(maxf(_swift_step, _shadow_assault), _swift_cut) * PI) * minf(size.x * 0.3, 120.0)
-	var dodge_shift := sin(_dodge_flash * PI) * minf(size.x * 0.15, 64.0)
+	var lunge := sin(_hero_action * PI) * minf(size.x * 0.075, 32.0)
+	var heavy_lunge := sin(_heavy_slash * PI) * minf(size.x * (0.08 + _heavy_strike_power * 0.035), 34.0 + _heavy_strike_power * 14.0)
+	var ultimate_lunge := sin(_ultimate_slash * PI) * minf(size.x * 0.13, 54.0)
+	var armor_lunge := sin(_armor_flash * PI) * minf(size.x * 0.11, 46.0)
+	var execute_lunge := sin(_execute_slash * PI) * minf(size.x * 0.13, 54.0)
+	var first_lunge := sin(_first_strike * PI) * minf(size.x * 0.14, 58.0)
+	var counter_lunge := sin(_counter_slash * PI) * minf(size.x * 0.1, 40.0)
+	var collapse_lunge := sin(_collapse_counter * PI) * minf(size.x * 0.12, 50.0)
+	var heaven_lunge := sin(_heaven_return * PI) * minf(size.x * 0.13, 54.0)
+	var agility_lunge := sin(maxf(maxf(_swift_step, _shadow_assault), _swift_cut) * PI) * minf(size.x * 0.14, 58.0)
+	var dodge_shift := sin(_dodge_flash * PI) * minf(size.x * 0.1, 40.0)
 	hero_pos.x += lunge + heavy_lunge + ultimate_lunge + armor_lunge + execute_lunge + first_lunge + counter_lunge + collapse_lunge + heaven_lunge + agility_lunge - dodge_shift
 	hero_pos.x = clampf(hero_pos.x, 54.0, size.x - 76.0)
 	enemy_pos.x = clampf(enemy_pos.x, 92.0, size.x - 72.0)
@@ -649,7 +652,7 @@ func _draw_forest() -> void:
 		draw_circle(Vector2(x, y), 2.0, Color("d4aa62", 0.42))
 
 func _draw_ally(origin: Vector2, index: int) -> void:
-	var bob := sin(_time * 4.0 + float(index) * 0.8) * 1.5
+	var bob := 0.0
 	var body_colors := [Color("496477"), Color("566e50"), Color("5d4f79"), Color("d7c88b")]
 	var body: Color = body_colors[mini(index, body_colors.size() - 1)]
 	draw_polygon(PackedVector2Array([origin + Vector2(-13, 8 + bob), origin + Vector2(13, 8 + bob), origin + Vector2(10, -21 + bob), origin + Vector2(-10, -21 + bob)]), PackedColorArray([body]))
@@ -668,7 +671,7 @@ func _draw_ally(origin: Vector2, index: int) -> void:
 		draw_circle(origin + Vector2(24, -40 + bob), 5.0, Color("fff1a8"))
 
 func _draw_hero(origin: Vector2) -> void:
-	var bob := sin(_time * 4.2) * 2.0
+	var bob := 0.0
 	var sprite_modulate := Color(1.8, 1.8, 1.8, 1.0) if _hero_flash > 0.0 else Color.WHITE
 	var slash_pose := maxf(maxf(_hero_action, _heavy_slash), maxf(_counter_slash, _swift_cut))
 	var guard_pose := maxf(_block_flash, _perfect_block)
@@ -727,11 +730,11 @@ func _draw_hero(origin: Vector2) -> void:
 	_draw_anchored_animation_frame(hero_texture, origin + Vector2(0.0, 45.0 + bob), canvas_height, feet_ratio, pose_rotation, pose_scale, sprite_modulate)
 
 func _draw_enemy(origin: Vector2) -> void:
-	var idle_breath := sin(_time * 3.2)
-	var bob := idle_breath * 1.0
+	var idle_breath := 0.0
+	var bob := 0.0
 	var sprite_modulate := Color(1.8, 1.8, 1.8, 1.0) if _enemy_flash > 0.0 else Color.WHITE
 	var body_scale := 1.18 if enemy_archetype == "brute" else (0.86 if enemy_archetype in ["raider", "caster"] else 1.0)
-	var ring_size := 126.0 * body_scale + sin(_time * 2.4) * 4.0
+	var ring_size := 126.0 * body_scale
 	var ground_center := origin + Vector2(0.0, 31.0)
 	_draw_ground_shadow(ground_center + Vector2(0.0, 4.0), Vector2(ring_size * 0.48, ring_size * 0.13))
 	var ring_rect := Rect2(origin.x - ring_size * 0.5, ground_center.y - ring_size * 0.29, ring_size, ring_size * 0.58)
