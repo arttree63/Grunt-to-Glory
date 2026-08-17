@@ -3,6 +3,10 @@ extends Control
 
 const GORGE_BACKGROUND := preload("res://assets/visual/battle_hud_v2/ruins-arena.png")
 const RECRUIT_TEXTURE := preload("res://assets/visual/battle_hud_v2/hero-back.png")
+const HERO_RIG_BODY := preload("res://assets/visual/rig_prototype/hero_cutout_v1/runtime/body.png")
+const HERO_RIG_UPPER_ARM := preload("res://assets/visual/rig_prototype/hero_cutout_v1/runtime/upper-arm.png")
+const HERO_RIG_FOREARM := preload("res://assets/visual/rig_prototype/hero_cutout_v1/runtime/forearm.png")
+const HERO_RIG_SWORD := preload("res://assets/visual/rig_prototype/hero_cutout_v1/runtime/sword.png")
 const GRAY_WOLF_TEXTURE := preload("res://assets/visual/battle_hud_v2/gray-wolf.png")
 const TARGET_RING_TEXTURE := preload("res://assets/visual/battle_hud_v2/target-ring.png")
 const HERO_SLASH_FRAMES := [
@@ -663,10 +667,7 @@ func _draw_ally(origin: Vector2, index: int) -> void:
 		draw_circle(origin + Vector2(24, -40 + bob), 5.0, Color("fff1a8"))
 
 func _draw_hero(origin: Vector2) -> void:
-	var bob := 0.0
 	var sprite_modulate := Color(1.18, 1.18, 1.18, 1.0) if _hero_flash > 0.0 else Color.WHITE
-	var pose_rotation := 0.0
-	var pose_scale := Vector2.ONE
 	if momentum_ratio > 0.68:
 		var aura_alpha := (momentum_ratio - 0.68) * 1.2 + _momentum_pulse * 0.32
 		draw_arc(origin + Vector2(0.0, -34.0), 50.0 + sin(_time * 8.0) * 3.0, 0.0, TAU, 32, Color("f1bb54", aura_alpha), 4.0)
@@ -682,12 +683,61 @@ func _draw_hero(origin: Vector2) -> void:
 		for index in magic_marks_level:
 			var angle := _time * 0.8 + float(index) * TAU / 5.0
 			draw_circle(origin + Vector2(0, -35) + Vector2.from_angle(angle) * 48.0, 3.5, Color("ffd09c", 0.9))
-	var hero_texture: Texture2D = RECRUIT_TEXTURE
-	var canvas_height := 252.0
-	var feet_ratio := 1.0
 	if _hero_death_motion > 0.0:
-		sprite_modulate = Color(0.55, 0.58, 0.62, 1.0)
-	_draw_anchored_animation_frame(hero_texture, origin + Vector2(0.0, 45.0 + bob), canvas_height, feet_ratio, pose_rotation, pose_scale, sprite_modulate)
+		sprite_modulate = Color(0.55, 0.58, 0.62, 0.28 + _hero_death_motion * 0.72)
+	_draw_rigged_hero(origin + Vector2(0.0, 45.0), sprite_modulate)
+
+func _draw_rigged_hero(feet_origin: Vector2, modulate: Color) -> void:
+	var body_scale := 0.55
+	var limb_scale := 0.38
+	var shoulder_rotation := 0.0
+	var elbow_rotation := 0.0
+	var sword_rotation := -0.12
+
+	if _hero_slash_motion > 0.0:
+		var progress := 1.0 - _hero_slash_motion
+		if progress < 0.24:
+			var windup := smoothstep(0.0, 0.24, progress)
+			shoulder_rotation = lerpf(0.0, -0.13, windup)
+			elbow_rotation = lerpf(0.0, -0.16, windup)
+		elif progress < 0.58:
+			var strike := smoothstep(0.24, 0.58, progress)
+			shoulder_rotation = lerpf(-0.13, 0.2, strike)
+			elbow_rotation = lerpf(-0.16, 0.22, strike)
+		else:
+			var recovery := smoothstep(0.58, 1.0, progress)
+			shoulder_rotation = lerpf(0.2, 0.0, recovery)
+			elbow_rotation = lerpf(0.22, 0.0, recovery)
+	elif _hero_block_motion > 0.0:
+		var block_progress := 1.0 - _hero_block_motion
+		var block_weight := sin(clampf(block_progress, 0.0, 1.0) * PI)
+		shoulder_rotation = -0.17 * block_weight
+		elbow_rotation = -0.46 * block_weight
+		sword_rotation -= 0.18 * block_weight
+
+	var body_pivot := Vector2(HERO_RIG_BODY.get_width() * 0.5, HERO_RIG_BODY.get_height() - 4.0)
+	_draw_rig_part(HERO_RIG_BODY, feet_origin, body_pivot, body_scale, 0.0, modulate)
+
+	var body_top_left := feet_origin - body_pivot * body_scale
+	var shoulder := body_top_left + Vector2(179.0, 108.0) * body_scale
+	var upper_pivot := Vector2(76.0, 38.0)
+	var upper_to_elbow := Vector2(-7.0, 152.0) * limb_scale
+	_draw_rig_part(HERO_RIG_UPPER_ARM, shoulder, upper_pivot, limb_scale, shoulder_rotation, modulate)
+
+	var elbow := shoulder + upper_to_elbow.rotated(shoulder_rotation)
+	var forearm_rotation := shoulder_rotation + elbow_rotation
+	var forearm_pivot := Vector2(56.0, 24.0)
+	var forearm_to_hand := Vector2(61.0, 169.0) * limb_scale
+	var hand := elbow + forearm_to_hand.rotated(forearm_rotation)
+	var sword_pivot := Vector2(43.0, 39.0)
+	_draw_rig_part(HERO_RIG_SWORD, hand, sword_pivot, limb_scale, forearm_rotation + sword_rotation, modulate)
+	_draw_rig_part(HERO_RIG_FOREARM, elbow, forearm_pivot, limb_scale, forearm_rotation, modulate)
+
+func _draw_rig_part(texture: Texture2D, pivot_position: Vector2, pivot_pixel: Vector2, part_scale: float, rotation: float, modulate: Color) -> void:
+	var texture_size := texture.get_size()
+	draw_set_transform(pivot_position, rotation, Vector2.ONE)
+	draw_texture_rect(texture, Rect2(-pivot_pixel * part_scale, texture_size * part_scale), false, modulate)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _draw_enemy(origin: Vector2) -> void:
 	var bob := 0.0
