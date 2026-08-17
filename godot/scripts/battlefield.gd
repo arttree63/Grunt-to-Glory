@@ -6,12 +6,18 @@ const RECRUIT_TEXTURE := preload("res://assets/visual/battle_hud_v2/hero-back.pn
 const GRAY_WOLF_TEXTURE := preload("res://assets/visual/battle_hud_v2/gray-wolf.png")
 const TARGET_RING_TEXTURE := preload("res://assets/visual/battle_hud_v2/target-ring.png")
 const HERO_SLASH_FRAMES := [
-	preload("res://assets/visual/animations/hero/slash-v1/attack-1.png"),
-	preload("res://assets/visual/animations/hero/slash-v1/attack-2.png"),
-	preload("res://assets/visual/animations/hero/slash-v1/attack-3.png"),
-	preload("res://assets/visual/animations/hero/slash-v1/attack-4.png"),
-	preload("res://assets/visual/animations/hero/slash-v1/attack-5.png"),
-	preload("res://assets/visual/animations/hero/slash-v1/attack-6.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-1.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-2.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-3.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-4.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-5.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-6.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-7.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-8.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-9.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-10.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-11.png"),
+	preload("res://assets/visual/animations/hero/slash-v2/attack-12.png"),
 ]
 const HERO_BLOCK_FRAMES := [
 	preload("res://assets/visual/animations/hero/block-v1/block-1.png"),
@@ -28,13 +34,23 @@ const HERO_DODGE_FRAMES := [
 	preload("res://assets/visual/animations/hero/dodge-v1/dodge-6.png"),
 ]
 const WOLF_POUNCE_FRAMES := [
-	preload("res://assets/visual/animations/wolf/pounce-v1/attack-1.png"),
-	preload("res://assets/visual/animations/wolf/pounce-v1/attack-2.png"),
-	preload("res://assets/visual/animations/wolf/pounce-v1/attack-3.png"),
-	preload("res://assets/visual/animations/wolf/pounce-v1/attack-4.png"),
-	preload("res://assets/visual/animations/wolf/pounce-v1/attack-5.png"),
-	preload("res://assets/visual/animations/wolf/pounce-v1/attack-6.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-1.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-2.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-3.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-4.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-5.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-6.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-7.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-8.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-9.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-10.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-11.png"),
+	preload("res://assets/visual/animations/wolf/pounce-v2/attack-12.png"),
 ]
+const HERO_SLASH_WINDUP_WEIGHTS := [0.11, 0.13, 0.15, 0.16, 0.14, 0.12, 0.1, 0.09]
+const HERO_SLASH_RECOVERY_WEIGHTS := [0.2, 0.24, 0.27, 0.29]
+const WOLF_POUNCE_WINDUP_WEIGHTS := [0.14, 0.18, 0.21, 0.2, 0.13, 0.08, 0.06]
+const WOLF_POUNCE_RECOVERY_WEIGHTS := [0.17, 0.14, 0.2, 0.23, 0.26]
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -157,10 +173,10 @@ func _process(delta: float) -> void:
 		return
 	trauma = maxf(0.0, trauma - delta * 1.45)
 	_hero_action = maxf(0.0, _hero_action - delta * 3.4)
-	_hero_slash_motion = maxf(0.0, _hero_slash_motion - delta / 0.3)
+	_hero_slash_motion = maxf(0.0, _hero_slash_motion - delta / 0.26)
 	_hero_block_motion = maxf(0.0, _hero_block_motion - delta / 0.44)
 	_hero_dodge_motion = maxf(0.0, _hero_dodge_motion - delta / 0.46)
-	_enemy_attack_recover = maxf(0.0, _enemy_attack_recover - delta / 0.34)
+	_enemy_attack_recover = maxf(0.0, _enemy_attack_recover - delta / 0.38)
 	_enemy_death_motion = maxf(0.0, _enemy_death_motion - delta / 0.62)
 	_heavy_slash = maxf(0.0, _heavy_slash - delta / 0.72)
 	_ultimate_slash = maxf(0.0, _ultimate_slash - delta / 0.92)
@@ -458,6 +474,15 @@ func add_trauma(amount: float) -> void:
 		return
 	trauma = clampf(trauma + amount, 0.0, 1.0)
 
+func _weighted_frame_index(progress: float, first_index: int, weights: Array) -> int:
+	var cursor := 0.0
+	var normalized_progress := clampf(progress, 0.0, 0.9999)
+	for index in weights.size():
+		cursor += float(weights[index])
+		if normalized_progress < cursor:
+			return first_index + index
+	return first_index + weights.size() - 1
+
 func _draw() -> void:
 	if journey_route == "frontier":
 		_draw_cover_texture(GORGE_BACKGROUND, Rect2(0.0, -42.0, size.x, size.y + 42.0), Vector2(0.5, 0.54))
@@ -594,15 +619,15 @@ func _draw_hero(origin: Vector2) -> void:
 		canvas_height = 370.0
 		feet_ratio = 0.882
 	elif _hero_slash_motion > 0.0:
-		var slash_index := 3 + mini(2, floori((1.0 - _hero_slash_motion) * 3.0))
+		var slash_index := _weighted_frame_index(1.0 - _hero_slash_motion, 8, HERO_SLASH_RECOVERY_WEIGHTS)
 		hero_texture = HERO_SLASH_FRAMES[slash_index]
-		canvas_height = 380.0
-		feet_ratio = 0.927
+		canvas_height = 470.0
+		feet_ratio = 0.774
 	elif hero_attack_windup_ratio > 0.0:
-		var windup_index := mini(2, floori(hero_attack_windup_ratio * 3.0))
+		var windup_index := _weighted_frame_index(hero_attack_windup_ratio, 0, HERO_SLASH_WINDUP_WEIGHTS)
 		hero_texture = HERO_SLASH_FRAMES[windup_index]
-		canvas_height = 380.0
-		feet_ratio = 0.927
+		canvas_height = 470.0
+		feet_ratio = 0.774
 	_draw_anchored_animation_frame(hero_texture, origin + Vector2(0.0, 45.0 + bob), canvas_height, feet_ratio, pose_rotation, pose_scale, sprite_modulate)
 
 func _draw_enemy(origin: Vector2) -> void:
@@ -650,15 +675,15 @@ func _draw_enemy(origin: Vector2) -> void:
 	var enemy_canvas_height := enemy_height
 	var enemy_feet_ratio := 1.0
 	if _enemy_attack_recover > 0.0:
-		var recover_index := 3 + mini(2, floori((1.0 - _enemy_attack_recover) * 3.0))
+		var recover_index := _weighted_frame_index(1.0 - _enemy_attack_recover, 7, WOLF_POUNCE_RECOVERY_WEIGHTS)
 		enemy_texture = WOLF_POUNCE_FRAMES[recover_index]
-		enemy_canvas_height = 380.0 * body_scale
-		enemy_feet_ratio = 0.834
+		enemy_canvas_height = 410.0 * body_scale
+		enemy_feet_ratio = 0.742
 	elif enemy_windup_ratio > 0.0:
-		var pounce_index := mini(2, floori(enemy_windup_ratio * 3.0))
+		var pounce_index := _weighted_frame_index(enemy_windup_ratio, 0, WOLF_POUNCE_WINDUP_WEIGHTS)
 		enemy_texture = WOLF_POUNCE_FRAMES[pounce_index]
-		enemy_canvas_height = 380.0 * body_scale
-		enemy_feet_ratio = 0.834
+		enemy_canvas_height = 410.0 * body_scale
+		enemy_feet_ratio = 0.742
 	_draw_anchored_animation_frame(enemy_texture, sprite_bottom, enemy_canvas_height, enemy_feet_ratio, pose_rotation, pose_scale, sprite_modulate)
 	if enemy_armor_ratio > 0.05:
 		var armor_color := Color("e7eff2") if _armor_break_flash > 0.0 else Color("778a93")
