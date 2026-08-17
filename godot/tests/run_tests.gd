@@ -106,6 +106,14 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(battlefield.impact_tier_for_source("mountain_break") == "heavy", "斷嶽必須使用重型命中回饋")
 	battlefield.play_events([{"type": "block"}, {"type": "dodge"}])
 	_expect(battlefield._hero_block_motion == 1.0 and battlefield._hero_dodge_motion == 1.0, "格擋與閃躲事件必須啟動對應逐格動作")
+	battlefield.trauma = 0.4
+	battlefield._hero_recoil = 1.0
+	battlefield.play_events([{"type": "defeat"}])
+	_expect(battlefield.trauma == 0.0 and battlefield._hero_recoil == 0.0, "角色死亡時必須立即停止震動與位移")
+	battlefield.trauma = 0.4
+	battlefield._enemy_knockback = 1.0
+	battlefield.play_events([{"type": "enemy_defeated", "boss": false}])
+	_expect(battlefield.trauma == 0.0 and battlefield._enemy_knockback == 0.0, "怪物死亡時必須立即停止震動與擊退")
 	battlefield.free()
 
 func _test_training_growth_and_locked_tracks() -> void:

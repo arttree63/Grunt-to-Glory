@@ -515,15 +515,22 @@ func play_events(events: Array[Dictionary]) -> void:
 			"enemy_defeated":
 				_enemy_death_motion = 1.0
 				_enemy_hurt_motion = 0.0
+				_enemy_attack_recover = 0.0
+				_enemy_knockback = 0.0
+				trauma = 0.0
 				_defeat_burst = 1.0
 				_defeat_was_boss = bool(event.get("boss", false))
-				add_trauma(0.88 if _defeat_was_boss else 0.3)
 				_hit_stop(0.13 if _defeat_was_boss else 0.055)
 				_play_sfx("boss_defeat" if _defeat_was_boss else "defeat")
 			"defeat":
 				_hero_death_motion = 1.0
 				_hero_hurt_motion = 0.0
-				add_trauma(0.55)
+				_hero_slash_motion = 0.0
+				_hero_block_motion = 0.0
+				_hero_dodge_motion = 0.0
+				_hero_action = 0.0
+				_hero_recoil = 0.0
+				trauma = 0.0
 				_hit_stop(0.08)
 				_play_sfx("defeat")
 
@@ -584,7 +591,8 @@ func _draw() -> void:
 			var color := background.darkened(0.08).lerp(lower_color, float(band) / 7.0)
 			draw_rect(Rect2(0.0, y, size.x, size.y / 7.0 + 1.0), color)
 	_draw_forest()
-	var shake := trauma * trauma
+	var death_active := _hero_death_motion > 0.0 or _enemy_death_motion > 0.0
+	var shake := 0.0 if death_active else trauma * trauma
 	var shake_offset := Vector2(sin(_time * 25.0) * CAMERA_SHAKE_OFFSET.x, sin(_time * 33.0) * CAMERA_SHAKE_OFFSET.y) * shake
 	var visible_bottom := minf(stage_bottom - 10.0, size.y - 120.0)
 	var enemy_pos := Vector2(size.x * 0.69, lerpf(stage_top, visible_bottom, 0.62)) + shake_offset
@@ -595,18 +603,9 @@ func _draw() -> void:
 	enemy_pos.x += sin(_enemy_knockback * PI) * minf(size.x * 0.055, 24.0) * _impact_strength
 	hero_pos.x -= sin(_hero_recoil * PI) * minf(size.x * 0.045, 20.0)
 	var ally_lunge := sin(_ally_action * PI) * minf(size.x * 0.12, 46.0)
-	var lunge := sin(_hero_action * PI) * minf(size.x * 0.075, 32.0)
-	var heavy_lunge := sin(_heavy_slash * PI) * minf(size.x * (0.08 + _heavy_strike_power * 0.035), 34.0 + _heavy_strike_power * 14.0)
-	var ultimate_lunge := sin(_ultimate_slash * PI) * minf(size.x * 0.13, 54.0)
-	var armor_lunge := sin(_armor_flash * PI) * minf(size.x * 0.11, 46.0)
-	var execute_lunge := sin(_execute_slash * PI) * minf(size.x * 0.13, 54.0)
-	var first_lunge := sin(_first_strike * PI) * minf(size.x * 0.14, 58.0)
-	var counter_lunge := sin(_counter_slash * PI) * minf(size.x * 0.1, 40.0)
-	var collapse_lunge := sin(_collapse_counter * PI) * minf(size.x * 0.12, 50.0)
-	var heaven_lunge := sin(_heaven_return * PI) * minf(size.x * 0.13, 54.0)
-	var agility_lunge := sin(maxf(maxf(_swift_step, _shadow_assault), _swift_cut) * PI) * minf(size.x * 0.14, 58.0)
 	var dodge_shift := sin(_dodge_flash * PI) * minf(size.x * 0.1, 40.0)
-	hero_pos.x += lunge + heavy_lunge + ultimate_lunge + armor_lunge + execute_lunge + first_lunge + counter_lunge + collapse_lunge + heaven_lunge + agility_lunge - dodge_shift
+	if not death_active:
+		hero_pos.x -= dodge_shift
 	hero_pos.x = clampf(hero_pos.x, 54.0, size.x - 76.0)
 	enemy_pos.x = clampf(enemy_pos.x, 92.0, size.x - 72.0)
 	_draw_enemy(enemy_pos)
@@ -699,9 +698,11 @@ func _draw_hero(origin: Vector2) -> void:
 	if _hero_death_motion > 0.0:
 		var death_index := _weighted_frame_index(1.0 - _hero_death_motion, 0, HERO_DEATH_WEIGHTS)
 		hero_texture = HERO_DEATH_FRAMES[death_index]
-		canvas_height = 480.0
+		canvas_height = 300.0
 		feet_ratio = 0.834
 		bob = 0.0
+		pose_rotation = 0.0
+		pose_scale = Vector2.ONE
 	elif _hero_hurt_motion > 0.0:
 		var hurt_index := _weighted_frame_index(1.0 - _hero_hurt_motion, 0, HERO_HURT_WEIGHTS)
 		hero_texture = HERO_HURT_FRAMES[hurt_index]
@@ -770,7 +771,7 @@ func _draw_enemy(origin: Vector2) -> void:
 	if _enemy_death_motion > 0.0:
 		var death_index := _weighted_frame_index(1.0 - _enemy_death_motion, 0, WOLF_DEATH_WEIGHTS)
 		enemy_texture = WOLF_DEATH_FRAMES[death_index]
-		enemy_canvas_height = 285.0 * body_scale
+		enemy_canvas_height = 245.0 * body_scale
 		enemy_feet_ratio = 0.742
 		pose_rotation = 0.0
 		pose_scale = Vector2.ONE
