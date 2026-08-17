@@ -20,18 +20,46 @@ const HERO_SLASH_FRAMES := [
 	preload("res://assets/visual/animations/hero/slash-v2/attack-12.png"),
 ]
 const HERO_BLOCK_FRAMES := [
-	preload("res://assets/visual/animations/hero/block-v1/block-1.png"),
-	preload("res://assets/visual/animations/hero/block-v1/block-2.png"),
-	preload("res://assets/visual/animations/hero/block-v1/block-3.png"),
-	preload("res://assets/visual/animations/hero/block-v1/block-4.png"),
+	preload("res://assets/visual/animations/hero/block-v2/block-1.png"),
+	preload("res://assets/visual/animations/hero/block-v2/block-2.png"),
+	preload("res://assets/visual/animations/hero/block-v2/block-3.png"),
+	preload("res://assets/visual/animations/hero/block-v2/block-4.png"),
+	preload("res://assets/visual/animations/hero/block-v2/block-5.png"),
+	preload("res://assets/visual/animations/hero/block-v2/block-6.png"),
+	preload("res://assets/visual/animations/hero/block-v2/block-7.png"),
+	preload("res://assets/visual/animations/hero/block-v2/block-8.png"),
 ]
 const HERO_DODGE_FRAMES := [
-	preload("res://assets/visual/animations/hero/dodge-v1/dodge-1.png"),
-	preload("res://assets/visual/animations/hero/dodge-v1/dodge-2.png"),
-	preload("res://assets/visual/animations/hero/dodge-v1/dodge-3.png"),
-	preload("res://assets/visual/animations/hero/dodge-v1/dodge-4.png"),
-	preload("res://assets/visual/animations/hero/dodge-v1/dodge-5.png"),
-	preload("res://assets/visual/animations/hero/dodge-v1/dodge-6.png"),
+	preload("res://assets/visual/animations/hero/dodge-v2/dodge-1.png"),
+	preload("res://assets/visual/animations/hero/dodge-v2/dodge-2.png"),
+	preload("res://assets/visual/animations/hero/dodge-v2/dodge-3.png"),
+	preload("res://assets/visual/animations/hero/dodge-v2/dodge-4.png"),
+	preload("res://assets/visual/animations/hero/dodge-v2/dodge-5.png"),
+	preload("res://assets/visual/animations/hero/dodge-v2/dodge-6.png"),
+	preload("res://assets/visual/animations/hero/dodge-v2/dodge-7.png"),
+	preload("res://assets/visual/animations/hero/dodge-v2/dodge-8.png"),
+	preload("res://assets/visual/animations/hero/dodge-v2/dodge-9.png"),
+	preload("res://assets/visual/animations/hero/dodge-v2/dodge-10.png"),
+]
+const HERO_HURT_FRAMES := [
+	preload("res://assets/visual/animations/hero/hurt-v1/hurt-1.png"),
+	preload("res://assets/visual/animations/hero/hurt-v1/hurt-2.png"),
+	preload("res://assets/visual/animations/hero/hurt-v1/hurt-3.png"),
+	preload("res://assets/visual/animations/hero/hurt-v1/hurt-4.png"),
+	preload("res://assets/visual/animations/hero/hurt-v1/hurt-5.png"),
+	preload("res://assets/visual/animations/hero/hurt-v1/hurt-6.png"),
+]
+const HERO_DEATH_FRAMES := [
+	preload("res://assets/visual/animations/hero/death-v1/death-1.png"),
+	preload("res://assets/visual/animations/hero/death-v1/death-2.png"),
+	preload("res://assets/visual/animations/hero/death-v1/death-3.png"),
+	preload("res://assets/visual/animations/hero/death-v1/death-4.png"),
+	preload("res://assets/visual/animations/hero/death-v1/death-5.png"),
+	preload("res://assets/visual/animations/hero/death-v1/death-6.png"),
+	preload("res://assets/visual/animations/hero/death-v1/death-7.png"),
+	preload("res://assets/visual/animations/hero/death-v1/death-8.png"),
+	preload("res://assets/visual/animations/hero/death-v1/death-9.png"),
+	preload("res://assets/visual/animations/hero/death-v1/death-10.png"),
 ]
 const WOLF_POUNCE_FRAMES := [
 	preload("res://assets/visual/animations/wolf/pounce-v2/attack-1.png"),
@@ -47,10 +75,52 @@ const WOLF_POUNCE_FRAMES := [
 	preload("res://assets/visual/animations/wolf/pounce-v2/attack-11.png"),
 	preload("res://assets/visual/animations/wolf/pounce-v2/attack-12.png"),
 ]
+const WOLF_HURT_FRAMES := [
+	preload("res://assets/visual/animations/wolf/hurt-v1/hurt-1.png"),
+	preload("res://assets/visual/animations/wolf/hurt-v1/hurt-2.png"),
+	preload("res://assets/visual/animations/wolf/hurt-v1/hurt-3.png"),
+	preload("res://assets/visual/animations/wolf/hurt-v1/hurt-4.png"),
+	preload("res://assets/visual/animations/wolf/hurt-v1/hurt-5.png"),
+	preload("res://assets/visual/animations/wolf/hurt-v1/hurt-6.png"),
+]
+const WOLF_DEATH_FRAMES := [
+	preload("res://assets/visual/animations/wolf/death-v1/death-1.png"),
+	preload("res://assets/visual/animations/wolf/death-v1/death-2.png"),
+	preload("res://assets/visual/animations/wolf/death-v1/death-3.png"),
+	preload("res://assets/visual/animations/wolf/death-v1/death-4.png"),
+	preload("res://assets/visual/animations/wolf/death-v1/death-5.png"),
+	preload("res://assets/visual/animations/wolf/death-v1/death-6.png"),
+	preload("res://assets/visual/animations/wolf/death-v1/death-7.png"),
+	preload("res://assets/visual/animations/wolf/death-v1/death-8.png"),
+	preload("res://assets/visual/animations/wolf/death-v1/death-9.png"),
+	preload("res://assets/visual/animations/wolf/death-v1/death-10.png"),
+]
+const SLASH_FX_FRAMES := [
+	preload("res://assets/visual/fx/slash-warm-v2/slash-1.png"),
+	preload("res://assets/visual/fx/slash-warm-v2/slash-2.png"),
+	preload("res://assets/visual/fx/slash-warm-v2/slash-3.png"),
+	preload("res://assets/visual/fx/slash-warm-v2/slash-4.png"),
+	preload("res://assets/visual/fx/slash-warm-v2/slash-5.png"),
+	preload("res://assets/visual/fx/slash-warm-v2/slash-6.png"),
+]
+const IMPACT_FX_FRAMES := [
+	preload("res://assets/visual/fx/hit-impact-v2/impact-1.png"),
+	preload("res://assets/visual/fx/hit-impact-v2/impact-2.png"),
+	preload("res://assets/visual/fx/hit-impact-v2/impact-3.png"),
+	preload("res://assets/visual/fx/hit-impact-v2/impact-4.png"),
+	preload("res://assets/visual/fx/hit-impact-v2/impact-5.png"),
+	preload("res://assets/visual/fx/hit-impact-v2/impact-6.png"),
+]
 const HERO_SLASH_WINDUP_WEIGHTS := [0.11, 0.13, 0.15, 0.16, 0.14, 0.12, 0.1, 0.09]
 const HERO_SLASH_RECOVERY_WEIGHTS := [0.2, 0.24, 0.27, 0.29]
+const HERO_BLOCK_WEIGHTS := [0.08, 0.1, 0.12, 0.18, 0.18, 0.12, 0.1, 0.12]
+const HERO_DODGE_WEIGHTS := [0.1, 0.1, 0.09, 0.08, 0.08, 0.08, 0.1, 0.11, 0.12, 0.14]
+const HERO_HURT_WEIGHTS := [0.12, 0.13, 0.19, 0.2, 0.18, 0.18]
+const HERO_DEATH_WEIGHTS := [0.07, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12, 0.12, 0.11, 0.13]
 const WOLF_POUNCE_WINDUP_WEIGHTS := [0.14, 0.18, 0.21, 0.2, 0.13, 0.08, 0.06]
 const WOLF_POUNCE_RECOVERY_WEIGHTS := [0.17, 0.14, 0.2, 0.23, 0.26]
+const WOLF_HURT_WEIGHTS := [0.1, 0.13, 0.22, 0.2, 0.17, 0.18]
+const WOLF_DEATH_WEIGHTS := [0.06, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12, 0.12, 0.11, 0.14]
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -83,7 +153,10 @@ var _hero_action := 0.0
 var _hero_slash_motion := 0.0
 var _hero_block_motion := 0.0
 var _hero_dodge_motion := 0.0
+var _hero_hurt_motion := 0.0
+var _hero_death_motion := 0.0
 var _enemy_attack_recover := 0.0
+var _enemy_hurt_motion := 0.0
 var _enemy_death_motion := 0.0
 var _heavy_slash := 0.0
 var _heavy_strike_power := 0.0
@@ -174,10 +247,13 @@ func _process(delta: float) -> void:
 	trauma = maxf(0.0, trauma - delta * 1.45)
 	_hero_action = maxf(0.0, _hero_action - delta * 3.4)
 	_hero_slash_motion = maxf(0.0, _hero_slash_motion - delta / 0.26)
-	_hero_block_motion = maxf(0.0, _hero_block_motion - delta / 0.44)
-	_hero_dodge_motion = maxf(0.0, _hero_dodge_motion - delta / 0.46)
+	_hero_block_motion = maxf(0.0, _hero_block_motion - delta / 0.5)
+	_hero_dodge_motion = maxf(0.0, _hero_dodge_motion - delta / 0.48)
+	_hero_hurt_motion = maxf(0.0, _hero_hurt_motion - delta / 0.38)
+	_hero_death_motion = maxf(0.0, _hero_death_motion - delta / 1.05)
 	_enemy_attack_recover = maxf(0.0, _enemy_attack_recover - delta / 0.38)
-	_enemy_death_motion = maxf(0.0, _enemy_death_motion - delta / 0.62)
+	_enemy_hurt_motion = maxf(0.0, _enemy_hurt_motion - delta / 0.36)
+	_enemy_death_motion = maxf(0.0, _enemy_death_motion - delta / 0.92)
 	_heavy_slash = maxf(0.0, _heavy_slash - delta / 0.72)
 	_ultimate_slash = maxf(0.0, _ultimate_slash - delta / 0.92)
 	_armor_flash = maxf(0.0, _armor_flash - delta / 0.78)
@@ -419,6 +495,7 @@ func play_events(events: Array[Dictionary]) -> void:
 				_momentum_pulse = maxf(_momentum_pulse, 0.5)
 			"damage":
 				_enemy_flash = 1.0
+				_enemy_hurt_motion = 1.0
 				var source := String(event.source)
 				var tier := impact_tier_for_source(source)
 				_spawn_damage(float(event.amount), source)
@@ -427,17 +504,25 @@ func play_events(events: Array[Dictionary]) -> void:
 				_enemy_attack_recover = 1.0
 				_hero_flash = 1.0
 				_hero_recoil = 1.0
+				_hero_hurt_motion = 1.0
 				_hurt_vignette = 1.0
 				add_trauma(0.16)
 				_hit_stop(0.035)
 				_play_sfx("hurt")
 			"enemy_defeated":
 				_enemy_death_motion = 1.0
+				_enemy_hurt_motion = 0.0
 				_defeat_burst = 1.0
 				_defeat_was_boss = bool(event.get("boss", false))
 				add_trauma(0.88 if _defeat_was_boss else 0.3)
 				_hit_stop(0.13 if _defeat_was_boss else 0.055)
 				_play_sfx("boss_defeat" if _defeat_was_boss else "defeat")
+			"defeat":
+				_hero_death_motion = 1.0
+				_hero_hurt_motion = 0.0
+				add_trauma(0.55)
+				_hit_stop(0.08)
+				_play_sfx("defeat")
 
 func impact_tier_for_source(source: String) -> String:
 	if source in ["burn_tick", "lightning_tick", "holy_enchant", "magic_enchant"] or source.begins_with("ally_"):
@@ -608,16 +693,27 @@ func _draw_hero(origin: Vector2) -> void:
 	var hero_texture: Texture2D = RECRUIT_TEXTURE
 	var canvas_height := 252.0
 	var feet_ratio := 1.0
-	if _hero_dodge_motion > 0.0:
-		var dodge_index := mini(5, floori((1.0 - _hero_dodge_motion) * 6.0))
+	if _hero_death_motion > 0.0:
+		var death_index := _weighted_frame_index(1.0 - _hero_death_motion, 0, HERO_DEATH_WEIGHTS)
+		hero_texture = HERO_DEATH_FRAMES[death_index]
+		canvas_height = 480.0
+		feet_ratio = 0.834
+		bob = 0.0
+	elif _hero_hurt_motion > 0.0:
+		var hurt_index := _weighted_frame_index(1.0 - _hero_hurt_motion, 0, HERO_HURT_WEIGHTS)
+		hero_texture = HERO_HURT_FRAMES[hurt_index]
+		canvas_height = 480.0
+		feet_ratio = 0.809
+	elif _hero_dodge_motion > 0.0:
+		var dodge_index := _weighted_frame_index(1.0 - _hero_dodge_motion, 0, HERO_DODGE_WEIGHTS)
 		hero_texture = HERO_DODGE_FRAMES[dodge_index]
-		canvas_height = 380.0
-		feet_ratio = 0.92
+		canvas_height = 500.0
+		feet_ratio = 0.807
 	elif _hero_block_motion > 0.0:
-		var block_index := mini(3, floori((1.0 - _hero_block_motion) * 4.0))
+		var block_index := _weighted_frame_index(1.0 - _hero_block_motion, 0, HERO_BLOCK_WEIGHTS)
 		hero_texture = HERO_BLOCK_FRAMES[block_index]
-		canvas_height = 370.0
-		feet_ratio = 0.882
+		canvas_height = 470.0
+		feet_ratio = 0.802
 	elif _hero_slash_motion > 0.0:
 		var slash_index := _weighted_frame_index(1.0 - _hero_slash_motion, 8, HERO_SLASH_RECOVERY_WEIGHTS)
 		hero_texture = HERO_SLASH_FRAMES[slash_index]
@@ -662,19 +758,27 @@ func _draw_enemy(origin: Vector2) -> void:
 	var windup_pose := enemy_windup_ratio * (1.0 - _enemy_attack_recover)
 	var strike_pose := pow(_enemy_attack_recover, 1.45)
 	var hit_pose := sin(_enemy_knockback * PI)
-	var death_phase := 1.0 - _enemy_death_motion
 	var pose_rotation := -0.045 * windup_pose + 0.075 * strike_pose + 0.1 * hit_pose
-	var pose_scale := Vector2(1.0 + strike_pose * 0.09 + hit_pose * 0.035, 1.0 - windup_pose * 0.1 - strike_pose * 0.055 + idle_breath * 0.008)
+	var pose_scale := Vector2(1.0 + strike_pose * 0.02 + hit_pose * 0.015, 1.0 - windup_pose * 0.08 - strike_pose * 0.025 + idle_breath * 0.008)
 	var sprite_bottom := ground_center + Vector2(0.0, 20.0 + windup_pose * 5.0)
-	if _enemy_death_motion > 0.0:
-		pose_rotation += death_phase * 0.48
-		pose_scale *= Vector2(1.0 + death_phase * 0.08, 1.0 - death_phase * 0.22)
-		sprite_modulate.a = clampf(_enemy_death_motion * 1.8, 0.0, 1.0)
-		sprite_bottom += Vector2(18.0 * death_phase, 10.0 * death_phase)
 	var enemy_texture: Texture2D = GRAY_WOLF_TEXTURE
 	var enemy_canvas_height := enemy_height
 	var enemy_feet_ratio := 1.0
-	if _enemy_attack_recover > 0.0:
+	if _enemy_death_motion > 0.0:
+		var death_index := _weighted_frame_index(1.0 - _enemy_death_motion, 0, WOLF_DEATH_WEIGHTS)
+		enemy_texture = WOLF_DEATH_FRAMES[death_index]
+		enemy_canvas_height = 285.0 * body_scale
+		enemy_feet_ratio = 0.742
+		pose_rotation = 0.0
+		pose_scale = Vector2.ONE
+		sprite_modulate.a = clampf(_enemy_death_motion * 5.0, 0.0, 1.0)
+	elif _enemy_hurt_motion > 0.0:
+		var hurt_index := _weighted_frame_index(1.0 - _enemy_hurt_motion, 0, WOLF_HURT_WEIGHTS)
+		enemy_texture = WOLF_HURT_FRAMES[hurt_index]
+		enemy_canvas_height = 300.0 * body_scale
+		enemy_feet_ratio = 0.798
+		pose_scale = Vector2.ONE
+	elif _enemy_attack_recover > 0.0:
 		var recover_index := _weighted_frame_index(1.0 - _enemy_attack_recover, 7, WOLF_POUNCE_RECOVERY_WEIGHTS)
 		enemy_texture = WOLF_POUNCE_FRAMES[recover_index]
 		enemy_canvas_height = 410.0 * body_scale
@@ -720,6 +824,11 @@ func _draw_anchored_animation_frame(texture: Texture2D, feet_center: Vector2, ca
 	var corrected_bottom := feet_center + Vector2(0.0, canvas_height * (1.0 - feet_ratio))
 	_draw_sprite_bottom_transformed(texture, corrected_bottom, canvas_height, rotation, sprite_scale, modulate)
 
+func _draw_fx_frame(texture: Texture2D, center: Vector2, target_size: float, rotation: float = 0.0, sprite_scale: Vector2 = Vector2.ONE, modulate: Color = Color.WHITE) -> void:
+	draw_set_transform(center, rotation, sprite_scale)
+	draw_texture_rect(texture, Rect2(-target_size * 0.5, -target_size * 0.5, target_size, target_size), false, modulate)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
 func _draw_cover_texture(texture: Texture2D, destination: Rect2, focus: Vector2) -> void:
 	var texture_size := texture.get_size()
 	if texture_size.x <= 0.0 or texture_size.y <= 0.0:
@@ -751,6 +860,14 @@ func _draw_afterimages(origin: Vector2) -> void:
 		draw_circle(origin + offset + Vector2(0, -52), 15.0, Color("d9ceff", alpha))
 
 func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
+	var slash_fx_center := hero_pos.lerp(enemy_pos, 0.58) + Vector2(0.0, -34.0)
+	if _hero_slash_motion > 0.0:
+		var slash_fx_progress := 1.0 - _hero_slash_motion
+		var slash_fx_index := 3 + mini(2, floori(slash_fx_progress * 3.0))
+		_draw_fx_frame(SLASH_FX_FRAMES[slash_fx_index], slash_fx_center, 175.0, -0.08, Vector2.ONE, Color(1.0, 1.0, 1.0, 0.96))
+	elif hero_attack_windup_ratio > 0.35:
+		var slash_fx_index := mini(2, floori(remap(hero_attack_windup_ratio, 0.35, 1.0, 0.0, 2.99)))
+		_draw_fx_frame(SLASH_FX_FRAMES[slash_fx_index], slash_fx_center, 165.0, -0.08, Vector2.ONE, Color(1.0, 1.0, 1.0, 0.82))
 	if _heavy_slash > 0.0:
 		var phase := 1.0 - _heavy_slash
 		var alpha := sin(clampf(phase * 1.7, 0.0, 1.0) * PI)
@@ -912,17 +1029,10 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		draw_line(hero_pos + Vector2(-20, 18), enemy_pos + Vector2(32, -76), Color("ffffff", alpha), 24.0)
 	if _impact_burst > 0.0:
 		var phase := 1.0 - _impact_burst
-		var alpha := _impact_burst
 		var center := enemy_pos + Vector2(0, -38)
-		var radius := 12.0 + phase * (32.0 + 28.0 * _impact_strength)
-		draw_circle(center, 9.0 * alpha * _impact_strength, Color("ffffff", alpha * 0.78))
-		draw_arc(center, radius, 0.0, TAU, 28, Color(_impact_color, alpha * 0.9), 3.0 + 5.0 * _impact_strength)
-		var ray_count := 5 if _impact_strength < 0.6 else (8 if _impact_strength < 0.9 else 12)
-		for index in ray_count:
-			var angle := float(index) * TAU / float(ray_count) + 0.2
-			var inner := center + Vector2.from_angle(angle) * (16.0 + phase * 12.0)
-			var outer := center + Vector2.from_angle(angle) * (28.0 + phase * 46.0 * _impact_strength)
-			draw_line(inner, outer, Color(_impact_color, alpha * 0.9), 2.0 + 3.0 * _impact_strength)
+		var impact_index := mini(5, floori(phase * 6.0))
+		var impact_size := 85.0 + _impact_strength * 55.0
+		_draw_fx_frame(IMPACT_FX_FRAMES[impact_index], center, impact_size, 0.0, Vector2.ONE, Color(_impact_color, 1.0))
 	if _defeat_burst > 0.0:
 		var phase := 1.0 - _defeat_burst
 		var alpha := sin(clampf(phase * 1.45, 0.0, 1.0) * PI)

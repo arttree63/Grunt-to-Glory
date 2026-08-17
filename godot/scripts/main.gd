@@ -169,14 +169,20 @@ func _build_ui() -> void:
 	layout.add_child(spacer)
 	toast_panel = PanelContainer.new()
 	toast_panel.visible = false
+	toast_panel.z_index = 30
+	toast_panel.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	toast_panel.anchor_left = 0.06
+	toast_panel.anchor_right = 0.94
+	toast_panel.offset_top = 184.0
+	toast_panel.offset_bottom = 246.0
 	toast_panel.add_theme_stylebox_override("panel", _panel_style(Color("2c2218", 0.96), Color("f0c365")))
-	layout.add_child(toast_panel)
+	add_child(toast_panel)
 	var toast_box := VBoxContainer.new()
 	toast_panel.add_child(toast_box)
-	toast_title = _label("", 22, Color("ffe09a"))
+	toast_title = _label("", 17, Color("ffe09a"))
 	toast_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast_box.add_child(toast_title)
-	toast_detail = _label("", 15, Color("f4eee0"))
+	toast_detail = _label("", 12, Color("f4eee0"))
 	toast_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	toast_box.add_child(toast_detail)
