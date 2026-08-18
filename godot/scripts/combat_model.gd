@@ -516,6 +516,7 @@ var enemy_hp := 52.0
 var enemy_max_hp := 52.0
 var enemy_armor := 5.8
 var enemy_is_boss := false
+var boss_enraged := false
 var enemy_archetype := "grunt"
 var enemy_is_elite := false
 var enemy_engagement_time := 0.0
@@ -850,7 +851,7 @@ func snapshot() -> Dictionary:
 		"hero_hp": hero_hp, "hero_max_hp": _hero_max_hp(), "hero_mp": hero_mp, "hero_max_mp": _hero_max_mp(),
 		"attack": _attack_power(), "magic_power": _magic_power(), "defense": _defense(),
 		"enemy_hp": enemy_hp, "enemy_max_hp": enemy_max_hp, "enemy_armor": enemy_armor,
-		"enemy_is_boss": enemy_is_boss, "enemy_is_elite": enemy_is_elite,
+		"enemy_is_boss": enemy_is_boss, "boss_enraged": boss_enraged, "enemy_is_elite": enemy_is_elite,
 		"enemy_archetype": enemy_archetype, "enemy_name": _enemy_display_name(),
 		"enemy_role": String(_enemy_definition().role), "enemy_hint": String(_enemy_definition().hint),
 		"route_position": _route_position(), "route_phase": _route_phase(),
@@ -1756,6 +1757,8 @@ func _enemy_attack(block_override := "") -> void:
 	var attack_multiplier: float = float({"normal": 1.0, "heavy": 1.8, "area": 1.35, "sure_hit": 1.55}.get(attack_type, 1.0))
 	var route_damage := 1.08 if journey_route == "mountain" else (0.92 if journey_route == "village" else (1.15 if journey_route == "battlefield" else 1.0))
 	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(_enemy_definition().damage) * route_damage
+	if boss_enraged:
+		raw_damage *= 1.15
 	if enemy_is_elite:
 		raw_damage *= 1.18
 	if enemy_weakened_remaining > 0.0:
@@ -2027,6 +2030,12 @@ func _current_enemy_attack_type_id() -> String:
 	return _attack_type_for_count(enemy_attack_count)
 
 func _attack_type_for_count(count: int) -> String:
+	if enemy_is_boss and boss_enraged:
+		if count % 4 == 0:
+			return "sure_hit"
+		if count % 2 == 0:
+			return "heavy"
+		return "normal"
 	if enemy_archetype == "raider":
 		return "area" if count % 4 == 0 else "normal"
 	if enemy_archetype == "brute":
@@ -2055,6 +2064,10 @@ func _deal_damage(amount: float, source: String, armor_ignore := 0.0) -> bool:
 	enemy_hp = maxf(0.0, enemy_hp - final_amount)
 	_events.append({"type": "damage", "amount": final_amount, "source": source})
 	var defeated := enemy_hp <= 0.0
+	if enemy_is_boss and not boss_enraged and not defeated and enemy_hp / maxf(1.0, enemy_max_hp) <= 0.3:
+		boss_enraged = true
+		enemy_attack_remaining = minf(enemy_attack_remaining, 0.65)
+		_events.append({"type": "boss_enraged", "name": "狂怒"})
 	if defeated:
 		_enemy_defeated()
 	return defeated
@@ -2088,6 +2101,8 @@ func _enemy_defeated() -> void:
 		_spawn_enemy()
 	_events.append({"type": "enemy_defeated", "stage": stage, "kills": kills, "boss": defeated_boss})
 	_events.append({"type": "training_point", "gain": point_gain, "points": training_points})
+	if not defeated_boss and enemy_is_boss:
+		_events.append({"type": "boss_entered", "name": _enemy_display_name()})
 	if defeated_boss:
 		_events.append({"type": "journey_choice", "area": area_number, "completed_route": journey_route})
 
@@ -2109,6 +2124,7 @@ func choose_journey_route(route_id: String) -> Array[Dictionary]:
 func _spawn_enemy() -> void:
 	enemy_archetype = _enemy_archetype_for_stage(stage)
 	enemy_is_boss = enemy_archetype == "boss"
+	boss_enraged = false
 	enemy_is_elite = _route_position() == 9
 	var definition := _enemy_definition()
 	var route_hp := 1.08 if journey_route == "mountain" else (0.95 if journey_route == "village" else (1.18 if journey_route == "battlefield" else 1.0))
@@ -2150,6 +2166,8 @@ func _enemy_attack_interval() -> float:
 	var interval := float(_enemy_definition().interval) - minf(0.45, float(stage) * 0.012)
 	if enemy_is_elite:
 		interval *= 0.88
+	if boss_enraged:
+		interval *= 0.78
 	return maxf(0.85, interval)
 
 func _enemy_archetype_for_stage(target_stage: int) -> String:

@@ -2,6 +2,43 @@ class_name Battlefield
 extends Control
 
 const GORGE_BACKGROUND := preload("res://assets/visual/battle_hud_v2/ruins-arena.png")
+const PIXEL_BACKGROUND := preload("res://assets/visual/pixel_vertical_slice/background/frontier-ruins.png")
+const PIXEL_HERO_IDLE_FRAMES := [
+	preload("res://assets/visual/pixel_vertical_slice/hero/idle/idle-1.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/idle/idle-2.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/idle/idle-3.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/idle/idle-4.png"),
+]
+const PIXEL_HERO_ATTACK_FRAMES := [
+	preload("res://assets/visual/pixel_vertical_slice/hero/attack/attack-1.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/attack/attack-2.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/attack/attack-3.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/attack/attack-4.png"),
+]
+const PIXEL_HERO_BLOCK_FRAMES := [
+	preload("res://assets/visual/pixel_vertical_slice/hero/block/block-1.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/block/block-2.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/block/block-3.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/block/block-4.png"),
+]
+const PIXEL_WOLF_IDLE_FRAMES := [
+	preload("res://assets/visual/pixel_vertical_slice/wolf/idle/idle-1.png"),
+	preload("res://assets/visual/pixel_vertical_slice/wolf/idle/idle-2.png"),
+	preload("res://assets/visual/pixel_vertical_slice/wolf/idle/idle-3.png"),
+	preload("res://assets/visual/pixel_vertical_slice/wolf/idle/idle-4.png"),
+]
+const PIXEL_WOLF_ATTACK_FRAMES := [
+	preload("res://assets/visual/pixel_vertical_slice/wolf/attack/attack-1.png"),
+	preload("res://assets/visual/pixel_vertical_slice/wolf/attack/attack-2.png"),
+	preload("res://assets/visual/pixel_vertical_slice/wolf/attack/attack-3.png"),
+	preload("res://assets/visual/pixel_vertical_slice/wolf/attack/attack-4.png"),
+]
+const PIXEL_WOLF_DEATH_FRAMES := [
+	preload("res://assets/visual/pixel_vertical_slice/wolf/death/death-1.png"),
+	preload("res://assets/visual/pixel_vertical_slice/wolf/death/death-2.png"),
+	preload("res://assets/visual/pixel_vertical_slice/wolf/death/death-3.png"),
+	preload("res://assets/visual/pixel_vertical_slice/wolf/death/death-4.png"),
+]
 const RECRUIT_TEXTURE := preload("res://assets/visual/battle_hud_v2/hero-back.png")
 const HERO_RIG_BODY := preload("res://assets/visual/rig_prototype/hero_cutout_v1/runtime/body.png")
 const HERO_RIG_UPPER_ARM := preload("res://assets/visual/rig_prototype/hero_cutout_v1/runtime/upper-arm.png")
@@ -129,11 +166,15 @@ const MOTION_TRAUMA_SCALE := 0.22
 const MOTION_TRAUMA_CAP := 0.42
 const CAMERA_SHAKE_OFFSET := Vector2(6.0, 4.0)
 const STABLE_CHARACTER_PRESENTATION := true
+const PIXEL_VERTICAL_SLICE := true
+const PIXEL_FEET_RATIO := 228.0 / 256.0
+const PIXEL_WOLF_FEET_RATIO := 244.0 / 256.0
 
 var reduced_motion := false
 var momentum_ratio := 0.0
 var enemy_armor_ratio := 0.0
 var enemy_is_boss := false
+var boss_enraged := false
 var enemy_heavy_windup := false
 var enemy_windup_ratio := 0.0
 var hero_attack_windup_ratio := 0.0
@@ -211,14 +252,18 @@ var _impact_color := Color("fff0b0")
 var _hurt_vignette := 0.0
 var _defeat_burst := 0.0
 var _defeat_was_boss := false
+var _boss_intro_motion := 0.0
+var _boss_enrage_burst := 0.0
 var _damage_pool: Array[Label] = []
 var _damage_cursor := 0
 var _sfx_streams: Dictionary = {}
 var _sfx_players: Array[AudioStreamPlayer] = []
 var _sfx_cursor := 0
+var _pixel_enemy_position := Vector2.ZERO
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	for index in 8:
 		var label := Label.new()
 		label.visible = false
@@ -241,7 +286,7 @@ func _ready() -> void:
 	}
 	for index in 6:
 		var player := AudioStreamPlayer.new()
-		player.volume_db = -7.0
+		player.volume_db = -14.0
 		add_child(player)
 		_sfx_players.append(player)
 	queue_redraw()
@@ -299,12 +344,15 @@ func _process(delta: float) -> void:
 	_impact_burst = maxf(0.0, _impact_burst - delta * 7.0)
 	_hurt_vignette = maxf(0.0, _hurt_vignette - delta * 4.8)
 	_defeat_burst = maxf(0.0, _defeat_burst - delta * (1.25 if _defeat_was_boss else 2.5))
+	_boss_intro_motion = maxf(0.0, _boss_intro_motion - delta / 1.15)
+	_boss_enrage_burst = maxf(0.0, _boss_enrage_burst - delta / 0.85)
 	queue_redraw()
 
 func set_state(snapshot: Dictionary) -> void:
 	momentum_ratio = float(snapshot.momentum) / maxf(1.0, float(snapshot.max_momentum))
 	enemy_armor_ratio = clampf(float(snapshot.enemy_armor) / 50.0, 0.0, 1.0)
 	enemy_is_boss = bool(snapshot.enemy_is_boss)
+	boss_enraged = bool(snapshot.get("boss_enraged", false))
 	enemy_attack_type = String(snapshot.enemy_attack_type)
 	enemy_archetype = String(snapshot.enemy_archetype)
 	journey_route = String(snapshot.journey_route)
@@ -335,6 +383,17 @@ func set_stage_bounds(top: float, bottom: float) -> void:
 func play_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
 		match String(event.type):
+			"boss_entered":
+				_enemy_death_motion = 0.0
+				_enemy_hurt_motion = 0.0
+				_enemy_attack_recover = 0.0
+				trauma = 0.0
+				_boss_intro_motion = 1.0
+				_hit_stop(0.06)
+			"boss_enraged":
+				_boss_enrage_burst = 1.0
+				add_trauma(0.14)
+				_hit_stop(0.045)
 			"attack":
 				var flow_level := int(event.get("youren", 0))
 				_hero_action = minf(0.9, 0.5 + float(flow_level) * 0.07)
@@ -421,9 +480,11 @@ func play_events(events: Array[Dictionary]) -> void:
 				_swift_step = 1.0
 				add_trauma(0.22)
 			"shadow_assault":
+				_hero_slash_motion = 1.0
 				_shadow_assault = 1.0
 				add_trauma(0.25)
 			"flying_swallow":
+				_hero_slash_motion = 1.0
 				_flying_swallow = 1.0
 				add_trauma(0.34)
 			"opening":
@@ -440,6 +501,7 @@ func play_events(events: Array[Dictionary]) -> void:
 					_flow_burst_strength = 0.25 + float(event.get("value", 0)) * 0.1
 					_flow_burst = maxf(_flow_burst, 0.55)
 			"swift_cut":
+				_hero_slash_motion = 1.0
 				_swift_cut = 1.0
 				add_trauma(0.12)
 			"magic_enchant":
@@ -584,6 +646,9 @@ func _weighted_frame_index(progress: float, first_index: int, weights: Array) ->
 	return first_index + weights.size() - 1
 
 func _draw() -> void:
+	if PIXEL_VERTICAL_SLICE:
+		_draw_pixel_vertical_slice()
+		return
 	if journey_route == "frontier":
 		_draw_cover_texture(GORGE_BACKGROUND, Rect2(0.0, -42.0, size.x, size.y + 42.0), Vector2(0.5, 0.54))
 		draw_rect(Rect2(Vector2.ZERO, size), Color("284451", 0.07))
@@ -617,6 +682,150 @@ func _draw() -> void:
 	if _hurt_vignette > 0.0:
 		var vignette_alpha := _hurt_vignette * 0.2
 		draw_rect(Rect2(Vector2.ZERO, size), Color("c83232", vignette_alpha), false, 14.0)
+
+func _draw_pixel_vertical_slice() -> void:
+	_draw_cover_texture(PIXEL_BACKGROUND, Rect2(Vector2.ZERO, size), Vector2(0.5, 0.59))
+	draw_rect(Rect2(Vector2.ZERO, size), Color("193041", 0.05))
+	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
+	var battle_line := lerpf(stage_top, visible_bottom, 0.79)
+	var hero_pos := Vector2(clampf(size.x * 0.29, 66.0, size.x - 160.0), battle_line + 20.0)
+	var enemy_pos := Vector2(clampf(size.x * 0.72, 170.0, size.x - 66.0), battle_line)
+	_pixel_enemy_position = enemy_pos
+
+	for index in ally_count:
+		var row := index / 2
+		var column := index % 2
+		_draw_ally(hero_pos + Vector2(-55.0 - float(column) * 30.0, -10.0 - float(row) * 42.0), index)
+
+	_draw_pixel_wolf(enemy_pos)
+	_draw_pixel_hero(hero_pos)
+	_draw_pixel_combat_fx(hero_pos, enemy_pos)
+	if _hurt_vignette > 0.0:
+		draw_rect(Rect2(Vector2.ZERO, size), Color("a82e2e", _hurt_vignette * 0.13), false, 10.0)
+
+func _draw_pixel_hero(feet_position: Vector2) -> void:
+	var texture: Texture2D = PIXEL_HERO_IDLE_FRAMES[floori(_time / 0.34) % PIXEL_HERO_IDLE_FRAMES.size()]
+	var tint := Color.WHITE
+	var offset := Vector2.ZERO
+	if _hero_slash_motion > 0.0:
+		var progress := 1.0 - _hero_slash_motion
+		texture = PIXEL_HERO_ATTACK_FRAMES[mini(3, floori(progress * 4.0))]
+		offset.x += sin(progress * PI) * 10.0
+	elif _hero_block_motion > 0.0 or guard_stance_active:
+		var progress := 0.55 if guard_stance_active else 1.0 - _hero_block_motion
+		texture = PIXEL_HERO_BLOCK_FRAMES[mini(3, floori(progress * 4.0))]
+	elif _hero_dodge_motion > 0.0:
+		var progress := 1.0 - _hero_dodge_motion
+		offset.x += sin(progress * PI) * 22.0
+		tint.a = 0.2 + absf(progress - 0.5) * 1.25
+	if _hero_recoil > 0.0:
+		offset.x -= sin(_hero_recoil * PI) * 4.0
+	if _hero_flash > 0.0:
+		tint = Color(1.35, 1.35, 1.35, tint.a)
+	if _hero_death_motion > 0.0:
+		tint = Color(0.52, 0.56, 0.62, clampf(_hero_death_motion * 2.2, 0.0, 1.0))
+
+	_draw_ground_shadow(feet_position + Vector2(0.0, 2.0), Vector2(43.0, 9.0))
+	_draw_anchored_animation_frame(texture, feet_position + offset, 226.0, PIXEL_FEET_RATIO, 0.0, Vector2.ONE, tint)
+
+func _draw_pixel_wolf(feet_position: Vector2) -> void:
+	var frame_index := floori(_time / 0.36) % PIXEL_WOLF_IDLE_FRAMES.size()
+	var texture: Texture2D = PIXEL_WOLF_IDLE_FRAMES[frame_index]
+	var tint := Color.WHITE
+	var offset := Vector2.ZERO
+	if _enemy_death_motion > 0.0:
+		var death_progress := 1.0 - _enemy_death_motion
+		var death_frame := 0 if death_progress < 0.18 else (1 if death_progress < 0.4 else (2 if death_progress < 0.66 else 3))
+		texture = PIXEL_WOLF_DEATH_FRAMES[death_frame]
+		tint = Color(0.68, 0.7, 0.74, clampf(_enemy_death_motion * 2.4, 0.0, 1.0))
+	elif _enemy_attack_recover > 0.0:
+		var progress := 1.0 - _enemy_attack_recover
+		var attack_frame := 1 if progress < 0.2 else (2 if progress < 0.58 else 3)
+		texture = PIXEL_WOLF_ATTACK_FRAMES[attack_frame]
+		offset.x -= sin(progress * PI) * 5.0
+	elif enemy_heavy_windup:
+		texture = PIXEL_WOLF_ATTACK_FRAMES[0]
+	if _enemy_knockback > 0.0:
+		offset.x += sin(_enemy_knockback * PI) * 5.0
+	if _enemy_flash > 0.0:
+		tint = Color(1.4, 1.4, 1.4, 1.0)
+
+	if enemy_is_boss and _enemy_death_motion <= 0.0:
+		var aura_center := feet_position + Vector2(0.0, -64.0)
+		var aura_color := Color("d54b42", 0.24 if boss_enraged else 0.13)
+		draw_circle(aura_center, 70.0, aura_color)
+		draw_arc(aura_center, 78.0, -2.7, 0.2, 32, Color("e8b35b", 0.72), 3.0)
+		if boss_enraged:
+			draw_arc(aura_center, 86.0, 0.45, 2.75, 28, Color("ef6650", 0.74), 5.0)
+	_draw_ground_shadow(feet_position + Vector2(0.0, 3.0), Vector2(61.0 if enemy_is_boss else 55.0, 11.0 if enemy_is_boss else 10.0))
+	_draw_anchored_animation_frame(texture, feet_position + offset, 252.0 if enemy_is_boss else 238.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2.ONE, tint)
+	if enemy_heavy_windup and _enemy_death_motion <= 0.0:
+		var intent_center := feet_position + Vector2(0.0, -128.0)
+		var intent_color := Color("ef684f") if enemy_attack_type == "重擊" else Color("d594ef")
+		draw_circle(intent_center, 19.0, Color("17232a", 0.88))
+		draw_arc(intent_center, 23.0, -PI * 0.5, -PI * 0.5 + TAU * enemy_windup_ratio, 24, intent_color, 5.0)
+		draw_line(intent_center + Vector2(0.0, -10.0), intent_center + Vector2(0.0, 4.0), Color.WHITE, 4.0)
+		draw_circle(intent_center + Vector2(0.0, 10.0), 2.5, Color.WHITE)
+
+func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
+	var impact_point := enemy_pos + Vector2(-28.0, -58.0)
+	if _boss_intro_motion > 0.0:
+		var intro_progress := 1.0 - _boss_intro_motion
+		var intro_alpha := sin(clampf(intro_progress, 0.0, 1.0) * PI)
+		draw_rect(Rect2(0.0, enemy_pos.y - 122.0, size.x, 98.0), Color("16151b", intro_alpha * 0.2))
+		draw_arc(enemy_pos + Vector2(0.0, -62.0), 44.0 + intro_progress * 58.0, 0.0, TAU, 36, Color("f0c16b", intro_alpha * 0.9), 5.0)
+	if _boss_enrage_burst > 0.0:
+		var rage_progress := 1.0 - _boss_enrage_burst
+		var rage_alpha := 1.0 - rage_progress
+		var rage_center := enemy_pos + Vector2(0.0, -64.0)
+		draw_arc(rage_center, 58.0 + rage_progress * 68.0, 0.0, TAU, 36, Color("ff6752", rage_alpha), 7.0)
+		for index in 8:
+			var angle := float(index) * TAU / 8.0
+			draw_line(rage_center + Vector2.from_angle(angle) * 42.0, rage_center + Vector2.from_angle(angle) * (64.0 + rage_progress * 30.0), Color("ff9a62", rage_alpha), 4.0)
+	if _hero_dodge_motion > 0.0:
+		var dodge_alpha := sin((1.0 - _hero_dodge_motion) * PI) * 0.38
+		for index in 3:
+			var trail_x := hero_pos.x - 18.0 - float(index) * 13.0
+			draw_line(Vector2(trail_x, hero_pos.y - 90.0), Vector2(trail_x + 20.0, hero_pos.y - 76.0), Color("82d9c8", dodge_alpha), 3.0)
+
+	if _hero_slash_motion > 0.0:
+		var progress := 1.0 - _hero_slash_motion
+		var alpha := sin(clampf(progress, 0.0, 1.0) * PI)
+		var center := hero_pos.lerp(enemy_pos, 0.64) + Vector2(0.0, -58.0)
+		var heavy := _heavy_slash > 0.0 or _ultimate_slash > 0.0
+		var outer_color := Color("ffd36b", alpha) if heavy else Color("88cfff", alpha)
+		draw_arc(center, 72.0 if heavy else 58.0, -2.25, 0.42, 22, Color("f8fcff", alpha), 12.0 if heavy else 8.0)
+		draw_arc(center, 64.0 if heavy else 51.0, -2.25, 0.42, 22, outer_color, 6.0 if heavy else 4.0)
+
+	if _block_flash > 0.0 or _perfect_block > 0.0:
+		var strength := maxf(_block_flash, _perfect_block)
+		var alpha := sin((1.0 - strength) * PI)
+		var block_center := hero_pos + Vector2(36.0, -68.0)
+		draw_arc(block_center, 34.0, -1.5, 1.5, 18, Color("e9ffff", alpha), 7.0)
+		for index in 5:
+			var angle := -1.2 + float(index) * 0.6
+			draw_line(block_center + Vector2.from_angle(angle) * 24.0, block_center + Vector2.from_angle(angle) * 43.0, Color("72d7e5", alpha), 3.0)
+
+	if _counter_slash > 0.0 or _shadow_assault > 0.0 or _swift_cut > 0.0:
+		var strength := maxf(_counter_slash, maxf(_shadow_assault, _swift_cut))
+		var alpha := sin((1.0 - strength) * PI)
+		var color := Color("7de0cb", alpha) if _shadow_assault > 0.0 or _swift_cut > 0.0 else Color("a9efff", alpha)
+		draw_line(hero_pos + Vector2(12.0, -40.0), impact_point + Vector2(18.0, -26.0), Color("ffffff", alpha), 8.0)
+		draw_line(hero_pos + Vector2(8.0, -32.0), impact_point + Vector2(22.0, -18.0), color, 4.0)
+
+	if _impact_burst > 0.0:
+		var progress := 1.0 - _impact_burst
+		var alpha := 1.0 - progress
+		var radius := 11.0 + progress * 24.0 * _impact_strength
+		for index in 8:
+			var angle := float(index) * TAU / 8.0
+			draw_line(impact_point + Vector2.from_angle(angle) * 4.0, impact_point + Vector2.from_angle(angle) * radius, Color(_impact_color, alpha), 4.0 if index % 2 == 0 else 2.0)
+		draw_circle(impact_point, 8.0 * alpha, Color("ffffff", alpha))
+
+	if _defeat_burst > 0.0:
+		var progress := 1.0 - _defeat_burst
+		var alpha := sin(clampf(progress * 1.4, 0.0, 1.0) * PI)
+		draw_arc(enemy_pos + Vector2(0.0, -54.0), 28.0 + progress * (82.0 if _defeat_was_boss else 42.0), 0.0, TAU, 28, Color("ffe5a0", alpha), 6.0)
 
 func _draw_forest() -> void:
 	if journey_route == "frontier":
@@ -1062,7 +1271,8 @@ func _spawn_damage(amount: float, source: String) -> void:
 	label.text = "%s%d%s" % [prefix, roundi(amount), "!" if source == "critical_attack" else ""]
 	var color := Color("fff0a3") if source == "two_cut" else (Color("d7b2ff") if source in ["lightning_tick", "lightning_chain"] else (Color("a9edff") if source in ["elemental_resonance", "minor_resonance"] else (Color("ffb16f") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash", "elemental_boundary_slash"] else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["heavy_strike_swift", "flow_attack", "flow_attack_full", "swift_step", "swift_cut", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0"))))))))
 	label.add_theme_color_override("font_color", color)
-	label.position = Vector2(size.x * 0.64 + randf_range(-18.0, 18.0), size.y * 0.28)
+	var damage_origin := _pixel_enemy_position + Vector2(-18.0, -128.0) if PIXEL_VERTICAL_SLICE and _pixel_enemy_position != Vector2.ZERO else Vector2(size.x * 0.64, size.y * 0.28)
+	label.position = damage_origin + Vector2(randf_range(-12.0, 12.0), 0.0)
 	var tween := create_tween()
 	tween.set_parallel(true)
 	tween.tween_property(label, "position:y", label.position.y - 58.0, 0.62).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
@@ -1076,56 +1286,77 @@ func _play_sfx(kind: String) -> void:
 	var player := _sfx_players[_sfx_cursor]
 	_sfx_cursor = (_sfx_cursor + 1) % _sfx_players.size()
 	player.stream = _sfx_streams[kind]
-	player.pitch_scale = 0.98 + float(_sfx_cursor % 3) * 0.015
+	player.volume_db = {
+		"light": -20.0,
+		"medium": -16.0,
+		"heavy": -11.0,
+		"block": -14.0,
+		"perfect": -12.0,
+		"dodge": -19.0,
+		"hurt": -17.0,
+		"defeat": -15.0,
+		"boss_defeat": -11.0,
+	}.get(kind, -16.0)
+	player.pitch_scale = 0.99 + float(_sfx_cursor % 3) * 0.008
 	player.play()
 
 func _make_sfx(kind: String) -> AudioStreamWAV:
-	var duration := 0.07
-	if kind in ["heavy", "perfect", "defeat"]:
-		duration = 0.13
-	elif kind == "boss_defeat":
-		duration = 0.3
+	var duration: float = {
+		"light": 0.045,
+		"medium": 0.065,
+		"heavy": 0.1,
+		"block": 0.075,
+		"perfect": 0.1,
+		"dodge": 0.075,
+		"hurt": 0.07,
+		"defeat": 0.14,
+		"boss_defeat": 0.24,
+	}.get(kind, 0.065)
 	var sample_rate := 22050
 	var sample_count := roundi(duration * float(sample_rate))
 	var data := PackedByteArray()
 	data.resize(sample_count * 2)
+	var noise_state := 0.0
 	for index in sample_count:
 		var time := float(index) / float(sample_rate)
 		var progress := float(index) / float(sample_count)
-		var envelope := pow(1.0 - progress, 2.4)
-		var frequency := 560.0
-		var noise_amount := 0.22
+		var attack := minf(progress / 0.045, 1.0)
+		var envelope := attack * pow(1.0 - progress, 2.8)
+		var frequency := 360.0
+		var noise_amount := 0.1
 		match kind:
 			"light":
-				frequency = 720.0 - progress * 260.0
+				frequency = 390.0 - progress * 150.0
 			"medium":
-				frequency = 470.0 - progress * 190.0
-				noise_amount = 0.32
+				frequency = 310.0 - progress * 125.0
+				noise_amount = 0.14
 			"heavy":
-				frequency = 150.0 - progress * 45.0
-				noise_amount = 0.42
+				frequency = 115.0 - progress * 45.0
+				noise_amount = 0.18
 			"block":
-				frequency = 960.0 + progress * 180.0
-				noise_amount = 0.12
+				frequency = 570.0 - progress * 170.0
+				noise_amount = 0.08
 			"perfect":
-				frequency = 1380.0 + progress * 420.0
-				noise_amount = 0.1
+				frequency = 720.0 - progress * 210.0
+				noise_amount = 0.06
 			"dodge":
-				frequency = 840.0 + progress * 680.0
-				noise_amount = 0.3
+				frequency = 280.0 + progress * 330.0
+				noise_amount = 0.12
 			"hurt":
-				frequency = 115.0
-				noise_amount = 0.48
+				frequency = 105.0 - progress * 24.0
+				noise_amount = 0.2
 			"defeat":
-				frequency = 220.0 - progress * 80.0
-				noise_amount = 0.35
+				frequency = 180.0 - progress * 76.0
+				noise_amount = 0.13
 			"boss_defeat":
-				frequency = 92.0 + progress * 34.0
-				noise_amount = 0.3
-		var noise := sin(float(index) * 12.9898) * sin(float(index) * 4.1414)
-		var sample := (sin(TAU * frequency * time) * (1.0 - noise_amount) + noise * noise_amount) * envelope * 0.62
+				frequency = 88.0 - progress * 22.0
+				noise_amount = 0.12
+		var raw_noise := sin(float(index) * 12.9898) * sin(float(index) * 4.1414)
+		noise_state = lerpf(noise_state, raw_noise, 0.1)
+		var body := sin(TAU * frequency * time)
+		var sample := (body * (1.0 - noise_amount) + noise_state * noise_amount) * envelope * 0.48
 		if kind in ["block", "perfect", "boss_defeat"]:
-			sample += sin(TAU * frequency * 1.62 * time) * envelope * 0.22
+			sample += sin(TAU * frequency * 1.48 * time) * envelope * 0.11
 		data.encode_s16(index * 2, clampi(roundi(sample * 32767.0), -32768, 32767))
 	var stream := AudioStreamWAV.new()
 	stream.format = AudioStreamWAV.FORMAT_16_BITS

@@ -39,6 +39,7 @@ func _run_tests() -> void:
 	_test_execute_slash_condition()
 	_test_martial_branches()
 	_test_boss_spawn()
+	_test_boss_rage_phase()
 	_test_enemy_archetypes_and_route_rhythm()
 	_test_journey_choice_controls_next_area()
 	_test_return_blade_auto_counter()
@@ -67,7 +68,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 55")
+		print("Godot tests passed: 56")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -107,6 +108,8 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(battlefield.impact_tier_for_source("mountain_break") == "heavy", "斷嶽必須使用重型命中回饋")
 	battlefield.play_events([{"type": "block"}, {"type": "dodge"}])
 	_expect(battlefield._hero_block_motion == 1.0 and battlefield._hero_dodge_motion == 1.0, "格擋與閃躲事件必須啟動對應逐格動作")
+	battlefield.play_events([{"type": "boss_entered"}, {"type": "boss_enraged"}])
+	_expect(battlefield._boss_intro_motion == 1.0 and battlefield._boss_enrage_burst == 1.0, "首領登場與狂怒必須有獨立、低位移的視覺提示")
 	battlefield.trauma = 0.4
 	battlefield._hero_recoil = 1.0
 	battlefield.play_events([{"type": "defeat"}])
@@ -555,6 +558,19 @@ func _test_boss_spawn() -> void:
 	model.stage = 10
 	model._spawn_enemy()
 	_expect(model.enemy_is_boss and model.enemy_armor >= CombatModelScript.HIGH_ARMOR_THRESHOLD, "每 10 戰首領必須具備高護甲並啟用破甲需求")
+
+func _test_boss_rage_phase() -> void:
+	var model = CombatModelScript.new()
+	model.stage = 10
+	model._spawn_enemy()
+	model.enemy_max_hp = 100.0
+	model.enemy_hp = 31.0
+	model.enemy_armor = 0.0
+	var calm_interval := model._enemy_attack_interval()
+	model._events.clear()
+	model._deal_damage(2.0, "test")
+	_expect(model.boss_enraged and model._events.any(func(event: Dictionary) -> bool: return event.type == "boss_enraged"), "首領生命降至 30% 時必須只進入一次狂怒階段")
+	_expect(model._enemy_attack_interval() < calm_interval and model._attack_type_for_count(2) == "heavy", "狂怒首領必須提高攻擊頻率並更常使用重擊")
 
 func _test_enemy_archetypes_and_route_rhythm() -> void:
 	var model = CombatModelScript.new()

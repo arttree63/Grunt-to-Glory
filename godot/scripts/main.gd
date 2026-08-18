@@ -964,8 +964,9 @@ func _choose_journey_route(route_id: String) -> void:
 
 func _update_hud(snapshot: Dictionary) -> void:
 	var boss_mark := "首領 · " if bool(snapshot.enemy_is_boss) else ("精英 · " if bool(snapshot.enemy_is_elite) else "")
+	var rage_mark := " · 狂怒" if bool(snapshot.get("boss_enraged", false)) else ""
 	var attack_hint := " · %s準備" % String(snapshot.enemy_attack_type) if String(snapshot.enemy_attack_type) != "普通" and float(snapshot.enemy_attack_remaining) <= 0.8 else ""
-	enemy_label.text = "第%d區・%s｜%d/10・%s\n%s%s · 護甲 %d%s" % [int(snapshot.area_number), String(snapshot.journey_name), int(snapshot.route_position), String(snapshot.route_phase), boss_mark, String(snapshot.enemy_name), roundi(float(snapshot.enemy_armor)), attack_hint]
+	enemy_label.text = "第%d區・%s｜%d/10・%s\n%s%s · 護甲 %d%s%s" % [int(snapshot.area_number), String(snapshot.journey_name), int(snapshot.route_position), String(snapshot.route_phase), boss_mark, String(snapshot.enemy_name), roundi(float(snapshot.enemy_armor)), rage_mark, attack_hint]
 	enemy_label.tooltip_text = String(snapshot.enemy_hint)
 	kills_label.text = "擊倒 %d" % int(snapshot.kills)
 	var training_points := int(snapshot.training_points)
