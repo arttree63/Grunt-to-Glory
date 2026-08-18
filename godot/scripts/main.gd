@@ -480,15 +480,18 @@ func _render_character_page(snapshot: Dictionary) -> void:
 
 func _render_skills_page(snapshot: Dictionary) -> void:
 	_render_skill_tabs()
+	_render_skill_level_summary(snapshot)
 	var slots: Array = snapshot.auto_skill_slots
 	if current_skill_tab == "auto":
 		_render_auto_setup(slots)
 		return
 	var definition: Dictionary = CombatModel.TRAINING_DEFS[current_skill_tab]
 	section_box.add_child(_label("%s｜%s" % [String(definition.name), String(definition.style)], 20, _track_color(current_skill_tab)))
-	var skill_level_text := "Base Lv.%d" % int(snapshot.base_style_levels[current_skill_tab])
-	if int(snapshot.equipment_style_bonuses[current_skill_tab]) > 0:
-		skill_level_text += "｜裝備 +%d｜有效 Lv.%d" % [int(snapshot.equipment_style_bonuses[current_skill_tab]), int(snapshot.effective_style_levels[current_skill_tab])]
+	var skill_level_text := "Base Lv.%d｜裝備 +%d｜目前加總 Lv.%d" % [
+		int(snapshot.base_style_levels[current_skill_tab]),
+		int(snapshot.equipment_style_bonuses[current_skill_tab]),
+		int(snapshot.effective_style_levels[current_skill_tab]),
+	]
 	section_box.add_child(_label("%s｜%s" % [skill_level_text, String(definition.special)], 14, Color("cbd5cc")))
 	if current_skill_tab == "command":
 		_render_command_allies(snapshot)
@@ -499,6 +502,19 @@ func _render_skills_page(snapshot: Dictionary) -> void:
 	else:
 		_render_magic_choices(snapshot)
 		_render_magic_milestones(snapshot)
+
+func _render_skill_level_summary(snapshot: Dictionary) -> void:
+	var base_total := 0
+	var equipment_total := 0
+	var effective_total := 0
+	for track: String in CombatModel.TRAINING_ORDER:
+		base_total += int(snapshot.base_style_levels[track])
+		equipment_total += int(snapshot.equipment_style_bonuses[track])
+		effective_total += int(snapshot.effective_style_levels[track])
+	section_box.add_child(_section_row(
+		"目前流派加總｜Lv.%d" % effective_total,
+		"Base %d + 裝備 %d = 有效 %d｜技能解鎖仍看 Base" % [base_total, equipment_total, effective_total]
+	))
 
 func _render_skill_tabs() -> void:
 	skill_tab_buttons.clear()
