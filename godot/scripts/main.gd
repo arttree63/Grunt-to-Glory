@@ -24,6 +24,8 @@ var accumulator := 0.0
 var training_open := false
 var journey_open := false
 var journey_pending := false
+var boss_reward_open := false
+var failure_open := false
 var current_page := "combat"
 var current_skill_tab := "auto"
 var battlefield: Battlefield
@@ -60,6 +62,8 @@ var enemy_bar: ProgressBar
 var auto_slot_buttons: Array[Button] = []
 var training_alert_button: Button
 var retry_button: Button
+var failure_button: Button
+var failure_status: HBoxContainer
 var training_overlay: Control
 var training_rows: Dictionary = {}
 var section_overlay: Control
@@ -75,6 +79,11 @@ var journey_overlay: Control
 var journey_title: Label
 var journey_detail: Label
 var journey_buttons: Dictionary = {}
+var boss_reward_overlay: Control
+var boss_reward_box: VBoxContainer
+var failure_overlay: Control
+var failure_detail: Label
+var boss_reward_summary := {}
 
 func _ready() -> void:
 	_build_ui()
@@ -88,7 +97,7 @@ func _process(delta: float) -> void:
 	if battlefield != null and battlefield.defeat_sequence_active():
 		accumulator = 0.0
 		return
-	if training_open or journey_open or journey_pending or current_page != "combat":
+	if training_open or journey_open or journey_pending or boss_reward_open or failure_open or current_page != "combat":
 		return
 	accumulator = minf(accumulator + delta, FIXED_STEP * 5.0)
 	var stepped := false
@@ -103,7 +112,7 @@ func _process(delta: float) -> void:
 		_update_hud(model.snapshot())
 
 func _unhandled_input(event: InputEvent) -> void:
-	if journey_open or journey_pending:
+	if journey_open or journey_pending or boss_reward_open:
 		return
 	if event.is_action_pressed("training") and current_page == "character":
 		_toggle_training()
@@ -169,13 +178,23 @@ func _build_ui() -> void:
 	kills_label = _label("擊倒 0", 14, Color("4e514f"))
 	kills_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	top_box.add_child(kills_label)
+	failure_status = HBoxContainer.new()
+	failure_status.visible = false
+	failure_status.add_theme_constant_override("separation", 4)
+	top_box.add_child(failure_status)
+	failure_button = _button("突破失敗", Color("6a4a2f"), 42)
+	failure_button.add_theme_font_size_override("font_size", 14)
+	failure_button.pressed.connect(_open_failure_report)
+	failure_status.add_child(failure_button)
 	retry_button = _button("再次挑戰", Color("913b31"), 42)
 	retry_button.visible = false
+	retry_button.custom_minimum_size.x = 116
+	retry_button.size_flags_horizontal = Control.SIZE_SHRINK_END
 	retry_button.add_theme_font_size_override("font_size", 16)
 	retry_button.add_theme_color_override("font_color", Color("fff4df"))
 	retry_button.tooltip_text = "停止刷上一戰，重新挑戰剛才戰敗的關卡"
 	retry_button.pressed.connect(_retry_failed_stage)
-	top_box.add_child(retry_button)
+	failure_status.add_child(retry_button)
 
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -337,6 +356,8 @@ func _build_ui() -> void:
 	_build_section_overlay()
 	_build_training_overlay()
 	_build_journey_overlay()
+	_build_boss_reward_overlay()
+	_build_failure_overlay()
 
 func _build_navigation(parent: VBoxContainer) -> void:
 	var nav := HBoxContainer.new()
@@ -418,6 +439,75 @@ func _build_journey_overlay() -> void:
 		button.pressed.connect(_choose_journey_route.bind(route_id))
 		box.add_child(button)
 		journey_buttons[route_id] = button
+
+func _build_boss_reward_overlay() -> void:
+	boss_reward_overlay = Control.new()
+	boss_reward_overlay.visible = false
+	boss_reward_overlay.z_index = 70
+	boss_reward_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	boss_reward_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(boss_reward_overlay)
+	var dim := ColorRect.new()
+	dim.color = Color("090d0c", 0.92)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	boss_reward_overlay.add_child(dim)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side: String in ["left", "right"]:
+		margin.add_theme_constant_override("margin_%s" % side, 18)
+	margin.add_theme_constant_override("margin_top", 54)
+	margin.add_theme_constant_override("margin_bottom", 54)
+	boss_reward_overlay.add_child(margin)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("171d1a", 0.99), Color("e1b85e"), 3))
+	margin.add_child(panel)
+	boss_reward_box = VBoxContainer.new()
+	boss_reward_box.add_theme_constant_override("separation", 10)
+	panel.add_child(boss_reward_box)
+
+func _build_failure_overlay() -> void:
+	failure_overlay = Control.new()
+	failure_overlay.visible = false
+	failure_overlay.z_index = 65
+	failure_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	failure_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(failure_overlay)
+	var dim := ColorRect.new()
+	dim.color = Color("090d0c", 0.86)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	failure_overlay.add_child(dim)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side: String in ["left", "right"]:
+		margin.add_theme_constant_override("margin_%s" % side, 20)
+	margin.add_theme_constant_override("margin_top", 86)
+	margin.add_theme_constant_override("margin_bottom", 86)
+	failure_overlay.add_child(margin)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("17211e", 0.99), Color("c98d4e"), 3))
+	margin.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	panel.add_child(box)
+	var title := _label("突破情報", 26, Color("ffd487"))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	failure_detail = _label("", 15, Color("e6e0d4"))
+	failure_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(failure_detail)
+	var links := HBoxContainer.new()
+	links.add_theme_constant_override("separation", 6)
+	box.add_child(links)
+	for page: String in ["character", "equipment"]:
+		var button := _button("流派" if page == "character" else "裝備", Color("4d5d54"), 46)
+		button.pressed.connect(_open_failure_target.bind(page))
+		links.add_child(button)
+	var retry := _button("再次挑戰", Color("873f35"), 46)
+	retry.pressed.connect(_retry_from_failure)
+	links.add_child(retry)
+	var close := _button("收合情報", Color("39463f"), 44)
+	close.pressed.connect(_close_failure_report)
+	box.add_child(close)
 
 func _switch_page(page: String) -> void:
 	if not PAGE_NAMES.has(page):
@@ -513,7 +603,7 @@ func _render_skill_level_summary(snapshot: Dictionary) -> void:
 		effective_total += int(snapshot.effective_style_levels[track])
 	section_box.add_child(_section_row(
 		"目前流派加總｜Lv.%d" % effective_total,
-		"Base %d + 裝備 %d = 有效 %d｜技能解鎖仍看 Base" % [base_total, equipment_total, effective_total]
+		"Base %d + 裝備 %d = 有效 %d｜技能解鎖看有效等級" % [base_total, equipment_total, effective_total]
 	))
 
 func _render_skill_tabs() -> void:
@@ -617,7 +707,7 @@ func _render_track_skills(track: String, heading: String, slots: Array) -> void:
 		var type_text := "被動" if String(definition.type) == "passive" else ("奧義" if String(definition.type) == "ultimate" else "主動")
 		var status := "%s · Lv.%d" % [type_text, int(definition.level)]
 		if model.skill_is_unlocked(skill_id):
-			status += " · 已解鎖"
+			status += " · 裝備支撐" if model.skill_is_equipment_supported(skill_id) else " · 已解鎖"
 		else:
 			status += " 解鎖"
 		var skill_row := HBoxContainer.new()
@@ -707,13 +797,15 @@ func _render_magic_choices(snapshot: Dictionary) -> void:
 
 func _render_magic_milestones(snapshot: Dictionary) -> void:
 	section_box.add_child(_label("成長路線", 18, Color("ffc28f")))
+	var base_level := int(snapshot.base_style_levels.magic)
+	var effective_level := int(snapshot.effective_style_levels.magic)
 	for level: int in CombatModel.MAGIC_MILESTONES:
 		if level in [55, 105, 155]:
 			section_box.add_child(_label(_route_stage_name(level), 15, Color("d6c5a2")))
 		var milestone: Dictionary = CombatModel.MAGIC_MILESTONES[level]
-		var unlocked := int(snapshot.training.magic) >= level
+		var unlocked := effective_level >= level
 		var marker := "◆" if level in [100, 150, 200] else ("●" if unlocked else "○")
-		var state := "已取得" if unlocked else "未解鎖"
+		var state := ("裝備支撐" if base_level < level else "已取得") if unlocked else "未解鎖"
 		section_box.add_child(_section_row("%s Lv.%d｜%s" % [marker, level, String(milestone.name)], "%s · %s" % [state, String(milestone.description)]))
 
 func _render_track_milestones(track: String, snapshot: Dictionary) -> void:
@@ -724,7 +816,8 @@ func _render_track_milestones(track: String, snapshot: Dictionary) -> void:
 		"faith": CombatModel.FAITH_MILESTONES,
 		"command": CombatModel.COMMAND_MILESTONES,
 	}[track]
-	var level := int(snapshot.training[track])
+	var base_level := int(snapshot.base_style_levels[track])
+	var level := int(snapshot.effective_style_levels[track])
 	var style_name := String(CombatModel.TRAINING_DEFS[track].style)
 	var color := _track_color(track).lightened(0.35)
 	section_box.add_child(_label("%s成長路線" % style_name, 18, color))
@@ -734,7 +827,7 @@ func _render_track_milestones(track: String, snapshot: Dictionary) -> void:
 		var milestone: Dictionary = table[target]
 		var unlocked := level >= target
 		var marker := "◆" if target in [50, 100, 150, 200] else ("●" if unlocked else "○")
-		var state := "已取得" if unlocked else "未解鎖"
+		var state := ("裝備支撐" if base_level < target else "已取得") if unlocked else "未解鎖"
 		section_box.add_child(_section_row("%s Lv.%d｜%s" % [marker, target, String(milestone.name)], "%s · %s" % [state, String(milestone.description)]))
 
 func _route_stage_name(level: int) -> String:
@@ -753,7 +846,7 @@ func _magic_choice_name(choices: Dictionary, choice_id: String) -> String:
 	return String(choices[choice_id].name) if choices.has(choice_id) else "尚未選擇"
 
 func _render_equipment_page(snapshot: Dictionary) -> void:
-	var equipment_intro := _label("裝備是 Build 調整器；數值看有效等級，技能解鎖仍只看 Base。", 14, Color("cbd5cc"))
+	var equipment_intro := _label("裝備會提高有效流派等級並解鎖技能；卸下後若等級不足，該技能會暫停生效。", 14, Color("cbd5cc"))
 	equipment_intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	section_box.add_child(equipment_intro)
 	section_box.add_child(_section_row("持有金幣", "%d" % int(snapshot.gold)))
@@ -832,9 +925,126 @@ func _enhance_equipment(item_id: String) -> void:
 	_update_hud(model.snapshot())
 
 func _render_shop_page() -> void:
-	section_box.add_child(_label("商店尚未營業", 21, Color("d8e0d8")))
-	section_box.add_child(_section_row("商品", "等待裝備與貨幣規則確認"))
-	section_box.add_child(_section_row("出售", "尚未開放"))
+	var snapshot := model.snapshot()
+	section_box.add_child(_section_row("持有資源", "%d 金幣｜%d 戰魂" % [int(snapshot.gold), int(snapshot.battle_souls)]))
+	section_box.add_child(_label("戰地商店", 20, Color("f6d27d")))
+	section_box.add_child(_label("每批 3 件商品，至少 1 件符合目前最高 Base 流派。新區域會補貨並重置刷新價格。", 13, Color("cbd5cc")))
+	var shop_items: Array = snapshot.shop_items
+	if shop_items.is_empty():
+		section_box.add_child(_section_row("本批售罄", "刷新商品或前往下一區"))
+	for index in shop_items.size():
+		var item_id := String(shop_items[index])
+		var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
+		var quality := String(item.get("quality", "common"))
+		var price := int(CombatModel.EQUIPMENT_QUALITY_COSTS.get(quality, 60))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		section_box.add_child(row)
+		var card := _section_row("%s｜%s" % [String(item.name), String(CombatModel.EQUIPMENT_QUALITY_NAMES[quality])], "%s｜%d 金" % [_equipment_style_text(item), price])
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(card)
+		var buy := _button("購買", Color("685737"), 44)
+		buy.custom_minimum_size.x = 64
+		buy.size_flags_horizontal = Control.SIZE_SHRINK_END
+		buy.disabled = int(snapshot.gold) < price
+		buy.pressed.connect(_buy_shop_item.bind(index))
+		row.add_child(buy)
+	var refresh_cost := int(snapshot.shop_refresh_cost)
+	var refresh := _button("刷新商品｜%d 金" % refresh_cost, Color("435a65"), 44)
+	refresh.disabled = int(snapshot.gold) < refresh_cost
+	refresh.pressed.connect(_refresh_shop)
+	section_box.add_child(refresh)
+
+	section_box.add_child(_label("出售裝備", 20, Color("f6d27d")))
+	var has_sellable := false
+	for item_id: String in CombatModel.EQUIPMENT_DEFS:
+		var count := int(snapshot.owned_equipment.get(item_id, 0))
+		if count <= 0:
+			continue
+		has_sellable = true
+		var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
+		var quality := String(item.get("quality", "common"))
+		var value := maxi(10, int(CombatModel.EQUIPMENT_QUALITY_COSTS.get(quality, 60)) / 2)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		section_box.add_child(row)
+		var equipped := String(snapshot.equipped_items.get(String(item.slot), "")) == item_id
+		var card := _section_row("%s ×%d" % [String(item.name), count], "%s%d 金" % ["裝備中｜出售會卸下｜" if equipped else "", value])
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(card)
+		var sell := _button("出售", Color("70452d"), 44)
+		sell.custom_minimum_size.x = 64
+		sell.size_flags_horizontal = Control.SIZE_SHRINK_END
+		sell.pressed.connect(_sell_shop_item.bind(item_id))
+		row.add_child(sell)
+	if not has_sellable:
+		section_box.add_child(_section_row("沒有裝備", "擊敗敵人或從商店購買"))
+
+	section_box.add_child(_label("戰魂傳承", 20, Color("f6d27d")))
+	if not bool(snapshot.inheritance_unlocked):
+		section_box.add_child(_section_row("尚未解鎖", "擊敗第 30 戰首領後，可以選擇是否重返第 1 戰"))
+		return
+	section_box.add_child(_label("傳承會回到第 1 戰並重置流派、金幣與強化。收藏永久保留；每次只能選一項遺產。", 13, Color("e2cdb3")))
+	section_box.add_child(_label("記憶｜下輪指定 Base 流派 +5", 16, Color("d8e0d8")))
+	var memory_grid := GridContainer.new()
+	memory_grid.columns = 3
+	memory_grid.add_theme_constant_override("h_separation", 5)
+	memory_grid.add_theme_constant_override("v_separation", 5)
+	section_box.add_child(memory_grid)
+	for track: String in CombatModel.TRAINING_ORDER:
+		var button := _button(String(CombatModel.TRAINING_DEFS[track].name), _track_color(track), 42)
+		button.pressed.connect(_perform_inheritance.bind("memory", track))
+		memory_grid.add_child(button)
+	section_box.add_child(_label("舊裝｜保留一件裝備，強化歸零", 16, Color("d8e0d8")))
+	var equipment_grid := GridContainer.new()
+	equipment_grid.columns = 2
+	equipment_grid.add_theme_constant_override("h_separation", 5)
+	equipment_grid.add_theme_constant_override("v_separation", 5)
+	section_box.add_child(equipment_grid)
+	for item_id: String in CombatModel.EQUIPMENT_DEFS:
+		if int(snapshot.owned_equipment.get(item_id, 0)) <= 0:
+			continue
+		var button := _button(String(CombatModel.EQUIPMENT_DEFS[item_id].name), Color("4f6657"), 42)
+		button.pressed.connect(_perform_inheritance.bind("equipment", item_id))
+		equipment_grid.add_child(button)
+	section_box.add_child(_label("商路｜下輪指定流派商品權重 ×2", 16, Color("d8e0d8")))
+	var trade_grid := GridContainer.new()
+	trade_grid.columns = 3
+	trade_grid.add_theme_constant_override("h_separation", 5)
+	trade_grid.add_theme_constant_override("v_separation", 5)
+	section_box.add_child(trade_grid)
+	for track: String in CombatModel.TRAINING_ORDER:
+		var button := _button(String(CombatModel.TRAINING_DEFS[track].name), _track_color(track), 42)
+		button.pressed.connect(_perform_inheritance.bind("trade", track))
+		trade_grid.add_child(button)
+
+func _buy_shop_item(index: int) -> void:
+	var result := model.buy_shop_item(index)
+	if result.is_empty():
+		return
+	_show_toast("購買：%s" % String(result.name), "花費 %d 金" % int(result.price))
+	_render_section("shop")
+
+func _sell_shop_item(item_id: String) -> void:
+	var value := model.sell_equipment(item_id)
+	if value <= 0:
+		return
+	_show_toast("已出售", "%s｜獲得 %d 金" % [String(CombatModel.EQUIPMENT_DEFS[item_id].name), value])
+	_render_section("shop")
+
+func _refresh_shop() -> void:
+	if not model.refresh_shop():
+		return
+	_show_toast("商品已刷新", "下一次刷新需要 %d 金" % model.shop_refresh_cost())
+	_render_section("shop")
+
+func _perform_inheritance(choice: String, target: String) -> void:
+	var events := model.perform_inheritance(choice, target)
+	if events.is_empty():
+		return
+	_show_toast("傳承完成", "帶著遺產回到第 1 戰")
+	_update_hud(model.snapshot())
+	_switch_page("combat")
 
 func _build_training_overlay() -> void:
 	training_overlay = Control.new()
@@ -904,6 +1114,14 @@ func _handle_events(events: Array[Dictionary]) -> void:
 	battlefield.play_events(events)
 	for event: Dictionary in events:
 		match String(event.type):
+			"wave_started": _show_toast("第 %d/%d 波" % [int(event.wave), int(event.wave_count)], String(event.enemy))
+			"boss_reward_choice":
+				journey_pending = true
+				_show_toast("黑鐵哨站突破", "選擇一件戰利品，讓流派立即變強")
+				get_tree().create_timer(1.1).timeout.connect(_show_boss_reward.bind(event.options))
+			"boss_reward_claimed":
+				boss_reward_summary = Dictionary(event.summary).duplicate(true)
+				_show_toast("獲得：%s" % String(event.name), "已自動裝備，有效流派等級立即更新")
 			"journey_choice":
 				journey_pending = true
 				_show_toast("區域突破", "戰鬥暫歇，決定下一段旅程")
@@ -950,7 +1168,56 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"war_god": _show_toast("軍神", "主角與友軍進入雙向連攜")
 			"ten_thousand_armies_one_sword": _show_toast("奧義・萬軍一劍", "一劍起，萬軍動")
 			"retry_started": _show_toast("再次挑戰", "重新進入第 %d 戰" % int(event.stage))
-			"defeat": pass
+			"defeat": _show_toast("第 %d 戰突破失敗" % int(event.failed_stage), "已退回第 %d 戰整備，AUTO 持續進行" % int(event.fallback_stage))
+
+func _show_boss_reward(options: Array) -> void:
+	journey_pending = false
+	boss_reward_open = true
+	boss_reward_overlay.visible = true
+	for child: Node in boss_reward_box.get_children():
+		child.queue_free()
+	var title := _label("黑鐵哨站突破", 29, Color("ffe09a"))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	boss_reward_box.add_child(title)
+	var detail := _label("選擇一件戰利品。裝備後會立刻改變有效流派等級。", 15, Color("d8e0d8"))
+	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	boss_reward_box.add_child(detail)
+	for option: Dictionary in options:
+		var style_name := String(CombatModel.TRAINING_DEFS[String(option.style)].name)
+		var button := _button("%s｜%s\n%s" % [String(option.name), style_name, String(option.description)], Color("514634"), 88)
+		button.add_theme_font_size_override("font_size", 14)
+		button.pressed.connect(_claim_boss_reward.bind(String(option.item_id)))
+		boss_reward_box.add_child(button)
+
+func _claim_boss_reward(item_id: String) -> void:
+	var events := model.claim_boss_reward(item_id)
+	if events.is_empty():
+		return
+	boss_reward_open = false
+	boss_reward_overlay.visible = false
+	_handle_events(events)
+	_update_hud(model.snapshot())
+
+func _open_failure_report() -> void:
+	var report: Dictionary = model.last_failure_report
+	if report.is_empty():
+		return
+	failure_open = true
+	failure_overlay.visible = true
+	failure_detail.text = "上次失敗：第 %d 戰・第 %d 波\n致命來源：%s\n最大承傷：%s（%d）\n敵人特性：%s\n尚有修練：%d\n\n遊戲仍在上一戰持續 AUTO 掛機。" % [int(report.failed_stage), int(report.failed_wave), String(report.killer), String(report.highest_damage_source), roundi(float(report.highest_damage_amount)), String(report.enemy_traits), int(report.unspent_style_points)]
+
+func _close_failure_report() -> void:
+	failure_open = false
+	failure_overlay.visible = false
+
+func _open_failure_target(page: String) -> void:
+	_close_failure_report()
+	_switch_page(page)
+
+func _retry_from_failure() -> void:
+	_close_failure_report()
+	_retry_failed_stage()
 
 func _retry_failed_stage() -> void:
 	if battlefield.defeat_sequence_active():
@@ -1073,10 +1340,30 @@ func _show_journey_choice() -> void:
 	journey_overlay.visible = true
 	journey_overlay.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	journey_title.text = "區域 %d 突破｜旅途抉擇" % int(model.area_number)
-	journey_detail.text = "下一個十戰區域只做這一次決定。選擇會改變整段路線、敵人、收益與首領。"
+	journey_detail.text = _boss_reward_summary_text() + "\n\n選擇下一段旅程。"
 	var tween := create_tween()
 	tween.tween_property(journey_overlay, "modulate:a", 1.0, 0.25)
 	(journey_buttons["mountain"] as Button).grab_focus()
+
+func _boss_reward_summary_text() -> String:
+	if boss_reward_summary.is_empty():
+		return "據點已突破。"
+	var before: Dictionary = boss_reward_summary.before
+	var after: Dictionary = boss_reward_summary.after
+	var item_id := String(model.slice_metrics.boss_reward)
+	var slot := String(CombatModel.EQUIPMENT_DEFS[item_id].slot) if CombatModel.EQUIPMENT_DEFS.has(item_id) else ""
+	var lines: Array[String] = ["%s有效 Lv.%d → Lv.%d（+%d）" % [String(boss_reward_summary.style), int(before.effective), int(after.effective), int(after.effective) - int(before.effective)]]
+	if slot == "weapon":
+		lines.append("ATK %d → %d" % [roundi(float(before.attack)), roundi(float(after.attack))])
+	elif slot == "armor":
+		lines.append("HP %d → %d｜DEF %d → %d" % [roundi(float(before.hp)), roundi(float(after.hp)), roundi(float(before.defense)), roundi(float(after.defense))])
+	else:
+		lines.append("攻速加成 %.2f → %.2f" % [float(before.attack_speed), float(after.attack_speed)])
+	if not String(boss_reward_summary.modifier_text).is_empty():
+		lines.append(String(boss_reward_summary.modifier_text))
+	lines.append("永久進度：Base Lv.%d｜下一節點 Lv.%d" % [int(after.base), int(boss_reward_summary.next_base_milestone)])
+	lines.append("裝備加成不計入永久技能解鎖")
+	return "\n".join(lines)
 
 func _choose_journey_route(route_id: String) -> void:
 	var events := model.choose_journey_route(route_id)
@@ -1093,7 +1380,8 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var boss_mark := "首領 · " if bool(snapshot.enemy_is_boss) else ("精英 · " if bool(snapshot.enemy_is_elite) else "")
 	var rage_mark := " · 狂怒" if bool(snapshot.get("boss_enraged", false)) else ""
 	var attack_hint := " · %s準備" % String(snapshot.enemy_attack_type) if String(snapshot.enemy_attack_type) != "普通" and float(snapshot.enemy_attack_remaining) <= 0.8 else ""
-	enemy_label.text = "第%d區・%s｜%d/10・%s\n%s%s｜%s · 護甲 %d%s%s" % [int(snapshot.area_number), String(snapshot.journey_name), int(snapshot.route_position), String(snapshot.route_phase), boss_mark, String(snapshot.enemy_name), String(snapshot.enemy_role), roundi(float(snapshot.enemy_armor)), rage_mark, attack_hint]
+	var wave_text := "｜波 %d/%d" % [int(snapshot.wave), int(snapshot.wave_count)] if int(snapshot.wave_count) > 1 else ""
+	enemy_label.text = "第%d區・%s｜%d/10・%s%s\n%s%s｜%s · 護甲 %d%s%s" % [int(snapshot.area_number), String(snapshot.journey_name), int(snapshot.route_position), String(snapshot.route_phase), wave_text, boss_mark, String(snapshot.enemy_name), String(snapshot.enemy_role), roundi(float(snapshot.enemy_armor)), rage_mark, attack_hint]
 	enemy_label.tooltip_text = String(snapshot.enemy_hint)
 	kills_label.text = "擊倒 %d｜金幣 %d" % [int(snapshot.kills), int(snapshot.gold)]
 	var training_points := int(snapshot.training_points)
@@ -1102,7 +1390,9 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var retry_pending := bool(snapshot.get("retry_pending", false))
 	var retry_stage := int(snapshot.get("retry_stage", 0))
 	retry_button.visible = retry_pending and not battlefield.defeat_sequence_active()
-	retry_button.text = "再次挑戰｜第 %d 戰" % retry_stage
+	retry_button.text = "再次挑戰"
+	failure_status.visible = retry_pending and not battlefield.defeat_sequence_active()
+	failure_button.text = "第 %d 戰突破失敗｜查看情報" % retry_stage
 	enemy_bar.max_value = float(snapshot.enemy_max_hp)
 	enemy_bar.value = float(snapshot.enemy_hp)
 	hp_bar.max_value = float(snapshot.hero_max_hp)
@@ -1131,7 +1421,7 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var swift_text := " · 瞬步" if bool(snapshot.swift_step_ready) else ""
 	var flow_text := ""
 	if int(snapshot.training.agility) >= 15:
-		flow_text = " · 疾%d/%d" % [int(snapshot.swift_cut_hits), int(snapshot.swift_cut_hits_required)] if int(snapshot.youren) >= int(snapshot.max_youren) else ""
+		flow_text = " · 追%d/%d" % [int(snapshot.swift_cut_hits), int(snapshot.swift_cut_hits_required)] if int(snapshot.youren) >= int(snapshot.max_youren) else ""
 	youren_label.text = "游刃  %d/%d%s%s%s" % [int(snapshot.youren), int(snapshot.max_youren), flow_text, swift_text, shadowless_text]
 	for index in youren_pips.size():
 		var filled := index < int(snapshot.youren)

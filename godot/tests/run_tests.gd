@@ -11,7 +11,10 @@ func _run_tests() -> void:
 	_test_auto_attack_and_momentum()
 	_test_training_growth_and_locked_tracks()
 	_test_equipment_style_levels_and_unlock_boundary()
+	_test_equipment_skill_unlocks_all_tiers()
 	_test_equipment_drop_quality_and_enhancement()
+	_test_shop_loop()
+	_test_inheritance_loop()
 	_test_magic_sword_marks_and_auto_attack()
 	_test_burning_cycle()
 	_test_flame_burst_slash()
@@ -46,6 +49,10 @@ func _run_tests() -> void:
 	_test_enemy_traits_and_boss_phases()
 	_test_journey_choice_controls_next_area()
 	_test_defeat_farms_previous_stage_until_retry()
+	_test_frontier_stage_waves()
+	_test_failure_report_keeps_idle_loop()
+	_test_boss_fixed_reward_choice()
+	_test_slice_metrics_capture_adjustment()
 	_test_return_blade_auto_counter()
 	_test_guard_stance_window()
 	_test_immovable_layers()
@@ -72,7 +79,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 60")
+		print("Godot tests passed: 67")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -95,12 +102,19 @@ func _test_equipment_style_levels_and_unlock_boundary() -> void:
 	var hp_before := float(model.snapshot().hero_max_hp)
 	_expect(model.equip_item("black_iron_armor"), "裝備頁必須能穿上有效的防具")
 	_expect(model.base_style_level("physique") == 5, "裝備不可改寫 Base 流派等級")
-	_expect(model.equipment_style_bonus("physique") == 8 and model.effective_style_level("physique") == 13, "有效流派等級必須等於 Base 加裝備加成")
+	_expect(model.equipment_style_bonus("physique") == 6 and model.effective_style_level("physique") == 11, "有效流派等級必須等於 Base 加裝備加成")
 	_expect(float(model.snapshot().hero_max_hp) > hp_before, "角色數值必須使用有效流派等級")
-	_expect(not model.skill_is_unlocked("guard_stance"), "永久技能解鎖只能使用 Base 流派等級")
+	_expect(model.skill_is_unlocked("guard_stance"), "裝備提高有效流派等級後必須能解鎖技能")
+	_expect(model.skill_is_equipment_supported("guard_stance"), "技能必須能辨識是否由裝備支撐解鎖")
+	_expect(model.equip_auto_skill("guard_stance"), "由裝備支撐解鎖的主動技必須可以裝入 AUTO")
 	model.grant_equipment("temple_armor")
 	_expect(model.equip_item("temple_armor"), "同欄位裝備必須可以直接替換")
 	_expect(String(model.equipped_items.armor) == "temple_armor" and model.equipment_style_bonus("physique") == 5, "同欄位只能保留目前裝備的加成")
+	_expect(model.skill_is_unlocked("guard_stance"), "替換裝備後有效等級仍達門檻時技能必須保持解鎖")
+	_expect(model.unequip_item("armor"), "必須可以卸下裝備")
+	_expect(not model.skill_is_unlocked("guard_stance"), "卸下支撐裝備後，有效等級不足的技能必須停用")
+	_expect(not model._can_cast("guard_stance"), "已在 AUTO 欄的裝備支撐技能，卸裝後不可繼續施放")
+	_expect(model.equip_item("temple_armor"), "測試後續數值前必須能重新穿上裝備")
 	model.training.martial = 10
 	model.grant_equipment("momentum_talisman")
 	model.equip_item("momentum_talisman")
@@ -128,6 +142,55 @@ func _test_equipment_drop_quality_and_enhancement() -> void:
 	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type in ["equipment_drop", "equipment_duplicate"]), "首領必須保證產生裝備或重複裝備補償")
 	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "gold_gain"), "每場戰鬥必須固定獲得金幣")
 
+func _test_equipment_skill_unlocks_all_tiers() -> void:
+	var model = CombatModelScript.new()
+	model.training.magic = 44
+	model.grant_equipment("magic_rune_sword")
+	model.equip_item("magic_rune_sword")
+	_expect(model.effective_style_level("magic") >= 50, "測試裝備必須能把魔法有效等級推到 Lv.50")
+	_expect(model.skill_is_unlocked("magic_sword_release") and model.skill_is_equipment_supported("magic_sword_release"), "裝備必須可以支援 Lv.50 以上技能")
+	model.equip_auto_skill("magic_sword_release")
+	model.unequip_item("weapon")
+	_expect(model.auto_skill_slots.has("magic_sword_release"), "失去裝備支援時技能必須保留原本欄位")
+	_expect(not model._can_cast("magic_sword_release"), "失去裝備支援後 AUTO 不可施放該技能")
+
+func _test_shop_loop() -> void:
+	var model = CombatModelScript.new()
+	model.training.agility = 12
+	model._generate_shop_items()
+	_expect(model.shop_items.size() == 3, "戰地商店每批必須產生 3 件商品")
+	_expect(model.shop_items.any(func(item_id: String) -> bool: return int(CombatModelScript.EQUIPMENT_DEFS[item_id].get("style_bonuses", {}).get("agility", 0)) > 0), "商店至少一件商品必須符合目前最高 Base 流派")
+	model.gold = 500
+	var bought: Dictionary = model.buy_shop_item(0)
+	_expect(not bought.is_empty() and bool(model.equipment_collection.get(String(bought.item_id), false)), "購買裝備必須扣款、加入持有與永久收藏")
+	var first_refresh_cost := model.shop_refresh_cost()
+	_expect(first_refresh_cost == 30 and model.refresh_shop(), "第一次刷新必須花費 30 金")
+	_expect(model.shop_refresh_cost() == 60, "第二次刷新價格必須提升為 60 金")
+	var gold_before_sell: int = model.gold
+	var sell_value := model.sell_equipment(String(bought.item_id))
+	_expect(sell_value > 0 and model.gold == gold_before_sell + sell_value, "出售裝備必須回收金幣")
+
+func _test_inheritance_loop() -> void:
+	var memory = CombatModelScript.new()
+	memory.inheritance_unlocked = true
+	memory.stage = 41
+	memory.gold = 999
+	memory.training.agility = 80
+	memory.perform_inheritance("memory", "agility")
+	_expect(memory.stage == 1 and memory.gold == 0 and memory.base_style_level("agility") == 5, "記憶傳承必須回到第 1 戰並讓指定 Base 流派 +5")
+	_expect(memory.battle_souls == 1 and memory.inheritance_count == 1, "完成傳承必須累積永久戰魂與次數")
+	var equipment = CombatModelScript.new()
+	equipment.inheritance_unlocked = true
+	equipment.grant_equipment("swift_wind_feather")
+	equipment.equipment_enhancements.swift_wind_feather = 5
+	equipment.perform_inheritance("equipment", "swift_wind_feather")
+	_expect(int(equipment.owned_equipment.get("swift_wind_feather", 0)) == 1 and equipment.equipment_enhancement("swift_wind_feather") == 0, "舊裝傳承必須保留一件裝備但強化歸零")
+	_expect(bool(equipment.equipment_collection.get("swift_wind_feather", false)), "傳承後裝備收藏必須永久保留")
+	var trade = CombatModelScript.new()
+	trade.inheritance_unlocked = true
+	trade.perform_inheritance("trade", "magic")
+	_expect(trade.legacy_track == "magic" and trade.shop_items.size() == 3, "商路傳承必須保存指定流派並立即產生新商店")
+
 func _test_defeat_farms_previous_stage_until_retry() -> void:
 	var model = CombatModelScript.new()
 	model.stage = 6
@@ -143,6 +206,78 @@ func _test_defeat_farms_previous_stage_until_retry() -> void:
 	var retry_events: Array[Dictionary] = model.retry_failed_stage()
 	_expect(model.stage == 6 and not model.retry_pending, "按下再次挑戰才可回到失敗關卡")
 	_expect(retry_events.any(func(event: Dictionary) -> bool: return event.type == "retry_started"), "再次挑戰必須送出明確戰鬥事件")
+
+func _test_frontier_stage_waves() -> void:
+	var model = CombatModelScript.new()
+	model.stage = 2
+	model.current_wave = 0
+	model._spawn_enemy()
+	var points_before: int = model.training_points
+	model._events.clear()
+	model._enemy_defeated()
+	_expect(model.stage == 2 and model.current_wave == 1, "第2戰第一名新兵倒下後必須進入同戰第二波")
+	_expect(is_equal_approx(model.wave_transition_remaining, CombatModelScript.WAVE_TRANSITION_DURATION), "Wave 切換必須保留 0.8 秒辨識節拍")
+	_expect(model.training_points == points_before, "單一 Wave 不可重複發放整戰修練獎勵")
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "wave_transition_started" and int(event.wave) == 2), "連續波次必須發出清楚的換場事件")
+	var preserved_hp: float = model.hero_hp
+	var preserved_momentum: float = model.momentum
+	model.step(0.79)
+	_expect(model.enemy_hp <= 0.0 and model.current_wave == 1, "0.8 秒換場結束前不可提早生成敵人")
+	var transition_events := model.step(0.02)
+	_expect(model.enemy_hp > 0.0 and transition_events.any(func(event: Dictionary) -> bool: return event.type == "wave_started"), "0.8 秒後必須生成下一 Wave")
+	_expect(is_equal_approx(model.hero_hp, preserved_hp) and model.momentum >= preserved_momentum, "Wave 切換不得重置玩家生命與流派資源")
+	model._events.clear()
+	model._enemy_defeated()
+	_expect(model.stage == 3 and model.current_wave == 0, "清除全部 Wave 後才可推進下一戰")
+	_expect(model.training_points == points_before + 1, "完成整戰只發放一次修練獎勵")
+	model.stage = 9
+	model.current_wave = 0
+	_expect(model._stage_waves(9).size() == 3, "第9戰必須依序測試劍兵、盾衛與重槌兵")
+
+func _test_failure_report_keeps_idle_loop() -> void:
+	var model = CombatModelScript.new()
+	model.stage = 6
+	model.current_wave = 0
+	model._spawn_enemy()
+	model._record_incoming_damage(42.0, "heavy")
+	model._defeat_hero()
+	_expect(model.stage == 5 and model.retry_pending, "失敗分析不可改變退回上一戰掛機規則")
+	_expect(not model.last_failure_report.is_empty(), "戰敗必須保存突破分析")
+	_expect(String(model.last_failure_report.highest_damage_source).contains("重擊"), "突破分析必須指出最大承傷來源")
+	var events := model.step(0.2)
+	_expect(model.stage == 5 and not events.any(func(event: Dictionary) -> bool: return event.type == "defeat"), "玩家不開分析時上一戰仍必須繼續 AUTO")
+
+func _test_boss_fixed_reward_choice() -> void:
+	var model = CombatModelScript.new()
+	model.stage = 10
+	model.current_wave = 0
+	model.training.agility = 12
+	model._spawn_enemy()
+	model._events.clear()
+	model._enemy_defeated()
+	_expect(model.awaiting_journey_choice, "擊敗黑鐵統領後必須暫停於戰利品選擇")
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "boss_reward_choice"), "Boss 必須開啟固定三選一")
+	var options: Array[Dictionary] = model.boss_reward_options()
+	_expect(options.size() == 3 and String(options[2].item_id) == "swift_wind_feather", "第三件戰利品必須依最高 Base 流派決定")
+	var before: int = model.effective_style_level("agility")
+	var reward_events := model.claim_boss_reward("swift_wind_feather")
+	_expect(model.effective_style_level("agility") > before, "選擇 Boss 戰利品後必須立即提高有效流派等級")
+	_expect(reward_events.any(func(event: Dictionary) -> bool: return event.type == "journey_choice"), "選完戰利品後才可進入下一區選擇")
+	var reward_event: Dictionary = reward_events.filter(func(event: Dictionary) -> bool: return event.type == "boss_reward_claimed")[0]
+	var summary: Dictionary = reward_event.summary
+	_expect(int(summary.before.base) == int(summary.after.base) and int(summary.after.effective) > int(summary.before.effective), "Boss 摘要必須只改 Effective，永久 Base 不可被裝備改寫")
+	_expect(int(summary.next_base_milestone) == 15, "永久節點距離必須由 Base 流派等級計算")
+
+func _test_slice_metrics_capture_adjustment() -> void:
+	var model = CombatModelScript.new()
+	model.stage = 4
+	model._defeat_hero()
+	model.step(1.0)
+	model.spend_training("martial")
+	model.equip_item("black_iron_sword")
+	_expect(float(model.slice_metrics.retry_wait) >= 1.0, "測試紀錄必須保存失敗後掛機時間")
+	_expect(bool(model.slice_metrics.retry_training_spent), "測試紀錄必須保存再次挑戰前是否修練")
+	_expect(bool(model.slice_metrics.retry_equipment_changed), "測試紀錄必須保存再次挑戰前是否換裝")
 
 func _test_battlefield_impact_tiers() -> void:
 	var battlefield = BattlefieldScript.new()
@@ -527,25 +662,23 @@ func _test_base_heavy_strike_and_stream_modifiers() -> void:
 	martial.skill_cooldowns.clear()
 	events = martial.step(0.01)
 	var martial_hits := events.filter(func(event: Dictionary) -> bool: return event.type == "heavy_strike")
-	_expect(not martial_hits.is_empty() and float(martial_hits[0].damage) > float(base_hits[0].damage), "武藝必須以勢強化同一招重擊")
-	_expect(String(martial_hits[0].name) == "極勢重擊" and is_equal_approx(float(martial_hits[0].momentum_ratio), 1.0), "滿勢重擊必須送出極勢名稱與演出強度")
-	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "momentum_pierce"), "高勢重擊必須顯示破甲回饋")
-	_expect(is_equal_approx(martial.momentum, 100.0), "基礎重擊的武藝改造不應把勢直接消耗掉")
+	_expect(not martial_hits.is_empty() and String(martial_hits[0].name) == "重擊", "武藝訓練後共通重擊仍必須維持原名")
+	_expect(is_equal_approx(float(martial_hits[0].momentum_ratio), 0.0) and not events.any(func(event: Dictionary) -> bool: return event.type == "momentum_pierce"), "共通重擊不可再套用勢或流派破甲")
 	var hybrid = CombatModelScript.new()
 	hybrid.training.martial = 10
 	hybrid.training.physique = 10
 	hybrid.training.agility = 10
 	hybrid.training.magic = 10
-	_expect(hybrid.heavy_strike_modifiers().size() == 4 and hybrid.skill_display_name("heavy_strike") == "複合重擊", "四種訓練必須能同時改造重擊")
+	_expect(hybrid.heavy_strike_modifiers().is_empty() and hybrid.skill_display_name("heavy_strike") == "重擊", "多流派訓練不可改造共通重擊")
 	hybrid.youren = 5
-	_expect(hybrid._heavy_strike_cooldown() < 4.5 and hybrid._heavy_strike_cooldown() >= 2.5, "敏捷必須縮短重擊冷卻，但保留 2.5 秒下限")
+	_expect(is_equal_approx(hybrid._heavy_strike_cooldown(), 4.5), "共通重擊冷卻不可受敏捷改造")
 	var agile = CombatModelScript.new()
 	agile.training.agility = 10
 	agile.youren = 5
 	agile.enemy_hp = 9999.0
 	agile.skill_cooldowns.clear()
 	events = agile.step(0.01)
-	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "damage" and event.source == "heavy_strike_swift"), "敏捷改造後的重擊必須使用迅擊回饋")
+	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "damage" and event.source == "heavy_strike_base"), "敏捷訓練後重擊仍必須使用共通傷害來源")
 	agile.skill_cooldowns.heavy_strike = 999.0
 	agile.auto_attack_remaining = 0.0
 	events = agile.step(0.01)
@@ -651,19 +784,20 @@ func _test_boss_rage_phase() -> void:
 
 func _test_enemy_archetypes_and_route_rhythm() -> void:
 	var model = CombatModelScript.new()
-	var expected := {1: "raider", 2: "brute", 3: "shield", 4: "caster", 10: "boss"}
+	var expected := {1: "grunt", 3: "raider", 4: "shield", 6: "brute", 8: "centurion", 10: "boss"}
 	for target_stage: int in expected:
 		model.stage = target_stage
 		model._spawn_enemy()
 		_expect(model.enemy_archetype == String(expected[target_stage]), "路段 %d 必須出現預定敵人類型" % target_stage)
-	model.stage = 1
+	model.stage = 3
 	model._spawn_enemy()
 	var raider_interval := model._enemy_attack_interval()
-	model.stage = 2
+	model.stage = 6
 	model._spawn_enemy()
 	_expect(model._enemy_attack_interval() > raider_interval, "巨槌重兵必須比快攻斥候更慢出手")
 	_expect(model._attack_type_for_count(2) == "heavy", "巨槌重兵必須穩定使用重擊")
-	model.stage = 4
+	model.journey_route = "village"
+	model.stage = 6
 	model._spawn_enemy()
 	_expect(model._attack_type_for_count(1) == "area" and model._attack_type_for_count(3) == "sure_hit", "咒術師必須以範圍與必中術攻擊")
 	model.stage = 9
@@ -672,7 +806,7 @@ func _test_enemy_archetypes_and_route_rhythm() -> void:
 
 func _test_enemy_traits_and_boss_phases() -> void:
 	var shield = CombatModelScript.new()
-	shield.stage = 3
+	shield.stage = 4
 	shield._spawn_enemy()
 	shield.enemy_max_hp = 1000.0
 	shield.enemy_hp = 1000.0
@@ -684,7 +818,7 @@ func _test_enemy_traits_and_boss_phases() -> void:
 	shield._deal_damage(100.0, "attack")
 	_expect(shield.enemy_guard_stacks == 0 and shield._events.any(func(event: Dictionary) -> bool: return event.type == "enemy_guard_broken"), "連續攻擊必須能打破盾衛防線")
 	var magic = CombatModelScript.new()
-	magic.stage = 3
+	magic.stage = 4
 	magic._spawn_enemy()
 	magic.enemy_max_hp = 1000.0
 	magic.enemy_hp = 1000.0
@@ -846,7 +980,7 @@ func _test_swift_step_auto_dodge() -> void:
 
 func _test_youren_gain_and_break() -> void:
 	var model = CombatModelScript.new()
-	model.training.agility = 15
+	model.training.agility = 20
 	model.enemy_hp = 99999.0
 	model._events.clear()
 	for index in 2:
@@ -871,10 +1005,9 @@ func _test_youren_gain_and_break() -> void:
 	model._events.clear()
 	model._basic_attack(false)
 	model._basic_attack(false)
-	model._basic_attack(false)
-	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "swift_cut"), "Lv.15 游刃有餘時每三次普攻必須追加疾斬")
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "swift_cut" and String(event.name) == "追斬"), "Lv.20 游刃有餘時每兩次普攻必須追加追斬")
 	var finisher = CombatModelScript.new()
-	finisher.training.agility = 10
+	finisher.training.agility = 20
 	finisher.enemy_hp = 1.0
 	finisher.enemy_armor = 0.0
 	finisher._basic_attack(false)
@@ -888,12 +1021,23 @@ func _test_shadow_assault_and_opening() -> void:
 	model.youren = 3
 	model._events.clear()
 	model._resolve_dodge("normal", false)
-	_expect(model.youren == 5 and model._events.any(func(event: Dictionary) -> bool: return event.type == "shadow_assault"), "Lv.30 滿層游刃閃避後必須觸發影襲")
+	_expect(model.youren == 5 and model.shadow_assault_ready and model._events.any(func(event: Dictionary) -> bool: return event.type == "shadow_assault_ready"), "Lv.30 閃避後必須讓影襲進入可施放狀態")
 	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "opening"), "Lv.100 閃避後必須揭露乘隙破綻")
+	model._events.clear()
+	model._cast_skill("shadow_assault")
+	_expect(not model.shadow_assault_ready and model._events.any(func(event: Dictionary) -> bool: return event.type == "shadow_assault"), "影襲必須是技能欄中的條件式主動技能")
 	model._events.clear()
 	model._deal_damage(100.0, "test")
 	var damage_events: Array = model._events.filter(func(event: Dictionary) -> bool: return event.type == "damage")
 	_expect(not damage_events.is_empty() and is_equal_approx(float(damage_events[0].amount), 125.0), "乘隙期間必須提高對該敵人的傷害")
+	var swift = CombatModelScript.new()
+	swift.training.agility = 10
+	swift.enemy_hp = 99999.0
+	swift.enemy_armor = 0.0
+	swift._events.clear()
+	swift._cast_skill("swift_cut")
+	_expect(swift._events.any(func(event: Dictionary) -> bool: return event.type == "swift_cut" and int(event.hits) == 2), "敏捷 Lv.10 疾斬必須造成兩段高速斬擊")
+	_expect(is_equal_approx(float(swift.skill_cooldowns.swift_cut), 3.2), "疾斬必須使用 3.2 秒冷卻")
 
 func _test_agility_branches() -> void:
 	var traceless = CombatModelScript.new()
@@ -919,6 +1063,7 @@ func _test_agility_branches() -> void:
 	swallow.enemy_hp = 999999.0
 	for index in 20:
 		swallow._resolve_dodge("normal", false)
+		swallow._cast_skill("shadow_assault")
 	_expect(swallow._events.any(func(event: Dictionary) -> bool: return event.type == "flying_swallow"), "飛燕必須有機率追加第二次追擊")
 
 func _test_shadowless() -> void:
@@ -1064,7 +1209,7 @@ func _test_navigation() -> void:
 	scene.model.retry_pending = true
 	scene.model.retry_stage = 8
 	scene._update_hud(scene.model.snapshot())
-	_expect(scene.retry_button.visible and "第 8 戰" in scene.retry_button.text, "戰敗回退後必須顯示失敗關卡的再次挑戰入口")
+	_expect(scene.failure_status.visible and scene.retry_button.visible and "第 8 戰" in scene.failure_button.text, "戰敗後必須以單一狀態條提供情報與再次挑戰")
 	_expect(scene.mp_hud.visible and scene.momentum_hud.visible and scene.immovable_hud.visible and scene.youren_hud.visible and scene.magic_hud.visible and scene.faith_hud.visible and scene.command_hud.visible, "六流派機制同時存在時，HUD 必須完整顯示")
 	scene._switch_page("character")
 	await process_frame

@@ -15,6 +15,7 @@ const MAX_BURN := 5
 const MAX_HOLY_SEALS := 5
 const MAX_MILITARY_MOMENTUM := 100.0
 const ALLY_ATTACK_INTERVAL := 2.6
+const WAVE_TRANSITION_DURATION := 0.8
 const DODGE_CAP := 0.55
 const TRAINING_ORDER := ["martial", "physique", "agility", "magic", "faith", "command"]
 const TRAINING_DEFS := {
@@ -29,12 +30,18 @@ const EQUIPMENT_SLOT_NAMES := {"weapon": "武器", "armor": "防具", "accessory
 const EQUIPMENT_QUALITY_NAMES := {"common": "普通", "uncommon": "良品", "rare": "稀有", "epic": "史詩"}
 const EQUIPMENT_QUALITY_COSTS := {"common": 60, "uncommon": 90, "rare": 140, "epic": 220}
 const EQUIPMENT_DEFS := {
+	"black_iron_cleaver": {"name": "黑鐵斬劍", "slot": "weapon", "quality": "rare", "primary_style": "martial", "description": "對重甲敵人更有效的哨站軍官劍。", "style_bonuses": {"martial": 6}, "modifiers": {"armored_damage": 0.1}},
 	"black_iron_sword": {"name": "黑鐵長劍", "slot": "weapon", "quality": "common", "primary_style": "martial", "description": "制式軍劍，適合磨練穩定的一刀。", "style_bonuses": {"martial": 5}},
 	"magic_rune_sword": {"name": "魔紋長劍", "slot": "weapon", "quality": "rare", "primary_style": "magic", "description": "劍脊刻著能引導魔力的基礎符文。", "style_bonuses": {"magic": 7}},
 	"officer_sword": {"name": "軍官佩劍", "slot": "weapon", "quality": "rare", "primary_style": "command", "description": "兼顧個人劍術與軍陣號令。", "style_bonuses": {"martial": 3, "command": 5}},
-	"black_iron_armor": {"name": "黑鐵胸甲", "slot": "armor", "quality": "common", "primary_style": "physique", "description": "厚重可靠，能有效強化站穩與格擋。", "style_bonuses": {"physique": 8}},
+	"black_iron_armor": {"name": "哨站重甲", "slot": "armor", "quality": "common", "primary_style": "physique", "description": "厚重可靠，能減輕重擊造成的傷害。", "style_bonuses": {"physique": 6}, "modifiers": {"heavy_damage_taken": -0.1}},
 	"temple_armor": {"name": "聖堂護甲", "slot": "armor", "quality": "rare", "primary_style": "faith", "description": "受祝福的護甲，兼顧守勢與信念。", "style_bonuses": {"physique": 5, "faith": 5}},
 	"momentum_talisman": {"name": "蓄勢護符", "slot": "accessory", "quality": "uncommon", "primary_style": "martial", "description": "勢的獲取速度提高 15%。", "style_bonuses": {"martial": 3}, "modifiers": {"momentum_gain": 0.15}},
+	"iron_guard_emblem": {"name": "不動鐵徽", "slot": "accessory", "quality": "rare", "primary_style": "physique", "description": "哨站守軍留下的格擋徽記。", "style_bonuses": {"physique": 5}},
+	"swift_wind_feather": {"name": "游風羽飾", "slot": "accessory", "quality": "rare", "primary_style": "agility", "description": "輕得幾乎感覺不到的青羽飾品。", "style_bonuses": {"agility": 5}},
+	"magic_iron_core": {"name": "魔紋鐵核", "slot": "accessory", "quality": "rare", "primary_style": "magic", "description": "仍殘留微弱魔力的黑鐵核心。", "style_bonuses": {"magic": 5}},
+	"chaplain_seal": {"name": "軍牧聖印", "slot": "accessory", "quality": "rare", "primary_style": "faith", "description": "守軍軍牧佩戴的樸素聖印。", "style_bonuses": {"faith": 5}},
+	"centurion_banner": {"name": "百夫長旗章", "slot": "accessory", "quality": "rare", "primary_style": "command", "description": "代表前線號令權的殘破旗章。", "style_bonuses": {"command": 5}},
 }
 const ALLY_DEFS := {
 	"infantry": {"name": "王國步兵", "unlock_level": 10, "role": "前排作戰，定時揮劍並為主角累積軍勢"},
@@ -43,12 +50,18 @@ const ALLY_DEFS := {
 	"cleric": {"name": "隨軍聖職", "unlock_level": 200, "role": "進攻時同步為全軍提供小型治療"},
 }
 const ENEMY_DEFS := {
-	"grunt": {"name": "林地哥布林", "role": "普通近戰", "hint": "攻守平衡", "hp": 1.0, "armor": 1.0, "damage": 1.0, "interval": 2.25},
-	"raider": {"name": "快攻斥候", "role": "高頻攻擊", "hint": "會頻繁養出格擋與閃避觸發", "hp": 0.86, "armor": 0.72, "damage": 0.72, "interval": 1.35},
-	"brute": {"name": "巨槌重兵", "role": "慢速重擊", "hint": "蓄力久但傷害高，適合閃避或借力反擊", "hp": 1.28, "armor": 1.08, "damage": 1.48, "interval": 3.35},
+	"grunt": {"name": "黑鐵新兵", "role": "基準近戰", "hint": "攻守平衡，用來確認目前戰力", "hp": 1.0, "armor": 1.0, "damage": 1.0, "interval": 2.25},
+	"raider": {"name": "黑鐵劍兵", "role": "高頻攻擊", "hint": "出手快速，會頻繁養出格擋與閃避觸發", "hp": 0.9, "armor": 0.78, "damage": 0.78, "interval": 1.35},
+	"brute": {"name": "黑鐵重槌兵", "role": "碎甲重擊", "hint": "蓄力久但傷害高，重擊會打亂流派節奏", "hp": 1.28, "armor": 1.08, "damage": 1.48, "interval": 3.35},
 	"shield": {"name": "黑鐵盾衛", "role": "高護甲", "hint": "普通攻擊效率較低，破甲與魔劍更有效", "hp": 1.3, "armor": 2.45, "damage": 0.9, "interval": 2.65},
+	"centurion": {"name": "黑鐵百夫長", "role": "精英統合", "hint": "重甲、蓄力重擊與低血狂暴的綜合考驗", "hp": 1.62, "armor": 1.75, "damage": 1.28, "interval": 2.45},
 	"caster": {"name": "林地咒術師", "role": "範圍施法", "hint": "以範圍與必中術打斷節奏", "hp": 0.92, "armor": 0.68, "damage": 1.18, "interval": 3.0},
-	"boss": {"name": "重甲哥布林王", "role": "首領", "hint": "混合重擊、範圍與必中攻擊", "hp": 2.2, "armor": 1.0, "damage": 1.25, "interval": 2.0},
+	"boss": {"name": "黑鐵統領", "role": "重甲首領", "hint": "每隔數次攻擊施放碎甲重擊，30% 生命進入狂怒", "hp": 2.2, "armor": 1.5, "damage": 1.25, "interval": 2.0},
+}
+const FRONTIER_STAGE_WAVES := {
+	1: ["grunt"], 2: ["grunt", "grunt"], 3: ["raider"], 4: ["shield"],
+	5: ["raider", "shield"], 6: ["brute"], 7: ["brute", "grunt"], 8: ["centurion"],
+	9: ["raider", "shield", "brute"], 10: ["boss"],
 }
 const SHIELD_BYPASS_SOURCES := {
 	"magic_enchant": true, "magic_slash": true, "flame_burst_slash": true,
@@ -62,7 +75,7 @@ const JOURNEY_ROUTES := {
 	"battlefield": {"name": "沉眠古戰場", "intro": "鏽劍遍地，亡者仍守著早已不存在的軍旗。", "effect": "敵人生命與護甲提高｜擊敗 Boss 額外獲得 3 修練"},
 }
 const ROUTE_ENEMY_NAMES := {
-	"frontier": {"grunt": "林地哥布林", "raider": "快攻斥候", "brute": "巨槌重兵", "shield": "黑鐵盾衛", "caster": "林地咒術師", "boss": "重甲哥布林王"},
+	"frontier": {"grunt": "黑鐵新兵", "raider": "黑鐵劍兵", "brute": "黑鐵重槌兵", "shield": "黑鐵盾衛", "centurion": "黑鐵百夫長", "caster": "林地咒術師", "boss": "黑鐵統領"},
 	"mountain": {"grunt": "灰峽野狼", "raider": "裂牙獵狼", "brute": "岩背巨狼", "shield": "山道盾匪", "caster": "峽谷獵手", "boss": "峽谷狼王"},
 	"village": {"grunt": "劫村盜匪", "raider": "盜匪斥候", "brute": "破門暴徒", "shield": "掠村盾徒", "caster": "縱火術士", "boss": "黑旗盜匪頭目"},
 	"battlefield": {"grunt": "徘徊亡兵", "raider": "斷刃幽魂", "brute": "鐵甲屍兵", "shield": "古戰盾靈", "caster": "戰場怨靈", "boss": "無首將軍"},
@@ -186,16 +199,19 @@ const SKILL_DEFS := {
 		"condition": "待發時必定閃避下一次可閃避攻擊", "tags": ["DODGE", "FOLLOW_UP"], "implemented": true,
 	},
 	"flowing_ease": {
-		"name": "游刃", "short": "游刃", "type": "passive", "track": "agility", "level": 10,
-		"condition": "疊至 5 層進入游刃有餘，每 2 次普攻追加疾斬", "tags": ["DODGE", "STACK", "FOLLOW_UP"], "implemented": true,
+		"name": "游刃", "short": "游刃", "type": "passive", "track": "agility", "level": 20,
+		"condition": "連續攻擊與閃避累積游刃；滿層每 2 次普攻追加追斬", "tags": ["DODGE", "STACK", "FOLLOW_UP"], "implemented": true,
 	},
 	"swift_cut": {
-		"name": "疾斬", "short": "疾斬", "type": "passive", "track": "agility", "level": 15,
-		"condition": "滿層游刃時，普攻連段自動追加疾斬", "tags": ["FOLLOW_UP"], "implemented": true,
+		"name": "疾斬", "short": "疾斬", "type": "active", "track": "agility", "level": 10,
+		"cooldown": 3.2, "resource": "none", "cost": 0.0,
+		"condition": "敵人在攻擊範圍內；快速連斬兩次", "damage_multiplier": 0.8,
+		"tags": ["MELEE", "FOLLOW_UP"], "implemented": true,
 	},
 	"shadow_assault": {
-		"name": "影襲", "short": "影襲", "type": "passive", "track": "agility", "level": 30,
-		"condition": "滿層游刃成功閃避後必定追擊", "tags": ["DODGE", "FOLLOW_UP"], "implemented": true,
+		"name": "影襲", "short": "影襲", "type": "active", "track": "agility", "level": 30,
+		"cooldown": 0.8, "resource": "none", "cost": 0.0,
+		"condition": "成功閃避後短暫可用", "tags": ["DODGE", "FOLLOW_UP"], "implemented": true,
 	},
 	"exploit_opening": {
 		"name": "乘隙", "short": "乘隙", "type": "passive", "track": "agility", "level": 70,
@@ -372,8 +388,8 @@ const COMMAND_BRANCHES := {
 	"orders": {"name": "號令", "description": "降低軍勢消耗並提高軍團技能頻率"},
 }
 const MARTIAL_MILESTONES := {
-	5: {"name": "鋒刃磨練", "description": "攻擊與破甲提高"}, 10: {"name": "勢與蓄勢重擊", "description": "解鎖勢；基礎重擊開始受到勢強化"},
-	15: {"name": "蓄勢重擊", "description": "勢越高，重擊傷害與破甲越高"}, 20: {"name": "斬殺", "description": "低血敵人受到更多一刀傷害"},
+	5: {"name": "鋒刃磨練", "description": "攻擊與破甲提高"}, 10: {"name": "勢", "description": "解鎖一刀流專屬資源「勢」"},
+	15: {"name": "蓄勢精進", "description": "勢的累積速度提高"}, 20: {"name": "斬殺", "description": "低血敵人受到更多一刀傷害"},
 	25: {"name": "回勢", "description": "擊殺返還額外勢"}, 30: {"name": "斷首", "description": "解鎖低血斬殺技能"},
 	35: {"name": "斷首續勢", "description": "斷首擊殺後加快下一輪蓄勢"}, 40: {"name": "裂甲蓄勢", "description": "高勢斬擊獲得額外破甲"},
 	45: {"name": "極勢", "description": "滿勢時提高一刀傷害與破甲"}, 50: {"name": "拔刀", "description": "解鎖一刀流爆發狀態"},
@@ -416,8 +432,8 @@ const PHYSIQUE_MILESTONES := {
 	195: {"name": "明王深化", "description": "不動明王時間與反擊提高"}, 200: {"name": "不動返天", "description": "解鎖純體術終極奧義"},
 }
 const AGILITY_MILESTONES := {
-	5: {"name": "行動效率", "description": "攻速、暴擊與閃避提高"}, 10: {"name": "游刃", "description": "順暢攻防累積游刃"},
-	15: {"name": "疾斬", "description": "滿游刃時普攻連段追加斬擊"}, 20: {"name": "游刃精進", "description": "游刃提高追擊與暴擊"},
+	5: {"name": "行動效率", "description": "攻速、暴擊與閃避提高"}, 10: {"name": "疾斬", "description": "解鎖兩段高速斬擊"},
+	15: {"name": "迅擊磨練", "description": "疾斬傷害小幅提高"}, 20: {"name": "游刃", "description": "順暢攻防累積游刃；滿層普攻追加追斬"},
 	25: {"name": "節奏維持", "description": "擊殺與閃避更容易維持游刃"}, 30: {"name": "影襲", "description": "閃避後追加高速攻擊"},
 	35: {"name": "影襲強化", "description": "影襲傷害提高"}, 40: {"name": "游刃有餘", "description": "滿層時提高攻速、暴擊與疾斬"},
 	45: {"name": "快劍", "description": "提高疾斬頻率"}, 50: {"name": "瞬步", "description": "保證閃避下一次可閃攻擊"},
@@ -529,6 +545,15 @@ var journey_route := "frontier"
 var awaiting_journey_choice := false
 var retry_pending := false
 var retry_stage := 0
+var current_wave := 0
+var wave_transition_remaining := 0.0
+var last_failure_report := {}
+var incoming_damage_by_source := {}
+var last_incoming_source := ""
+var slice_metrics := {
+	"elapsed": 0.0, "stage_first_reached": {}, "stage_deaths": {}, "retry_wait": 0.0,
+	"retry_training_spent": false, "retry_equipment_changed": false, "boss_reward": "", "next_area_pressed": false,
+}
 var route_training_progress := 0.0
 var hero_hp := 100.0
 var enemy_hp := 52.0
@@ -550,6 +575,15 @@ var training := {"martial": 0, "physique": 0, "agility": 0, "magic": 0, "faith":
 var equipped_items := {"weapon": "", "armor": "", "accessory": ""}
 var owned_equipment := {"black_iron_sword": 1, "black_iron_armor": 1}
 var equipment_enhancements := {"black_iron_sword": 0, "magic_rune_sword": 0, "officer_sword": 0, "black_iron_armor": 0, "temple_armor": 0, "momentum_talisman": 0}
+var equipment_collection := {"black_iron_sword": true, "black_iron_armor": true}
+var shop_items: Array[String] = []
+var shop_refresh_count := 0
+var inheritance_unlocked := false
+var battle_souls := 0
+var inheritance_count := 0
+var legacy_choice := ""
+var legacy_track := ""
+var legacy_item := ""
 var temporary_style_modifiers := {"martial": 0, "physique": 0, "agility": 0, "magic": 0, "faith": 0, "command": 0}
 var martial_branch := ""
 var physique_branch := ""
@@ -563,6 +597,7 @@ var immovable := 0
 var youren := 0
 var flow_hits := 0
 var swift_cut_hits := 0
+var shadow_assault_ready := false
 var hero_mp := 0.0
 var magic_marks := 0
 var burn_stacks := 0
@@ -622,9 +657,14 @@ var _events: Array[Dictionary] = []
 
 func _init() -> void:
 	rng.seed = 1337
+	_record_stage_reached()
+	_generate_shop_items()
 
 func step(delta: float) -> Array[Dictionary]:
 	_events.clear()
+	slice_metrics.elapsed = float(slice_metrics.elapsed) + delta
+	if retry_pending:
+		slice_metrics.retry_wait = float(slice_metrics.retry_wait) + delta
 	if awaiting_journey_choice:
 		return []
 	_tick_cooldowns(delta)
@@ -672,6 +712,12 @@ func step(delta: float) -> Array[Dictionary]:
 		shadowless_remaining = 6.0
 		shadowless_cooldown = 15.0
 		_events.append({"type": "shadowless", "duration": shadowless_remaining})
+	if wave_transition_remaining > 0.0:
+		wave_transition_remaining = maxf(0.0, wave_transition_remaining - delta)
+		if wave_transition_remaining <= 0.0:
+			_spawn_enemy()
+			_events.append({"type": "wave_started", "stage": stage, "wave": current_wave + 1, "wave_count": _stage_waves(stage).size(), "enemy": _enemy_display_name()})
+		return _events.duplicate(true)
 	enemy_engagement_time += delta
 	var passive_gain := 5.0 * (2.0 if draw_stance_remaining > 0.0 else 1.0)
 	if int(training.martial) >= 10:
@@ -706,6 +752,8 @@ func spend_training(track: String) -> Array[Dictionary]:
 	var previous := int(training[track])
 	training[track] = previous + 1
 	training_points -= 1
+	if retry_pending:
+		slice_metrics.retry_training_spent = true
 	hero_hp += _hero_max_hp() - old_max_hp
 	hero_mp += _hero_max_mp() - old_max_mp
 	_events.append({"type": "training_up", "track": track, "name": String(definition.name), "level": previous + 1})
@@ -785,6 +833,8 @@ func equip_item(item_id: String) -> bool:
 	var old_max_hp := _hero_max_hp()
 	var old_max_mp := _hero_max_mp()
 	equipped_items[slot] = item_id
+	if retry_pending:
+		slice_metrics.retry_equipment_changed = true
 	hero_hp = minf(_hero_max_hp(), hero_hp + maxf(0.0, _hero_max_hp() - old_max_hp))
 	hero_mp = minf(_hero_max_mp(), hero_mp + maxf(0.0, _hero_max_mp() - old_max_mp))
 	return true
@@ -808,6 +858,8 @@ func enhance_equipment(item_id: String) -> bool:
 	var old_max_mp := _hero_max_mp()
 	gold -= cost
 	equipment_enhancements[item_id] = equipment_enhancement(item_id) + 1
+	if retry_pending:
+		slice_metrics.retry_equipment_changed = true
 	hero_hp = minf(_hero_max_hp(), hero_hp + maxf(0.0, _hero_max_hp() - old_max_hp))
 	hero_mp = minf(_hero_max_mp(), hero_mp + maxf(0.0, _hero_max_mp() - old_max_mp))
 	return true
@@ -816,7 +868,73 @@ func grant_equipment(item_id: String) -> bool:
 	if not EQUIPMENT_DEFS.has(item_id):
 		return false
 	owned_equipment[item_id] = int(owned_equipment.get(item_id, 0)) + 1
+	equipment_collection[item_id] = true
 	return true
+
+func shop_refresh_cost() -> int:
+	return 30 if shop_refresh_count == 0 else (60 if shop_refresh_count == 1 else 120)
+
+func buy_shop_item(index: int) -> Dictionary:
+	if index < 0 or index >= shop_items.size():
+		return {}
+	var item_id := shop_items[index]
+	var price := int(EQUIPMENT_QUALITY_COSTS.get(String(EQUIPMENT_DEFS[item_id].quality), 60))
+	if gold < price:
+		return {}
+	gold -= price
+	grant_equipment(item_id)
+	shop_items.remove_at(index)
+	return {"item_id": item_id, "name": String(EQUIPMENT_DEFS[item_id].name), "price": price}
+
+func sell_equipment(item_id: String) -> int:
+	if not EQUIPMENT_DEFS.has(item_id) or int(owned_equipment.get(item_id, 0)) <= 0:
+		return 0
+	var slot := String(EQUIPMENT_DEFS[item_id].slot)
+	if String(equipped_items.get(slot, "")) == item_id:
+		equipped_items[slot] = ""
+	owned_equipment[item_id] = int(owned_equipment[item_id]) - 1
+	var value := maxi(10, int(EQUIPMENT_QUALITY_COSTS.get(String(EQUIPMENT_DEFS[item_id].quality), 60)) / 2)
+	gold += value
+	return value
+
+func refresh_shop() -> bool:
+	var cost := shop_refresh_cost()
+	if gold < cost:
+		return false
+	gold -= cost
+	shop_refresh_count += 1
+	_generate_shop_items()
+	return true
+
+func _generate_shop_items() -> void:
+	shop_items.clear()
+	var preferred_track := _highest_base_track()
+	var preferred_candidates: Array[String] = []
+	for item_id: String in EQUIPMENT_DEFS:
+		var bonuses: Dictionary = EQUIPMENT_DEFS[item_id].get("style_bonuses", {})
+		if int(bonuses.get(preferred_track, 0)) > 0:
+			preferred_candidates.append(item_id)
+	if not preferred_candidates.is_empty():
+		shop_items.append(preferred_candidates[rng.randi_range(0, preferred_candidates.size() - 1)])
+	var weighted: Array[String] = []
+	for item_id: String in EQUIPMENT_DEFS:
+		var definition: Dictionary = EQUIPMENT_DEFS[item_id]
+		var weight := int({"common": 8, "uncommon": 5, "rare": 3, "epic": 1}.get(String(definition.quality), 4))
+		if not legacy_track.is_empty() and int(definition.get("style_bonuses", {}).get(legacy_track, 0)) > 0:
+			weight *= 2
+		for copy in weight:
+			weighted.append(item_id)
+	while shop_items.size() < 3 and not weighted.is_empty():
+		var item_id := weighted[rng.randi_range(0, weighted.size() - 1)]
+		if not shop_items.has(item_id):
+			shop_items.append(item_id)
+
+func _highest_base_track() -> String:
+	var result := "martial"
+	for track: String in TRAINING_ORDER:
+		if base_style_level(track) > base_style_level(result):
+			result = track
+	return result
 
 func unequip_item(slot: String) -> bool:
 	if not equipped_items.has(slot) or String(equipped_items[slot]).is_empty():
@@ -953,7 +1071,17 @@ func skill_is_unlocked(skill_id: String) -> bool:
 	var definition: Dictionary = SKILL_DEFS[skill_id]
 	if String(definition.track) == "common":
 		return true
-	return int(training[String(definition.track)]) >= int(definition.level)
+	return effective_style_level(String(definition.track)) >= int(definition.level)
+
+func skill_is_equipment_supported(skill_id: String) -> bool:
+	if not skill_is_unlocked(skill_id) or not SKILL_DEFS.has(skill_id):
+		return false
+	var definition: Dictionary = SKILL_DEFS[skill_id]
+	var track := String(definition.track)
+	if track == "common":
+		return false
+	var required_level := int(definition.level)
+	return base_style_level(track) < required_level and effective_style_level(track) >= required_level
 
 func snapshot() -> Dictionary:
 	var route_definition := _journey_definition()
@@ -964,10 +1092,12 @@ func snapshot() -> Dictionary:
 		effective_levels[track] = effective_style_level(track)
 	return {
 		"stage": stage,
+		"wave": current_wave + 1, "wave_count": _stage_waves(stage).size(), "wave_transition_remaining": wave_transition_remaining,
 		"area_number": area_number, "journey_route": journey_route,
 		"journey_name": String(route_definition.name), "journey_intro": String(route_definition.intro), "journey_effect": String(route_definition.effect),
 		"awaiting_journey_choice": awaiting_journey_choice,
 		"retry_pending": retry_pending, "retry_stage": retry_stage,
+		"last_failure_report": last_failure_report.duplicate(true), "slice_metrics": slice_metrics.duplicate(true),
 		"hero_hp": hero_hp, "hero_max_hp": _hero_max_hp(), "hero_mp": hero_mp, "hero_max_mp": _hero_max_mp(),
 		"attack": _attack_power(), "magic_power": _magic_power(), "defense": _defense(),
 		"enemy_hp": enemy_hp, "enemy_max_hp": enemy_max_hp, "enemy_armor": enemy_armor,
@@ -983,12 +1113,15 @@ func snapshot() -> Dictionary:
 		"equipment_style_bonuses": equipment_bonuses, "temporary_style_modifiers": temporary_style_modifiers.duplicate(true),
 		"effective_style_levels": effective_levels, "equipped_items": equipped_items.duplicate(true),
 		"owned_equipment": owned_equipment.duplicate(true), "equipment_enhancements": equipment_enhancements.duplicate(true),
+		"equipment_collection": equipment_collection.duplicate(true), "shop_items": shop_items.duplicate(), "shop_refresh_cost": shop_refresh_cost(),
+		"shop_refresh_count": shop_refresh_count, "inheritance_unlocked": inheritance_unlocked, "battle_souls": battle_souls,
+		"inheritance_count": inheritance_count, "legacy_choice": legacy_choice, "legacy_track": legacy_track, "legacy_item": legacy_item,
 		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch, "draw_stance_remaining": draw_stance_remaining,
 		"immovable": immovable, "max_immovable": MAX_IMMOVABLE, "physique_branch": physique_branch,
 		"return_blade_ready": return_blade_ready, "guard_stance_remaining": guard_stance_remaining, "counter_chain": counter_chain,
 		"youren": youren, "max_youren": MAX_YOUREN, "flow_hits": flow_hits, "flow_hits_required": FLOW_HITS_REQUIRED,
-		"swift_cut_hits": swift_cut_hits, "swift_cut_hits_required": 1 if int(training.agility) >= 140 else (2 if int(training.agility) >= 45 else 3), "agility_branch": agility_branch,
-		"swift_step_ready": swift_step_ready, "shadowless_remaining": shadowless_remaining,
+		"swift_cut_hits": swift_cut_hits, "swift_cut_hits_required": 1 if int(training.agility) >= 140 else 2, "agility_branch": agility_branch,
+		"swift_step_ready": swift_step_ready, "shadow_assault_ready": shadow_assault_ready, "shadowless_remaining": shadowless_remaining,
 		"magic_marks": magic_marks, "max_magic_marks": MAX_MAGIC_MARKS,
 		"burn_stacks": burn_stacks, "max_burn": MAX_BURN, "frost_stacks": frost_stacks,
 		"lightning_stacks": lightning_stacks, "secondary_element": secondary_element,
@@ -1098,6 +1231,8 @@ func _can_cast(skill_id: String) -> bool:
 		return immovable < MAX_IMMOVABLE and guard_stance_remaining <= 0.0
 	if skill_id == "swift_step":
 		return not swift_step_ready
+	if skill_id == "shadow_assault":
+		return shadow_assault_ready
 	if skill_id == "flame_burst_slash":
 		return burn_stacks >= MAX_BURN
 	if skill_id == "magic_sword_release":
@@ -1150,6 +1285,12 @@ func _cast_skill(skill_id: String) -> void:
 	if skill_id == "swift_step":
 		swift_step_ready = true
 		_events.append({"type": "swift_step_ready", "skill_id": skill_id, "name": String(definition.name)})
+		return
+	if skill_id == "swift_cut":
+		_cast_swift_cut()
+		return
+	if skill_id == "shadow_assault":
+		_cast_shadow_assault()
 		return
 	if skill_id == "collapse_counter":
 		_cast_collapse_counter()
@@ -1210,89 +1351,74 @@ func _cast_skill(skill_id: String) -> void:
 
 func _cast_heavy_strike() -> void:
 	var definition: Dictionary = SKILL_DEFS.heavy_strike
-	var modifiers := heavy_strike_modifiers()
 	var raw_damage := _attack_power() * float(definition.damage_multiplier)
-	var armor_ignore := 0.0
-	var martial_level := int(training.martial)
-	var physique_level := int(training.physique)
-	var agility_level := int(training.agility)
-	var magic_level := int(training.magic)
-	var momentum_ratio := 0.0
-	if martial_level >= 10:
-		momentum_ratio = clampf(momentum / MAX_MOMENTUM, 0.0, 1.0)
-		raw_damage *= 1.0 + momentum_ratio * (0.45 + float(martial_level) * 0.002)
-		armor_ignore += momentum_ratio * minf(0.3, 0.1 + float(martial_level) * 0.001)
-		if martial_level >= 20 and enemy_hp / maxf(1.0, enemy_max_hp) <= 0.3:
-			raw_damage *= 1.25
-	if physique_level >= 10 and recent_prevented_damage > 0.0:
-		raw_damage += _defense() * (0.7 + float(physique_level) * 0.004)
-		raw_damage += recent_prevented_damage * minf(0.65, 0.25 + float(physique_level) * 0.002)
-		recent_prevented_damage *= 0.5
-	if agility_level >= 10:
-		raw_damage *= 1.0 + float(youren) * (0.025 + float(agility_level) * 0.00015)
-		if rng.randf() < _critical_chance():
-			raw_damage *= 1.5
-		skill_cooldowns["heavy_strike"] = _heavy_strike_cooldown()
-	else:
-		skill_cooldowns["heavy_strike"] = float(definition.cooldown)
-	var damage_source := "heavy_strike_base"
-	if martial_level >= 10:
-		damage_source = "heavy_strike_extreme" if momentum_ratio >= 1.0 else ("heavy_strike_high" if momentum_ratio >= 0.8 else "heavy_strike_martial")
-	elif agility_level >= 10:
-		damage_source = "heavy_strike_swift"
-	_events.append({"type": "heavy_strike", "skill_id": "heavy_strike", "name": _heavy_strike_cast_name(momentum_ratio), "damage": raw_damage, "modifiers": modifiers, "momentum_ratio": momentum_ratio, "armor_ignore": armor_ignore})
-	if momentum_ratio >= 0.8:
-		_events.append({"type": "momentum_pierce", "name": "極勢破甲" if momentum_ratio >= 1.0 else "高勢破甲", "armor_ignore": armor_ignore})
-	var defeated := _deal_damage(raw_damage, damage_source, armor_ignore)
-	if magic_level >= 10 and not defeated:
-		_magic_enchanted_hit(false)
+	skill_cooldowns["heavy_strike"] = float(definition.cooldown)
+	_events.append({"type": "heavy_strike", "skill_id": "heavy_strike", "name": "重擊", "damage": raw_damage, "modifiers": [], "momentum_ratio": 0.0, "armor_ignore": 0.0})
+	_deal_damage(raw_damage, "heavy_strike_base")
 
 func _heavy_strike_cooldown() -> float:
-	var speed_bonus := _agility_action_speed_bonus() * 0.45 + float(youren) * 0.025
-	return maxf(2.5, float(SKILL_DEFS.heavy_strike.cooldown) / (1.0 + speed_bonus))
+	return float(SKILL_DEFS.heavy_strike.cooldown)
 
 func _heavy_strike_cast_name(momentum_ratio: float) -> String:
-	if int(training.martial) < 10:
-		return skill_display_name("heavy_strike")
-	if momentum_ratio >= 1.0:
-		return "極勢重擊"
-	if momentum_ratio >= 0.8:
-		return "高勢重擊"
-	return skill_display_name("heavy_strike")
+	return "重擊"
 
 func heavy_strike_modifiers() -> Array[String]:
-	var modifiers: Array[String] = []
-	if int(training.martial) >= 10: modifiers.append("武藝・蓄勢")
-	if int(training.physique) >= 10: modifiers.append("體術・借力")
-	if int(training.agility) >= 10: modifiers.append("敏捷・迅擊")
-	if int(training.magic) >= 10: modifiers.append("魔法・附魔")
-	return modifiers
+	return []
 
 func skill_display_name(skill_id: String, short := false) -> String:
-	if skill_id != "heavy_strike":
-		return String(SKILL_DEFS[skill_id].short if short else SKILL_DEFS[skill_id].name)
-	var modifiers := heavy_strike_modifiers()
-	if modifiers.size() > 1:
-		return "複合重擊"
-	if int(training.martial) >= 10:
-		if int(training.martial) >= 150: return "斷嶽一擊"
-		if int(training.martial) >= 100: return "極勢重斬"
-		if int(training.martial) >= 50: return "重斬"
-		return "重擊・蓄勢"
-	if int(training.physique) >= 10: return "重擊・返勢"
-	if int(training.agility) >= 10: return "重擊・迅擊"
-	if int(training.magic) >= 10: return "魔力重擊"
-	return "重擊"
+	return String(SKILL_DEFS[skill_id].short if short else SKILL_DEFS[skill_id].name)
 
 func base_skill_description(skill_id: String) -> String:
 	if skill_id != "heavy_strike":
 		return ""
-	var lines: Array[String] = ["180% ATK｜基礎冷卻 4.5 秒｜所有小兵 Lv.1 取得"]
-	if int(training.martial) >= 10: lines.append("武藝：勢越高，傷害與破甲越高")
-	if int(training.physique) >= 10: lines.append("體術：將近期格擋減傷與防禦轉成傷害")
-	if int(training.agility) >= 10: lines.append("敏捷：游刃增傷，攻速縮短冷卻，並可暴擊")
-	if int(training.magic) >= 10: lines.append("魔法：命中追加附魔傷害、魔紋與元素效果")
-	return "\n".join(lines)
+	return "180% ATK｜冷卻 4.5 秒｜所有小兵 Lv.1 取得\n共通基礎劍技，不受流派改造"
+
+func _cast_swift_cut() -> void:
+	var definition: Dictionary = SKILL_DEFS.swift_cut
+	var total_damage := 0.0
+	var critical_hits := 0
+	for hit in 2:
+		var hit_damage := _attack_power() * float(definition.damage_multiplier) * _skill_level_multiplier("swift_cut")
+		if rng.randf() < _critical_chance():
+			hit_damage *= 1.75
+			critical_hits += 1
+		total_damage += hit_damage
+	skill_cooldowns["swift_cut"] = float(definition.cooldown)
+	_events.append({"type": "swift_cut", "skill_id": "swift_cut", "name": "疾斬", "damage": total_damage, "hits": 2, "critical_hits": critical_hits})
+	var defeated := _deal_damage(total_damage, "swift_cut", 0.05)
+	if not defeated and skill_is_unlocked("flowing_ease"):
+		_add_youren(1, "swift_cut")
+
+func _cast_shadow_assault() -> void:
+	var definition: Dictionary = SKILL_DEFS.shadow_assault
+	shadow_assault_ready = false
+	skill_cooldowns["shadow_assault"] = float(definition.cooldown)
+	var shadow_damage := _attack_power() * 1.15 * (1.1 if youren >= 4 else 1.0) * _skill_level_multiplier("shadow_assault")
+	if int(training.agility) >= 35: shadow_damage *= 1.2
+	if int(training.agility) >= 60: shadow_damage *= 1.0 + float(youren) * 0.05
+	if int(training.agility) >= 115: shadow_damage *= 1.15
+	if int(training.agility) >= 165: shadow_damage *= 1.15
+	if shadowless_remaining > 0.0:
+		shadow_damage *= 2.0 if int(training.agility) >= 195 else 1.8
+	_events.append({"type": "shadow_assault", "skill_id": "shadow_assault", "name": "影襲", "damage": shadow_damage})
+	if _deal_damage(shadow_damage, "shadow_assault", 0.15):
+		return
+	var flying_chance := 0.5 if int(training.agility) >= 95 else 0.3
+	if int(training.agility) >= 90 and rng.randf() < flying_chance:
+		var extra_damage := shadow_damage * 0.75
+		_events.append({"type": "flying_swallow", "damage": extra_damage})
+		if not _deal_damage(extra_damage, "flying_swallow", 0.15) and int(training.agility) >= 120 and rng.randf() < 0.45:
+			var return_damage := shadow_damage * 0.62
+			_events.append({"type": "swallow_return", "damage": return_damage})
+			_deal_damage(return_damage, "swallow_return", 0.18)
+	if int(training.agility) >= 180:
+		var second_damage := shadow_damage * 0.5
+		_events.append({"type": "second_shadow", "damage": second_damage})
+		_deal_damage(second_damage, "second_shadow", 0.15)
+	if int(training.agility) >= 200 and shadowless_remaining > 0.0:
+		var extreme_damage := shadow_damage * 0.8
+		_events.append({"type": "shadowless_extreme", "damage": extreme_damage})
+		_deal_damage(extreme_damage, "shadowless_extreme", 0.25)
 
 func _cast_collapse_counter() -> void:
 	var definition: Dictionary = SKILL_DEFS.collapse_counter
@@ -1888,6 +2014,8 @@ func _enemy_attack(block_override := "") -> void:
 	_events.append({"type": "enemy_attack", "attack_type": attack_type, "archetype": enemy_archetype, "empowered": empowered})
 	var route_damage := 1.08 if journey_route == "mountain" else (0.92 if journey_route == "village" else (1.15 if journey_route == "battlefield" else 1.0))
 	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(_enemy_definition().damage) * route_damage
+	if attack_type == "heavy":
+		raw_damage *= 1.0 + equipment_modifier("heavy_damage_taken")
 	if boss_enraged:
 		raw_damage *= 1.15
 	if enemy_is_elite:
@@ -1936,6 +2064,7 @@ func _enemy_attack(block_override := "") -> void:
 		damage = _absorb_holy_shield(damage)
 	var prevented := incoming - damage
 	recent_prevented_damage = prevented
+	_record_incoming_damage(damage, attack_type)
 	hero_hp = maxf(0.0, hero_hp - damage)
 	if damage >= _hero_max_hp() * 0.12:
 		_add_holy_seals(2 if attack_type == "heavy" and int(training.faith) >= 110 else 1, "damage_taken")
@@ -1973,6 +2102,7 @@ func _take_unblocked_hit(damage: float) -> void:
 	damage = _absorb_holy_shield(damage)
 	if damage >= hero_hp and _trigger_divine_grace():
 		damage = _absorb_holy_shield(damage)
+	_record_incoming_damage(damage, _current_enemy_attack_type_id())
 	hero_hp = maxf(0.0, hero_hp - damage)
 	_events.append({"type": "hero_hit", "amount": damage})
 	if damage >= _hero_max_hp() * 0.12:
@@ -2028,33 +2158,9 @@ func _resolve_dodge(attack_type: String, used_swift_step: bool) -> void:
 		_events.append({"type": "swift_step", "damage": swift_damage})
 		if _deal_damage(swift_damage, "swift_step", 0.1):
 			return
-	if skill_is_unlocked("shadow_assault") and youren >= MAX_YOUREN:
-		var shadow_damage := _attack_power() * 1.15 * (1.1 if youren >= 4 else 1.0) * _skill_level_multiplier("shadow_assault")
-		if int(training.agility) >= 35: shadow_damage *= 1.2
-		if int(training.agility) >= 60: shadow_damage *= 1.0 + float(youren) * 0.05
-		if int(training.agility) >= 115: shadow_damage *= 1.15
-		if int(training.agility) >= 165: shadow_damage *= 1.15
-		if shadowless_remaining > 0.0:
-			shadow_damage *= 2.0 if int(training.agility) >= 195 else 1.8
-		_events.append({"type": "shadow_assault", "damage": shadow_damage})
-		if _deal_damage(shadow_damage, "shadow_assault", 0.15):
-			return
-		var flying_chance := 0.5 if int(training.agility) >= 95 else 0.3
-		if int(training.agility) >= 90 and rng.randf() < flying_chance:
-			var extra_damage := shadow_damage * 0.75
-			_events.append({"type": "flying_swallow", "damage": extra_damage})
-			if not _deal_damage(extra_damage, "flying_swallow", 0.15) and int(training.agility) >= 120 and rng.randf() < 0.45:
-				var return_damage := shadow_damage * 0.62
-				_events.append({"type": "swallow_return", "damage": return_damage})
-				_deal_damage(return_damage, "swallow_return", 0.18)
-		if int(training.agility) >= 180 and not used_swift_step:
-			var second_damage := shadow_damage * 0.5
-			_events.append({"type": "second_shadow", "damage": second_damage})
-			_deal_damage(second_damage, "second_shadow", 0.15)
-		if int(training.agility) >= 200 and shadowless_remaining > 0.0:
-			var extreme_damage := shadow_damage * 0.8
-			_events.append({"type": "shadowless_extreme", "damage": extreme_damage})
-			_deal_damage(extreme_damage, "shadowless_extreme", 0.25)
+	if skill_is_unlocked("shadow_assault"):
+		shadow_assault_ready = true
+		_events.append({"type": "shadow_assault_ready", "skill_id": "shadow_assault", "name": "影襲"})
 
 func _lose_youren(attack_type: String) -> void:
 	if shadowless_remaining > 0.0 and attack_type == "normal":
@@ -2109,9 +2215,36 @@ func _trigger_heaven_return(incoming: float) -> void:
 	_events.append({"type": "immovable_changed", "value": immovable})
 	_deal_damage(raw_counter, "heaven_return", 0.5)
 
+func _record_incoming_damage(amount: float, attack_type: String) -> void:
+	var source := "%s・%s" % [_enemy_display_name(), _attack_type_name(attack_type)]
+	last_incoming_source = source
+	incoming_damage_by_source[source] = float(incoming_damage_by_source.get(source, 0.0)) + amount
+
+func _highest_incoming_damage() -> Dictionary:
+	var result := {"source": last_incoming_source, "amount": 0.0}
+	for source: String in incoming_damage_by_source:
+		var amount := float(incoming_damage_by_source[source])
+		if amount > float(result.amount):
+			result = {"source": source, "amount": amount}
+	return result
+
 func _defeat_hero() -> void:
 	var failed_stage := stage
+	var failed_wave := current_wave + 1
+	var highest := _highest_incoming_damage()
+	last_failure_report = {
+		"failed_stage": failed_stage, "failed_wave": failed_wave,
+		"killer": last_incoming_source if not last_incoming_source.is_empty() else _enemy_display_name(),
+		"highest_damage_source": String(highest.source), "highest_damage_amount": float(highest.amount),
+		"enemy_traits": "%s｜%s" % [String(_enemy_definition().role), String(_enemy_definition().hint)],
+		"unspent_style_points": training_points,
+	}
+	var death_key := str(failed_stage)
+	var deaths: Dictionary = slice_metrics.stage_deaths
+	deaths[death_key] = int(deaths.get(death_key, 0)) + 1
+	slice_metrics.stage_deaths = deaths
 	stage = maxi(1, failed_stage - 1)
+	current_wave = 0
 	retry_pending = true
 	retry_stage = failed_stage
 	hero_hp = _hero_max_hp()
@@ -2128,6 +2261,7 @@ func _defeat_hero() -> void:
 	immovable_king_remaining = 0.0
 	return_blade_ready = false
 	swift_step_ready = false
+	shadow_assault_ready = false
 	shadowless_remaining = 0.0
 	full_youren_duration = 0.0
 	unharmed_duration = 0.0
@@ -2151,7 +2285,7 @@ func _defeat_hero() -> void:
 	ally_attack_remaining = ALLY_ATTACK_INTERVAL
 	ally_attack_cursor = 0
 	_spawn_enemy()
-	_events.append({"type": "defeat", "failed_stage": failed_stage, "fallback_stage": stage})
+	_events.append({"type": "defeat", "failed_stage": failed_stage, "failed_wave": failed_wave, "fallback_stage": stage, "report": last_failure_report.duplicate(true)})
 
 func _next_enemy_attack_type() -> String:
 	var next_count := enemy_attack_count + 1
@@ -2176,6 +2310,8 @@ func _attack_type_for_count(count: int) -> String:
 		return "normal"
 	if enemy_archetype == "brute":
 		return "heavy"
+	if enemy_archetype == "centurion":
+		return "heavy" if count % 3 == 0 else "normal"
 	if enemy_archetype == "shield":
 		return "heavy" if count % 3 == 0 else "normal"
 	if enemy_archetype == "caster":
@@ -2198,6 +2334,8 @@ func _deal_damage(amount: float, source: String, armor_ignore := 0.0) -> bool:
 	var effective_armor := enemy_armor * (1.0 - clampf(armor_ignore, 0.0, 1.0))
 	var opening_multiplier := 1.25 if opening_remaining > 0.0 else 1.0
 	var final_amount := amount * opening_multiplier * 100.0 / (100.0 + effective_armor)
+	if enemy_armor >= HIGH_ARMOR_THRESHOLD:
+		final_amount *= 1.0 + equipment_modifier("armored_damage")
 	if enemy_guard_stacks > 0 and not SHIELD_BYPASS_SOURCES.has(source) and armor_ignore < 0.2:
 		final_amount *= 0.55
 		enemy_guard_stacks -= 1
@@ -2214,7 +2352,7 @@ func _deal_damage(amount: float, source: String, armor_ignore := 0.0) -> bool:
 		boss_empowered_attack = true
 		enemy_attack_remaining = maxf(enemy_attack_remaining, 1.05)
 		_events.append({"type": "boss_howl", "name": "灰鬃戰吼", "next_attack": "蓄力重擊"})
-	if enemy_is_boss and not boss_enraged and not defeated and enemy_hp / maxf(1.0, enemy_max_hp) <= 0.3:
+	if (enemy_is_boss or enemy_archetype == "centurion") and not boss_enraged and not defeated and enemy_hp / maxf(1.0, enemy_max_hp) <= 0.3:
 		boss_enraged = true
 		enemy_attack_remaining = minf(enemy_attack_remaining, 0.65)
 		_events.append({"type": "boss_enraged", "name": "狂怒"})
@@ -2223,11 +2361,25 @@ func _deal_damage(amount: float, source: String, armor_ignore := 0.0) -> bool:
 	return defeated
 
 func _enemy_defeated() -> void:
+	var completed_stage := stage
 	var defeated_boss := enemy_is_boss
 	var defeated_elite := enemy_is_elite
 	kills += 1
+	var waves := _stage_waves(stage)
+	if current_wave + 1 < waves.size():
+		current_wave += 1
+		wave_transition_remaining = WAVE_TRANSITION_DURATION
+		_clear_enemy_state_for_transition()
+		_events.append({"type": "enemy_defeated", "stage": stage, "kills": kills, "boss": false, "wave_complete": true})
+		_events.append({"type": "wave_transition_started", "stage": stage, "wave": current_wave + 1, "wave_count": waves.size(), "duration": WAVE_TRANSITION_DURATION})
+		return
 	if not retry_pending:
 		stage += 1
+		_record_stage_reached()
+	if defeated_boss and completed_stage >= 30 and not inheritance_unlocked:
+		inheritance_unlocked = true
+		_events.append({"type": "inheritance_unlocked", "name": "戰魂傳承", "stage": completed_stage})
+	current_wave = 0
 	var point_gain := 3 if defeated_boss else 1
 	if journey_route == "mountain":
 		route_training_progress += float(point_gain) * 0.2
@@ -2256,8 +2408,136 @@ func _enemy_defeated() -> void:
 	if not defeated_boss and enemy_is_boss:
 		_events.append({"type": "boss_entered", "name": _enemy_display_name()})
 	if defeated_boss and not retry_pending:
-		_events.append({"type": "journey_choice", "area": area_number, "completed_route": journey_route})
+		_events.append({"type": "boss_reward_choice", "area": area_number, "completed_route": journey_route, "options": boss_reward_options()})
 	_award_gold_and_equipment(defeated_boss, defeated_elite)
+
+func boss_reward_options() -> Array[Dictionary]:
+	var highest_track := "martial"
+	for track: String in TRAINING_ORDER:
+		if base_style_level(track) > base_style_level(highest_track):
+			highest_track = track
+	var accessory_by_track := {
+		"martial": "momentum_talisman", "physique": "iron_guard_emblem", "agility": "swift_wind_feather",
+		"magic": "magic_iron_core", "faith": "chaplain_seal", "command": "centurion_banner",
+	}
+	var ids: Array[String] = ["black_iron_cleaver", "black_iron_armor", String(accessory_by_track[highest_track])]
+	var options: Array[Dictionary] = []
+	for item_id: String in ids:
+		var definition: Dictionary = EQUIPMENT_DEFS[item_id]
+		options.append({"item_id": item_id, "name": String(definition.name), "slot": String(definition.slot), "description": String(definition.description), "style": String(definition.primary_style)})
+	return options
+
+func claim_boss_reward(item_id: String) -> Array[Dictionary]:
+	_events.clear()
+	if not awaiting_journey_choice:
+		return []
+	var valid := boss_reward_options().any(func(option: Dictionary) -> bool: return String(option.item_id) == item_id)
+	if not valid:
+		return []
+	var definition: Dictionary = EQUIPMENT_DEFS[item_id]
+	var track := String(definition.primary_style)
+	var before := {
+		"effective": effective_style_level(track), "base": base_style_level(track),
+		"attack": _attack_power(), "defense": _defense(), "hp": _hero_max_hp(),
+		"attack_speed": _agility_action_speed_bonus(),
+	}
+	grant_equipment(item_id)
+	equip_item(item_id)
+	slice_metrics.boss_reward = item_id
+	var after := {
+		"effective": effective_style_level(track), "base": base_style_level(track),
+		"attack": _attack_power(), "defense": _defense(), "hp": _hero_max_hp(),
+		"attack_speed": _agility_action_speed_bonus(),
+	}
+	var next_level := mini(MAX_TRAINING_LEVEL, (int(after.base) / 5 + 1) * 5)
+	if int(after.base) >= MAX_TRAINING_LEVEL:
+		next_level = MAX_TRAINING_LEVEL
+	var summary := {
+		"track": track, "style": String(TRAINING_DEFS[track].style), "before": before, "after": after,
+		"next_base_milestone": next_level, "modifier_text": _equipment_modifier_summary(item_id),
+	}
+	_events.append({"type": "boss_reward_claimed", "item_id": item_id, "name": String(definition.name), "style": track, "summary": summary})
+	_events.append({"type": "journey_choice", "area": area_number, "completed_route": journey_route})
+	return _events.duplicate(true)
+
+func perform_inheritance(choice: String, target := "") -> Array[Dictionary]:
+	_events.clear()
+	if not inheritance_unlocked or choice not in ["memory", "equipment", "trade"]:
+		return []
+	var inherited_item := ""
+	var inherited_track := ""
+	if choice == "memory" or choice == "trade":
+		if target not in TRAINING_ORDER:
+			return []
+		inherited_track = target
+	elif choice == "equipment":
+		if not EQUIPMENT_DEFS.has(target) or int(owned_equipment.get(target, 0)) <= 0:
+			return []
+		inherited_item = target
+	for item_id: String in owned_equipment:
+		if int(owned_equipment[item_id]) > 0:
+			equipment_collection[item_id] = true
+	battle_souls += 1
+	inheritance_count += 1
+	legacy_choice = choice
+	legacy_track = inherited_track if choice == "trade" else ""
+	legacy_item = inherited_item
+	_reset_for_inheritance(inherited_item, inherited_track if choice == "memory" else "")
+	_events.append({"type": "inheritance_completed", "choice": choice, "target": target, "battle_souls": battle_souls, "count": inheritance_count})
+	return _events.duplicate(true)
+
+func _reset_for_inheritance(inherited_item: String, memory_track: String) -> void:
+	stage = 1
+	area_number = 1
+	journey_route = "frontier"
+	awaiting_journey_choice = false
+	retry_pending = false
+	retry_stage = 0
+	current_wave = 0
+	wave_transition_remaining = 0.0
+	kills = 0
+	gold = 0
+	training_points = 0
+	for track: String in TRAINING_ORDER:
+		training[track] = 5 if track == memory_track else 0
+	owned_equipment = {"black_iron_sword": 1, "black_iron_armor": 1}
+	if not inherited_item.is_empty():
+		owned_equipment[inherited_item] = maxi(1, int(owned_equipment.get(inherited_item, 0)))
+	equipped_items = {"weapon": "", "armor": "", "accessory": ""}
+	equipment_enhancements.clear()
+	for item_id: String in EQUIPMENT_DEFS:
+		equipment_enhancements[item_id] = 0
+	shop_refresh_count = 0
+	_generate_shop_items()
+	auto_skill_slots = ["heavy_strike", "", "", "", ""]
+	skill_cooldowns = {"heavy_strike": 1.2}
+	martial_branch = ""
+	physique_branch = ""
+	agility_branch = ""
+	secondary_element = ""
+	magic_specialization = ""
+	faith_branch = ""
+	command_branch = ""
+	momentum = 0.0
+	immovable = 0
+	youren = 0
+	magic_marks = 0
+	holy_seals = 0
+	military_momentum = 0.0
+	hero_hp = _hero_max_hp()
+	hero_mp = _hero_max_mp()
+	auto_attack_remaining = AUTO_ATTACK_INTERVAL
+	_spawn_enemy()
+
+func _equipment_modifier_summary(item_id: String) -> String:
+	var modifiers: Dictionary = EQUIPMENT_DEFS[item_id].get("modifiers", {})
+	if modifiers.has("armored_damage"):
+		return "對重甲傷害 +%d%%" % roundi(float(modifiers.armored_damage) * 100.0)
+	if modifiers.has("heavy_damage_taken"):
+		return "受到重擊傷害 %d%%" % roundi(float(modifiers.heavy_damage_taken) * 100.0)
+	if modifiers.has("momentum_gain"):
+		return "勢獲取 +%d%%" % roundi(float(modifiers.momentum_gain) * 100.0)
+	return ""
 
 func _award_gold_and_equipment(defeated_boss: bool, defeated_elite: bool) -> void:
 	var gold_gain := maxi(4, 6 + stage * 2) * (5 if defeated_boss else (2 if defeated_elite else 1))
@@ -2298,6 +2578,7 @@ func retry_failed_stage() -> Array[Dictionary]:
 	if not retry_pending:
 		return []
 	stage = maxi(1, retry_stage)
+	current_wave = 0
 	retry_pending = false
 	retry_stage = 0
 	awaiting_journey_choice = false
@@ -2310,8 +2591,11 @@ func choose_journey_route(route_id: String) -> Array[Dictionary]:
 	if not awaiting_journey_choice or not JOURNEY_ROUTES.has(route_id):
 		return []
 	journey_route = route_id
+	slice_metrics.next_area_pressed = true
 	area_number += 1
 	awaiting_journey_choice = false
+	shop_refresh_count = 0
+	_generate_shop_items()
 	if route_id == "village":
 		hero_hp = minf(_hero_max_hp(), hero_hp + _hero_max_hp() * 0.35)
 		hero_mp = minf(_hero_max_mp(), hero_mp + _hero_max_mp() * 0.35)
@@ -2321,12 +2605,13 @@ func choose_journey_route(route_id: String) -> Array[Dictionary]:
 	return _events.duplicate(true)
 
 func _spawn_enemy() -> void:
+	wave_transition_remaining = 0.0
 	enemy_archetype = _enemy_archetype_for_stage(stage)
 	enemy_is_boss = enemy_archetype == "boss"
 	boss_enraged = false
 	boss_howl_triggered = false
 	boss_empowered_attack = false
-	enemy_is_elite = _route_position() == 9
+	enemy_is_elite = enemy_archetype == "centurion" or _route_position() == 9
 	enemy_guard_stacks = 3 if enemy_archetype == "shield" else 0
 	var definition := _enemy_definition()
 	var route_hp := 1.08 if journey_route == "mountain" else (0.95 if journey_route == "village" else (1.18 if journey_route == "battlefield" else 1.0))
@@ -2336,11 +2621,14 @@ func _spawn_enemy() -> void:
 	enemy_armor = ((5.0 + float(stage) * 0.8) * float(definition.armor) + (20.0 if enemy_is_boss else 0.0)) * route_armor
 	enemy_engagement_time = 0.0
 	enemy_attack_count = 0
+	incoming_damage_by_source.clear()
+	last_incoming_source = ""
 	counter_chain = 0
 	consecutive_blocks = 0
 	recent_prevented_damage = 0.0
 	return_blade_ready = false
 	swift_step_ready = false
+	shadow_assault_ready = false
 	opening_remaining = 0.0
 	enemy_weakened_remaining = 0.0
 	burn_stacks = 0
@@ -2351,6 +2639,22 @@ func _spawn_enemy() -> void:
 	burn_tick_remaining = 1.0
 	enemy_attack_remaining = minf(_enemy_attack_interval(), 1.4)
 	ally_attack_remaining = minf(ally_attack_remaining, 0.8) if _ally_count() > 0 else ALLY_ATTACK_INTERVAL
+
+func _clear_enemy_state_for_transition() -> void:
+	enemy_hp = 0.0
+	enemy_guard_stacks = 0
+	enemy_engagement_time = 0.0
+	enemy_attack_count = 0
+	enemy_attack_remaining = WAVE_TRANSITION_DURATION
+	opening_remaining = 0.0
+	enemy_weakened_remaining = 0.0
+	burn_stacks = 0
+	frost_stacks = 0
+	lightning_stacks = 0
+	secondary_hit_counter = 0
+	burning_hits = 0
+	incoming_damage_by_source.clear()
+	last_incoming_source = ""
 
 func _enemy_definition() -> Dictionary:
 	return ENEMY_DEFS.get(enemy_archetype, ENEMY_DEFS.grunt)
@@ -2373,6 +2677,9 @@ func _enemy_attack_interval() -> float:
 	return maxf(0.85, interval)
 
 func _enemy_archetype_for_stage(target_stage: int) -> String:
+	var waves := _stage_waves(target_stage)
+	if not waves.is_empty():
+		return String(waves[clampi(current_wave, 0, waves.size() - 1)])
 	var position := ((maxi(1, target_stage) - 1) % 10) + 1
 	if journey_route == "mountain":
 		return {1: "raider", 2: "grunt", 3: "raider", 4: "brute", 5: "raider", 6: "caster", 7: "brute", 8: "raider", 9: "shield", 10: "boss"}.get(position, "raider")
@@ -2384,6 +2691,29 @@ func _enemy_archetype_for_stage(target_stage: int) -> String:
 		1: "raider", 2: "brute", 3: "shield", 4: "caster", 5: "grunt",
 		6: "raider", 7: "brute", 8: "caster", 9: "shield", 10: "boss",
 	}.get(position, "grunt")
+
+func _stage_waves(target_stage: int) -> Array:
+	var position := ((maxi(1, target_stage) - 1) % 10) + 1
+	if journey_route == "frontier":
+		return FRONTIER_STAGE_WAVES.get(position, ["grunt"])
+	return [_single_enemy_archetype_for_route(target_stage)]
+
+func _single_enemy_archetype_for_route(target_stage: int) -> String:
+	var position := ((maxi(1, target_stage) - 1) % 10) + 1
+	if journey_route == "mountain":
+		return {1: "raider", 2: "grunt", 3: "raider", 4: "brute", 5: "raider", 6: "caster", 7: "brute", 8: "raider", 9: "shield", 10: "boss"}.get(position, "raider")
+	if journey_route == "village":
+		return {1: "grunt", 2: "raider", 3: "grunt", 4: "shield", 5: "raider", 6: "caster", 7: "grunt", 8: "brute", 9: "shield", 10: "boss"}.get(position, "grunt")
+	if journey_route == "battlefield":
+		return {1: "grunt", 2: "shield", 3: "caster", 4: "brute", 5: "shield", 6: "caster", 7: "brute", 8: "caster", 9: "shield", 10: "boss"}.get(position, "grunt")
+	return "grunt"
+
+func _record_stage_reached() -> void:
+	var reached: Dictionary = slice_metrics.stage_first_reached
+	var key := str(stage)
+	if not reached.has(key):
+		reached[key] = float(slice_metrics.elapsed)
+	slice_metrics.stage_first_reached = reached
 
 func _route_position() -> int:
 	return ((maxi(1, stage) - 1) % 10) + 1
@@ -2519,7 +2849,7 @@ func skill_power_hint(skill_id: String) -> String:
 		return ""
 	var definition: Dictionary = SKILL_DEFS[skill_id]
 	if String(definition.track) == "common":
-		return "依目前流派進化"
+		return "共通基礎技能"
 	if String(definition.type) == "passive" and skill_id not in ["flowing_ease", "shadow_assault", "burning_enchant", "magic_sword_marks"]:
 		return "被動機制"
 	return "流派熟練 ×%.2f" % _skill_level_multiplier(skill_id)
@@ -2574,18 +2904,18 @@ func _add_youren(amount: int, source: String) -> void:
 			_events.append({"type": "flow_state_entered", "name": "游刃有餘"})
 
 func _track_swift_cut() -> void:
-	if not skill_is_unlocked("swift_cut") or youren < MAX_YOUREN:
+	if not skill_is_unlocked("flowing_ease") or youren < MAX_YOUREN:
 		swift_cut_hits = 0
 		return
 	swift_cut_hits += 1
-	var required := 1 if int(training.agility) >= 140 else (2 if int(training.agility) >= 45 else 3)
+	var required := 1 if int(training.agility) >= 140 else 2
 	if swift_cut_hits < required:
 		return
 	swift_cut_hits = 0
-	var damage := _attack_power() * (0.45 if int(training.agility) >= 165 else 0.35) * _skill_level_multiplier("swift_cut")
+	var damage := _attack_power() * (0.45 if int(training.agility) >= 165 else 0.35) * _track_level_multiplier("agility", 20)
 	var critical := int(training.agility) >= 80 and rng.randf() < _critical_chance()
 	if critical: damage *= 1.75
-	_events.append({"type": "swift_cut", "name": "疾斬", "damage": damage, "critical": critical})
+	_events.append({"type": "swift_cut", "name": "追斬", "damage": damage, "critical": critical, "follow_up": true})
 	_deal_damage(damage, "swift_cut", 0.05)
 
 func _youren_attack_speed_bonus() -> float:
