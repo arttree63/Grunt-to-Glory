@@ -1097,8 +1097,8 @@ func _build_training_overlay() -> void:
 		text_box.add_child(_label("%s｜%s" % [String(definition.name), String(definition.style)], 16, Color("f4eee0")))
 		var hint_label := _label("", 12, Color("aebfb4"))
 		text_box.add_child(hint_label)
-		var level_label := _label("Lv.0", 15, Color("f6d27d"))
-		level_label.custom_minimum_size.x = 50
+		var level_label := _label("Base 0\n裝備 +0\n有效 0", 12, Color("f6d27d"))
+		level_label.custom_minimum_size.x = 72
 		level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		row_box.add_child(level_label)
 		var add_button := _button("+", Color("71552f"), 44)
@@ -1362,7 +1362,7 @@ func _boss_reward_summary_text() -> String:
 	if not String(boss_reward_summary.modifier_text).is_empty():
 		lines.append(String(boss_reward_summary.modifier_text))
 	lines.append("永久進度：Base Lv.%d｜下一節點 Lv.%d" % [int(after.base), int(boss_reward_summary.next_base_milestone)])
-	lines.append("裝備加成不計入永久技能解鎖")
+	lines.append("技能與里程碑依有效流派等級解鎖")
 	return "\n".join(lines)
 
 func _choose_journey_route(route_id: String) -> void:
@@ -1483,8 +1483,10 @@ func _update_training_rows(snapshot: Dictionary) -> void:
 	for track: String in CombatModel.TRAINING_ORDER:
 		var widgets: Dictionary = training_rows[track]
 		var definition: Dictionary = CombatModel.TRAINING_DEFS[track]
-		var level := int(snapshot.training[track])
-		(widgets.level as Label).text = "Lv.%d" % level
+		var level := int(snapshot.base_style_levels[track])
+		var equipment_bonus := int(snapshot.equipment_style_bonuses[track])
+		var effective_level := int(snapshot.effective_style_levels[track])
+		(widgets.level as Label).text = "Base %d\n裝備 +%d\n有效 %d" % [level, equipment_bonus, effective_level]
 		(widgets.hint as Label).text = model.training_hint(track)
 		var add_button := widgets.button as Button
 		add_button.text = "+" if bool(definition.implemented) else "鎖"

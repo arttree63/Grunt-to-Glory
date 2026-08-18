@@ -1200,6 +1200,7 @@ func _test_navigation() -> void:
 	scene.model.training.magic = 30
 	scene.model.training.faith = 30
 	scene.model.training.command = 30
+	scene.model.equip_item("black_iron_sword")
 	scene.model.momentum = 45.0
 	scene.model.immovable = 2
 	scene.model.youren = 3
@@ -1211,6 +1212,11 @@ func _test_navigation() -> void:
 	scene._update_hud(scene.model.snapshot())
 	_expect(scene.failure_status.visible and scene.retry_button.visible and "第 8 戰" in scene.failure_button.text, "戰敗後必須以單一狀態條提供情報與再次挑戰")
 	_expect(scene.mp_hud.visible and scene.momentum_hud.visible and scene.immovable_hud.visible and scene.youren_hud.visible and scene.magic_hud.visible and scene.faith_hud.visible and scene.command_hud.visible, "六流派機制同時存在時，HUD 必須完整顯示")
+	scene._open_training()
+	await process_frame
+	var martial_level_text := (scene.training_rows.martial.level as Label).text
+	_expect("Base 10" in martial_level_text and "裝備 +5" in martial_level_text and "有效 15" in martial_level_text, "修練加點介面必須同時顯示 Base、裝備加成與有效等級")
+	scene._close_training()
 	scene._switch_page("character")
 	await process_frame
 	_expect(scene.current_page == "character" and scene.section_overlay.visible, "角色頁必須能開啟並暫停戰鬥")
