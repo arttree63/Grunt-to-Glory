@@ -21,6 +21,18 @@ const PIXEL_HERO_BLOCK_FRAMES := [
 	preload("res://assets/visual/pixel_vertical_slice/hero/block/block-3.png"),
 	preload("res://assets/visual/pixel_vertical_slice/hero/block/block-4.png"),
 ]
+const PIXEL_HERO_DODGE_FRAMES := [
+	preload("res://assets/visual/pixel_vertical_slice/hero/dodge/dodge-1.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/dodge/dodge-2.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/dodge/dodge-3.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/dodge/dodge-4.png"),
+]
+const PIXEL_HERO_DEATH_FRAMES := [
+	preload("res://assets/visual/pixel_vertical_slice/hero/death/death-1.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/death/death-2.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/death/death-3.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/death/death-4.png"),
+]
 const PIXEL_WOLF_IDLE_FRAMES := [
 	preload("res://assets/visual/pixel_vertical_slice/wolf/idle/idle-1.png"),
 	preload("res://assets/visual/pixel_vertical_slice/wolf/idle/idle-2.png"),
@@ -169,6 +181,7 @@ const STABLE_CHARACTER_PRESENTATION := true
 const PIXEL_VERTICAL_SLICE := true
 const PIXEL_FEET_RATIO := 228.0 / 256.0
 const PIXEL_WOLF_FEET_RATIO := 244.0 / 256.0
+const DEFEAT_REWIND_DURATION := 1.8
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -204,6 +217,8 @@ var _hero_block_motion := 0.0
 var _hero_dodge_motion := 0.0
 var _hero_hurt_motion := 0.0
 var _hero_death_motion := 0.0
+var _hero_defeated := false
+var _defeat_rewind_motion := 0.0
 var _enemy_attack_recover := 0.0
 var _enemy_hurt_motion := 0.0
 var _enemy_death_motion := 0.0
@@ -304,6 +319,9 @@ func _process(delta: float) -> void:
 	_hero_dodge_motion = maxf(0.0, _hero_dodge_motion - delta / 0.48)
 	_hero_hurt_motion = maxf(0.0, _hero_hurt_motion - delta / 0.38)
 	_hero_death_motion = maxf(0.0, _hero_death_motion - delta / 1.05)
+	_defeat_rewind_motion = maxf(0.0, _defeat_rewind_motion - delta / DEFEAT_REWIND_DURATION)
+	if _hero_defeated and _defeat_rewind_motion <= 0.0:
+		_hero_defeated = false
 	_enemy_attack_recover = maxf(0.0, _enemy_attack_recover - delta / 0.38)
 	_enemy_hurt_motion = maxf(0.0, _enemy_hurt_motion - delta / 0.36)
 	_enemy_death_motion = maxf(0.0, _enemy_death_motion - delta / 0.92)
@@ -349,6 +367,8 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func set_state(snapshot: Dictionary) -> void:
+	if float(snapshot.hero_hp) > 0.0 and not defeat_sequence_active():
+		_hero_defeated = false
 	momentum_ratio = float(snapshot.momentum) / maxf(1.0, float(snapshot.max_momentum))
 	enemy_armor_ratio = clampf(float(snapshot.enemy_armor) / 50.0, 0.0, 1.0)
 	enemy_is_boss = bool(snapshot.enemy_is_boss)
@@ -591,6 +611,8 @@ func play_events(events: Array[Dictionary]) -> void:
 				_play_sfx("boss_defeat" if _defeat_was_boss else "defeat")
 			"defeat":
 				_hero_death_motion = 1.0
+				_hero_defeated = true
+				_defeat_rewind_motion = 1.0
 				_hero_hurt_motion = 0.0
 				_hero_slash_motion = 0.0
 				_hero_block_motion = 0.0
@@ -600,6 +622,12 @@ func play_events(events: Array[Dictionary]) -> void:
 				trauma = 0.0
 				_hit_stop(0.08)
 				_play_sfx("defeat")
+
+func defeat_sequence_active() -> bool:
+	return _defeat_rewind_motion > 0.0
+
+func defeat_rewind_progress() -> float:
+	return clampf(1.0 - _defeat_rewind_motion, 0.0, 1.0)
 
 func impact_tier_for_source(source: String) -> String:
 	if source in ["burn_tick", "lightning_tick", "holy_enchant", "magic_enchant"] or source.begins_with("ally_"):
@@ -684,7 +712,11 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("c83232", vignette_alpha), false, 14.0)
 
 func _draw_pixel_vertical_slice() -> void:
-	_draw_cover_texture(PIXEL_BACKGROUND, Rect2(Vector2.ZERO, size), Vector2(0.5, 0.59))
+	var rewind_progress := defeat_rewind_progress()
+	var rewind_pan := 0.0
+	if defeat_sequence_active() and rewind_progress >= 0.42 and rewind_progress <= 0.84:
+		rewind_pan = sin((rewind_progress - 0.42) / 0.42 * PI) * 0.075
+	_draw_cover_texture(PIXEL_BACKGROUND, Rect2(Vector2.ZERO, size), Vector2(0.5 + rewind_pan, 0.59))
 	draw_rect(Rect2(Vector2.ZERO, size), Color("193041", 0.05))
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
 	var battle_line := lerpf(stage_top, visible_bottom, 0.79)
@@ -692,22 +724,33 @@ func _draw_pixel_vertical_slice() -> void:
 	var enemy_pos := Vector2(clampf(size.x * 0.72, 170.0, size.x - 66.0), battle_line)
 	_pixel_enemy_position = enemy_pos
 
-	for index in ally_count:
-		var row := index / 2
-		var column := index % 2
-		_draw_ally(hero_pos + Vector2(-55.0 - float(column) * 30.0, -10.0 - float(row) * 42.0), index)
+	if not defeat_sequence_active() or rewind_progress < 0.45:
+		for index in ally_count:
+			var row := index / 2
+			var column := index % 2
+			_draw_ally(hero_pos + Vector2(-55.0 - float(column) * 30.0, -10.0 - float(row) * 42.0), index)
 
-	_draw_pixel_wolf(enemy_pos)
+	if not defeat_sequence_active() or rewind_progress < 0.44:
+		_draw_pixel_wolf(enemy_pos)
 	_draw_pixel_hero(hero_pos)
 	_draw_pixel_combat_fx(hero_pos, enemy_pos)
 	if _hurt_vignette > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("a82e2e", _hurt_vignette * 0.13), false, 10.0)
 
 func _draw_pixel_hero(feet_position: Vector2) -> void:
+	if defeat_sequence_active():
+		_draw_pixel_rewind_hero(feet_position)
+		return
 	var texture: Texture2D = PIXEL_HERO_IDLE_FRAMES[floori(_time / 0.34) % PIXEL_HERO_IDLE_FRAMES.size()]
 	var tint := Color.WHITE
 	var offset := Vector2.ZERO
-	if _hero_slash_motion > 0.0:
+	if _hero_defeated:
+		var death_progress := 1.0 - _hero_death_motion if _hero_death_motion > 0.0 else 1.0
+		var death_frame := 0 if death_progress < 0.18 else (1 if death_progress < 0.4 else (2 if death_progress < 0.66 else 3))
+		texture = PIXEL_HERO_DEATH_FRAMES[death_frame]
+		if death_frame == 3:
+			tint = Color(0.82, 0.84, 0.88, 1.0)
+	elif _hero_slash_motion > 0.0:
 		var progress := 1.0 - _hero_slash_motion
 		texture = PIXEL_HERO_ATTACK_FRAMES[mini(3, floori(progress * 4.0))]
 		offset.x += sin(progress * PI) * 10.0
@@ -716,17 +759,51 @@ func _draw_pixel_hero(feet_position: Vector2) -> void:
 		texture = PIXEL_HERO_BLOCK_FRAMES[mini(3, floori(progress * 4.0))]
 	elif _hero_dodge_motion > 0.0:
 		var progress := 1.0 - _hero_dodge_motion
-		offset.x += sin(progress * PI) * 22.0
-		tint.a = 0.2 + absf(progress - 0.5) * 1.25
-	if _hero_recoil > 0.0:
+		texture = PIXEL_HERO_DODGE_FRAMES[mini(3, floori(progress * 4.0))]
+		offset.x += sin(progress * PI) * 12.0
+		tint.a = 0.78
+	if _hero_recoil > 0.0 and not _hero_defeated:
 		offset.x -= sin(_hero_recoil * PI) * 4.0
-	if _hero_flash > 0.0:
+	if _hero_flash > 0.0 and not _hero_defeated:
 		tint = Color(1.35, 1.35, 1.35, tint.a)
-	if _hero_death_motion > 0.0:
-		tint = Color(0.52, 0.56, 0.62, clampf(_hero_death_motion * 2.2, 0.0, 1.0))
 
-	_draw_ground_shadow(feet_position + Vector2(0.0, 2.0), Vector2(43.0, 9.0))
+	var shadow_size := Vector2(60.0, 8.0) if _hero_defeated else Vector2(43.0, 9.0)
+	_draw_ground_shadow(feet_position + Vector2(0.0, 2.0), shadow_size)
 	_draw_anchored_animation_frame(texture, feet_position + offset, 226.0, PIXEL_FEET_RATIO, 0.0, Vector2.ONE, tint)
+
+func _draw_pixel_rewind_hero(feet_position: Vector2) -> void:
+	var progress := defeat_rewind_progress()
+	if progress < 0.34:
+		var death_progress := progress / 0.34
+		var death_frame := 0 if death_progress < 0.18 else (1 if death_progress < 0.4 else (2 if death_progress < 0.66 else 3))
+		_draw_ground_shadow(feet_position + Vector2(0.0, 2.0), Vector2(60.0, 8.0))
+		_draw_anchored_animation_frame(PIXEL_HERO_DEATH_FRAMES[death_frame], feet_position, 226.0, PIXEL_FEET_RATIO, 0.0, Vector2.ONE)
+		return
+	if progress < 0.48:
+		var gather := (progress - 0.34) / 0.14
+		var lift := gather * gather
+		var tint := Color(0.72, 0.94, 1.18, 1.0 - gather * 0.2)
+		_draw_ground_shadow(feet_position + Vector2(0.0, 2.0), Vector2(60.0 - lift * 20.0, 8.0 - lift * 2.0))
+		_draw_anchored_animation_frame(PIXEL_HERO_DEATH_FRAMES[3], feet_position + Vector2(0.0, -lift * 14.0), 226.0, PIXEL_FEET_RATIO, 0.0, Vector2.ONE, tint)
+		return
+	if progress < 0.8:
+		var flight := (progress - 0.48) / 0.32
+		var soul_position := _defeat_soul_position(feet_position, flight)
+		var soul_scale := Vector2.ONE * lerpf(1.0, 0.42, flight * flight)
+		var soul_alpha := 0.88 - flight * 0.35
+		_draw_anchored_animation_frame(PIXEL_HERO_DODGE_FRAMES[1], soul_position, 226.0, PIXEL_FEET_RATIO, -0.12, soul_scale, Color(0.68, 0.94, 1.2, soul_alpha))
+		return
+	var landing := clampf((progress - 0.84) / 0.16, 0.0, 1.0)
+	var eased_landing := 1.0 - pow(1.0 - landing, 3.0)
+	var landing_texture: Texture2D = PIXEL_HERO_DODGE_FRAMES[3] if landing < 0.72 else PIXEL_HERO_IDLE_FRAMES[0]
+	_draw_ground_shadow(feet_position + Vector2(0.0, 2.0), Vector2(43.0 * eased_landing, 9.0 * eased_landing))
+	_draw_anchored_animation_frame(landing_texture, feet_position + Vector2(0.0, -28.0 * (1.0 - eased_landing)), 226.0, PIXEL_FEET_RATIO, 0.0, Vector2.ONE, Color(0.78, 0.96, 1.12, eased_landing))
+
+func _defeat_soul_position(origin: Vector2, progress: float) -> Vector2:
+	var target := Vector2(18.0, stage_top + 18.0)
+	var control := Vector2(origin.x - size.x * 0.12, origin.y - minf(size.y * 0.34, 210.0))
+	var inverse := 1.0 - progress
+	return inverse * inverse * origin + 2.0 * inverse * progress * control + progress * progress * target
 
 func _draw_pixel_wolf(feet_position: Vector2) -> void:
 	var frame_index := floori(_time / 0.36) % PIXEL_WOLF_IDLE_FRAMES.size()
@@ -768,6 +845,9 @@ func _draw_pixel_wolf(feet_position: Vector2) -> void:
 		draw_circle(intent_center + Vector2(0.0, 10.0), 2.5, Color.WHITE)
 
 func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
+	if defeat_sequence_active():
+		_draw_defeat_rewind_fx(hero_pos)
+		return
 	var impact_point := enemy_pos + Vector2(-28.0, -58.0)
 	if _boss_intro_motion > 0.0:
 		var intro_progress := 1.0 - _boss_intro_motion
@@ -826,6 +906,32 @@ func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var progress := 1.0 - _defeat_burst
 		var alpha := sin(clampf(progress * 1.4, 0.0, 1.0) * PI)
 		draw_arc(enemy_pos + Vector2(0.0, -54.0), 28.0 + progress * (82.0 if _defeat_was_boss else 42.0), 0.0, TAU, 28, Color("ffe5a0", alpha), 6.0)
+
+func _draw_defeat_rewind_fx(hero_pos: Vector2) -> void:
+	var progress := defeat_rewind_progress()
+	if progress >= 0.34 and progress < 0.48:
+		var gather := (progress - 0.34) / 0.14
+		var center := hero_pos + Vector2(0.0, -54.0 - gather * 14.0)
+		draw_circle(center, 18.0 + gather * 12.0, Color("d9f8ff", 0.12 + gather * 0.16))
+		for index in 6:
+			var angle := float(index) * TAU / 6.0 + gather
+			draw_line(center + Vector2.from_angle(angle) * 34.0, center + Vector2.from_angle(angle) * (18.0 - gather * 8.0), Color("91e8ff", 0.7), 2.0)
+	elif progress < 0.8 and progress >= 0.48:
+		var flight := (progress - 0.48) / 0.32
+		for index in 5:
+			var trail_progress := maxf(0.0, flight - float(index) * 0.055)
+			var trail_pos := _defeat_soul_position(hero_pos, trail_progress) + Vector2(0.0, -48.0)
+			var radius := 12.0 - float(index) * 1.6
+			draw_circle(trail_pos, radius, Color("9cecff", 0.34 - float(index) * 0.05))
+		var soul_pos := _defeat_soul_position(hero_pos, flight) + Vector2(0.0, -48.0)
+		draw_circle(soul_pos, 16.0 * (1.0 - flight * 0.35), Color("efffff", 0.72))
+	if progress >= 0.72 and progress <= 0.88:
+		var transition := sin((progress - 0.72) / 0.16 * PI)
+		draw_rect(Rect2(Vector2.ZERO, size), Color("d8f7ff", transition * 0.22))
+	if progress >= 0.84:
+		var landing := clampf((progress - 0.84) / 0.16, 0.0, 1.0)
+		var center := hero_pos + Vector2(0.0, -8.0)
+		draw_arc(center, 12.0 + landing * 34.0, 0.0, TAU, 24, Color("9eeaff", (1.0 - landing) * 0.7), 4.0)
 
 func _draw_forest() -> void:
 	if journey_route == "frontier":

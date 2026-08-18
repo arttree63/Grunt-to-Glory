@@ -510,6 +510,8 @@ var stage := 1
 var area_number := 1
 var journey_route := "frontier"
 var awaiting_journey_choice := false
+var retry_pending := false
+var retry_stage := 0
 var route_training_progress := 0.0
 var hero_hp := 100.0
 var enemy_hp := 52.0
@@ -848,6 +850,7 @@ func snapshot() -> Dictionary:
 		"area_number": area_number, "journey_route": journey_route,
 		"journey_name": String(route_definition.name), "journey_intro": String(route_definition.intro), "journey_effect": String(route_definition.effect),
 		"awaiting_journey_choice": awaiting_journey_choice,
+		"retry_pending": retry_pending, "retry_stage": retry_stage,
 		"hero_hp": hero_hp, "hero_max_hp": _hero_max_hp(), "hero_mp": hero_mp, "hero_max_mp": _hero_max_mp(),
 		"attack": _attack_power(), "magic_power": _magic_power(), "defense": _defense(),
 		"enemy_hp": enemy_hp, "enemy_max_hp": enemy_max_hp, "enemy_armor": enemy_armor,
@@ -1979,7 +1982,10 @@ func _trigger_heaven_return(incoming: float) -> void:
 	_deal_damage(raw_counter, "heaven_return", 0.5)
 
 func _defeat_hero() -> void:
-	stage = maxi(1, stage - 1)
+	var failed_stage := stage
+	stage = maxi(1, failed_stage - 1)
+	retry_pending = true
+	retry_stage = failed_stage
 	hero_hp = _hero_max_hp()
 	hero_mp = _hero_max_mp()
 	immovable = 0
@@ -2017,7 +2023,7 @@ func _defeat_hero() -> void:
 	ally_attack_remaining = ALLY_ATTACK_INTERVAL
 	ally_attack_cursor = 0
 	_spawn_enemy()
-	_events.append({"type": "defeat"})
+	_events.append({"type": "defeat", "failed_stage": failed_stage, "fallback_stage": stage})
 
 func _next_enemy_attack_type() -> String:
 	var next_count := enemy_attack_count + 1
@@ -2075,7 +2081,8 @@ func _deal_damage(amount: float, source: String, armor_ignore := 0.0) -> bool:
 func _enemy_defeated() -> void:
 	var defeated_boss := enemy_is_boss
 	kills += 1
-	stage += 1
+	if not retry_pending:
+		stage += 1
 	var point_gain := 3 if defeated_boss else 1
 	if journey_route == "mountain":
 		route_training_progress += float(point_gain) * 0.2
@@ -2095,7 +2102,7 @@ func _enemy_defeated() -> void:
 		_add_momentum(no_beat_gain, "no_beat")
 		_events.append({"type": "no_beat", "amount": no_beat_gain})
 	hero_hp = minf(_hero_max_hp(), hero_hp + (18.0 if journey_route == "village" else 10.0))
-	if defeated_boss:
+	if defeated_boss and not retry_pending:
 		awaiting_journey_choice = true
 	else:
 		_spawn_enemy()
@@ -2103,8 +2110,20 @@ func _enemy_defeated() -> void:
 	_events.append({"type": "training_point", "gain": point_gain, "points": training_points})
 	if not defeated_boss and enemy_is_boss:
 		_events.append({"type": "boss_entered", "name": _enemy_display_name()})
-	if defeated_boss:
+	if defeated_boss and not retry_pending:
 		_events.append({"type": "journey_choice", "area": area_number, "completed_route": journey_route})
+
+func retry_failed_stage() -> Array[Dictionary]:
+	_events.clear()
+	if not retry_pending:
+		return []
+	stage = maxi(1, retry_stage)
+	retry_pending = false
+	retry_stage = 0
+	awaiting_journey_choice = false
+	_spawn_enemy()
+	_events.append({"type": "retry_started", "stage": stage})
+	return _events.duplicate(true)
 
 func choose_journey_route(route_id: String) -> Array[Dictionary]:
 	_events.clear()

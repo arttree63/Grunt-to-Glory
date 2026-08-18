@@ -42,6 +42,7 @@ func _run_tests() -> void:
 	_test_boss_rage_phase()
 	_test_enemy_archetypes_and_route_rhythm()
 	_test_journey_choice_controls_next_area()
+	_test_defeat_farms_previous_stage_until_retry()
 	_test_return_blade_auto_counter()
 	_test_guard_stance_window()
 	_test_immovable_layers()
@@ -68,7 +69,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 56")
+		print("Godot tests passed: 57")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -85,8 +86,26 @@ func _test_auto_attack_and_momentum() -> void:
 	model.shadowless_remaining = 3.0
 	_expect(model._current_attack_interval() >= CombatModelScript.MIN_AUTO_ATTACK_INTERVAL, "極限攻速仍必須保留最低可辨識間隔")
 
+func _test_defeat_farms_previous_stage_until_retry() -> void:
+	var model = CombatModelScript.new()
+	model.stage = 6
+	model._spawn_enemy()
+	model._defeat_hero()
+	_expect(model.stage == 5, "戰敗後必須回到上一戰")
+	_expect(model.retry_pending and model.retry_stage == 6, "戰敗關卡必須鎖定到玩家再次挑戰")
+	var snapshot: Dictionary = model.snapshot()
+	_expect(bool(snapshot.retry_pending) and int(snapshot.retry_stage) == 6, "HUD 快照必須提供再次挑戰狀態")
+	model._events.clear()
+	model._enemy_defeated()
+	_expect(model.stage == 5 and model.retry_pending, "刷完上一戰後不可自動推回失敗關卡")
+	var retry_events: Array[Dictionary] = model.retry_failed_stage()
+	_expect(model.stage == 6 and not model.retry_pending, "按下再次挑戰才可回到失敗關卡")
+	_expect(retry_events.any(func(event: Dictionary) -> bool: return event.type == "retry_started"), "再次挑戰必須送出明確戰鬥事件")
+
 func _test_battlefield_impact_tiers() -> void:
 	var battlefield = BattlefieldScript.new()
+	_expect(BattlefieldScript.PIXEL_HERO_DODGE_FRAMES.size() == 4, "像素主角閃避必須載入完整四幀")
+	_expect(BattlefieldScript.PIXEL_HERO_DEATH_FRAMES.size() == 4, "像素主角倒下必須載入完整四幀")
 	_expect(BattlefieldScript.HERO_SLASH_FRAMES.size() == 12, "主角揮劍必須載入完整十二幀")
 	_expect(BattlefieldScript.HERO_BLOCK_FRAMES.size() == 8, "主角格擋必須載入完整八幀")
 	_expect(BattlefieldScript.HERO_DODGE_FRAMES.size() == 10, "主角閃躲必須載入完整十幀")
@@ -108,6 +127,18 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(battlefield.impact_tier_for_source("mountain_break") == "heavy", "斷嶽必須使用重型命中回饋")
 	battlefield.play_events([{"type": "block"}, {"type": "dodge"}])
 	_expect(battlefield._hero_block_motion == 1.0 and battlefield._hero_dodge_motion == 1.0, "格擋與閃躲事件必須啟動對應逐格動作")
+	battlefield.play_events([{"type": "defeat"}])
+	_expect(battlefield._hero_defeated, "主角死亡後必須停留在倒下狀態，直到真正復活")
+	_expect(battlefield.defeat_sequence_active(), "戰敗後必須啟動回到上一戰的視覺演出")
+	_expect(BattlefieldScript.DEFEAT_REWIND_DURATION <= 2.0, "戰敗回溯不可長時間中斷 AUTO 戰鬥")
+	battlefield._visual_freeze_remaining = 0.0
+	battlefield._process(BattlefieldScript.DEFEAT_REWIND_DURATION * 0.5)
+	_expect(battlefield.defeat_sequence_active(), "回溯演出中途必須保持戰鬥暫停")
+	var rewind_origin := Vector2(140.0, 520.0)
+	var rewind_target: Vector2 = battlefield._defeat_soul_position(rewind_origin, 1.0)
+	_expect(rewind_target.x < rewind_origin.x and rewind_target.y < rewind_origin.y, "戰敗光影必須飛向畫面左上方")
+	battlefield._process(BattlefieldScript.DEFEAT_REWIND_DURATION * 0.51)
+	_expect(not battlefield.defeat_sequence_active() and not battlefield._hero_defeated, "回溯結束後必須恢復上一戰 AUTO 戰鬥")
 	battlefield.play_events([{"type": "boss_entered"}, {"type": "boss_enraged"}])
 	_expect(battlefield._boss_intro_motion == 1.0 and battlefield._boss_enrage_burst == 1.0, "首領登場與狂怒必須有獨立、低位移的視覺提示")
 	battlefield.trauma = 0.4
@@ -934,6 +965,7 @@ func _test_navigation() -> void:
 	_expect(visible_auto_slots == 5, "手機戰鬥 HUD 必須呈現完整五格技能優先序")
 	_expect(not scene.mp_hud.visible and not scene.momentum_hud.visible and not scene.state_panel.visible, "未投入的流派資源不可預先出現在戰鬥 HUD")
 	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text.begins_with("可用操練"), "戰鬥頁必須提供固定操練點入口")
+	_expect(is_instance_valid(scene.retry_button) and not scene.retry_button.visible, "未戰敗時不可顯示再次挑戰按鈕")
 	_expect(is_instance_valid(scene.journey_overlay) and scene.journey_buttons.size() == 3, "Boss 後旅途抉擇必須提供三條手機可操作路線")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")
 	_expect(is_instance_valid(scene.section_scroll), "功能頁內容必須可捲動")
@@ -949,7 +981,10 @@ func _test_navigation() -> void:
 	scene.model.magic_marks = 3
 	scene.model.holy_seals = 3
 	scene.model.military_momentum = 45.0
+	scene.model.retry_pending = true
+	scene.model.retry_stage = 8
 	scene._update_hud(scene.model.snapshot())
+	_expect(scene.retry_button.visible and "第 8 戰" in scene.retry_button.text, "戰敗回退後必須顯示失敗關卡的再次挑戰入口")
 	_expect(scene.mp_hud.visible and scene.momentum_hud.visible and scene.immovable_hud.visible and scene.youren_hud.visible and scene.magic_hud.visible and scene.faith_hud.visible and scene.command_hud.visible, "六流派機制同時存在時，HUD 必須完整顯示")
 	scene._switch_page("character")
 	await process_frame

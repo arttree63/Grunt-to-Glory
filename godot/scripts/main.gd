@@ -59,6 +59,7 @@ var command_bar: ProgressBar
 var enemy_bar: ProgressBar
 var auto_slot_buttons: Array[Button] = []
 var training_alert_button: Button
+var retry_button: Button
 var training_overlay: Control
 var training_rows: Dictionary = {}
 var section_overlay: Control
@@ -84,6 +85,9 @@ func _ready() -> void:
 	_show_toast("AUTO 戰鬥開始", "角色會持續快速攻擊；你負責操練、技能編成與旅途選擇")
 
 func _process(delta: float) -> void:
+	if battlefield != null and battlefield.defeat_sequence_active():
+		accumulator = 0.0
+		return
 	if training_open or journey_open or journey_pending or current_page != "combat":
 		return
 	accumulator = minf(accumulator + delta, FIXED_STEP * 5.0)
@@ -91,6 +95,9 @@ func _process(delta: float) -> void:
 	while accumulator >= FIXED_STEP:
 		accumulator -= FIXED_STEP
 		_handle_events(model.step(FIXED_STEP))
+		if battlefield.defeat_sequence_active():
+			accumulator = 0.0
+			break
 		stepped = true
 	if stepped:
 		_update_hud(model.snapshot())
@@ -162,6 +169,13 @@ func _build_ui() -> void:
 	kills_label = _label("擊倒 0", 14, Color("4e514f"))
 	kills_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	top_box.add_child(kills_label)
+	retry_button = _button("再次挑戰", Color("913b31"), 42)
+	retry_button.visible = false
+	retry_button.add_theme_font_size_override("font_size", 16)
+	retry_button.add_theme_color_override("font_color", Color("fff4df"))
+	retry_button.tooltip_text = "停止刷上一戰，重新挑戰剛才戰敗的關卡"
+	retry_button.pressed.connect(_retry_failed_stage)
+	top_box.add_child(retry_button)
 
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -833,7 +847,18 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"legion_fervor": _show_toast("奮戰", "全軍攻速、追擊與軍勢獲取提高")
 			"war_god": _show_toast("軍神", "主角與友軍進入雙向連攜")
 			"ten_thousand_armies_one_sword": _show_toast("奧義・萬軍一劍", "一劍起，萬軍動")
-			"defeat": _show_toast("戰敗後重整", "保留操練，退回上一戰")
+			"retry_started": _show_toast("再次挑戰", "重新進入第 %d 戰" % int(event.stage))
+			"defeat": pass
+
+func _retry_failed_stage() -> void:
+	if battlefield.defeat_sequence_active():
+		return
+	var events := model.retry_failed_stage()
+	if events.is_empty():
+		return
+	accumulator = 0.0
+	_handle_events(events)
+	_update_hud(model.snapshot())
 
 func _spend_training(track: String) -> void:
 	var events := model.spend_training(track)
@@ -972,6 +997,10 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var training_points := int(snapshot.training_points)
 	training_alert_button.text = "可用操練 %d" % training_points
 	training_alert_button.add_theme_stylebox_override("normal", _panel_style(Color("fff5df") if training_points > 0 else Color("e0d9ce"), Color("c58a28") if training_points > 0 else Color("81796f"), 2))
+	var retry_pending := bool(snapshot.get("retry_pending", false))
+	var retry_stage := int(snapshot.get("retry_stage", 0))
+	retry_button.visible = retry_pending and not battlefield.defeat_sequence_active()
+	retry_button.text = "再次挑戰｜第 %d 戰" % retry_stage
 	enemy_bar.max_value = float(snapshot.enemy_max_hp)
 	enemy_bar.value = float(snapshot.enemy_hp)
 	hp_bar.max_value = float(snapshot.hero_max_hp)
