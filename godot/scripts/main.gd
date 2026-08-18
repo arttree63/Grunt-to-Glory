@@ -82,7 +82,7 @@ func _ready() -> void:
 	_apply_safe_area()
 	_update_hud(model.snapshot())
 	auto_slot_buttons[0].grab_focus()
-	_show_toast("AUTO 戰鬥開始", "角色會持續快速攻擊；你負責操練、技能編成與旅途選擇")
+	_show_toast("AUTO 戰鬥開始", "角色會持續快速攻擊；你負責流派修練、技能編成與旅途選擇")
 
 func _process(delta: float) -> void:
 	if battlefield != null and battlefield.defeat_sequence_active():
@@ -152,7 +152,7 @@ func _build_ui() -> void:
 	var hero_name := _label("無名小兵", 22, Color("292824"))
 	hero_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	identity.add_child(hero_name)
-	training_alert_button = _button("可用操練 0", Color("f5ead0"), 44)
+	training_alert_button = _button("可用修練 0", Color("f5ead0"), 44)
 	training_alert_button.custom_minimum_size.x = 116
 	training_alert_button.size_flags_horizontal = Control.SIZE_SHRINK_END
 	training_alert_button.add_theme_font_size_override("font_size", 14)
@@ -445,7 +445,7 @@ func _render_section(page: String) -> void:
 	match page:
 		"character": _render_character_page(snapshot)
 		"skills": _render_skills_page(snapshot)
-		"equipment": _render_equipment_page()
+		"equipment": _render_equipment_page(snapshot)
 		"shop": _render_shop_page()
 
 func _render_character_page(snapshot: Dictionary) -> void:
@@ -459,12 +459,17 @@ func _render_character_page(snapshot: Dictionary) -> void:
 	section_box.add_child(_section_row("基礎戰力", "攻擊 %d · 防禦 %d · 普攻 %.2fs" % [roundi(snapshot.attack), roundi(snapshot.defense), float(snapshot.attack_interval)]))
 	section_box.add_child(_section_row("行動效率", "攻速 +%d%% · 移速 +%d%%" % [roundi(float(snapshot.attack_speed_bonus) * 100.0), roundi(float(snapshot.move_speed_bonus) * 100.0)]))
 	section_box.add_child(_section_row("命中收益", "暴擊 %d%% · 閃避 %d%%" % [roundi(float(snapshot.critical_chance) * 100.0), roundi(float(snapshot.dodge_chance) * 100.0)]))
-	section_box.add_child(_label("六種操練 · %d 點可用" % int(snapshot.training_points), 17, Color("f6d27d")))
-	var levels: Dictionary = snapshot.training
+	section_box.add_child(_label("六種流派 · %d 點修練可用" % int(snapshot.style_points), 17, Color("f6d27d")))
+	var base_levels: Dictionary = snapshot.base_style_levels
+	var equipment_bonuses: Dictionary = snapshot.equipment_style_bonuses
+	var effective_levels: Dictionary = snapshot.effective_style_levels
 	for track: String in CombatModel.TRAINING_ORDER:
 		var definition: Dictionary = CombatModel.TRAINING_DEFS[track]
-		section_box.add_child(_section_row("%s｜%s" % [String(definition.name), String(definition.style)], "Lv.%d · %s" % [int(levels[track]), model.training_hint(track)]))
-	var training_link := _button("前往操練配置", Color("685737"), 46)
+		var level_text := "Base %d" % int(base_levels[track])
+		if int(equipment_bonuses[track]) > 0:
+			level_text += " + 裝備 %d = 有效 %d" % [int(equipment_bonuses[track]), int(effective_levels[track])]
+		section_box.add_child(_section_row("%s｜%s" % [String(definition.name), String(definition.style)], "%s · %s" % [level_text, model.training_hint(track)]))
+	var training_link := _button("前往流派修練", Color("685737"), 46)
 	training_link.pressed.connect(_open_training)
 	section_box.add_child(training_link)
 	var reduce_motion_toggle := CheckButton.new()
@@ -481,7 +486,10 @@ func _render_skills_page(snapshot: Dictionary) -> void:
 		return
 	var definition: Dictionary = CombatModel.TRAINING_DEFS[current_skill_tab]
 	section_box.add_child(_label("%s｜%s" % [String(definition.name), String(definition.style)], 20, _track_color(current_skill_tab)))
-	section_box.add_child(_label("目前 Lv.%d｜%s" % [int(snapshot.training[current_skill_tab]), String(definition.special)], 14, Color("cbd5cc")))
+	var skill_level_text := "Base Lv.%d" % int(snapshot.base_style_levels[current_skill_tab])
+	if int(snapshot.equipment_style_bonuses[current_skill_tab]) > 0:
+		skill_level_text += "｜裝備 +%d｜有效 Lv.%d" % [int(snapshot.equipment_style_bonuses[current_skill_tab]), int(snapshot.effective_style_levels[current_skill_tab])]
+	section_box.add_child(_label("%s｜%s" % [skill_level_text, String(definition.special)], 14, Color("cbd5cc")))
 	if current_skill_tab == "command":
 		_render_command_allies(snapshot)
 	_render_track_skills(current_skill_tab, "核心技能", slots)
@@ -728,11 +736,84 @@ func _track_color(track: String) -> Color:
 func _magic_choice_name(choices: Dictionary, choice_id: String) -> String:
 	return String(choices[choice_id].name) if choices.has(choice_id) else "尚未選擇"
 
-func _render_equipment_page() -> void:
-	section_box.add_child(_label("裝備會改變數值與戰法，但規則尚未定案。", 16, Color("cbd5cc")))
-	section_box.add_child(_section_row("武器", "尚未裝備"))
-	section_box.add_child(_section_row("防具", "尚未裝備"))
-	section_box.add_child(_section_row("飾品", "尚未裝備"))
+func _render_equipment_page(snapshot: Dictionary) -> void:
+	var equipment_intro := _label("裝備是 Build 調整器；數值看有效等級，技能解鎖仍只看 Base。", 14, Color("cbd5cc"))
+	equipment_intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	section_box.add_child(equipment_intro)
+	section_box.add_child(_section_row("持有金幣", "%d" % int(snapshot.gold)))
+	section_box.add_child(_label("目前裝備", 18, Color("f6d27d")))
+	for slot: String in CombatModel.EQUIPMENT_SLOT_NAMES:
+		var item_id := String(snapshot.equipped_items[slot])
+		var item_name := "尚未裝備" if item_id.is_empty() else "%s +%d" % [String(CombatModel.EQUIPMENT_DEFS[item_id].name), int(snapshot.equipment_enhancements[item_id])]
+		section_box.add_child(_section_row(String(CombatModel.EQUIPMENT_SLOT_NAMES[slot]), item_name))
+	section_box.add_child(_label("流派等級", 18, Color("f6d27d")))
+	for track: String in CombatModel.TRAINING_ORDER:
+		var bonus := int(snapshot.equipment_style_bonuses[track])
+		if bonus <= 0:
+			continue
+		var definition: Dictionary = CombatModel.TRAINING_DEFS[track]
+		section_box.add_child(_section_row("%s｜%s" % [String(definition.name), String(definition.style)], "Base %d + 裝備 %d = 有效 %d" % [int(snapshot.base_style_levels[track]), bonus, int(snapshot.effective_style_levels[track])]))
+	section_box.add_child(_label("可用裝備", 18, Color("f6d27d")))
+	for item_id: String in CombatModel.EQUIPMENT_DEFS:
+		var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
+		var slot := String(item.slot)
+		var owned := int(snapshot.owned_equipment.get(item_id, 0)) > 0
+		var enhancement := int(snapshot.equipment_enhancements.get(item_id, 0))
+		var quality := String(item.get("quality", "common"))
+		var item_panel := PanelContainer.new()
+		item_panel.add_theme_stylebox_override("panel", _panel_style(Color("202e28"), _equipment_quality_color(quality), 2 if owned else 1))
+		section_box.add_child(item_panel)
+		var card := VBoxContainer.new()
+		card.add_theme_constant_override("separation", 3)
+		item_panel.add_child(card)
+		card.add_child(_label("%s｜%s +%d｜%s" % [String(CombatModel.EQUIPMENT_SLOT_NAMES[slot]), String(item.name), enhancement, String(CombatModel.EQUIPMENT_QUALITY_NAMES[quality])], 16, _equipment_quality_color(quality)))
+		var detail_text := "%s｜%s" % [_equipment_style_text(item, enhancement), String(item.description)] if owned else "尚未取得｜擊敗敵人有機會掉落，首領必定掉落裝備"
+		var detail := _label(detail_text, 13, Color("aebfb4"))
+		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		card.add_child(detail)
+		var equipped := String(snapshot.equipped_items[slot]) == item_id
+		var equip_button := _button("裝備中" if equipped else ("裝備" if owned else "未取得"), Color("4f6657") if equipped else Color("685737"), 40)
+		equip_button.disabled = equipped or not owned
+		equip_button.pressed.connect(_equip_item.bind(item_id))
+		card.add_child(equip_button)
+		if owned:
+			var cost := model.equipment_enhancement_cost(item_id)
+			var enhance_text := "已達 +5" if cost < 0 else "強化至 +%d｜%d 金" % [enhancement + 1, cost]
+			var enhance_button := _button(enhance_text, Color("435a65"), 40)
+			enhance_button.disabled = cost < 0 or int(snapshot.gold) < cost
+			enhance_button.pressed.connect(_enhance_equipment.bind(item_id))
+			card.add_child(enhance_button)
+
+func _equipment_style_text(item: Dictionary, enhancement := 0) -> String:
+	var parts: Array[String] = []
+	var bonuses: Dictionary = item.get("style_bonuses", {})
+	for track: String in CombatModel.TRAINING_ORDER:
+		var bonus := int(bonuses.get(track, 0))
+		if String(item.get("primary_style", "")) == track:
+			bonus += enhancement
+		if bonus > 0:
+			parts.append("%s +%d" % [String(CombatModel.TRAINING_DEFS[track].name), bonus])
+	return "、".join(parts)
+
+func _equipment_quality_color(quality: String) -> Color:
+	return {
+		"common": Color("c8c5ba"), "uncommon": Color("6fbf89"),
+		"rare": Color("6fa8df"), "epic": Color("b783d7"),
+	}.get(quality, Color("c8c5ba"))
+
+func _equip_item(item_id: String) -> void:
+	if not model.equip_item(item_id):
+		return
+	var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
+	_show_toast("已裝備：%s" % String(item.name), _equipment_style_text(item, model.equipment_enhancement(item_id)))
+	_update_hud(model.snapshot())
+
+func _enhance_equipment(item_id: String) -> void:
+	if not model.enhance_equipment(item_id):
+		return
+	var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
+	_show_toast("強化成功：%s +%d" % [String(item.name), model.equipment_enhancement(item_id)], _equipment_style_text(item, model.equipment_enhancement(item_id)))
+	_update_hud(model.snapshot())
 
 func _render_shop_page() -> void:
 	section_box.add_child(_label("商店尚未營業", 21, Color("d8e0d8")))
@@ -765,7 +846,7 @@ func _build_training_overlay() -> void:
 	panel.add_child(box)
 	var heading := HBoxContainer.new()
 	box.add_child(heading)
-	var title := _label("六種操練", 25, Color("ffe09a"))
+	var title := _label("六種流派", 25, Color("ffe09a"))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	heading.add_child(title)
 	var close := _button("返回", Color("4e5a50"), 44)
@@ -812,9 +893,14 @@ func _handle_events(events: Array[Dictionary]) -> void:
 				_show_toast("區域突破", "戰鬥暫歇，決定下一段旅程")
 				get_tree().create_timer(1.15).timeout.connect(_show_journey_choice)
 			"journey_selected": _show_toast("前往：%s" % String(event.name), String(event.intro))
+			"boss_howl": _show_toast(String(event.name), "下一擊：%s" % String(event.next_attack))
+			"boss_enraged": _show_toast("首領狂怒", "攻擊速度提高，重擊與必中技更加頻繁")
+			"enemy_guard_broken": _show_toast("盾勢瓦解", "後續攻擊將造成完整傷害")
 			"unlock": _show_toast("解鎖：%s" % String(event.name), String(event.description))
 			"milestone": _show_toast("流派強化：%s" % String(event.name), String(event.description))
-			"training_point": _show_toast("獲得 %d 點操練" % int(event.get("gain", 1)), "現在有 %d 點可分配" % int(event.points))
+			"training_point": _show_toast("獲得 %d 點修練" % int(event.get("gain", 1)), "現在有 %d 點可分配" % int(event.points))
+			"equipment_drop": _show_toast("獲得裝備：%s" % String(event.name), "%s｜前往裝備頁查看" % String(CombatModel.EQUIPMENT_QUALITY_NAMES[String(event.quality)]))
+			"equipment_duplicate": _show_toast("重複裝備：%s" % String(event.name), "轉換為 %d 金幣" % int(event.gold))
 			"momentum_full": _show_toast("勢已滿", "AUTO 將依技能優先序判斷")
 			"branch_unlocked": _show_toast("解鎖：%s" % String(event.name), String(event.description))
 			"ally_joined": _show_toast("友軍入隊：%s" % String(event.name), String(event.description))
@@ -991,11 +1077,11 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var boss_mark := "首領 · " if bool(snapshot.enemy_is_boss) else ("精英 · " if bool(snapshot.enemy_is_elite) else "")
 	var rage_mark := " · 狂怒" if bool(snapshot.get("boss_enraged", false)) else ""
 	var attack_hint := " · %s準備" % String(snapshot.enemy_attack_type) if String(snapshot.enemy_attack_type) != "普通" and float(snapshot.enemy_attack_remaining) <= 0.8 else ""
-	enemy_label.text = "第%d區・%s｜%d/10・%s\n%s%s · 護甲 %d%s%s" % [int(snapshot.area_number), String(snapshot.journey_name), int(snapshot.route_position), String(snapshot.route_phase), boss_mark, String(snapshot.enemy_name), roundi(float(snapshot.enemy_armor)), rage_mark, attack_hint]
+	enemy_label.text = "第%d區・%s｜%d/10・%s\n%s%s｜%s · 護甲 %d%s%s" % [int(snapshot.area_number), String(snapshot.journey_name), int(snapshot.route_position), String(snapshot.route_phase), boss_mark, String(snapshot.enemy_name), String(snapshot.enemy_role), roundi(float(snapshot.enemy_armor)), rage_mark, attack_hint]
 	enemy_label.tooltip_text = String(snapshot.enemy_hint)
-	kills_label.text = "擊倒 %d" % int(snapshot.kills)
+	kills_label.text = "擊倒 %d｜金幣 %d" % [int(snapshot.kills), int(snapshot.gold)]
 	var training_points := int(snapshot.training_points)
-	training_alert_button.text = "可用操練 %d" % training_points
+	training_alert_button.text = "可用修練 %d" % training_points
 	training_alert_button.add_theme_stylebox_override("normal", _panel_style(Color("fff5df") if training_points > 0 else Color("e0d9ce"), Color("c58a28") if training_points > 0 else Color("81796f"), 2))
 	var retry_pending := bool(snapshot.get("retry_pending", false))
 	var retry_stage := int(snapshot.get("retry_stage", 0))

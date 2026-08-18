@@ -10,6 +10,8 @@ func _init() -> void:
 func _run_tests() -> void:
 	_test_auto_attack_and_momentum()
 	_test_training_growth_and_locked_tracks()
+	_test_equipment_style_levels_and_unlock_boundary()
+	_test_equipment_drop_quality_and_enhancement()
 	_test_magic_sword_marks_and_auto_attack()
 	_test_burning_cycle()
 	_test_flame_burst_slash()
@@ -41,6 +43,7 @@ func _run_tests() -> void:
 	_test_boss_spawn()
 	_test_boss_rage_phase()
 	_test_enemy_archetypes_and_route_rhythm()
+	_test_enemy_traits_and_boss_phases()
 	_test_journey_choice_controls_next_area()
 	_test_defeat_farms_previous_stage_until_retry()
 	_test_return_blade_auto_counter()
@@ -69,7 +72,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 57")
+		print("Godot tests passed: 60")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -85,6 +88,45 @@ func _test_auto_attack_and_momentum() -> void:
 	model.youren = CombatModelScript.MAX_YOUREN
 	model.shadowless_remaining = 3.0
 	_expect(model._current_attack_interval() >= CombatModelScript.MIN_AUTO_ATTACK_INTERVAL, "極限攻速仍必須保留最低可辨識間隔")
+
+func _test_equipment_style_levels_and_unlock_boundary() -> void:
+	var model = CombatModelScript.new()
+	model.training.physique = 5
+	var hp_before := float(model.snapshot().hero_max_hp)
+	_expect(model.equip_item("black_iron_armor"), "裝備頁必須能穿上有效的防具")
+	_expect(model.base_style_level("physique") == 5, "裝備不可改寫 Base 流派等級")
+	_expect(model.equipment_style_bonus("physique") == 8 and model.effective_style_level("physique") == 13, "有效流派等級必須等於 Base 加裝備加成")
+	_expect(float(model.snapshot().hero_max_hp) > hp_before, "角色數值必須使用有效流派等級")
+	_expect(not model.skill_is_unlocked("guard_stance"), "永久技能解鎖只能使用 Base 流派等級")
+	model.grant_equipment("temple_armor")
+	_expect(model.equip_item("temple_armor"), "同欄位裝備必須可以直接替換")
+	_expect(String(model.equipped_items.armor) == "temple_armor" and model.equipment_style_bonus("physique") == 5, "同欄位只能保留目前裝備的加成")
+	model.training.martial = 10
+	model.grant_equipment("momentum_talisman")
+	model.equip_item("momentum_talisman")
+	model.momentum = 0.0
+	model._add_momentum(10.0, "test")
+	_expect(model.momentum > 10.0, "特殊飾品效果必須真正影響流派戰鬥資源")
+	var snapshot: Dictionary = model.snapshot()
+	_expect(int(snapshot.base_style_levels.physique) == 5 and int(snapshot.effective_style_levels.physique) == 10, "HUD 快照必須同時提供 Base 與有效等級")
+
+func _test_equipment_drop_quality_and_enhancement() -> void:
+	var model = CombatModelScript.new()
+	_expect(String(CombatModelScript.EQUIPMENT_DEFS.magic_rune_sword.quality) == "rare", "裝備資料必須包含品質")
+	model.gold = 1000
+	model.equip_item("black_iron_sword")
+	var effective_before := model.effective_style_level("martial")
+	var cost_before := model.equipment_enhancement_cost("black_iron_sword")
+	_expect(model.enhance_equipment("black_iron_sword"), "持有足夠金幣時必須可以強化裝備")
+	_expect(model.equipment_enhancement("black_iron_sword") == 1 and model.gold == 1000 - cost_before, "強化必須提高等級並扣除正確金幣")
+	_expect(model.effective_style_level("martial") == effective_before + 1, "每次強化必須提高裝備主流派 1 級")
+	for index in 4:
+		model.enhance_equipment("black_iron_sword")
+	_expect(model.equipment_enhancement("black_iron_sword") == 5 and model.equipment_enhancement_cost("black_iron_sword") == -1, "裝備強化上限必須為 +5")
+	model._events.clear()
+	model._award_gold_and_equipment(true, false)
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type in ["equipment_drop", "equipment_duplicate"]), "首領必須保證產生裝備或重複裝備補償")
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "gold_gain"), "每場戰鬥必須固定獲得金幣")
 
 func _test_defeat_farms_previous_stage_until_retry() -> void:
 	var model = CombatModelScript.new()
@@ -106,6 +148,10 @@ func _test_battlefield_impact_tiers() -> void:
 	var battlefield = BattlefieldScript.new()
 	_expect(BattlefieldScript.PIXEL_HERO_DODGE_FRAMES.size() == 4, "像素主角閃避必須載入完整四幀")
 	_expect(BattlefieldScript.PIXEL_HERO_DEATH_FRAMES.size() == 4, "像素主角倒下必須載入完整四幀")
+	_expect(BattlefieldScript.PIXEL_RAIDER_COMBAT_FRAMES.size() == 4, "快攻斥候必須使用獨立四幀戰鬥素材")
+	_expect(BattlefieldScript.PIXEL_BRUTE_COMBAT_FRAMES.size() == 4, "巨槌重兵必須使用獨立四幀戰鬥素材")
+	_expect(BattlefieldScript.PIXEL_SHIELD_COMBAT_FRAMES.size() == 4, "黑鐵盾衛必須使用獨立四幀戰鬥素材")
+	_expect(BattlefieldScript.PIXEL_CASTER_COMBAT_FRAMES.size() == 4, "咒術師必須使用獨立四幀戰鬥素材")
 	_expect(BattlefieldScript.HERO_SLASH_FRAMES.size() == 12, "主角揮劍必須載入完整十二幀")
 	_expect(BattlefieldScript.HERO_BLOCK_FRAMES.size() == 8, "主角格擋必須載入完整八幀")
 	_expect(BattlefieldScript.HERO_DODGE_FRAMES.size() == 10, "主角閃躲必須載入完整十幀")
@@ -605,24 +651,58 @@ func _test_boss_rage_phase() -> void:
 
 func _test_enemy_archetypes_and_route_rhythm() -> void:
 	var model = CombatModelScript.new()
-	var expected := {2: "raider", 4: "brute", 5: "shield", 7: "caster", 10: "boss"}
+	var expected := {1: "raider", 2: "brute", 3: "shield", 4: "caster", 10: "boss"}
 	for target_stage: int in expected:
 		model.stage = target_stage
 		model._spawn_enemy()
 		_expect(model.enemy_archetype == String(expected[target_stage]), "路段 %d 必須出現預定敵人類型" % target_stage)
-	model.stage = 2
+	model.stage = 1
 	model._spawn_enemy()
 	var raider_interval := model._enemy_attack_interval()
-	model.stage = 4
+	model.stage = 2
 	model._spawn_enemy()
 	_expect(model._enemy_attack_interval() > raider_interval, "巨槌重兵必須比快攻斥候更慢出手")
 	_expect(model._attack_type_for_count(2) == "heavy", "巨槌重兵必須穩定使用重擊")
-	model.stage = 7
+	model.stage = 4
 	model._spawn_enemy()
 	_expect(model._attack_type_for_count(1) == "area" and model._attack_type_for_count(3) == "sure_hit", "咒術師必須以範圍與必中術攻擊")
 	model.stage = 9
 	model._spawn_enemy()
 	_expect(model.enemy_is_elite and model._route_phase() == "危機", "首領前必須有精英危機戰")
+
+func _test_enemy_traits_and_boss_phases() -> void:
+	var shield = CombatModelScript.new()
+	shield.stage = 3
+	shield._spawn_enemy()
+	shield.enemy_max_hp = 1000.0
+	shield.enemy_hp = 1000.0
+	shield.enemy_armor = 0.0
+	shield._events.clear()
+	shield._deal_damage(100.0, "attack")
+	_expect(is_equal_approx(shield.enemy_hp, 945.0) and shield.enemy_guard_stacks == 2, "盾衛必須以盾勢明確降低普通物理傷害")
+	shield._deal_damage(100.0, "attack")
+	shield._deal_damage(100.0, "attack")
+	_expect(shield.enemy_guard_stacks == 0 and shield._events.any(func(event: Dictionary) -> bool: return event.type == "enemy_guard_broken"), "連續攻擊必須能打破盾衛防線")
+	var magic = CombatModelScript.new()
+	magic.stage = 3
+	magic._spawn_enemy()
+	magic.enemy_max_hp = 1000.0
+	magic.enemy_hp = 1000.0
+	magic.enemy_armor = 0.0
+	magic._deal_damage(100.0, "magic_enchant")
+	_expect(is_equal_approx(magic.enemy_hp, 900.0) and magic.enemy_guard_stacks == 3, "魔劍傷害必須能繞過盾衛的物理盾勢")
+	var boss = CombatModelScript.new()
+	boss.stage = 10
+	boss._spawn_enemy()
+	boss.enemy_max_hp = 100.0
+	boss.enemy_hp = 100.0
+	boss.enemy_armor = 0.0
+	boss._events.clear()
+	boss._deal_damage(31.0, "test")
+	_expect(boss.boss_howl_triggered and boss.boss_empowered_attack, "Boss 降至 70% 生命時必須進入戰吼階段")
+	_expect(boss._next_enemy_attack_type_id() == "heavy" and boss._events.any(func(event: Dictionary) -> bool: return event.type == "boss_howl"), "戰吼後下一擊必須明確預告為蓄力重擊")
+	boss._enemy_attack("none")
+	_expect(not boss.boss_empowered_attack and boss._events.any(func(event: Dictionary) -> bool: return event.type == "enemy_attack" and bool(event.empowered)), "戰吼強化只可消耗於下一次首領攻擊")
 
 func _test_journey_choice_controls_next_area() -> void:
 	var model = CombatModelScript.new()
@@ -964,7 +1044,7 @@ func _test_navigation() -> void:
 		if button.visible: visible_auto_slots += 1
 	_expect(visible_auto_slots == 5, "手機戰鬥 HUD 必須呈現完整五格技能優先序")
 	_expect(not scene.mp_hud.visible and not scene.momentum_hud.visible and not scene.state_panel.visible, "未投入的流派資源不可預先出現在戰鬥 HUD")
-	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text.begins_with("可用操練"), "戰鬥頁必須提供固定操練點入口")
+	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text.begins_with("可用修練"), "戰鬥頁必須提供固定修練點入口")
 	_expect(is_instance_valid(scene.retry_button) and not scene.retry_button.visible, "未戰敗時不可顯示再次挑戰按鈕")
 	_expect(is_instance_valid(scene.journey_overlay) and scene.journey_buttons.size() == 3, "Boss 後旅途抉擇必須提供三條手機可操作路線")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")
