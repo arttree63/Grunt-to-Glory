@@ -1,6 +1,8 @@
 extends Control
 
 const FIXED_STEP := 1.0 / 60.0
+const SAVE_PATH := "user://grunt_to_glory_save_v1.json"
+const AUTO_SAVE_INTERVAL := 10.0
 const PAGE_NAMES := {"combat": "戰鬥", "character": "角色", "skills": "技能", "equipment": "裝備", "shop": "商店"}
 const UI_FONT := preload("res://assets/fonts/NotoSansTC-Variable.ttf")
 const CREST_ICON := preload("res://assets/ui/hud_v2/crest.png")
@@ -21,6 +23,9 @@ const NAV_ICONS := {
 
 var model := CombatModel.new()
 var accumulator := 0.0
+var autosave_elapsed := 0.0
+var save_loaded := false
+var persistence_enabled := true
 var training_open := false
 var journey_open := false
 var journey_pending := false
@@ -86,14 +91,21 @@ var failure_detail: Label
 var boss_reward_summary := {}
 
 func _ready() -> void:
+	save_loaded = _load_game() if persistence_enabled else false
 	_build_ui()
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_apply_safe_area()
 	_update_hud(model.snapshot())
 	auto_slot_buttons[0].grab_focus()
-	_show_toast("AUTO 戰鬥開始", "角色會持續快速攻擊；你負責流派修練、技能編成與旅途選擇")
+	_show_toast("進度已載入" if save_loaded else "AUTO 戰鬥開始", "角色會持續快速攻擊；你負責流派修練、技能編成與旅途選擇")
+	if model.awaiting_journey_choice:
+		call_deferred("_restore_pending_choice")
 
 func _process(delta: float) -> void:
+	if persistence_enabled:
+		autosave_elapsed += delta
+		if autosave_elapsed >= AUTO_SAVE_INTERVAL:
+			_save_game()
 	if battlefield != null and battlefield.defeat_sequence_active():
 		accumulator = 0.0
 		return
@@ -110,6 +122,39 @@ func _process(delta: float) -> void:
 		stepped = true
 	if stepped:
 		_update_hud(model.snapshot())
+
+func _notification(what: int) -> void:
+	if persistence_enabled and (what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE):
+		_save_game()
+
+func _save_game() -> bool:
+	if not persistence_enabled:
+		return false
+	autosave_elapsed = 0.0
+	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_string(JSON.stringify(model.save_data()))
+	file.flush()
+	return true
+
+func _load_game() -> bool:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return false
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return false
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	return parsed is Dictionary and model.load_save_data(parsed)
+
+func _restore_pending_choice() -> void:
+	if not model.awaiting_journey_choice:
+		return
+	if model.boss_reward_claimed:
+		journey_pending = true
+		_show_journey_choice()
+	else:
+		_show_boss_reward(model.boss_reward_options())
 
 func _unhandled_input(event: InputEvent) -> void:
 	if journey_open or journey_pending or boss_reward_open:
@@ -916,6 +961,7 @@ func _equip_item(item_id: String) -> void:
 	var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
 	_show_toast("已裝備：%s" % String(item.name), _equipment_style_text(item, model.equipment_enhancement(item_id)))
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _enhance_equipment(item_id: String) -> void:
 	if not model.enhance_equipment(item_id):
@@ -923,6 +969,7 @@ func _enhance_equipment(item_id: String) -> void:
 	var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
 	_show_toast("強化成功：%s +%d" % [String(item.name), model.equipment_enhancement(item_id)], _equipment_style_text(item, model.equipment_enhancement(item_id)))
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _render_shop_page() -> void:
 	var snapshot := model.snapshot()
@@ -1024,6 +1071,7 @@ func _buy_shop_item(index: int) -> void:
 		return
 	_show_toast("購買：%s" % String(result.name), "花費 %d 金" % int(result.price))
 	_render_section("shop")
+	_save_game()
 
 func _sell_shop_item(item_id: String) -> void:
 	var value := model.sell_equipment(item_id)
@@ -1031,12 +1079,14 @@ func _sell_shop_item(item_id: String) -> void:
 		return
 	_show_toast("已出售", "%s｜獲得 %d 金" % [String(CombatModel.EQUIPMENT_DEFS[item_id].name), value])
 	_render_section("shop")
+	_save_game()
 
 func _refresh_shop() -> void:
 	if not model.refresh_shop():
 		return
 	_show_toast("商品已刷新", "下一次刷新需要 %d 金" % model.shop_refresh_cost())
 	_render_section("shop")
+	_save_game()
 
 func _perform_inheritance(choice: String, target: String) -> void:
 	var events := model.perform_inheritance(choice, target)
@@ -1045,6 +1095,7 @@ func _perform_inheritance(choice: String, target: String) -> void:
 	_show_toast("傳承完成", "帶著遺產回到第 1 戰")
 	_update_hud(model.snapshot())
 	_switch_page("combat")
+	_save_game()
 
 func _build_training_overlay() -> void:
 	training_overlay = Control.new()
@@ -1169,6 +1220,8 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"ten_thousand_armies_one_sword": _show_toast("奧義・萬軍一劍", "一劍起，萬軍動")
 			"retry_started": _show_toast("再次挑戰", "重新進入第 %d 戰" % int(event.stage))
 			"defeat": _show_toast("第 %d 戰突破失敗" % int(event.failed_stage), "已退回第 %d 戰整備，AUTO 持續進行" % int(event.fallback_stage))
+	if events.any(func(event: Dictionary) -> bool: return String(event.type) in ["enemy_defeated", "defeat", "equipment_drop", "equipment_duplicate", "boss_reward_choice", "inheritance_unlocked"]):
+		_save_game()
 
 func _show_boss_reward(options: Array) -> void:
 	journey_pending = false
@@ -1198,6 +1251,7 @@ func _claim_boss_reward(item_id: String) -> void:
 	boss_reward_overlay.visible = false
 	_handle_events(events)
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _open_failure_report() -> void:
 	var report: Dictionary = model.last_failure_report
@@ -1228,6 +1282,7 @@ func _retry_failed_stage() -> void:
 	accumulator = 0.0
 	_handle_events(events)
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _spend_training(track: String) -> void:
 	var events := model.spend_training(track)
@@ -1235,10 +1290,14 @@ func _spend_training(track: String) -> void:
 	_update_hud(model.snapshot())
 	if not events.is_empty() and not events.any(func(event: Dictionary) -> bool: return event.type == "unlock"):
 		_show_toast("%s提升" % String(CombatModel.TRAINING_DEFS[track].name), "現在是 Lv.%d" % int(model.training[track]))
+	if not events.is_empty():
+		_save_game()
 
 func _equip_auto_skill(skill_id: String) -> void:
-	model.equip_auto_skill(skill_id)
+	if not model.equip_auto_skill(skill_id):
+		return
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _on_auto_slot_pressed(index: int) -> void:
 	var skill_id := String(model.auto_skill_slots[index])
@@ -1247,6 +1306,7 @@ func _on_auto_slot_pressed(index: int) -> void:
 		return
 	if model.cycle_auto_tactic(skill_id):
 		_show_toast("戰術：%s" % model.auto_tactic_label(skill_id), model.auto_tactic_description(skill_id))
+		_save_game()
 	_update_hud(model.snapshot())
 
 func _cycle_auto_tactic(skill_id: String) -> void:
@@ -1254,14 +1314,17 @@ func _cycle_auto_tactic(skill_id: String) -> void:
 		return
 	_show_toast("戰術：%s" % model.auto_tactic_label(skill_id), model.auto_tactic_description(skill_id))
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _remove_auto_slot(index: int) -> void:
 	model.unequip_auto_skill(index)
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _move_auto_slot(index: int, direction: int) -> void:
 	model.move_auto_skill(index, direction)
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _select_skill_tab(tab_id: String) -> void:
 	if tab_id not in ["auto", "martial", "physique", "agility", "magic", "faith", "command"]:
@@ -1275,6 +1338,7 @@ func _select_martial_branch(branch_id: String) -> void:
 	var branch: Dictionary = CombatModel.MARTIAL_BRANCHES[branch_id]
 	_show_toast("已選擇：%s" % String(branch.name), String(branch.description))
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _select_physique_branch(branch_id: String) -> void:
 	if not model.select_physique_branch(branch_id):
@@ -1282,6 +1346,7 @@ func _select_physique_branch(branch_id: String) -> void:
 	var branch: Dictionary = CombatModel.PHYSIQUE_BRANCHES[branch_id]
 	_show_toast("已選擇：%s" % String(branch.name), String(branch.description))
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _select_agility_branch(branch_id: String) -> void:
 	if not model.select_agility_branch(branch_id):
@@ -1289,6 +1354,7 @@ func _select_agility_branch(branch_id: String) -> void:
 	var branch: Dictionary = CombatModel.AGILITY_BRANCHES[branch_id]
 	_show_toast("已選擇：%s" % String(branch.name), String(branch.description))
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _select_faith_branch(branch_id: String) -> void:
 	if not model.select_faith_branch(branch_id):
@@ -1296,6 +1362,7 @@ func _select_faith_branch(branch_id: String) -> void:
 	var branch: Dictionary = CombatModel.FAITH_BRANCHES[branch_id]
 	_show_toast("已選擇：%s" % String(branch.name), String(branch.description))
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _select_command_branch(branch_id: String) -> void:
 	if not model.select_command_branch(branch_id):
@@ -1303,6 +1370,7 @@ func _select_command_branch(branch_id: String) -> void:
 	var branch: Dictionary = CombatModel.COMMAND_BRANCHES[branch_id]
 	_show_toast("已選擇：%s" % String(branch.name), String(branch.description))
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _select_secondary_element(element_id: String) -> void:
 	if not model.select_secondary_element(element_id):
@@ -1310,6 +1378,7 @@ func _select_secondary_element(element_id: String) -> void:
 	var choice: Dictionary = CombatModel.MAGIC_SECONDARIES[element_id]
 	_show_toast("副元素：%s" % String(choice.name), String(choice.description))
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _select_magic_specialization(specialization_id: String) -> void:
 	if not model.select_magic_specialization(specialization_id):
@@ -1317,6 +1386,7 @@ func _select_magic_specialization(specialization_id: String) -> void:
 	var choice: Dictionary = CombatModel.MAGIC_SPECIALIZATIONS[specialization_id]
 	_show_toast("元素專精：%s" % String(choice.name), String(choice.description))
 	_update_hud(model.snapshot())
+	_save_game()
 
 func _toggle_training() -> void:
 	if training_open: _close_training()
@@ -1375,6 +1445,7 @@ func _choose_journey_route(route_id: String) -> void:
 	_handle_events(events)
 	_update_hud(model.snapshot())
 	auto_slot_buttons[0].grab_focus()
+	_save_game()
 
 func _update_hud(snapshot: Dictionary) -> void:
 	var boss_mark := "首領 · " if bool(snapshot.enemy_is_boss) else ("精英 · " if bool(snapshot.enemy_is_elite) else "")

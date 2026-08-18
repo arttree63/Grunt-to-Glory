@@ -53,6 +53,7 @@ func _run_tests() -> void:
 	_test_failure_report_keeps_idle_loop()
 	_test_boss_fixed_reward_choice()
 	_test_slice_metrics_capture_adjustment()
+	_test_save_data_roundtrip()
 	_test_return_blade_auto_counter()
 	_test_guard_stance_window()
 	_test_immovable_layers()
@@ -79,7 +80,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 67")
+		print("Godot tests passed: 68")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -278,6 +279,42 @@ func _test_slice_metrics_capture_adjustment() -> void:
 	_expect(float(model.slice_metrics.retry_wait) >= 1.0, "測試紀錄必須保存失敗後掛機時間")
 	_expect(bool(model.slice_metrics.retry_training_spent), "測試紀錄必須保存再次挑戰前是否修練")
 	_expect(bool(model.slice_metrics.retry_equipment_changed), "測試紀錄必須保存再次挑戰前是否換裝")
+
+func _test_save_data_roundtrip() -> void:
+	var source = CombatModelScript.new()
+	source.stage = 27
+	source.area_number = 3
+	source.journey_route = "mountain"
+	source.awaiting_journey_choice = true
+	source.boss_reward_claimed = true
+	source.retry_pending = true
+	source.retry_stage = 26
+	source.training.magic = 44
+	source.training_points = 7
+	source.gold = 345
+	source.kills = 89
+	source.grant_equipment("magic_rune_sword")
+	source.equip_item("magic_rune_sword")
+	source.equipment_enhancements.magic_rune_sword = 3
+	source.inheritance_unlocked = true
+	source.battle_souls = 2
+	source.legacy_choice = "memory"
+	source.legacy_track = "magic"
+	source.secondary_element = "ice"
+	source.auto_skill_slots[0] = "heavy_strike"
+	source.auto_skill_slots[1] = "magic_sword_release"
+	source.auto_tactics.magic_sword_release = "boss"
+	source.hero_hp = 42.0
+	var restored = CombatModelScript.new()
+	_expect(restored.load_save_data(source.save_data()), "版本相容的存檔必須可以載入")
+	_expect(restored.stage == 27 and restored.area_number == 3 and restored.journey_route == "mountain", "存檔必須恢復關卡與旅途")
+	_expect(restored.awaiting_journey_choice and restored.boss_reward_claimed and restored.retry_pending, "Boss 獎勵、旅途與再挑戰狀態必須恢復")
+	_expect(int(restored.training.magic) == 44 and restored.training_points == 7, "修練等級與未分配點數必須恢復")
+	_expect(String(restored.equipped_items.weapon) == "magic_rune_sword" and int(restored.equipment_enhancements.magic_rune_sword) == 3, "裝備與強化必須恢復")
+	_expect(restored.inheritance_unlocked and restored.battle_souls == 2 and restored.legacy_track == "magic", "轉生與遺產必須恢復")
+	_expect(restored.secondary_element == "ice" and String(restored.auto_skill_slots[1]) == "magic_sword_release", "流派選擇與 AUTO 編成必須恢復")
+	_expect(restored.enemy_hp > 0.0 and restored.hero_hp == 42.0, "載入後應重建當前敵人並恢復角色生命")
+	_expect(not restored.load_save_data({"version": 999}), "不相容存檔版本不可盲目載入")
 
 func _test_battlefield_impact_tiers() -> void:
 	var battlefield = BattlefieldScript.new()
@@ -1180,6 +1217,7 @@ func _test_playable_pace() -> void:
 
 func _test_navigation() -> void:
 	var scene: Variant = load("res://main.tscn").instantiate()
+	scene.persistence_enabled = false
 	root.add_child(scene)
 	await process_frame
 	_expect(scene.nav_buttons.size() == 5, "主分頁必須維持五個入口")

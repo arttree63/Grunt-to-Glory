@@ -543,6 +543,7 @@ var stage := 1
 var area_number := 1
 var journey_route := "frontier"
 var awaiting_journey_choice := false
+var boss_reward_claimed := false
 var retry_pending := false
 var retry_stage := 0
 var current_wave := 0
@@ -1083,6 +1084,100 @@ func skill_is_equipment_supported(skill_id: String) -> bool:
 	var required_level := int(definition.level)
 	return base_style_level(track) < required_level and effective_style_level(track) >= required_level
 
+func save_data() -> Dictionary:
+	return {
+		"version": 1,
+		"stage": stage, "area_number": area_number, "journey_route": journey_route,
+		"awaiting_journey_choice": awaiting_journey_choice, "boss_reward_claimed": boss_reward_claimed,
+		"retry_pending": retry_pending, "retry_stage": retry_stage, "current_wave": current_wave,
+		"hero_hp": hero_hp, "hero_mp": hero_mp, "kills": kills, "gold": gold,
+		"training_points": training_points, "training": training.duplicate(true),
+		"equipped_items": equipped_items.duplicate(true), "owned_equipment": owned_equipment.duplicate(true),
+		"equipment_enhancements": equipment_enhancements.duplicate(true), "equipment_collection": equipment_collection.duplicate(true),
+		"shop_items": shop_items.duplicate(), "shop_refresh_count": shop_refresh_count,
+		"inheritance_unlocked": inheritance_unlocked, "battle_souls": battle_souls, "inheritance_count": inheritance_count,
+		"legacy_choice": legacy_choice, "legacy_track": legacy_track, "legacy_item": legacy_item,
+		"martial_branch": martial_branch, "physique_branch": physique_branch, "agility_branch": agility_branch,
+		"secondary_element": secondary_element, "magic_specialization": magic_specialization,
+		"faith_branch": faith_branch, "command_branch": command_branch,
+		"auto_skill_slots": auto_skill_slots.duplicate(), "auto_tactics": auto_tactics.duplicate(true),
+		"last_failure_report": last_failure_report.duplicate(true), "slice_metrics": slice_metrics.duplicate(true),
+	}
+
+func load_save_data(data: Dictionary) -> bool:
+	if int(data.get("version", 0)) != 1:
+		return false
+	stage = maxi(1, int(data.get("stage", 1)))
+	area_number = maxi(1, int(data.get("area_number", 1)))
+	var saved_route := String(data.get("journey_route", "frontier"))
+	journey_route = saved_route if JOURNEY_ROUTES.has(saved_route) else "frontier"
+	awaiting_journey_choice = bool(data.get("awaiting_journey_choice", false))
+	boss_reward_claimed = bool(data.get("boss_reward_claimed", false))
+	retry_pending = bool(data.get("retry_pending", false))
+	retry_stage = maxi(0, int(data.get("retry_stage", 0)))
+	kills = maxi(0, int(data.get("kills", 0)))
+	gold = maxi(0, int(data.get("gold", 0)))
+	training_points = maxi(0, int(data.get("training_points", 0)))
+	_load_number_map(training, data.get("training", {}), TRAINING_ORDER, 0, MAX_TRAINING_LEVEL)
+	_load_number_map(owned_equipment, data.get("owned_equipment", {}), EQUIPMENT_DEFS.keys(), 0, 999)
+	_load_number_map(equipment_enhancements, data.get("equipment_enhancements", {}), EQUIPMENT_DEFS.keys(), 0, 5)
+	var saved_equipped: Dictionary = data.get("equipped_items", {})
+	for slot: String in EQUIPMENT_SLOT_NAMES:
+		var item_id := String(saved_equipped.get(slot, ""))
+		equipped_items[slot] = item_id if EQUIPMENT_DEFS.has(item_id) and int(owned_equipment.get(item_id, 0)) > 0 and String(EQUIPMENT_DEFS[item_id].slot) == slot else ""
+	equipment_collection = {"black_iron_sword": true, "black_iron_armor": true}
+	var saved_collection: Dictionary = data.get("equipment_collection", {})
+	for item_id: String in EQUIPMENT_DEFS:
+		if bool(saved_collection.get(item_id, false)) or int(owned_equipment.get(item_id, 0)) > 0:
+			equipment_collection[item_id] = true
+	shop_items.clear()
+	for value: Variant in Array(data.get("shop_items", [])):
+		var item_id := String(value)
+		if EQUIPMENT_DEFS.has(item_id) and not shop_items.has(item_id):
+			shop_items.append(item_id)
+	shop_refresh_count = maxi(0, int(data.get("shop_refresh_count", 0)))
+	inheritance_unlocked = bool(data.get("inheritance_unlocked", false))
+	battle_souls = maxi(0, int(data.get("battle_souls", 0)))
+	inheritance_count = maxi(0, int(data.get("inheritance_count", 0)))
+	legacy_choice = String(data.get("legacy_choice", ""))
+	legacy_track = String(data.get("legacy_track", "")) if String(data.get("legacy_track", "")) in TRAINING_ORDER else ""
+	legacy_item = String(data.get("legacy_item", "")) if EQUIPMENT_DEFS.has(String(data.get("legacy_item", ""))) else ""
+	martial_branch = _valid_choice(data, "martial_branch", MARTIAL_BRANCHES)
+	physique_branch = _valid_choice(data, "physique_branch", PHYSIQUE_BRANCHES)
+	agility_branch = _valid_choice(data, "agility_branch", AGILITY_BRANCHES)
+	secondary_element = _valid_choice(data, "secondary_element", MAGIC_SECONDARIES)
+	magic_specialization = _valid_choice(data, "magic_specialization", MAGIC_SPECIALIZATIONS)
+	faith_branch = _valid_choice(data, "faith_branch", FAITH_BRANCHES)
+	command_branch = _valid_choice(data, "command_branch", COMMAND_BRANCHES)
+	auto_skill_slots = []
+	for value: Variant in Array(data.get("auto_skill_slots", [])):
+		var skill_id := String(value)
+		auto_skill_slots.append(skill_id if skill_id.is_empty() or SKILL_DEFS.has(skill_id) else "")
+	while auto_skill_slots.size() < AUTO_SLOT_COUNT:
+		auto_skill_slots.append("")
+	if auto_skill_slots.size() > AUTO_SLOT_COUNT:
+		auto_skill_slots.resize(AUTO_SLOT_COUNT)
+	if not auto_skill_slots.has("heavy_strike"):
+		auto_skill_slots[0] = "heavy_strike"
+	auto_tactics = Dictionary(data.get("auto_tactics", {})).duplicate(true)
+	last_failure_report = Dictionary(data.get("last_failure_report", {})).duplicate(true)
+	slice_metrics = Dictionary(data.get("slice_metrics", slice_metrics)).duplicate(true)
+	current_wave = clampi(int(data.get("current_wave", 0)), 0, _stage_waves(stage).size() - 1)
+	_spawn_enemy()
+	hero_hp = clampf(float(data.get("hero_hp", _hero_max_hp())), 1.0, _hero_max_hp())
+	hero_mp = clampf(float(data.get("hero_mp", _hero_max_mp())), 0.0, _hero_max_mp())
+	return true
+
+func _load_number_map(target: Dictionary, source_value: Variant, allowed_keys: Array, minimum: int, maximum: int) -> void:
+	var source: Dictionary = source_value if source_value is Dictionary else {}
+	for key: Variant in allowed_keys:
+		var key_name := String(key)
+		target[key_name] = clampi(int(source.get(key_name, target.get(key_name, minimum))), minimum, maximum)
+
+func _valid_choice(data: Dictionary, key: String, choices: Dictionary) -> String:
+	var value := String(data.get(key, ""))
+	return value if choices.has(value) else ""
+
 func snapshot() -> Dictionary:
 	var route_definition := _journey_definition()
 	var equipment_bonuses := {}
@@ -1096,6 +1191,7 @@ func snapshot() -> Dictionary:
 		"area_number": area_number, "journey_route": journey_route,
 		"journey_name": String(route_definition.name), "journey_intro": String(route_definition.intro), "journey_effect": String(route_definition.effect),
 		"awaiting_journey_choice": awaiting_journey_choice,
+		"boss_reward_claimed": boss_reward_claimed,
 		"retry_pending": retry_pending, "retry_stage": retry_stage,
 		"last_failure_report": last_failure_report.duplicate(true), "slice_metrics": slice_metrics.duplicate(true),
 		"hero_hp": hero_hp, "hero_max_hp": _hero_max_hp(), "hero_mp": hero_mp, "hero_max_mp": _hero_max_mp(),
@@ -2401,6 +2497,7 @@ func _enemy_defeated() -> void:
 	hero_hp = minf(_hero_max_hp(), hero_hp + (18.0 if journey_route == "village" else 10.0))
 	if defeated_boss and not retry_pending:
 		awaiting_journey_choice = true
+		boss_reward_claimed = false
 	else:
 		_spawn_enemy()
 	_events.append({"type": "enemy_defeated", "stage": stage, "kills": kills, "boss": defeated_boss})
@@ -2443,6 +2540,7 @@ func claim_boss_reward(item_id: String) -> Array[Dictionary]:
 	}
 	grant_equipment(item_id)
 	equip_item(item_id)
+	boss_reward_claimed = true
 	slice_metrics.boss_reward = item_id
 	var after := {
 		"effective": effective_style_level(track), "base": base_style_level(track),
@@ -2491,6 +2589,7 @@ func _reset_for_inheritance(inherited_item: String, memory_track: String) -> voi
 	area_number = 1
 	journey_route = "frontier"
 	awaiting_journey_choice = false
+	boss_reward_claimed = false
 	retry_pending = false
 	retry_stage = 0
 	current_wave = 0
@@ -2582,6 +2681,7 @@ func retry_failed_stage() -> Array[Dictionary]:
 	retry_pending = false
 	retry_stage = 0
 	awaiting_journey_choice = false
+	boss_reward_claimed = false
 	_spawn_enemy()
 	_events.append({"type": "retry_started", "stage": stage})
 	return _events.duplicate(true)
@@ -2594,6 +2694,7 @@ func choose_journey_route(route_id: String) -> Array[Dictionary]:
 	slice_metrics.next_area_pressed = true
 	area_number += 1
 	awaiting_journey_choice = false
+	boss_reward_claimed = false
 	shop_refresh_count = 0
 	_generate_shop_items()
 	if route_id == "village":
