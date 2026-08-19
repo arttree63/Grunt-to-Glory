@@ -1,8 +1,12 @@
 class_name Battlefield
 extends Control
 
+signal approach_selected(approach_id: String)
+
 const GORGE_BACKGROUND := preload("res://assets/visual/battle_hud_v2/ruins-arena.png")
 const PIXEL_BACKGROUND := preload("res://assets/visual/pixel_vertical_slice/background/frontier-ruins.png")
+const EXPLORATION_BACKGROUND := preload("res://assets/visual/exploration_map_v1/frontier-roaming-map.png")
+const UI_FONT := preload("res://assets/fonts/NotoSansTC-Regular.otf")
 const PIXEL_HERO_IDLE_FRAMES := [
 	preload("res://assets/visual/pixel_vertical_slice/hero/idle/idle-1.png"),
 	preload("res://assets/visual/pixel_vertical_slice/hero/idle/idle-2.png"),
@@ -206,6 +210,7 @@ const PIXEL_VERTICAL_SLICE := true
 const PIXEL_FEET_RATIO := 228.0 / 256.0
 const PIXEL_WOLF_FEET_RATIO := 244.0 / 256.0
 const DEFEAT_REWIND_DURATION := 1.8
+const AUTO_APPROACH_DELAY := 2.4
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -314,10 +319,20 @@ var _sfx_streams: Dictionary = {}
 var _sfx_players: Array[AudioStreamPlayer] = []
 var _sfx_cursor := 0
 var _pixel_enemy_position := Vector2.ZERO
+var exploration_enabled := false
+var _exploration_phase := "disabled"
+var _encounter_key := ""
+var _selected_approach := ""
+var _approach_remaining := AUTO_APPROACH_DELAY
+var _hero_map_position := Vector2.ZERO
+var _hero_map_target := Vector2.ZERO
+var _enemy_map_position := Vector2.ZERO
+var _move_speed_bonus := 0.0
 
 func _ready() -> void:
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	gui_input.connect(_on_map_input)
 	for index in 8:
 		var label := Label.new()
 		label.visible = false
@@ -347,6 +362,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	_update_exploration(delta)
 	if _visual_freeze_remaining > 0.0:
 		_visual_freeze_remaining = maxf(0.0, _visual_freeze_remaining - delta)
 		queue_redraw()
@@ -451,6 +467,104 @@ func set_state(snapshot: Dictionary) -> void:
 	magic_manifest_active = bool(snapshot.magic_manifest_active)
 	complete_release_active = float(snapshot.complete_release_remaining) > 0.0
 	ally_count = int(snapshot.ally_count)
+	_move_speed_bonus = float(snapshot.get("move_speed_bonus", 0.0))
+	if exploration_enabled and float(snapshot.enemy_hp) > 0.0:
+		var next_key := str(int(snapshot.stage))
+		if next_key != _encounter_key:
+			_begin_exploration(next_key)
+
+func set_exploration_enabled(value: bool) -> void:
+	exploration_enabled = value
+	if not value:
+		_exploration_phase = "disabled"
+		return
+	if _exploration_phase == "disabled":
+		_encounter_key = ""
+	queue_redraw()
+
+func navigation_blocks_combat() -> bool:
+	return exploration_enabled and _exploration_phase in ["choosing", "traveling"]
+
+func exploration_status() -> Dictionary:
+	return {
+		"phase": _exploration_phase,
+		"approach": _selected_approach,
+		"remaining": _approach_remaining,
+	}
+
+func _begin_exploration(key: String) -> void:
+	_encounter_key = key
+	_selected_approach = ""
+	_approach_remaining = AUTO_APPROACH_DELAY
+	_exploration_phase = "choosing"
+	var bottom := minf(stage_bottom - 8.0, size.y - 112.0)
+	if _hero_map_position == Vector2.ZERO:
+		_hero_map_position = Vector2(size.x * 0.5, bottom - 6.0)
+	else:
+		_hero_map_position.x = clampf(_hero_map_position.x, 52.0, size.x - 52.0)
+		_hero_map_position.y = clampf(_hero_map_position.y, stage_top + 96.0, bottom - 4.0)
+	_hero_map_target = _hero_map_position
+	_enemy_map_position = Vector2.ZERO
+	queue_redraw()
+
+func _approach_nodes() -> Dictionary:
+	var bottom := minf(stage_bottom - 8.0, size.y - 112.0)
+	var height := maxf(220.0, bottom - stage_top)
+	return {
+		"scout": Vector2(size.x * 0.27, stage_top + height * 0.34),
+		"direct": Vector2(size.x * 0.51, stage_top + height * 0.5),
+		"supply": Vector2(size.x * 0.74, stage_top + height * 0.37),
+	}
+
+func _select_approach(approach_id: String) -> void:
+	if _exploration_phase != "choosing" or not _approach_nodes().has(approach_id):
+		return
+	_selected_approach = approach_id
+	_enemy_map_position = Vector2(_approach_nodes()[approach_id])
+	var approach_vector := (_hero_map_position - _enemy_map_position).normalized()
+	_hero_map_target = _enemy_map_position + approach_vector * 82.0 + Vector2(0.0, 12.0)
+	_exploration_phase = "traveling"
+	approach_selected.emit(approach_id)
+	queue_redraw()
+
+func _update_exploration(delta: float) -> void:
+	if not exploration_enabled:
+		return
+	if _exploration_phase == "choosing":
+		_approach_remaining = maxf(0.0, _approach_remaining - delta)
+		if _approach_remaining <= 0.0:
+			_select_approach("direct")
+	elif _exploration_phase == "traveling":
+		var speed := 118.0 * (1.0 + _move_speed_bonus)
+		_hero_map_position = _hero_map_position.move_toward(_hero_map_target, speed * delta)
+		if _hero_map_position.distance_to(_hero_map_target) <= 1.0:
+			_hero_map_position = _hero_map_target
+			_exploration_phase = "engaged"
+	queue_redraw()
+
+func _on_map_input(event: InputEvent) -> void:
+	if _exploration_phase != "choosing":
+		return
+	var pointer := Vector2.ZERO
+	var pressed := false
+	if event is InputEventScreenTouch:
+		pointer = event.position
+		pressed = event.pressed
+	elif event is InputEventMouseButton:
+		pointer = event.position
+		pressed = event.pressed and event.button_index == MOUSE_BUTTON_LEFT
+	if not pressed:
+		return
+	var closest := ""
+	var closest_distance := 74.0
+	for approach_id: String in _approach_nodes():
+		var distance := pointer.distance_to(Vector2(_approach_nodes()[approach_id]))
+		if distance < closest_distance:
+			closest = approach_id
+			closest_distance = distance
+	if not closest.is_empty():
+		accept_event()
+		_select_approach(closest)
 
 func set_stage_bounds(top: float, bottom: float) -> void:
 	stage_top = maxf(130.0, top)
@@ -822,13 +936,17 @@ func _draw_pixel_vertical_slice() -> void:
 	var rewind_pan := 0.0
 	if defeat_sequence_active() and rewind_progress >= 0.42 and rewind_progress <= 0.84:
 		rewind_pan = sin((rewind_progress - 0.42) / 0.42 * PI) * 0.075
-	_draw_cover_texture(PIXEL_BACKGROUND, Rect2(Vector2.ZERO, size), Vector2(0.5 + rewind_pan, 0.59))
+	var background_texture: Texture2D = EXPLORATION_BACKGROUND if exploration_enabled else PIXEL_BACKGROUND
+	var background_focus := Vector2(0.5 + rewind_pan, 0.56 if exploration_enabled else 0.59)
+	_draw_cover_texture(background_texture, Rect2(Vector2.ZERO, size), background_focus)
 	draw_rect(Rect2(Vector2.ZERO, size), Color("193041", 0.05))
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
 	var battle_line := lerpf(stage_top, visible_bottom, 0.79)
-	var hero_pos := Vector2(clampf(size.x * 0.29, 66.0, size.x - 160.0), battle_line + 20.0)
-	var enemy_pos := Vector2(clampf(size.x * 0.72, 170.0, size.x - 66.0), battle_line)
+	var hero_pos := _hero_map_position if exploration_enabled and _hero_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.29, 66.0, size.x - 160.0), battle_line + 20.0)
+	var enemy_pos := _enemy_map_position if exploration_enabled and _enemy_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.72, 170.0, size.x - 66.0), battle_line)
 	_pixel_enemy_position = enemy_pos
+	if exploration_enabled and _exploration_phase == "choosing":
+		_draw_approach_choices()
 
 	if not defeat_sequence_active() or rewind_progress < 0.45:
 		for index in ally_count:
@@ -836,13 +954,58 @@ func _draw_pixel_vertical_slice() -> void:
 			var column := index % 2
 			_draw_ally(hero_pos + Vector2(-55.0 - float(column) * 30.0, -10.0 - float(row) * 42.0), index)
 
-	if not defeat_sequence_active() or rewind_progress < 0.44:
+	if (not exploration_enabled or _exploration_phase != "choosing") and (not defeat_sequence_active() or rewind_progress < 0.44):
 		_draw_pixel_enemy(enemy_pos)
 	_draw_pixel_hero(hero_pos)
 	_draw_style_formed_burst(hero_pos)
 	_draw_pixel_combat_fx(hero_pos, enemy_pos)
 	if _hurt_vignette > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("a82e2e", _hurt_vignette * 0.13), false, 10.0)
+
+func _draw_approach_choices() -> void:
+	var prompt_width := minf(size.x - 32.0, 350.0)
+	var node_top := minf(float(Vector2(_approach_nodes().scout).y), minf(float(Vector2(_approach_nodes().direct).y), float(Vector2(_approach_nodes().supply).y)))
+	var prompt_rect := Rect2((size.x - prompt_width) * 0.5, node_top - 58.0, prompt_width, 34.0)
+	draw_style_box(_exploration_panel_style(), prompt_rect)
+	draw_string(UI_FONT, prompt_rect.position + Vector2(0.0, 23.0), "點選路線 · %.1f 秒後自動直行" % _approach_remaining, HORIZONTAL_ALIGNMENT_CENTER, prompt_rect.size.x, 16, Color("fff5d5"))
+	for approach_id: String in _approach_nodes():
+		var center := Vector2(_approach_nodes()[approach_id])
+		var color := _approach_color(approach_id)
+		var pulse := 1.0 + sin(_time * 4.0 + center.x * 0.01) * 0.05
+		draw_circle(center, 34.0 * pulse, Color("162529", 0.76))
+		draw_arc(center, 35.0 * pulse, 0.0, TAU, 28, color, 4.0)
+		match approach_id:
+			"scout":
+				draw_line(center + Vector2(-12.0, 9.0), center + Vector2(0.0, -10.0), color, 4.0)
+				draw_line(center + Vector2(0.0, -10.0), center + Vector2(12.0, 9.0), color, 4.0)
+			"direct":
+				draw_line(center + Vector2(-13.0, 0.0), center + Vector2(13.0, 0.0), color, 5.0)
+				draw_line(center + Vector2(5.0, -8.0), center + Vector2(13.0, 0.0), color, 5.0)
+				draw_line(center + Vector2(5.0, 8.0), center + Vector2(13.0, 0.0), color, 5.0)
+			"supply":
+				draw_line(center + Vector2(-11.0, 0.0), center + Vector2(11.0, 0.0), color, 6.0)
+				draw_line(center + Vector2(0.0, -11.0), center + Vector2(0.0, 11.0), color, 6.0)
+		var label_rect := Rect2(center.x - 58.0, center.y + 43.0, 116.0, 48.0)
+		draw_rect(label_rect, Color("122126", 0.76))
+		draw_string(UI_FONT, label_rect.position + Vector2(0.0, 19.0), _approach_name(approach_id), HORIZONTAL_ALIGNMENT_CENTER, label_rect.size.x, 17, Color.WHITE)
+		draw_string(UI_FONT, label_rect.position + Vector2(0.0, 40.0), _approach_short_effect(approach_id), HORIZONTAL_ALIGNMENT_CENTER, label_rect.size.x, 14, color.lightened(0.22))
+
+func _exploration_panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("142329", 0.86)
+	style.border_color = Color("d7b45a", 0.88)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(10)
+	return style
+
+func _approach_color(approach_id: String) -> Color:
+	return {"scout": Color("72c9dd"), "direct": Color("efb25c"), "supply": Color("73d098")}.get(approach_id, Color.WHITE)
+
+func _approach_name(approach_id: String) -> String:
+	return {"scout": "高地偵察", "direct": "直取敵陣", "supply": "補給營火"}.get(approach_id, "接敵")
+
+func _approach_short_effect(approach_id: String) -> String:
+	return {"scout": "敵甲 -20%", "direct": "先手 -8% HP", "supply": "回復 8%"}.get(approach_id, "")
 
 func _draw_style_formed_burst(feet_position: Vector2) -> void:
 	if _style_formed_burst <= 0.0 or _hero_defeated:
@@ -891,7 +1054,7 @@ func _draw_pixel_hero(feet_position: Vector2) -> void:
 
 	var shadow_size := Vector2(60.0, 8.0) if _hero_defeated else Vector2(43.0, 9.0)
 	_draw_ground_shadow(feet_position + Vector2(0.0, 2.0), shadow_size)
-	_draw_anchored_animation_frame(texture, feet_position + offset, 226.0, PIXEL_FEET_RATIO, 0.0, Vector2.ONE, tint)
+	_draw_anchored_animation_frame(texture, feet_position + offset, 158.0 if exploration_enabled else 226.0, PIXEL_FEET_RATIO, 0.0, Vector2.ONE, tint)
 
 func _draw_pixel_rewind_hero(feet_position: Vector2) -> void:
 	var progress := defeat_rewind_progress()
@@ -978,7 +1141,7 @@ func _draw_enemy_role_badge(feet_position: Vector2, alpha: float) -> void:
 		return
 	var accent := _enemy_accent_color()
 	accent.a = 0.92 * alpha
-	var badge_center := feet_position + Vector2(0.0, -139.0)
+	var badge_center := feet_position + Vector2(0.0, -96.0 if exploration_enabled else -139.0)
 	draw_circle(badge_center, 12.0, Color("182329", 0.82 * alpha))
 	draw_arc(badge_center, 13.0, 0.0, TAU, 20, accent, 3.0)
 	match enemy_archetype:
@@ -1079,10 +1242,11 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 	_draw_enemy_ground_marker(feet_position, entry_alpha)
 	_draw_ground_shadow(feet_position + Vector2(0.0, 3.0), Vector2((61.0 if enemy_is_boss else 55.0) * archetype_scale, (11.0 if enemy_is_boss else 10.0) * archetype_scale))
 	tint.a *= entry_alpha
-	_draw_anchored_animation_frame(texture, feet_position + offset, (252.0 if enemy_is_boss else 238.0) * archetype_scale, PIXEL_WOLF_FEET_RATIO, 0.0, action_scale, tint)
+	var enemy_height := (176.0 if enemy_is_boss else 164.0) if exploration_enabled else (252.0 if enemy_is_boss else 238.0)
+	_draw_anchored_animation_frame(texture, feet_position + offset, enemy_height * archetype_scale, PIXEL_WOLF_FEET_RATIO, 0.0, action_scale, tint)
 	_draw_enemy_role_badge(feet_position, entry_alpha)
 	if enemy_heavy_windup and _enemy_death_motion <= 0.0:
-		var intent_center := feet_position + Vector2(0.0, -128.0)
+		var intent_center := feet_position + Vector2(0.0, -91.0 if exploration_enabled else -128.0)
 		var intent_color := Color("ef684f") if enemy_attack_type == "重擊" else Color("d594ef")
 		draw_circle(intent_center, 19.0, Color("17232a", 0.88))
 		draw_arc(intent_center, 23.0, -PI * 0.5, -PI * 0.5 + TAU * enemy_windup_ratio, 24, intent_color, 5.0)

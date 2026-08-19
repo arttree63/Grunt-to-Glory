@@ -74,6 +74,11 @@ const JOURNEY_ROUTES := {
 	"village": {"name": "邊境村落", "intro": "炊煙後藏著被劫掠的屋舍。村民請你守住最後一條路。", "effect": "選擇時回復生命｜區域敵人稍弱｜每戰額外恢復"},
 	"battlefield": {"name": "沉眠古戰場", "intro": "鏽劍遍地，亡者仍守著早已不存在的軍旗。", "effect": "敵人生命與護甲提高｜擊敗 Boss 額外獲得 3 修練"},
 }
+const EXPLORATION_APPROACHES := {
+	"scout": {"name": "高地偵察", "effect": "繞到側翼，敵方護甲降低 20%"},
+	"direct": {"name": "直取敵陣", "effect": "快速接敵，先手削減敵人 8% 生命"},
+	"supply": {"name": "補給營火", "effect": "繞行補給點，回復 8% 生命與魔力"},
+}
 const ROUTE_ENEMY_NAMES := {
 	"frontier": {"grunt": "黑鐵新兵", "raider": "黑鐵劍兵", "brute": "黑鐵重槌兵", "shield": "黑鐵盾衛", "centurion": "黑鐵百夫長", "caster": "林地咒術師", "boss": "黑鐵統領"},
 	"mountain": {"grunt": "灰峽野狼", "raider": "裂牙獵狼", "brute": "岩背巨狼", "shield": "山道盾匪", "caster": "峽谷獵手", "boss": "峽谷狼王"},
@@ -629,6 +634,8 @@ var boss_empowered_attack := false
 var enemy_archetype := "grunt"
 var enemy_is_elite := false
 var enemy_guard_stacks := 0
+var exploration_approach := ""
+var exploration_approach_applied := false
 var enemy_engagement_time := 0.0
 var enemy_attack_count := 0
 var kills := 0
@@ -852,6 +859,24 @@ func step(delta: float) -> Array[Dictionary]:
 	if ally_attack_remaining <= 0.0 and _ally_count() > 0 and enemy_hp > 0.0:
 		ally_attack_remaining += _ally_attack_interval()
 		_ally_auto_attack()
+	return _events.duplicate(true)
+
+func choose_exploration_approach(approach_id: String) -> Array[Dictionary]:
+	_events.clear()
+	if exploration_approach_applied or not EXPLORATION_APPROACHES.has(approach_id):
+		return []
+	exploration_approach = approach_id
+	exploration_approach_applied = true
+	match approach_id:
+		"scout":
+			enemy_armor *= 0.8
+		"direct":
+			enemy_hp = maxf(1.0, enemy_hp - enemy_max_hp * 0.08)
+		"supply":
+			hero_hp = minf(_hero_max_hp(), hero_hp + _hero_max_hp() * 0.08)
+			hero_mp = minf(_hero_max_mp(), hero_mp + _hero_max_mp() * 0.08)
+	var definition: Dictionary = EXPLORATION_APPROACHES[approach_id]
+	_events.append({"type": "exploration_approach", "approach": approach_id, "name": String(definition.name), "effect": String(definition.effect)})
 	return _events.duplicate(true)
 
 func spend_training(track: String) -> Array[Dictionary]:
@@ -1369,6 +1394,7 @@ func snapshot() -> Dictionary:
 		"enemy_archetype": enemy_archetype, "enemy_name": _enemy_display_name(),
 		"enemy_role": String(_enemy_definition().role), "enemy_hint": String(_enemy_definition().hint),
 		"enemy_guard_stacks": enemy_guard_stacks,
+		"exploration_approach": exploration_approach,
 		"route_position": _route_position(), "route_phase": _route_phase(),
 		"enemy_attack_type": _next_enemy_attack_type(), "enemy_attack_remaining": enemy_attack_remaining,
 		"kills": kills, "gold": gold, "training_points": training_points, "style_points": training_points,
@@ -3035,6 +3061,8 @@ func _spawn_enemy() -> void:
 	var is_final_prelude_wave := _route_position() == 9 and current_wave >= stage_waves.size() - 1
 	enemy_is_elite = enemy_archetype == "centurion" or is_final_prelude_wave
 	enemy_guard_stacks = 3 if enemy_archetype == "shield" else 0
+	exploration_approach = ""
+	exploration_approach_applied = false
 	var definition := _enemy_definition()
 	var route_hp := 1.08 if journey_route == "mountain" else (0.95 if journey_route == "village" else (1.18 if journey_route == "battlefield" else 1.0))
 	var elite_hp_multiplier := 1.35 if enemy_archetype == "centurion" else (1.15 if enemy_is_elite else 1.0)

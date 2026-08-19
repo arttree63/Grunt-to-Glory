@@ -190,6 +190,9 @@ func _process(delta: float) -> void:
 		return
 	if tutorial_open or training_open or journey_open or journey_pending or boss_reward_open or failure_open or current_page != "combat":
 		return
+	if battlefield.navigation_blocks_combat():
+		accumulator = 0.0
+		return
 	accumulator = minf(accumulator + delta, FIXED_STEP * 5.0)
 	var stepped := false
 	while accumulator >= FIXED_STEP:
@@ -280,6 +283,7 @@ func _finish_startup(title: String) -> void:
 	game_started = true
 	start_overlay.visible = false
 	accumulator = 0.0
+	battlefield.set_exploration_enabled(true)
 	_update_hud(model.snapshot())
 	auto_slot_buttons[0].grab_focus()
 	if model.tutorial_step == "intro":
@@ -289,8 +293,9 @@ func _finish_startup(title: String) -> void:
 	elif model.tutorial_step == "spend":
 		call_deferred("_resume_spend_tutorial")
 	else:
-		var detail := "戰鬥會自動進行；先點右上「第一步：修練」，選擇你的第一條道路" if _total_base_training() == 0 else "角色會持續快速攻擊；你負責流派修練、技能編成與旅途選擇"
-		_show_toast(title, detail)
+		var detail := "角色會自動尋敵；先選接敵路線，再點右上「第一步：修練」" if _total_base_training() == 0 else "角色會自動尋敵與攻擊；你負責路線、流派與技能編成"
+		if String(battlefield.exploration_status().phase) != "choosing":
+			_show_toast(title, detail)
 		if model.tutorial_step == "core":
 			call_deferred("_highlight_core_training_button")
 
@@ -306,7 +311,7 @@ func _show_tutorial(title: String, detail: String, action_text: String, action: 
 	tutorial_action_button.grab_focus()
 
 func _show_tutorial_intro() -> void:
-	_show_tutorial("你只是一名小兵", "戰鬥會自動進行。這一步先不談技能與裝備，只看角色完成第一次攻擊與擊倒。", "開始第一戰", _tutorial_begin_observe)
+	_show_tutorial("你只是一名小兵", "角色會自動尋找敵人。接敵前可點選高地、直行或補給；不操作也會自動直行。", "開始探索", _tutorial_begin_observe)
 
 func _tutorial_begin_observe() -> void:
 	model.tutorial_step = "observe"
@@ -425,6 +430,7 @@ func _build_ui() -> void:
 
 	battlefield = Battlefield.new()
 	battlefield.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	battlefield.approach_selected.connect(_select_exploration_approach)
 	add_child(battlefield)
 	var shade := ColorRect.new()
 	shade.color = Color("6d7c87", 0.035)
@@ -434,9 +440,11 @@ func _build_ui() -> void:
 
 	var safe := MarginContainer.new()
 	safe.name = "SafeArea"
+	safe.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(safe)
 	var layout := VBoxContainer.new()
+	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layout.add_theme_constant_override("separation", 7)
 	safe.add_child(layout)
 
@@ -1744,6 +1752,7 @@ func _handle_events(events: Array[Dictionary]) -> void:
 		_show_training_tutorial()
 	for event: Dictionary in events:
 		match String(event.type):
+			"exploration_approach": _show_toast(String(event.name), String(event.effect), 1.5, Color("e7bd65"))
 			"wave_started": _show_toast("第 %d/%d 波" % [int(event.wave), int(event.wave_count)], String(event.enemy))
 			"boss_reward_choice":
 				journey_pending = true
@@ -1861,6 +1870,10 @@ func _retry_failed_stage() -> void:
 		return
 	accumulator = 0.0
 	_handle_events(events)
+	_update_hud(model.snapshot())
+
+func _select_exploration_approach(approach_id: String) -> void:
+	_handle_events(model.choose_exploration_approach(approach_id))
 	_update_hud(model.snapshot())
 	_save_game()
 
@@ -2162,6 +2175,8 @@ func _update_hud(snapshot: Dictionary) -> void:
 			button.add_theme_stylebox_override("normal", _slot_style(base if state == "就緒" else base.darkened(0.32), border, 2 if state == "就緒" else 1))
 	battlefield.set_state(snapshot)
 	battlefield.set_stage_bounds(top_panel.position.y + top_panel.size.y, combat_panel.position.y)
+	if String(battlefield.exploration_status().phase) == "choosing" and is_instance_valid(toast_panel):
+		toast_panel.visible = false
 	_update_training_rows(snapshot)
 	if current_page != "combat" and is_instance_valid(section_box):
 		_render_section(current_page, false)
