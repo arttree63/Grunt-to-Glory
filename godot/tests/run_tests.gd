@@ -274,6 +274,7 @@ func _test_auto_roaming() -> void:
 	_expect(battlefield._selected_landmark_name == "斷旗丘" and battlefield._manual_waypoint_active, "點擊地標必須改為地標繞行目標")
 	battlefield._update_exploration(10.0)
 	_expect(battlefield._claimed_landmark_effect == "direct" and battlefield.navigation_blocks_combat(), "抵達地標必須取得優勢並自動接回巡敵")
+	_expect(battlefield._landmark_acquire_fx > 0.0 and battlefield._landmark_acquire_name == "斷旗丘", "取得地標時必須啟動短暫世界回饋並顯示來源")
 	battlefield._update_exploration(10.0)
 	_expect(battlefield.active_landmark_effect() == "direct" and not battlefield.navigation_blocks_combat(), "完成繞行後必須在接敵時啟用所選地標效果")
 	var group_model = CombatModelScript.new()

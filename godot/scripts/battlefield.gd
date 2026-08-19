@@ -336,6 +336,9 @@ var _claimed_landmark_effect := ""
 var _nearby_landmark_name := ""
 var _discovered_landmarks: Dictionary = {}
 var _roaming_hint_remaining := 0.0
+var _landmark_acquire_fx := 0.0
+var _landmark_acquire_name := ""
+var _landmark_acquire_effect := ""
 var _hero_facing := 1.0
 var _navigation_paused := false
 var _camera_top_left := Vector2.ZERO
@@ -363,6 +366,7 @@ func _ready() -> void:
 		"hurt": _make_sfx("hurt"),
 		"defeat": _make_sfx("defeat"),
 		"boss_defeat": _make_sfx("boss_defeat"),
+		"landmark": _make_sfx("landmark"),
 	}
 	for index in 6:
 		var player := AudioStreamPlayer.new()
@@ -423,6 +427,7 @@ func _process(delta: float) -> void:
 	_momentum_pulse = maxf(0.0, _momentum_pulse - delta * 1.8)
 	_style_formed_burst = maxf(0.0, _style_formed_burst - delta / 0.95)
 	_milestone_fx = maxf(0.0, _milestone_fx - delta / (0.45 if _milestone_mode == "impact" else 0.7))
+	_landmark_acquire_fx = maxf(0.0, _landmark_acquire_fx - delta / 1.05)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
 	_hero_flash = maxf(0.0, _hero_flash - delta * 7.0)
 	_enemy_knockback = maxf(0.0, _enemy_knockback - delta * 5.8)
@@ -644,6 +649,7 @@ func _update_exploration(delta: float) -> void:
 				if not _selected_landmark_effect.is_empty():
 					_claimed_landmark_name = _selected_landmark_name
 					_claimed_landmark_effect = _selected_landmark_effect
+					_play_landmark_acquired(_claimed_landmark_name, _claimed_landmark_effect)
 					_selected_landmark_name = ""
 					_selected_landmark_effect = ""
 					_roaming_hint_remaining = 1.8
@@ -654,6 +660,12 @@ func _update_exploration(delta: float) -> void:
 		_update_landmark_discovery_hint()
 	_update_exploration_camera(delta)
 	queue_redraw()
+
+func _play_landmark_acquired(landmark_name: String, effect: String) -> void:
+	_landmark_acquire_fx = 1.0
+	_landmark_acquire_name = landmark_name
+	_landmark_acquire_effect = effect
+	_play_sfx("landmark")
 
 func _update_landmark_discovery_hint() -> void:
 	if not _selected_landmark_name.is_empty() or not _claimed_landmark_name.is_empty():
@@ -1107,6 +1119,7 @@ func _draw_pixel_vertical_slice() -> void:
 		_draw_enemy_group_reserves(enemy_pos)
 		_draw_pixel_enemy(enemy_pos)
 	_draw_pixel_hero(hero_pos)
+	_draw_landmark_acquire_fx(hero_pos)
 	_draw_style_formed_burst(hero_pos)
 	_draw_pixel_combat_fx(hero_pos, enemy_pos)
 	if _hurt_vignette > 0.0:
@@ -1151,6 +1164,45 @@ func _draw_landmark_symbol(position: Vector2, kind: String, selected: bool, inte
 		"stones":
 			for offset in [Vector2(-12.0, -3.0), Vector2(0.0, -10.0), Vector2(12.0, -2.0)]:
 				draw_circle(position + offset, 7.0, Color("9aa5a0", 0.76))
+
+func _draw_landmark_acquire_fx(hero_position: Vector2) -> void:
+	if _landmark_acquire_fx <= 0.0 or _hero_defeated:
+		return
+	var progress := 1.0 - _landmark_acquire_fx
+	var alpha := sin(clampf(progress, 0.0, 1.0) * PI)
+	var effect_color := {
+		"scout": Color("9cd9e8"),
+		"direct": Color("f2b06b"),
+		"supply": Color("b9df9b"),
+	}.get(_landmark_acquire_effect, Color("f0d58a")) as Color
+	var center := hero_position + Vector2(0.0, -38.0)
+	draw_arc(center, 20.0 + progress * 54.0, 0.0, TAU, 32, Color(effect_color, alpha * 0.72), 4.0)
+	draw_arc(center, 34.0 + progress * 32.0, -2.65, -0.48, 20, Color(effect_color.lightened(0.28), alpha * 0.58), 3.0)
+	match _landmark_acquire_effect:
+		"scout":
+			for index in 3:
+				var radius := 22.0 + float(index) * 12.0 + progress * 14.0
+				draw_arc(center, radius, -2.7, -0.44, 18, Color(effect_color, alpha * (0.72 - float(index) * 0.14)), 2.5)
+		"direct":
+			for index in 6:
+				var angle := float(index) * TAU / 6.0
+				draw_line(center + Vector2.from_angle(angle) * 20.0, center + Vector2.from_angle(angle) * (40.0 + progress * 22.0), Color(effect_color, alpha * 0.66), 3.0)
+		"supply":
+			for index in 5:
+				var offset := Vector2((float(index) - 2.0) * 13.0, 18.0 - progress * (34.0 + float(index % 2) * 9.0))
+				draw_circle(center + offset, 3.5, Color(effect_color.lightened(0.22), alpha * 0.72))
+	if progress <= 0.86:
+		var detail := {
+			"scout": "敵方護甲 -20%",
+			"direct": "先手削減生命 8%",
+			"supply": "回復生命與魔力 8%",
+		}.get(_landmark_acquire_effect, "獲得地標優勢") as String
+		var panel_width := minf(size.x - 46.0, 236.0)
+		var panel_y := maxf(stage_top + 64.0, hero_position.y - 142.0 - sin(progress * PI) * 8.0)
+		var panel_rect := Rect2((size.x - panel_width) * 0.5, panel_y, panel_width, 52.0)
+		draw_style_box(_exploration_panel_style(), panel_rect)
+		draw_string(UI_FONT, panel_rect.position + Vector2(0.0, 21.0), "取得 · %s" % _landmark_acquire_name, HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 16, Color("fff1c8", alpha))
+		draw_string(UI_FONT, panel_rect.position + Vector2(0.0, 42.0), detail, HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 14, Color(effect_color, alpha * 0.96))
 
 func _draw_enemy_group_reserves(enemy_position: Vector2) -> void:
 	var reserve_count := mini(2, maxi(0, _encounter_wave_count - _encounter_wave))
@@ -2061,6 +2113,7 @@ func _play_sfx(kind: String) -> void:
 		"hurt": -17.0,
 		"defeat": -15.0,
 		"boss_defeat": -11.0,
+		"landmark": -18.0,
 	}.get(kind, -16.0)
 	player.pitch_scale = 0.99 + float(_sfx_cursor % 3) * 0.008
 	player.play()
@@ -2076,6 +2129,7 @@ func _make_sfx(kind: String) -> AudioStreamWAV:
 		"hurt": 0.07,
 		"defeat": 0.14,
 		"boss_defeat": 0.24,
+		"landmark": 0.18,
 	}.get(kind, 0.065)
 	var sample_rate := 22050
 	var sample_count := roundi(duration * float(sample_rate))
@@ -2116,11 +2170,14 @@ func _make_sfx(kind: String) -> AudioStreamWAV:
 			"boss_defeat":
 				frequency = 88.0 - progress * 22.0
 				noise_amount = 0.12
+			"landmark":
+				frequency = 480.0 + progress * 210.0
+				noise_amount = 0.0
 		var raw_noise := sin(float(index) * 12.9898) * sin(float(index) * 4.1414)
 		noise_state = lerpf(noise_state, raw_noise, 0.1)
 		var body := sin(TAU * frequency * time)
 		var sample := (body * (1.0 - noise_amount) + noise_state * noise_amount) * envelope * 0.48
-		if kind in ["block", "perfect", "boss_defeat"]:
+		if kind in ["block", "perfect", "boss_defeat", "landmark"]:
 			sample += sin(TAU * frequency * 1.48 * time) * envelope * 0.11
 		data.encode_s16(index * 2, clampi(roundi(sample * 32767.0), -32768, 32767))
 	var stream := AudioStreamWAV.new()
