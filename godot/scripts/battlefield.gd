@@ -210,6 +210,12 @@ const PIXEL_WOLF_FEET_RATIO := 244.0 / 256.0
 const DEFEAT_REWIND_DURATION := 1.8
 const ROAMING_HINT_DURATION := 2.8
 const EXPLORATION_WORLD_SCALE := Vector2(1.65, 1.6)
+const EXPLORATION_BACKGROUND_ZOOM := 0.76
+const HERO_MAP_SPEED := 146.0
+const ENEMY_CHASE_SPEED := 112.0
+const ENCOUNTER_DISTANCE := 104.0
+const COMBAT_DISTANCE := 122.0
+const DRAG_THRESHOLD := 14.0
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -345,6 +351,11 @@ var _landmark_acquire_effect := ""
 var _hero_facing := 1.0
 var _navigation_paused := false
 var _camera_top_left := Vector2.ZERO
+var _pointer_down := false
+var _pointer_origin := Vector2.ZERO
+var _pointer_position := Vector2.ZERO
+var _steering_active := false
+var _steering_vector := Vector2.ZERO
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -504,7 +515,9 @@ func set_exploration_enabled(value: bool) -> void:
 	queue_redraw()
 
 func navigation_blocks_combat() -> bool:
-	return exploration_enabled and _exploration_phase == "traveling"
+	if not exploration_enabled:
+		return false
+	return _exploration_phase == "traveling" or _hero_map_position.distance_to(_enemy_map_position) > COMBAT_DISTANCE
 
 func set_navigation_paused(value: bool) -> void:
 	_navigation_paused = value
@@ -660,7 +673,7 @@ func _current_landmark_name() -> String:
 
 func _set_enemy_approach_target() -> void:
 	var world_size := _exploration_world_size()
-	_hero_map_target = _enemy_map_position + Vector2(-142.0, 12.0)
+	_hero_map_target = _enemy_map_position
 	_hero_map_target.x = clampf(_hero_map_target.x, 52.0, world_size.x - 52.0)
 	_hero_map_target.y = clampf(_hero_map_target.y, 150.0, world_size.y - 36.0)
 
@@ -693,59 +706,64 @@ func _update_exploration(delta: float) -> void:
 	if not exploration_enabled or _navigation_paused:
 		return
 	_roaming_hint_remaining = maxf(0.0, _roaming_hint_remaining - delta)
+	var manual_route_completed := _update_hero_map_movement(delta)
 	if _exploration_phase == "traveling":
-		var manual_route_completed := false
-		var speed := 118.0 * (1.0 + _move_speed_bonus)
-		if absf(_hero_map_target.x - _hero_map_position.x) > 2.0:
-			_hero_facing = signf(_hero_map_target.x - _hero_map_position.x)
-		_hero_map_position = _hero_map_position.move_toward(_hero_map_target, speed * delta)
-		if _hero_map_position.distance_to(_hero_map_target) <= 1.0:
-			_hero_map_position = _hero_map_target
-			if _manual_waypoint_active:
-				_manual_waypoint_active = false
-				manual_route_completed = true
-				if not _selected_landmark_effect.is_empty():
-					_claimed_landmark_name = _selected_landmark_name
-					_claimed_landmark_effect = _selected_landmark_effect
-					_play_landmark_acquired(_claimed_landmark_name, _claimed_landmark_effect)
-					_selected_landmark_name = ""
-					_selected_landmark_effect = ""
-					_roaming_hint_remaining = 1.8
-				_set_enemy_approach_target()
-			else:
-				_select_nearest_enemy_camp()
-				_set_enemy_approach_target()
-		_update_exploration_camera(delta)
-		var contacted_camp := _nearest_enemy_camp_index(154.0)
-		if contacted_camp >= 0:
-			_frame_enemy_for_combat(_enemy_camps[contacted_camp])
-		var contacted_camp_visible := contacted_camp >= 0 and _enemy_visible_on_map(_world_to_screen(_enemy_camps[contacted_camp]))
-		if contacted_camp_visible and _selected_landmark_name.is_empty() and not manual_route_completed:
+		var contacted_camp := _nearest_enemy_camp_index(ENCOUNTER_DISTANCE)
+		if contacted_camp >= 0 and _selected_landmark_name.is_empty() and not manual_route_completed:
 			_active_enemy_camp_index = contacted_camp
 			_enemy_map_position = _enemy_camps[contacted_camp]
 			_manual_waypoint_active = false
 			_hero_facing = 1.0 if _enemy_map_position.x >= _hero_map_position.x else -1.0
 			_exploration_phase = "engaged"
 		_update_landmark_discovery_hint()
-	else:
-		_update_exploration_camera(delta)
+	elif _exploration_phase == "engaged":
+		_update_enemy_chase(delta)
+	_update_exploration_camera(delta)
 	queue_redraw()
 
-func _frame_enemy_for_combat(enemy_world_position: Vector2) -> void:
-	var view_size := _visible_map_size()
+func _update_hero_map_movement(delta: float) -> bool:
 	var world_size := _exploration_world_size()
-	var target_screen_x := 104.0 if enemy_world_position.x < _hero_map_position.x else size.x - 104.0
-	var target_screen_y := minf(stage_bottom - 84.0, stage_top + 220.0)
-	_camera_top_left.x = clampf(
-		enemy_world_position.x - target_screen_x,
-		0.0,
-		world_size.x - view_size.x
-	)
-	_camera_top_left.y = clampf(
-		enemy_world_position.y - (target_screen_y - stage_top),
-		0.0,
-		world_size.y - view_size.y
-	)
+	var speed := HERO_MAP_SPEED * (1.0 + _move_speed_bonus)
+	if _steering_active:
+		_manual_waypoint_active = false
+		_selected_landmark_name = ""
+		_selected_landmark_effect = ""
+		_hero_facing = signf(_steering_vector.x) if absf(_steering_vector.x) > 0.08 else _hero_facing
+		_hero_map_position += _steering_vector * speed * delta
+		_hero_map_position.x = clampf(_hero_map_position.x, 52.0, world_size.x - 52.0)
+		_hero_map_position.y = clampf(_hero_map_position.y, 150.0, world_size.y - 36.0)
+		return false
+	if not _manual_waypoint_active and _exploration_phase != "traveling":
+		return false
+	var move_vector := _hero_map_position.direction_to(_hero_map_target)
+	_hero_facing = signf(move_vector.x) if absf(move_vector.x) > 0.08 else _hero_facing
+	_hero_map_position = _hero_map_position.move_toward(_hero_map_target, speed * delta)
+	if _hero_map_position.distance_to(_hero_map_target) > 1.0:
+		return false
+	_hero_map_position = _hero_map_target
+	if not _manual_waypoint_active:
+		return false
+	_manual_waypoint_active = false
+	if not _selected_landmark_effect.is_empty():
+		_claimed_landmark_name = _selected_landmark_name
+		_claimed_landmark_effect = _selected_landmark_effect
+		_play_landmark_acquired(_claimed_landmark_name, _claimed_landmark_effect)
+		_selected_landmark_name = ""
+		_selected_landmark_effect = ""
+		_roaming_hint_remaining = 1.8
+	if _exploration_phase == "traveling":
+		_select_nearest_enemy_camp()
+		_set_enemy_approach_target()
+	return true
+
+func _update_enemy_chase(delta: float) -> void:
+	var distance := _enemy_map_position.distance_to(_hero_map_position)
+	if distance > COMBAT_DISTANCE * 0.78:
+		_enemy_map_position = _enemy_map_position.move_toward(_hero_map_position, ENEMY_CHASE_SPEED * delta)
+		if _active_enemy_camp_index >= 0 and _active_enemy_camp_index < _enemy_camps.size():
+			_enemy_camps[_active_enemy_camp_index] = _enemy_map_position
+	if not _steering_active:
+		_hero_facing = 1.0 if _enemy_map_position.x >= _hero_map_position.x else -1.0
 
 func _play_landmark_acquired(landmark_name: String, effect: String) -> void:
 	_landmark_acquire_fx = 1.0
@@ -772,23 +790,72 @@ func _update_landmark_discovery_hint() -> void:
 		_roaming_hint_remaining = 2.4
 
 func _on_map_input(event: InputEvent) -> void:
-	if _exploration_phase != "traveling":
+	if not exploration_enabled or _exploration_phase == "disabled":
 		return
-	var pointer := Vector2.ZERO
-	var pressed := false
 	if event is InputEventScreenTouch:
-		pointer = event.position
-		pressed = event.pressed
+		if event.pressed:
+			_begin_pointer_move(event.position)
+			_handle_map_tap(event.position)
+		else:
+			_end_pointer_move()
+		accept_event()
+		return
+	if event is InputEventScreenDrag:
+		_update_pointer_move(event.position)
+		accept_event()
+		return
 	elif event is InputEventMouseButton:
-		pointer = event.position
-		pressed = event.pressed and event.button_index == MOUSE_BUTTON_LEFT
-	if not pressed:
+		if event.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if event.pressed:
+			_begin_pointer_move(event.position)
+			_handle_map_tap(event.position)
+		else:
+			_end_pointer_move()
+		accept_event()
+		return
+	elif event is InputEventMouseMotion and _pointer_down:
+		_update_pointer_move(event.position)
+		accept_event()
+
+func _begin_pointer_move(pointer: Vector2) -> void:
+	if pointer.y < stage_top or pointer.y > minf(stage_bottom, size.y - 112.0):
+		return
+	_pointer_down = true
+	_pointer_origin = pointer
+	_pointer_position = pointer
+	_steering_active = false
+	_steering_vector = Vector2.ZERO
+
+func _update_pointer_move(pointer: Vector2) -> void:
+	if not _pointer_down:
+		return
+	_pointer_position = pointer
+	var drag_vector := pointer - _pointer_origin
+	if drag_vector.length() >= DRAG_THRESHOLD:
+		_steering_active = true
+		_steering_vector = drag_vector.normalized()
+		_manual_waypoint_active = false
+		_selected_landmark_name = ""
+		_selected_landmark_effect = ""
+		_roaming_hint_remaining = 0.0
+
+func _end_pointer_move() -> void:
+	_pointer_down = false
+	_steering_active = false
+	_steering_vector = Vector2.ZERO
+	if _exploration_phase == "traveling":
+		_select_nearest_enemy_camp()
+		_set_enemy_approach_target()
+
+func _handle_map_tap(pointer: Vector2) -> void:
+	if not _pointer_down:
 		return
 	var world_size := _exploration_world_size()
 	var world_pointer := _screen_to_world(pointer)
 	var enemy_camp_index := _enemy_camp_at(world_pointer)
 	var landmark := _landmark_at(world_pointer)
-	if enemy_camp_index >= 0:
+	if enemy_camp_index >= 0 and _exploration_phase == "traveling":
 		_active_enemy_camp_index = enemy_camp_index
 		_enemy_map_position = _enemy_camps[enemy_camp_index]
 		_selected_landmark_name = ""
@@ -803,7 +870,7 @@ func _on_map_input(event: InputEvent) -> void:
 			clampf(world_pointer.x, 52.0, world_size.x - 52.0),
 			clampf(world_pointer.y, 150.0, world_size.y - 36.0)
 		)
-	else:
+	elif _exploration_phase == "traveling":
 		_selected_landmark_name = String(landmark.name)
 		_selected_landmark_effect = _landmark_effect_for_kind(String(landmark.kind))
 		_hero_map_target = Vector2(landmark.position)
@@ -812,7 +879,6 @@ func _on_map_input(event: InputEvent) -> void:
 	if enemy_camp_index < 0 and landmark.is_empty():
 		_manual_waypoint_active = true
 		_roaming_hint_remaining = 1.2
-	accept_event()
 	queue_redraw()
 
 func set_stage_bounds(top: float, bottom: float) -> void:
@@ -1198,7 +1264,10 @@ func _draw_pixel_vertical_slice() -> void:
 			clampf((_camera_top_left.x + view_size.x * 0.5) / world_size.x + rewind_pan, 0.18, 0.82),
 			clampf((_camera_top_left.y + view_size.y * 0.5) / world_size.y, 0.2, 0.8)
 		)
-	_draw_cover_texture(background_texture, Rect2(Vector2.ZERO, size), background_focus)
+	if exploration_enabled:
+		_draw_exploration_background(background_texture, Rect2(Vector2.ZERO, size))
+	else:
+		_draw_cover_texture(background_texture, Rect2(Vector2.ZERO, size), background_focus)
 	draw_rect(Rect2(Vector2.ZERO, size), Color("193041", 0.05))
 	if exploration_enabled:
 		_draw_landmarks()
@@ -1211,6 +1280,8 @@ func _draw_pixel_vertical_slice() -> void:
 	_pixel_enemy_position = enemy_pos
 	if exploration_enabled and _exploration_phase == "traveling":
 		_draw_roaming_path(hero_pos, enemy_pos)
+	if exploration_enabled:
+		_draw_drag_control()
 
 	if not defeat_sequence_active() or rewind_progress < 0.45:
 		for index in ally_count:
@@ -1231,7 +1302,7 @@ func _draw_pixel_vertical_slice() -> void:
 func _enemy_visible_on_map(screen_position: Vector2) -> bool:
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
 	return screen_position.x >= 22.0 and screen_position.x <= size.x - 22.0 \
-		and screen_position.y >= stage_top + 200.0 and screen_position.y <= visible_bottom + 16.0
+		and screen_position.y >= stage_top + 168.0 and screen_position.y <= visible_bottom + 16.0
 
 func _draw_landmarks() -> void:
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
@@ -1352,7 +1423,7 @@ func _draw_roaming_path(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var prompt_width := minf(size.x - 56.0, 286.0)
 		var prompt_rect := Rect2((size.x - prompt_width) * 0.5, stage_top + 18.0, prompt_width, 34.0)
 		draw_style_box(_exploration_panel_style(), prompt_rect)
-		var hint := "AUTO 尋敵 · 點地移動"
+		var hint := "拖曳移動 · 放開 AUTO"
 		if not _selected_landmark_name.is_empty():
 			hint = "繞行：%s" % _selected_landmark_name
 		elif not _claimed_landmark_name.is_empty() and _manual_waypoint_active == false:
@@ -1364,6 +1435,14 @@ func _draw_roaming_path(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		elif _manual_waypoint_active:
 			hint = "已調整路線"
 		draw_string(UI_FONT, prompt_rect.position + Vector2(0.0, 23.0), hint, HORIZONTAL_ALIGNMENT_CENTER, prompt_rect.size.x, 16, Color("fff5d5"))
+
+func _draw_drag_control() -> void:
+	if not _pointer_down:
+		return
+	var drag_vector := (_pointer_position - _pointer_origin).limit_length(42.0)
+	draw_circle(_pointer_origin, 44.0, Color("15252c", 0.34))
+	draw_arc(_pointer_origin, 44.0, 0.0, TAU, 32, Color("f4dfaa", 0.42), 2.0)
+	draw_circle(_pointer_origin + drag_vector, 18.0, Color("f4dfaa", 0.6 if _steering_active else 0.38))
 
 func _exploration_panel_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
@@ -1568,7 +1647,7 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 			var attack_frame := 1 if progress < 0.2 else (2 if progress < 0.58 else 3)
 			texture = PIXEL_WOLF_ATTACK_FRAMES[attack_frame]
 		var lunge_distance: float = 7.0 if enemy_archetype == "raider" else (2.0 if enemy_archetype == "caster" else 4.0)
-		offset.x -= sin(progress * PI) * lunge_distance
+		offset.x += _enemy_attack_lunge_direction() * sin(progress * PI) * lunge_distance
 		if not reduced_motion:
 			if enemy_archetype == "brute": action_scale = Vector2(1.05, 0.95) if progress < 0.46 else Vector2(0.98, 1.02)
 			elif enemy_archetype == "shield": action_scale = Vector2(1.02, 0.98)
@@ -1619,6 +1698,11 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 		draw_arc(intent_center, 23.0, -PI * 0.5, -PI * 0.5 + TAU * enemy_windup_ratio, 24, intent_color, 5.0)
 		draw_line(intent_center + Vector2(0.0, -10.0), intent_center + Vector2(0.0, 4.0), Color.WHITE, 4.0)
 		draw_circle(intent_center + Vector2(0.0, 10.0), 2.5, Color.WHITE)
+
+func _enemy_attack_lunge_direction() -> float:
+	if exploration_enabled and _hero_map_position != Vector2.ZERO and _enemy_map_position != Vector2.ZERO:
+		return 1.0 if _hero_map_position.x > _enemy_map_position.x else -1.0
+	return -1.0
 
 func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 	if defeat_sequence_active():
@@ -1966,6 +2050,29 @@ func _draw_cover_texture(texture: Texture2D, destination: Rect2, focus: Vector2)
 		source_rect.position.y = (texture_size.y - crop_height) * focus.y
 		source_rect.size.y = crop_height
 	draw_texture_rect_region(texture, destination, source_rect)
+
+func _draw_exploration_background(texture: Texture2D, destination: Rect2) -> void:
+	var source_rect := _exploration_background_source_rect(texture.get_size(), destination.size)
+	draw_texture_rect_region(texture, destination, source_rect)
+
+func _exploration_background_source_rect(texture_size: Vector2, destination_size: Vector2) -> Rect2:
+	if texture_size.x <= 0.0 or texture_size.y <= 0.0 or destination_size.x <= 0.0 or destination_size.y <= 0.0:
+		return Rect2(Vector2.ZERO, texture_size)
+	var destination_aspect := destination_size.x / destination_size.y
+	var cover_size := texture_size
+	if texture_size.x / texture_size.y > destination_aspect:
+		cover_size.x = texture_size.y * destination_aspect
+	else:
+		cover_size.y = texture_size.x / destination_aspect
+	var source_size := cover_size * EXPLORATION_BACKGROUND_ZOOM
+	var view_size := _visible_map_size()
+	var world_size := _exploration_world_size()
+	var camera_range := world_size - view_size
+	var camera_progress := Vector2(
+		0.5 if camera_range.x <= 0.0 else clampf(_camera_top_left.x / camera_range.x, 0.0, 1.0),
+		0.5 if camera_range.y <= 0.0 else clampf(_camera_top_left.y / camera_range.y, 0.0, 1.0)
+	)
+	return Rect2((texture_size - source_size) * camera_progress, source_size)
 
 func _draw_afterimages(origin: Vector2) -> void:
 	var count := 0

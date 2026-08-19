@@ -236,6 +236,24 @@ func _test_auto_roaming() -> void:
 	_expect(world_size.x > visible_size.x and world_size.y > visible_size.y, "探索世界必須大於手機單一可視畫面")
 	_expect(battlefield.navigation_blocks_combat() and battlefield._enemy_map_position != Vector2.ZERO, "自動巡敵開始時必須生成目標並暫停交戰")
 	_expect(battlefield._enemy_camps.size() == 3 and battlefield._active_enemy_camp_index >= 0, "大地圖必須同時生成三群可見敵人並自動鎖定最近一群")
+	var hero_before_drag: Vector2 = battlefield._hero_map_position
+	var camera_before_drag: Vector2 = battlefield._camera_top_left
+	var drag_press := InputEventMouseButton.new()
+	drag_press.button_index = MOUSE_BUTTON_LEFT
+	drag_press.pressed = true
+	drag_press.position = Vector2(120.0, 420.0)
+	battlefield._on_map_input(drag_press)
+	var drag_motion := InputEventMouseMotion.new()
+	drag_motion.position = Vector2(190.0, 420.0)
+	battlefield._on_map_input(drag_motion)
+	battlefield._update_exploration(0.5)
+	_expect(battlefield._hero_map_position.x > hero_before_drag.x + 40.0 and battlefield._camera_top_left.x > camera_before_drag.x, "按住拖曳必須直接移動角色並推動世界鏡頭")
+	var drag_release := InputEventMouseButton.new()
+	drag_release.button_index = MOUSE_BUTTON_LEFT
+	drag_release.pressed = false
+	drag_release.position = drag_motion.position
+	battlefield._on_map_input(drag_release)
+	_expect(not battlefield._steering_active and battlefield._hero_map_target == battlefield._enemy_map_position, "放開拖曳後必須恢復 AUTO 尋敵")
 	var initial_camp_target: Vector2 = battlefield._enemy_map_position
 	var alternate_camp_index: int = (battlefield._active_enemy_camp_index + 1) % battlefield._enemy_camps.size()
 	var camp_click := InputEventMouseButton.new()
@@ -244,7 +262,7 @@ func _test_auto_roaming() -> void:
 	camp_click.position = battlefield._world_to_screen(battlefield._enemy_camps[alternate_camp_index])
 	battlefield._on_map_input(camp_click)
 	_expect(battlefield._enemy_map_position != initial_camp_target and battlefield._active_enemy_camp_index == alternate_camp_index, "點擊其他敵群必須立即切換半自動狩獵目標")
-	_expect(not battlefield._enemy_visible_on_map(Vector2(195.0, battlefield.stage_top + 180.0)) and battlefield._enemy_visible_on_map(Vector2(195.0, battlefield.stage_top + 210.0)), "接敵安全區必須容納完整敵人 Sprite，不可只判斷腳底進入畫面")
+	_expect(not battlefield._enemy_visible_on_map(Vector2(195.0, battlefield.stage_top + 150.0)) and battlefield._enemy_visible_on_map(Vector2(195.0, battlefield.stage_top + 175.0)), "接敵安全區必須容納完整敵人 Sprite，不可只判斷腳底進入畫面")
 	battlefield._encounter_wave = 1
 	battlefield._encounter_wave_count = 3
 	var encounter_status: Dictionary = battlefield.exploration_status()
