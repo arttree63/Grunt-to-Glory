@@ -32,6 +32,12 @@ const EQUIPMENT_QUALITY_COSTS := {"common": 60, "uncommon": 90, "rare": 140, "ep
 const NORMAL_EQUIPMENT_DROP_CHANCE := 0.18
 const ELITE_EQUIPMENT_DROP_CHANCE := 0.55
 const BOSS_EQUIPMENT_DROP_CHANCE := 1.0
+const BASE_ENEMY_EXPERIENCE := 8
+const ENEMY_EXPERIENCE_PER_LEVEL := 2
+const BASE_LEVEL_EXPERIENCE := 24
+const LEVEL_EXPERIENCE_GROWTH := 8
+const STARTING_TRAINING_POINTS := 8
+const LEGACY_STARTING_TRAINING_POINTS := 5
 const EQUIPMENT_DEFS := {
 	"black_iron_cleaver": {"name": "黑鐵斬劍", "slot": "weapon", "quality": "rare", "primary_style": "martial", "description": "對重甲敵人更有效的哨站軍官劍。", "style_bonuses": {"martial": 6}, "modifiers": {"armored_damage": 0.1}},
 	"black_iron_sword": {"name": "黑鐵長劍", "slot": "weapon", "quality": "common", "primary_style": "martial", "description": "制式軍劍，適合磨練穩定的一刀。", "style_bonuses": {"martial": 5}},
@@ -73,9 +79,9 @@ const SHIELD_BYPASS_SOURCES := {
 	"holy_enchant": true, "holy_light_slash": true, "judgment_slash": true,
 }
 const JOURNEY_ROUTES := {
-	"mountain": {"name": "灰狼山道", "intro": "碎石路上滿是爪痕。狼群與山賊正沿峽谷逼近。", "effect": "敵人更快更強｜每次戰鬥累積額外 20% 修練"},
+	"mountain": {"name": "灰狼山道", "intro": "碎石路上滿是爪痕。狼群與山賊正沿峽谷逼近。", "effect": "敵人更快更強｜擊倒經驗 +20%"},
 	"village": {"name": "邊境村落", "intro": "炊煙後藏著被劫掠的屋舍。村民請你守住最後一條路。", "effect": "選擇時回復生命｜區域敵人稍弱｜每戰額外恢復"},
-	"battlefield": {"name": "沉眠古戰場", "intro": "鏽劍遍地，亡者仍守著早已不存在的軍旗。", "effect": "敵人生命與護甲提高｜擊敗 Boss 額外獲得 3 修練"},
+	"battlefield": {"name": "沉眠古戰場", "intro": "鏽劍遍地，亡者仍守著早已不存在的軍旗。", "effect": "敵人生命與護甲提高｜Boss 經驗 +60%"},
 }
 const EXPLORATION_APPROACHES := {
 	"scout": {"name": "哨塔視野", "effect": "看清敵陣，本戰敵方護甲降低 20%"},
@@ -625,7 +631,6 @@ var slice_metrics := {
 	"elapsed": 0.0, "stage_first_reached": {}, "stage_deaths": {}, "retry_wait": 0.0,
 	"retry_training_spent": false, "retry_equipment_changed": false, "boss_reward": "", "next_area_pressed": false,
 }
-var route_training_progress := 0.0
 var hero_hp := 100.0
 var enemy_hp := 52.0
 var enemy_max_hp := 52.0
@@ -643,7 +648,9 @@ var enemy_engagement_time := 0.0
 var enemy_attack_count := 0
 var kills := 0
 var gold := 0
-var training_points := 5
+var player_level := 1
+var experience := 0
+var training_points := STARTING_TRAINING_POINTS
 var training := {"martial": 0, "physique": 0, "agility": 0, "magic": 0, "faith": 0, "command": 0}
 var equipped_items := {"weapon": "", "armor": "", "accessory": ""}
 var owned_equipment := {"black_iron_sword": 1, "black_iron_armor": 1}
@@ -1259,6 +1266,7 @@ func save_data() -> Dictionary:
 		"retry_pending": retry_pending, "retry_stage": retry_stage, "current_wave": current_wave,
 		"tutorial_step": tutorial_step,
 		"hero_hp": hero_hp, "hero_mp": hero_mp, "kills": kills, "gold": gold,
+		"player_level": player_level, "experience": experience,
 		"training_points": training_points, "training": training.duplicate(true),
 		"equipped_items": equipped_items.duplicate(true), "owned_equipment": owned_equipment.duplicate(true),
 		"equipment_enhancements": equipment_enhancements.duplicate(true), "equipment_collection": equipment_collection.duplicate(true),
@@ -1292,6 +1300,12 @@ func load_save_data(data: Dictionary) -> bool:
 	gold = maxi(0, int(data.get("gold", 0)))
 	training_points = maxi(0, int(data.get("training_points", 0)))
 	_load_number_map(training, data.get("training", {}), TRAINING_ORDER, 0, MAX_TRAINING_LEVEL)
+	if data.has("player_level"):
+		player_level = maxi(1, int(data.get("player_level", 1)))
+		experience = clampi(int(data.get("experience", 0)), 0, experience_required_for_level(player_level) - 1)
+	else:
+		player_level = 1 + maxi(0, _total_base_training_levels() + training_points - LEGACY_STARTING_TRAINING_POINTS)
+		experience = 0
 	_load_number_map(owned_equipment, data.get("owned_equipment", {}), EQUIPMENT_DEFS.keys(), 0, 999)
 	_load_number_map(equipment_enhancements, data.get("equipment_enhancements", {}), EQUIPMENT_DEFS.keys(), 0, 5)
 	var saved_equipped: Dictionary = data.get("equipped_items", {})
@@ -1400,7 +1414,9 @@ func snapshot() -> Dictionary:
 		"exploration_approach": exploration_approach,
 		"route_position": _route_position(), "route_phase": _route_phase(),
 		"enemy_attack_type": _next_enemy_attack_type(), "enemy_attack_remaining": enemy_attack_remaining,
-		"kills": kills, "gold": gold, "training_points": training_points, "style_points": training_points,
+		"kills": kills, "gold": gold, "player_level": player_level, "experience": experience,
+		"experience_required": experience_required_for_level(player_level),
+		"training_points": training_points, "style_points": training_points,
 		"training": training.duplicate(true), "base_style_levels": training.duplicate(true),
 		"equipment_style_bonuses": equipment_bonuses, "temporary_style_modifiers": temporary_style_modifiers.duplicate(true),
 		"effective_style_levels": effective_levels, "equipped_items": equipped_items.duplicate(true),
@@ -2805,6 +2821,7 @@ func _enemy_defeated() -> void:
 	var defeated_boss := enemy_is_boss
 	var defeated_elite := enemy_is_elite
 	kills += 1
+	_award_experience(defeated_boss, defeated_elite)
 	_award_gold_and_equipment(defeated_boss, defeated_elite)
 	var waves := _stage_waves(stage)
 	if current_wave + 1 < waves.size():
@@ -2824,15 +2841,6 @@ func _enemy_defeated() -> void:
 		inheritance_unlocked = true
 		_events.append({"type": "inheritance_unlocked", "name": "戰魂傳承", "stage": completed_stage})
 	current_wave = 0
-	var point_gain := 3 if defeated_boss else 1
-	if journey_route == "mountain":
-		route_training_progress += float(point_gain) * 0.2
-		var route_bonus := floori(route_training_progress)
-		point_gain += route_bonus
-		route_training_progress -= float(route_bonus)
-	elif journey_route == "battlefield" and defeated_boss:
-		point_gain += 3
-	training_points += point_gain
 	_add_momentum(20.0 if int(training.martial) >= 25 else 12.0, "kill")
 	_add_youren(2 if int(training.agility) >= 25 else 1, "kill")
 	_add_holy_seals(1, "kill")
@@ -2849,7 +2857,6 @@ func _enemy_defeated() -> void:
 	else:
 		_spawn_enemy()
 	_events.append({"type": "enemy_defeated", "stage": stage, "kills": kills, "boss": defeated_boss})
-	_events.append({"type": "training_point", "gain": point_gain, "points": training_points})
 	if not defeated_boss and enemy_is_boss:
 		_events.append({"type": "boss_entered", "name": _enemy_display_name()})
 	if defeated_boss and not retry_pending:
@@ -2943,6 +2950,8 @@ func _reset_for_inheritance(inherited_item: String, memory_track: String) -> voi
 	wave_transition_remaining = 0.0
 	kills = 0
 	gold = 0
+	player_level = 1
+	experience = 0
 	training_points = 0
 	for track: String in TRAINING_ORDER:
 		training[track] = 5 if track == memory_track else 0
@@ -3010,6 +3019,36 @@ func equipment_drop_chance(defeated_boss: bool, defeated_elite: bool) -> float:
 	if defeated_boss:
 		return BOSS_EQUIPMENT_DROP_CHANCE
 	return ELITE_EQUIPMENT_DROP_CHANCE if defeated_elite else NORMAL_EQUIPMENT_DROP_CHANCE
+
+func experience_required_for_level(level: int) -> int:
+	return BASE_LEVEL_EXPERIENCE + maxi(1, level) * LEVEL_EXPERIENCE_GROWTH
+
+func enemy_experience_reward(defeated_boss: bool, defeated_elite: bool, enemy_level := -1) -> int:
+	var resolved_level := stage if enemy_level < 0 else enemy_level
+	var reward := float(BASE_ENEMY_EXPERIENCE + maxi(1, resolved_level) * ENEMY_EXPERIENCE_PER_LEVEL)
+	if defeated_boss:
+		reward *= 5.0
+	elif defeated_elite:
+		reward *= 2.5
+	if journey_route == "mountain":
+		reward *= 1.2
+	elif journey_route == "battlefield" and defeated_boss:
+		reward *= 1.6
+	return maxi(1, roundi(reward))
+
+func _award_experience(defeated_boss: bool, defeated_elite: bool) -> void:
+	var gain := enemy_experience_reward(defeated_boss, defeated_elite)
+	experience += gain
+	var levels_gained := 0
+	while experience >= experience_required_for_level(player_level):
+		experience -= experience_required_for_level(player_level)
+		player_level += 1
+		training_points += 1
+		levels_gained += 1
+	_events.append({"type": "experience_gain", "gain": gain, "experience": experience, "required": experience_required_for_level(player_level), "level": player_level})
+	if levels_gained > 0:
+		_events.append({"type": "level_up", "gain": levels_gained, "level": player_level, "experience": experience, "required": experience_required_for_level(player_level), "points": training_points})
+		_events.append({"type": "training_point", "gain": levels_gained, "points": training_points})
 
 func _roll_equipment_drop(prefer_unowned := false) -> String:
 	var weighted_items: Array[String] = []
@@ -3279,6 +3318,12 @@ func _total_training_levels() -> int:
 	var total := 0
 	for track: String in TRAINING_ORDER:
 		total += effective_style_level(track)
+	return total
+
+func _total_base_training_levels() -> int:
+	var total := 0
+	for track: String in TRAINING_ORDER:
+		total += int(training[track])
 	return total
 
 func _stat_value(stat: String, base: float) -> float:

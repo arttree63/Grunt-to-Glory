@@ -13,6 +13,7 @@ func _run_tests() -> void:
 	_test_equipment_style_levels_and_unlock_boundary()
 	_test_equipment_skill_unlocks_all_tiers()
 	_test_equipment_drop_quality_and_enhancement()
+	_test_experience_progression()
 	_test_shop_loop()
 	_test_inheritance_loop()
 	_test_magic_sword_marks_and_auto_attack()
@@ -84,7 +85,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 72")
+		print("Godot tests passed: 73")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -168,6 +169,22 @@ func _test_equipment_drop_quality_and_enhancement() -> void:
 	wave_model._events.clear()
 	wave_model._enemy_defeated()
 	_expect(wave_model.current_wave == 1 and wave_model._events.any(func(event: Dictionary) -> bool: return event.type == "gold_gain"), "敵群內每一隻敵人都必須獨立結算戰利品，不可只算最後一隻")
+
+func _test_experience_progression() -> void:
+	var model = CombatModelScript.new()
+	_expect(model.experience_required_for_level(1) == 32 and model.experience_required_for_level(10) == 104, "升級需求必須隨角色等級提高")
+	_expect(model.enemy_experience_reward(false, false, 1) == 10, "Lv.1 普通怪必須給 10 經驗")
+	_expect(model.enemy_experience_reward(false, true, 10) == 70, "Lv.10 精英必須套用 2.5 倍經驗")
+	_expect(model.enemy_experience_reward(true, false, 10) == 140, "Lv.10 Boss 必須套用 5 倍經驗")
+	model.journey_route = "mountain"
+	_expect(model.enemy_experience_reward(false, false, 10) == 34, "灰狼山道必須提供 20% 擊倒經驗加成")
+	model.journey_route = "frontier"
+	model.training_points = 0
+	model.experience = 31
+	model._events.clear()
+	model._award_experience(false, false)
+	_expect(model.player_level == 2 and model.experience == 9 and model.training_points == 1, "經驗達標時必須升級、扣除門檻並給 1 修練點")
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "level_up" and int(event.level) == 2), "升級必須發出可供 HUD 更新的事件")
 
 func _test_equipment_skill_unlocks_all_tiers() -> void:
 	var model = CombatModelScript.new()
@@ -366,7 +383,8 @@ func _test_frontier_stage_waves() -> void:
 	model._enemy_defeated()
 	_expect(model.stage == 2 and model.current_wave == 1, "第2戰第一名新兵倒下後必須進入同戰第二波")
 	_expect(is_equal_approx(model.wave_transition_remaining, CombatModelScript.WAVE_TRANSITION_DURATION), "Wave 切換必須保留 0.8 秒辨識節拍")
-	_expect(model.training_points == points_before, "單一 Wave 不可重複發放整戰修練獎勵")
+	_expect(model.training_points == points_before and model.experience == 12, "每隻敵人必須給經驗，但未升級前不可提前發放修練點")
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "experience_gain" and int(event.gain) == 12), "第一波敵人必須產生經驗事件")
 	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "wave_transition_started" and int(event.wave) == 2), "連續波次必須發出清楚的換場事件")
 	var preserved_hp: float = model.hero_hp
 	var preserved_momentum: float = model.momentum
@@ -378,7 +396,7 @@ func _test_frontier_stage_waves() -> void:
 	model._events.clear()
 	model._enemy_defeated()
 	_expect(model.stage == 3 and model.current_wave == 0, "清除全部 Wave 後才可推進下一戰")
-	_expect(model.training_points == points_before + 1, "完成整戰只發放一次修練獎勵")
+	_expect(model.training_points == points_before and model.experience == 24, "同戰第二隻敵人必須繼續累積經驗，不再固定送修練點")
 	model.stage = 9
 	model.current_wave = 0
 	_expect(model._stage_waves(9).size() == 3, "第9戰必須依序測試劍兵、盾衛與重槌兵")
@@ -440,6 +458,8 @@ func _test_save_data_roundtrip() -> void:
 	source.tutorial_step = "core"
 	source.training.magic = 44
 	source.training_points = 7
+	source.player_level = 18
+	source.experience = 27
 	source.gold = 345
 	source.kills = 89
 	source.grant_equipment("magic_rune_sword")
@@ -460,10 +480,16 @@ func _test_save_data_roundtrip() -> void:
 	_expect(restored.awaiting_journey_choice and restored.boss_reward_claimed and restored.retry_pending, "Boss 獎勵、旅途與再挑戰狀態必須恢復")
 	_expect(restored.tutorial_step == "core", "專注教學進度必須跟著存檔恢復")
 	_expect(int(restored.training.magic) == 44 and restored.training_points == 7, "修練等級與未分配點數必須恢復")
+	_expect(restored.player_level == 18 and restored.experience == 27, "角色等級與目前經驗必須跟著存檔恢復")
 	_expect(String(restored.equipped_items.weapon) == "magic_rune_sword" and int(restored.equipment_enhancements.magic_rune_sword) == 3, "裝備與強化必須恢復")
 	_expect(restored.inheritance_unlocked and restored.battle_souls == 2 and restored.legacy_track == "magic", "轉生與遺產必須恢復")
 	_expect(restored.secondary_element == "ice" and String(restored.auto_skill_slots[1]) == "magic_sword_release", "流派選擇與 AUTO 編成必須恢復")
 	_expect(restored.enemy_hp > 0.0 and restored.hero_hp == 42.0, "載入後應重建當前敵人並恢復角色生命")
+	var legacy_save := source.save_data()
+	legacy_save.erase("player_level")
+	legacy_save.erase("experience")
+	var migrated = CombatModelScript.new()
+	_expect(migrated.load_save_data(legacy_save) and migrated.player_level == 47, "舊存檔缺少經驗欄位時必須依既有修練總量換算等級")
 	_expect(not restored.load_save_data({"version": 999}), "不相容存檔版本不可盲目載入")
 
 func _test_battlefield_impact_tiers() -> void:
@@ -1534,7 +1560,7 @@ func _test_navigation() -> void:
 	scene.toast_panel.visible = false
 	scene.toast_title.text = ""
 	scene._spend_training("martial")
-	_expect(scene.training_alert_button.text.begins_with("可用修練") and not scene.toast_panel.visible and scene.toast_title.text.is_empty(), "普通修練升級只更新修練數字，不可反覆跳出提示")
+	_expect(scene.training_alert_button.text.begins_with("EXP") and not scene.toast_panel.visible and scene.toast_title.text.is_empty(), "普通修練升級只更新經驗／修練數字，不可反覆跳出提示")
 	scene.model.training.martial = 9
 	scene.model.training_points = 1
 	scene._spend_training("martial")

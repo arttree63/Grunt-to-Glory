@@ -96,6 +96,7 @@ var current_major_milestone := 10
 var selected_equipment_slot := "weapon"
 var selected_equipment_id := ""
 var battlefield: Battlefield
+var hero_name_label: Label
 var enemy_label: Label
 var kills_label: Label
 var top_panel: PanelContainer
@@ -259,7 +260,7 @@ func _save_preview_text() -> String:
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	if not parsed is Dictionary or int(parsed.get("version", 0)) != 1:
 		return "紀錄版本不相容，請開始新遊戲。"
-	return "第 %d 戰｜擊倒 %d｜金幣 %d｜可用修練 %d" % [int(parsed.get("stage", 1)), int(parsed.get("kills", 0)), int(parsed.get("gold", 0)), int(parsed.get("training_points", 0))]
+	return "Lv.%d｜第 %d 戰｜擊倒 %d｜金幣 %d｜修練 %d" % [int(parsed.get("player_level", 1)), int(parsed.get("stage", 1)), int(parsed.get("kills", 0)), int(parsed.get("gold", 0)), int(parsed.get("training_points", 0))]
 
 func _start_new_game() -> void:
 	var user_dir := DirAccess.open("user://")
@@ -327,7 +328,7 @@ func _tutorial_begin_observe() -> void:
 
 func _show_training_tutorial() -> void:
 	model.tutorial_step = "training"
-	_show_tutorial("第一次成長", "擊倒敵人會獲得修練點。現在只做一件事：選一條你想嘗試的流派，投入第一點。", "前往修練", _tutorial_open_training)
+	_show_tutorial("第一次成長", "擊倒敵人會獲得經驗，升級後取得修練點。現在先選一條想嘗試的流派，投入第一點。", "前往修練", _tutorial_open_training)
 	_save_game()
 
 func _tutorial_open_training() -> void:
@@ -470,13 +471,13 @@ func _build_ui() -> void:
 	crest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	crest.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	identity.add_child(crest)
-	var hero_name := _label("無名小兵", 20, Color("292824"))
-	hero_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	identity.add_child(hero_name)
+	hero_name_label = _label("無名小兵 Lv.1", 20, Color("292824"))
+	hero_name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	identity.add_child(hero_name_label)
 	training_alert_button = _button("可用修練 0", Color("f5ead0"), 38)
-	training_alert_button.custom_minimum_size.x = 108
+	training_alert_button.custom_minimum_size.x = 128
 	training_alert_button.size_flags_horizontal = Control.SIZE_SHRINK_END
-	training_alert_button.add_theme_font_size_override("font_size", 14)
+	training_alert_button.add_theme_font_size_override("font_size", 12)
 	training_alert_button.add_theme_color_override("font_color", Color("8a5b16"))
 	training_alert_button.add_theme_color_override("font_hover_color", Color("2b1e10"))
 	training_alert_button.add_theme_color_override("font_pressed_color", Color("2b1e10"))
@@ -1782,6 +1783,8 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"enemy_guard_broken": _show_toast("盾勢瓦解", "後續攻擊將造成完整傷害")
 			"unlock": _show_toast("解鎖：%s" % String(event.name), String(event.description))
 			"milestone": pass
+			"experience_gain": pass
+			"level_up": pass
 			"training_point": pass
 			"equipment_drop": pass
 			"equipment_duplicate": pass
@@ -2081,10 +2084,14 @@ func _update_hud(snapshot: Dictionary) -> void:
 	enemy_label.text = "第%d區 %d/10%s｜%s%s · 甲%d%s%s" % [int(snapshot.area_number), int(snapshot.route_position), wave_text, boss_mark, String(snapshot.enemy_name), roundi(float(snapshot.enemy_armor)), rage_mark, attack_hint]
 	enemy_label.tooltip_text = "%s｜%s\n擊倒 %d｜金幣 %d" % [String(snapshot.enemy_role), String(snapshot.enemy_hint), int(snapshot.kills), int(snapshot.gold)]
 	kills_label.text = "擊倒 %d｜金幣 %d" % [int(snapshot.kills), int(snapshot.gold)]
+	var player_level := int(snapshot.player_level)
+	var experience := int(snapshot.experience)
+	var experience_required := int(snapshot.experience_required)
+	hero_name_label.text = "無名小兵 Lv.%d" % player_level
 	var training_points := int(snapshot.training_points)
 	var first_training := game_started and _total_base_training() == 0 and training_points > 0
-	training_alert_button.text = "第一步：修練" if first_training else "可用修練 %d" % training_points
-	training_alert_button.tooltip_text = "選擇一條流派投入第一點修練" if first_training else "前往修練分配可用點數"
+	training_alert_button.text = "第一步：修練" if first_training else ("Lv.%d｜修練 %d" % [player_level, training_points] if training_points > 0 else "EXP %d/%d" % [experience, experience_required])
+	training_alert_button.tooltip_text = "選擇一條流派投入第一點修練" if first_training else "Lv.%d｜經驗 %d/%d｜可用修練 %d" % [player_level, experience, experience_required, training_points]
 	training_alert_button.disabled = model.tutorial_step in ["intro", "observe"]
 	var emphasize_training := model.tutorial_step == "core" and training_points > 0
 	training_alert_button.add_theme_stylebox_override("normal", _panel_style(Color("fff0c7") if emphasize_training else (Color("fff5df") if training_points > 0 else Color("e0d9ce")), Color("efae38") if emphasize_training else (Color("c58a28") if training_points > 0 else Color("81796f")), 4 if emphasize_training else 2))
