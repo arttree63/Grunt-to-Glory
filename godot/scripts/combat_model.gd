@@ -827,6 +827,7 @@ func equipment_modifier(modifier: String) -> float:
 func equip_item(item_id: String) -> bool:
 	if not EQUIPMENT_DEFS.has(item_id) or int(owned_equipment.get(item_id, 0)) <= 0:
 		return false
+	var previous_levels := _effective_style_levels()
 	var definition: Dictionary = EQUIPMENT_DEFS[item_id]
 	var slot := String(definition.slot)
 	if not equipped_items.has(slot):
@@ -838,6 +839,7 @@ func equip_item(item_id: String) -> bool:
 		slice_metrics.retry_equipment_changed = true
 	hero_hp = minf(_hero_max_hp(), hero_hp + maxf(0.0, _hero_max_hp() - old_max_hp))
 	hero_mp = minf(_hero_max_mp(), hero_mp + maxf(0.0, _hero_max_mp() - old_max_mp))
+	_auto_equip_new_effective_skills(previous_levels)
 	return true
 
 func equipment_enhancement(item_id: String) -> int:
@@ -852,6 +854,7 @@ func equipment_enhancement_cost(item_id: String) -> int:
 func enhance_equipment(item_id: String) -> bool:
 	if int(owned_equipment.get(item_id, 0)) <= 0:
 		return false
+	var previous_levels := _effective_style_levels()
 	var cost := equipment_enhancement_cost(item_id)
 	if cost < 0 or gold < cost:
 		return false
@@ -863,7 +866,27 @@ func enhance_equipment(item_id: String) -> bool:
 		slice_metrics.retry_equipment_changed = true
 	hero_hp = minf(_hero_max_hp(), hero_hp + maxf(0.0, _hero_max_hp() - old_max_hp))
 	hero_mp = minf(_hero_max_mp(), hero_mp + maxf(0.0, _hero_max_mp() - old_max_mp))
+	_auto_equip_new_effective_skills(previous_levels)
 	return true
+
+func _effective_style_levels() -> Dictionary:
+	var result := {}
+	for track: String in TRAINING_ORDER:
+		result[track] = effective_style_level(track)
+	return result
+
+func _auto_equip_new_effective_skills(previous_levels: Dictionary) -> void:
+	for skill_id: String in SKILL_DEFS:
+		var definition: Dictionary = SKILL_DEFS[skill_id]
+		var track := String(definition.track)
+		if track == "common" or not bool(definition.get("implemented", false)):
+			continue
+		var skill_type := String(definition.type)
+		if skill_type != "active" and (skill_type != "ultimate" or bool(definition.get("reactive", false))):
+			continue
+		var required_level := int(definition.level)
+		if int(previous_levels.get(track, 0)) < required_level and effective_style_level(track) >= required_level:
+			_auto_equip(skill_id, skill_id in ["two_cut", "magic_sword_complete_release"])
 
 func grant_equipment(item_id: String) -> bool:
 	if not EQUIPMENT_DEFS.has(item_id):

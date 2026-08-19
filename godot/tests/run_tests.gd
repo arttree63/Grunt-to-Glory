@@ -107,7 +107,7 @@ func _test_equipment_style_levels_and_unlock_boundary() -> void:
 	_expect(float(model.snapshot().hero_max_hp) > hp_before, "角色數值必須使用有效流派等級")
 	_expect(model.skill_is_unlocked("guard_stance"), "裝備提高有效流派等級後必須能解鎖技能")
 	_expect(model.skill_is_equipment_supported("guard_stance"), "技能必須能辨識是否由裝備支撐解鎖")
-	_expect(model.equip_auto_skill("guard_stance"), "由裝備支撐解鎖的主動技必須可以裝入 AUTO")
+	_expect(model.auto_skill_slots.has("guard_stance"), "裝備跨過技能門檻時，主動技必須自動加入 AUTO 編成")
 	model.training.martial = 2
 	model.grant_equipment("momentum_talisman")
 	model.equipment_enhancements.black_iron_sword = 5
@@ -1237,7 +1237,9 @@ func _test_navigation() -> void:
 		if button.visible: visible_auto_slots += 1
 	_expect(visible_auto_slots == 5, "手機戰鬥 HUD 必須呈現完整五格技能優先序")
 	_expect(not scene.mp_hud.visible and not scene.momentum_hud.visible and not scene.state_panel.visible, "未投入的流派資源不可預先出現在戰鬥 HUD")
-	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text.begins_with("可用修練"), "戰鬥頁必須提供固定修練點入口")
+	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text == "第一步：修練", "新遊戲必須把既有修練入口轉成第一個可操作目標")
+	scene._spend_training("martial")
+	_expect(scene.training_alert_button.text.begins_with("可用修練") and "第一步完成" in scene.toast_title.text and scene.toast_panel.z_index > scene.training_overlay.z_index, "投入第一點修練後必須在修練頁上方說明下一個流派門檻")
 	_expect(is_instance_valid(scene.retry_button) and not scene.retry_button.visible, "未戰敗時不可顯示再次挑戰按鈕")
 	_expect(is_instance_valid(scene.journey_overlay) and scene.journey_buttons.size() == 3, "Boss 後旅途抉擇必須提供三條手機可操作路線")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")

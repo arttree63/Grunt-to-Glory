@@ -5,6 +5,10 @@ const SAVE_PATH := "user://grunt_to_glory_save_v1.json"
 const SAVE_FILE_NAME := "grunt_to_glory_save_v1.json"
 const AUTO_SAVE_INTERVAL := 10.0
 const PAGE_NAMES := {"combat": "戰鬥", "character": "角色", "skills": "技能", "equipment": "裝備", "shop": "商店"}
+const CORE_UNLOCK_NAMES := {
+	"martial": "勢", "physique": "不動", "agility": "疾斬",
+	"magic": "魔劍・魔紋", "faith": "聖劍・聖印", "command": "軍勢",
+}
 const UI_FONT := preload("res://assets/fonts/NotoSansTC-Variable.ttf")
 const CREST_ICON := preload("res://assets/ui/hud_v2/crest.png")
 const SKILL_SLOT_ICONS: Array[Texture2D] = [
@@ -106,6 +110,7 @@ func _ready() -> void:
 	else:
 		game_started = true
 		start_overlay.visible = false
+		_update_hud(model.snapshot())
 		auto_slot_buttons[0].grab_focus()
 
 func _process(delta: float) -> void:
@@ -208,7 +213,8 @@ func _finish_startup(title: String) -> void:
 	accumulator = 0.0
 	_update_hud(model.snapshot())
 	auto_slot_buttons[0].grab_focus()
-	_show_toast(title, "角色會持續快速攻擊；你負責流派修練、技能編成與旅途選擇")
+	var detail := "戰鬥會自動進行；先點右上「第一步：修練」，選擇你的第一條道路" if _total_base_training() == 0 else "角色會持續快速攻擊；你負責流派修練、技能編成與旅途選擇"
+	_show_toast(title, detail)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if journey_open or journey_pending or boss_reward_open:
@@ -301,7 +307,7 @@ func _build_ui() -> void:
 	layout.add_child(spacer)
 	toast_panel = PanelContainer.new()
 	toast_panel.visible = false
-	toast_panel.z_index = 30
+	toast_panel.z_index = 80
 	toast_panel.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	toast_panel.anchor_left = 0.06
 	toast_panel.anchor_right = 0.94
@@ -1060,20 +1066,53 @@ func _equipment_quality_color(quality: String) -> Color:
 	}.get(quality, Color("c8c5ba"))
 
 func _equip_item(item_id: String) -> void:
+	var previous_levels := _effective_style_levels()
 	if not model.equip_item(item_id):
 		return
 	var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
-	_show_toast("已裝備：%s" % String(item.name), _equipment_style_text(item, model.equipment_enhancement(item_id)))
+	var unlocks := _new_effective_unlock_names(previous_levels)
+	var detail := _equipment_style_text(item, model.equipment_enhancement(item_id))
+	if not unlocks.is_empty():
+		detail = "新解鎖：%s｜已可在技能頁編入 AUTO" % "、".join(unlocks.slice(0, 3))
+	_show_toast("已裝備：%s" % String(item.name), detail)
 	_update_hud(model.snapshot())
 	_save_game()
 
 func _enhance_equipment(item_id: String) -> void:
+	var previous_levels := _effective_style_levels()
 	if not model.enhance_equipment(item_id):
 		return
 	var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
-	_show_toast("強化成功：%s +%d" % [String(item.name), model.equipment_enhancement(item_id)], _equipment_style_text(item, model.equipment_enhancement(item_id)))
+	var unlocks := _new_effective_unlock_names(previous_levels)
+	var detail := _equipment_style_text(item, model.equipment_enhancement(item_id))
+	if not unlocks.is_empty():
+		detail = "新解鎖：%s｜裝備加成已立即生效" % "、".join(unlocks.slice(0, 3))
+	_show_toast("強化成功：%s +%d" % [String(item.name), model.equipment_enhancement(item_id)], detail)
 	_update_hud(model.snapshot())
 	_save_game()
+
+func _effective_style_levels() -> Dictionary:
+	var result := {}
+	for track: String in CombatModel.TRAINING_ORDER:
+		result[track] = model.effective_style_level(track)
+	return result
+
+func _new_effective_unlock_names(previous_levels: Dictionary) -> Array[String]:
+	var result: Array[String] = []
+	for track: String in CombatModel.TRAINING_ORDER:
+		var previous := int(previous_levels.get(track, 0))
+		var current := model.effective_style_level(track)
+		if previous < 10 and current >= 10:
+			result.append(String(CORE_UNLOCK_NAMES[track]))
+		for skill_id: String in CombatModel.SKILL_DEFS:
+			var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
+			if String(definition.track) != track or not bool(definition.get("implemented", false)):
+				continue
+			var required_level := int(definition.level)
+			var skill_name := String(definition.name)
+			if previous < required_level and current >= required_level and not result.has(skill_name):
+				result.append(skill_name)
+	return result
 
 func _render_shop_page() -> void:
 	var snapshot := model.snapshot()
@@ -1389,13 +1428,22 @@ func _retry_failed_stage() -> void:
 	_save_game()
 
 func _spend_training(track: String) -> void:
+	var first_training := _total_base_training() == 0
 	var events := model.spend_training(track)
 	_handle_events(events)
 	_update_hud(model.snapshot())
-	if not events.is_empty() and not events.any(func(event: Dictionary) -> bool: return event.type == "unlock"):
+	if first_training and not events.is_empty():
+		_show_toast("第一步完成：%s" % String(CombatModel.TRAINING_DEFS[track].name), "有效 Lv.10 將解鎖流派核心；裝備加成也會計入")
+	elif not events.is_empty() and not events.any(func(event: Dictionary) -> bool: return event.type == "unlock"):
 		_show_toast("%s提升" % String(CombatModel.TRAINING_DEFS[track].name), "現在是 Lv.%d" % int(model.training[track]))
 	if not events.is_empty():
 		_save_game()
+
+func _total_base_training() -> int:
+	var total := 0
+	for track: String in CombatModel.TRAINING_ORDER:
+		total += model.base_style_level(track)
+	return total
 
 func _equip_auto_skill(skill_id: String) -> void:
 	if not model.equip_auto_skill(skill_id):
@@ -1560,7 +1608,9 @@ func _update_hud(snapshot: Dictionary) -> void:
 	enemy_label.tooltip_text = String(snapshot.enemy_hint)
 	kills_label.text = "擊倒 %d｜金幣 %d" % [int(snapshot.kills), int(snapshot.gold)]
 	var training_points := int(snapshot.training_points)
-	training_alert_button.text = "可用修練 %d" % training_points
+	var first_training := game_started and _total_base_training() == 0 and training_points > 0
+	training_alert_button.text = "第一步：修練" if first_training else "可用修練 %d" % training_points
+	training_alert_button.tooltip_text = "選擇一條流派投入第一點修練" if first_training else "前往修練分配可用點數"
 	training_alert_button.add_theme_stylebox_override("normal", _panel_style(Color("fff5df") if training_points > 0 else Color("e0d9ce"), Color("c58a28") if training_points > 0 else Color("81796f"), 2))
 	var retry_pending := bool(snapshot.get("retry_pending", false))
 	var retry_stage := int(snapshot.get("retry_stage", 0))
