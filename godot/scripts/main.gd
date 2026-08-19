@@ -496,15 +496,15 @@ func _build_ui() -> void:
 	failure_status.visible = false
 	failure_status.add_theme_constant_override("separation", 4)
 	top_box.add_child(failure_status)
-	failure_button = _button("突破失敗", Color("6a4a2f"), 42)
+	failure_button = _button("未突破｜情報", Color("5a4938"), 30)
 	failure_button.add_theme_font_size_override("font_size", 14)
 	failure_button.pressed.connect(_open_failure_report)
 	failure_status.add_child(failure_button)
-	retry_button = _button("再次挑戰", Color("913b31"), 42)
+	retry_button = _button("再戰", Color("913b31"), 30)
 	retry_button.visible = false
-	retry_button.custom_minimum_size.x = 116
+	retry_button.custom_minimum_size.x = 82
 	retry_button.size_flags_horizontal = Control.SIZE_SHRINK_END
-	retry_button.add_theme_font_size_override("font_size", 16)
+	retry_button.add_theme_font_size_override("font_size", 14)
 	retry_button.add_theme_color_override("font_color", Color("fff4df"))
 	retry_button.tooltip_text = "停止刷上一戰，重新挑戰剛才戰敗的關卡"
 	retry_button.pressed.connect(_retry_failed_stage)
@@ -2095,9 +2095,9 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var retry_pending := bool(snapshot.get("retry_pending", false))
 	var retry_stage := int(snapshot.get("retry_stage", 0))
 	retry_button.visible = retry_pending and not battlefield.defeat_sequence_active()
-	retry_button.text = "再次挑戰"
+	retry_button.text = "再戰"
 	failure_status.visible = retry_pending and not battlefield.defeat_sequence_active()
-	failure_button.text = "第 %d 戰突破失敗｜查看情報" % retry_stage
+	failure_button.text = "第 %d 戰未突破｜情報" % retry_stage
 	enemy_bar.max_value = float(snapshot.enemy_max_hp)
 	enemy_bar.value = float(snapshot.enemy_hp)
 	hp_bar.max_value = float(snapshot.hero_max_hp)

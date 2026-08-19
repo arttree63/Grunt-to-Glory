@@ -272,8 +272,13 @@ func _test_auto_roaming() -> void:
 	_expect(String(encounter_status.landmark_effect).is_empty(), "尚未接敵時不可提前取得地標效果")
 	var hero_screen: Vector2 = battlefield._world_to_screen(battlefield._hero_map_position)
 	_expect(hero_screen.x >= 0.0 and hero_screen.x <= battlefield.size.x and hero_screen.y >= battlefield.stage_top, "鏡頭必須把巡敵中的角色留在可視戰場")
+	var traveling_focus := battlefield._camera_focus_position(visible_size)
+	var target_direction: Vector2 = battlefield._hero_map_position.direction_to(battlefield._hero_map_target)
+	_expect(traveling_focus.dot(target_direction) > battlefield._hero_map_position.dot(target_direction), "巡敵鏡頭必須朝移動方向保留預視空間")
 	battlefield._update_exploration(10.0)
 	_expect(not battlefield.navigation_blocks_combat(), "角色抵達敵人後才可恢復 AUTO 戰鬥")
+	var combat_focus := battlefield._camera_focus_position(visible_size)
+	_expect(combat_focus.distance_to(battlefield._hero_map_position.lerp(battlefield._enemy_map_position, 0.46)) < 0.1, "接敵鏡頭必須同時框住英雄與敵人")
 	var framed_enemy_screen := battlefield._world_to_screen(battlefield._enemy_map_position)
 	_expect(framed_enemy_screen.x >= 96.0 and framed_enemy_screen.x <= battlefield.size.x - 96.0, "接敵鏡頭必須保留敵人完整橫向輪廓")
 	var edge_enemy := battlefield._enemy_presentation_position(Vector2(-120.0, battlefield.stage_top - 80.0))
@@ -1527,6 +1532,7 @@ func _test_navigation() -> void:
 	scene.model.retry_stage = 8
 	scene._update_hud(scene.model.snapshot())
 	_expect(scene.failure_status.visible and scene.retry_button.visible and "第 8 戰" in scene.failure_button.text, "戰敗後必須以單一狀態條提供情報與再次挑戰")
+	_expect(scene.failure_button.custom_minimum_size.y <= 30.0 and scene.retry_button.custom_minimum_size.y <= 30.0 and scene.retry_button.text == "再戰", "戰敗狀態列不得以大型按鈕壓縮戰場")
 	_expect(scene.mp_hud.visible and scene.momentum_hud.visible and scene.immovable_hud.visible and scene.youren_hud.visible and scene.magic_hud.visible and scene.faith_hud.visible and scene.command_hud.visible, "六流派機制同時存在時，HUD 必須完整顯示")
 	scene._open_training()
 	await process_frame

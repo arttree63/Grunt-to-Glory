@@ -216,6 +216,9 @@ const ENEMY_CHASE_SPEED := 112.0
 const ENCOUNTER_DISTANCE := 104.0
 const COMBAT_DISTANCE := 122.0
 const DRAG_THRESHOLD := 14.0
+const CAMERA_FOLLOW_SPEED := 5.2
+const CAMERA_LOOK_AHEAD := Vector2(0.11, 0.055)
+const CAMERA_DEAD_ZONE := Vector2(0.12, 0.1)
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -691,10 +694,33 @@ func _exploration_world_size() -> Vector2:
 func _update_exploration_camera(delta: float, snap := false) -> void:
 	var view_size := _visible_map_size()
 	var world_size := _exploration_world_size()
-	var desired := _hero_map_position - view_size * 0.5
+	var focus := _camera_focus_position(view_size)
+	var desired := _camera_top_left
+	if snap:
+		desired = focus - view_size * 0.5
+	else:
+		var focus_on_screen := focus - _camera_top_left
+		var dead_zone := Rect2(view_size * (Vector2.ONE - CAMERA_DEAD_ZONE) * 0.5, view_size * CAMERA_DEAD_ZONE)
+		if focus_on_screen.x < dead_zone.position.x:
+			desired.x += focus_on_screen.x - dead_zone.position.x
+		elif focus_on_screen.x > dead_zone.end.x:
+			desired.x += focus_on_screen.x - dead_zone.end.x
+		if focus_on_screen.y < dead_zone.position.y:
+			desired.y += focus_on_screen.y - dead_zone.position.y
+		elif focus_on_screen.y > dead_zone.end.y:
+			desired.y += focus_on_screen.y - dead_zone.end.y
 	desired.x = clampf(desired.x, 0.0, world_size.x - view_size.x)
 	desired.y = clampf(desired.y, 0.0, world_size.y - view_size.y)
-	_camera_top_left = desired if snap else _camera_top_left.lerp(desired, minf(1.0, delta * 4.5))
+	var follow_weight := 1.0 if snap else 1.0 - exp(-CAMERA_FOLLOW_SPEED * maxf(delta, 0.0))
+	_camera_top_left = desired if snap else _camera_top_left.lerp(desired, follow_weight)
+
+func _camera_focus_position(view_size: Vector2) -> Vector2:
+	if _exploration_phase == "engaged" and _enemy_map_position != Vector2.ZERO:
+		return _hero_map_position.lerp(_enemy_map_position, 0.46)
+	var travel_direction := _steering_vector
+	if travel_direction.length_squared() < 0.01 and _hero_map_target != Vector2.ZERO:
+		travel_direction = _hero_map_position.direction_to(_hero_map_target)
+	return _hero_map_position + Vector2(travel_direction.x * view_size.x * CAMERA_LOOK_AHEAD.x, travel_direction.y * view_size.y * CAMERA_LOOK_AHEAD.y)
 
 func _world_to_screen(world_position: Vector2) -> Vector2:
 	return Vector2(world_position.x - _camera_top_left.x, stage_top + world_position.y - _camera_top_left.y)
