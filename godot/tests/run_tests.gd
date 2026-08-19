@@ -463,7 +463,7 @@ func _test_flame_burst_slash() -> void:
 	var events := model.step(0.01)
 	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "flame_burst_slash"), "滿魔紋與滿燃燒時 AUTO 必須施放炎爆斬")
 	var burst_events: Array = events.filter(func(event: Dictionary) -> bool: return event.type == "flame_burst_slash")
-	_expect(not burst_events.is_empty() and is_equal_approx(float(burst_events[0].damage), model._magic_power() * 4.2 * 1.25 * model._skill_level_multiplier("flame_burst_slash")), "熾燃必須強化滿燃燒炎爆斬")
+	_expect(not burst_events.is_empty() and is_equal_approx(float(burst_events[0].damage), model._magic_power() * 4.2 * 1.25 * 1.3 * model._skill_level_multiplier("flame_burst_slash")), "熾燃與預設焚盡式必須共同強化滿燃燒炎爆斬")
 	_expect(model.magic_marks == 0 and model.burn_stacks == 0 and model.hero_mp < model._hero_max_mp(), "炎爆斬必須消耗魔紋、燃燒與 MP")
 
 func _test_magic_sword_release() -> void:
@@ -861,6 +861,45 @@ func _test_early_art_choices() -> void:
 	flowing._cast_shadow_assault()
 	_expect(flowing.youren == 2 and is_equal_approx(float(flowing.skill_cooldowns.swift_cut), 1.2), "流風式影襲必須建立游刃並加速雙燕疾斬")
 	_expect(flowing._events.any(func(event: Dictionary) -> bool: return event.type == "flowing_shadow"), "流風式必須產生可辨識戰鬥事件")
+	var mountain = CombatModelScript.new()
+	mountain.training.physique = 30
+	mountain.select_early_art_choice("physique", "mountain_guard")
+	mountain.return_blade_ready = true
+	mountain._events.clear()
+	mountain._enemy_attack("block")
+	_expect(mountain._events.any(func(event: Dictionary) -> bool: return event.type == "perfect_block"), "鎮岳式返刃必須把下一次格擋提升為完美格擋")
+	_expect(mountain._events.any(func(event: Dictionary) -> bool: return event.type == "counter" and String(event.variant) == "mountain_guard"), "鎮岳式必須產生可辨識返刃事件")
+	var borrowed = CombatModelScript.new()
+	borrowed.training.physique = 30
+	borrowed.select_early_art_choice("physique", "borrowed_edge")
+	borrowed._events.clear()
+	borrowed._counter_attack(100.0, false, "heavy", true)
+	var borrowed_counters: Array = borrowed._events.filter(func(event: Dictionary) -> bool: return event.type == "counter")
+	_expect(not borrowed_counters.is_empty() and is_equal_approx(float(borrowed_counters[0].borrowed), 85.0), "借勢式返刃必須額外轉化 50% 格擋傷害")
+	var detonation = CombatModelScript.new()
+	detonation.training.magic = 30
+	detonation.select_early_art_choice("magic", "detonation")
+	detonation.enemy_hp = 99999.0
+	detonation.enemy_max_hp = 99999.0
+	detonation.enemy_armor = 0.0
+	detonation.magic_marks = 5
+	detonation.burn_stacks = 5
+	detonation._events.clear()
+	detonation._cast_flame_burst_slash()
+	var detonation_events: Array = detonation._events.filter(func(event: Dictionary) -> bool: return event.type == "flame_burst_slash")
+	var ember = CombatModelScript.new()
+	ember.training.magic = 30
+	ember.select_early_art_choice("magic", "ember_cycle")
+	ember.enemy_hp = 99999.0
+	ember.enemy_max_hp = 99999.0
+	ember.enemy_armor = 0.0
+	ember.magic_marks = 5
+	ember.burn_stacks = 5
+	ember._events.clear()
+	ember._cast_flame_burst_slash()
+	var ember_events: Array = ember._events.filter(func(event: Dictionary) -> bool: return event.type == "flame_burst_slash")
+	_expect(not detonation_events.is_empty() and not ember_events.is_empty() and float(detonation_events[0].damage) > float(ember_events[0].damage) * 1.25, "焚盡式炎爆必須提供明顯的一次性爆發")
+	_expect(ember.burn_stacks == 2 and String(ember_events[0].variant) == "ember_cycle", "餘燼式炎爆必須保留兩層燃燒以銜接下一輪")
 
 func _test_boss_spawn() -> void:
 	var model = CombatModelScript.new()

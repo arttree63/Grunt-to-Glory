@@ -27,7 +27,7 @@ const SIGNATURE_TREE := {
 	],
 	"physique": [
 		{"level": 10, "name": "守勢・鐵門", "description": "進入守勢提高格擋率，成功格擋開始累積不動。"},
-		{"level": 30, "name": "返刃・逆流", "description": "敵人出手時架起防禦，擋下攻擊後立刻返斬。"},
+		{"level": 30, "name": "返刃架勢", "description": "在鎮岳與借勢之間選擇，決定返刃偏向穩定完美格擋或借力爆發。"},
 		{"level": 50, "name": "崩勢反擊", "description": "將不動、防禦與借來的力量一次打回敵人身上。"},
 		{"level": 100, "name": "返刃極意・山崩", "description": "完美格擋串聯不動、借力、失衡與返刃。"},
 		{"level": 200, "name": "奧義・不動返天", "description": "正面接下致命重擊，再把敵人的力量完整反還。"},
@@ -41,7 +41,7 @@ const SIGNATURE_TREE := {
 	],
 	"magic": [
 		{"level": 10, "name": "魔劍・刻紋", "description": "劍刃附魔並留下魔紋，普通斬擊正式成為施法媒介。"},
-		{"level": 30, "name": "炎爆斬・焚城", "description": "消耗魔紋與燃燒，將累積的火焰一次引爆。"},
+		{"level": 30, "name": "炎爆刻印", "description": "在焚盡與餘燼之間選擇，決定炎爆追求一次引爆或保留燃燒循環。"},
 		{"level": 50, "name": "魔劍解放", "description": "短時間加速魔紋、燃燒與魔劍傷害循環。"},
 		{"level": 100, "name": "魔劍共鳴", "description": "兩種元素彼此反應，爆發後返還資源並強化下一輪。"},
 		{"level": 200, "name": "奧義・魔劍完全解放", "description": "劍、魔力與元素完全融合，連續引發元素共鳴。"},
@@ -1168,12 +1168,25 @@ func _render_track_skills(track: String, heading: String, slots: Array) -> void:
 			skill_row.add_child(equip)
 
 func _render_early_art_choices(track: String, snapshot: Dictionary) -> void:
-	if track not in ["martial", "agility"]:
-		return
-	var choices: Dictionary = CombatModel.MARTIAL_ART_CHOICES if track == "martial" else CombatModel.AGILITY_ART_CHOICES
-	var selected := String(snapshot.martial_art_choice if track == "martial" else snapshot.agility_art_choice)
+	var choices: Dictionary = {}
+	var selected := ""
+	match track:
+		"martial":
+			choices = CombatModel.MARTIAL_ART_CHOICES
+			selected = String(snapshot.martial_art_choice)
+		"physique":
+			choices = CombatModel.PHYSIQUE_ART_CHOICES
+			selected = String(snapshot.physique_art_choice)
+		"agility":
+			choices = CombatModel.AGILITY_ART_CHOICES
+			selected = String(snapshot.agility_art_choice)
+		"magic":
+			choices = CombatModel.MAGIC_ART_CHOICES
+			selected = String(snapshot.magic_art_choice)
+		_:
+			return
 	var effective_level := int(snapshot.effective_style_levels[track])
-	section_box.add_child(_label("Lv.30 劍路分岔", 18, _track_color(track).lightened(0.35)))
+	section_box.add_child(_label("Lv.30 重大技能分岔", 18, _track_color(track).lightened(0.35)))
 	var current_text := String(choices[selected].name) if effective_level >= 30 else "尚未解鎖"
 	section_box.add_child(_label("目前：%s｜測試期間可自由切換" % current_text, 14, Color("cbd5cc")))
 	for choice_id: String in choices:
@@ -1924,7 +1937,13 @@ func _select_martial_branch(branch_id: String) -> void:
 func _select_early_art_choice(track: String, choice_id: String) -> void:
 	if not model.select_early_art_choice(track, choice_id):
 		return
-	var choices: Dictionary = CombatModel.MARTIAL_ART_CHOICES if track == "martial" else CombatModel.AGILITY_ART_CHOICES
+	var choices: Dictionary = {}
+	match track:
+		"martial": choices = CombatModel.MARTIAL_ART_CHOICES
+		"physique": choices = CombatModel.PHYSIQUE_ART_CHOICES
+		"agility": choices = CombatModel.AGILITY_ART_CHOICES
+		"magic": choices = CombatModel.MAGIC_ART_CHOICES
+		_: return
 	var choice: Dictionary = choices[choice_id]
 	_show_toast("劍路切換：%s" % String(choice.name), String(choice.description))
 	_update_hud(model.snapshot())

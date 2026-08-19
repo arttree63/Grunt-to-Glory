@@ -385,6 +385,14 @@ const AGILITY_ART_CHOICES := {
 	"returning_shadow": {"name": "折返式", "description": "影襲命中後追加一次 55% 傷害的折返斬。"},
 	"flowing_shadow": {"name": "流風式", "description": "影襲後獲得 2 層游刃，並縮短雙燕疾斬 0.8 秒冷卻。"},
 }
+const PHYSIQUE_ART_CHOICES := {
+	"mountain_guard": {"name": "鎮岳式", "description": "返刃架勢將下一次格擋提升為完美格擋，穩定守住重擊。"},
+	"borrowed_edge": {"name": "借勢式", "description": "返刃時額外轉化 50% 格擋傷害，敵人打得越重，返擊越痛。"},
+}
+const MAGIC_ART_CHOICES := {
+	"detonation": {"name": "焚盡式", "description": "炎爆斬傷害提高 30%，一次引爆全部魔紋與燃燒。"},
+	"ember_cycle": {"name": "餘燼式", "description": "炎爆後保留 2 層燃燒，更快開始下一輪魔劍循環。"},
+}
 const FAITH_BRANCHES := {
 	"radiance": {"name": "光耀", "description": "偏向聖傷、制裁與審判斬爆發"},
 	"guardian": {"name": "守護", "description": "偏向護盾、減傷與神恩保命"},
@@ -600,6 +608,8 @@ var physique_branch := ""
 var agility_branch := ""
 var martial_art_choice := "pursuit"
 var agility_art_choice := "returning_shadow"
+var physique_art_choice := "mountain_guard"
+var magic_art_choice := "detonation"
 var momentum := 0.0
 var draw_stance_remaining := 0.0
 var time_since_one_slash := 0.0
@@ -1004,6 +1014,12 @@ func select_early_art_choice(track: String, choice_id: String) -> bool:
 	if track == "agility" and effective_style_level(track) >= 30 and AGILITY_ART_CHOICES.has(choice_id):
 		agility_art_choice = choice_id
 		return true
+	if track == "physique" and effective_style_level(track) >= 30 and PHYSIQUE_ART_CHOICES.has(choice_id):
+		physique_art_choice = choice_id
+		return true
+	if track == "magic" and effective_style_level(track) >= 30 and MAGIC_ART_CHOICES.has(choice_id):
+		magic_art_choice = choice_id
+		return true
 	return false
 
 func select_secondary_element(element_id: String) -> bool:
@@ -1143,6 +1159,7 @@ func save_data() -> Dictionary:
 		"legacy_choice": legacy_choice, "legacy_track": legacy_track, "legacy_item": legacy_item,
 		"martial_branch": martial_branch, "physique_branch": physique_branch, "agility_branch": agility_branch,
 		"martial_art_choice": martial_art_choice, "agility_art_choice": agility_art_choice,
+		"physique_art_choice": physique_art_choice, "magic_art_choice": magic_art_choice,
 		"secondary_element": secondary_element, "magic_specialization": magic_specialization,
 		"faith_branch": faith_branch, "command_branch": command_branch,
 		"auto_skill_slots": auto_skill_slots.duplicate(), "auto_tactics": auto_tactics.duplicate(true),
@@ -1194,6 +1211,8 @@ func load_save_data(data: Dictionary) -> bool:
 	agility_branch = _valid_choice(data, "agility_branch", AGILITY_BRANCHES)
 	martial_art_choice = _valid_choice_or_default(data, "martial_art_choice", MARTIAL_ART_CHOICES, "pursuit")
 	agility_art_choice = _valid_choice_or_default(data, "agility_art_choice", AGILITY_ART_CHOICES, "returning_shadow")
+	physique_art_choice = _valid_choice_or_default(data, "physique_art_choice", PHYSIQUE_ART_CHOICES, "mountain_guard")
+	magic_art_choice = _valid_choice_or_default(data, "magic_art_choice", MAGIC_ART_CHOICES, "detonation")
 	secondary_element = _valid_choice(data, "secondary_element", MAGIC_SECONDARIES)
 	magic_specialization = _valid_choice(data, "magic_specialization", MAGIC_SPECIALIZATIONS)
 	faith_branch = _valid_choice(data, "faith_branch", FAITH_BRANCHES)
@@ -1266,7 +1285,7 @@ func snapshot() -> Dictionary:
 		"shop_refresh_count": shop_refresh_count, "inheritance_unlocked": inheritance_unlocked, "battle_souls": battle_souls,
 		"inheritance_count": inheritance_count, "legacy_choice": legacy_choice, "legacy_track": legacy_track, "legacy_item": legacy_item,
 		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch, "martial_art_choice": martial_art_choice, "draw_stance_remaining": draw_stance_remaining,
-		"immovable": immovable, "max_immovable": MAX_IMMOVABLE, "physique_branch": physique_branch,
+		"immovable": immovable, "max_immovable": MAX_IMMOVABLE, "physique_branch": physique_branch, "physique_art_choice": physique_art_choice,
 		"return_blade_ready": return_blade_ready, "guard_stance_remaining": guard_stance_remaining, "counter_chain": counter_chain,
 		"youren": youren, "max_youren": MAX_YOUREN, "flow_hits": flow_hits, "flow_hits_required": FLOW_HITS_REQUIRED,
 		"swift_cut_hits": swift_cut_hits, "swift_cut_hits_required": 1 if int(training.agility) >= 140 else 2, "agility_branch": agility_branch, "agility_art_choice": agility_art_choice,
@@ -1275,6 +1294,7 @@ func snapshot() -> Dictionary:
 		"burn_stacks": burn_stacks, "max_burn": MAX_BURN, "frost_stacks": frost_stacks,
 		"lightning_stacks": lightning_stacks, "secondary_element": secondary_element,
 		"magic_specialization": magic_specialization, "magic_release_remaining": magic_release_remaining,
+		"magic_art_choice": magic_art_choice,
 		"fusion_remaining": fusion_remaining, "complete_release_remaining": complete_release_remaining,
 		"magic_manifest_active": _magic_manifest_active(),
 		"holy_seals": holy_seals, "max_holy_seals": MAX_HOLY_SEALS, "holy_shield": holy_shield,
@@ -1517,6 +1537,10 @@ func heavy_strike_modifiers() -> Array[String]:
 func skill_display_name(skill_id: String, short := false) -> String:
 	if skill_id == "shadow_assault" and effective_style_level("agility") >= 30:
 		return "影襲・折返" if agility_art_choice == "returning_shadow" else "影襲・流風"
+	if skill_id == "return_blade" and effective_style_level("physique") >= 30:
+		return "返刃・鎮岳" if physique_art_choice == "mountain_guard" else "返刃・借勢"
+	if skill_id == "flame_burst_slash" and effective_style_level("magic") >= 30:
+		return "炎爆斬・焚盡" if magic_art_choice == "detonation" else "炎爆斬・餘燼"
 	return String(SKILL_DEFS[skill_id].short if short else SKILL_DEFS[skill_id].name)
 
 func base_skill_description(skill_id: String) -> String:
@@ -1598,18 +1622,20 @@ func _cast_flame_burst_slash() -> void:
 	var definition: Dictionary = SKILL_DEFS.flame_burst_slash
 	var fire_multiplier := _fire_damage_multiplier()
 	magic_marks = maxi(0, magic_marks - _magic_mark_cost("flame_burst_slash"))
-	burn_stacks = 0
+	burn_stacks = 2 if effective_style_level("magic") >= 30 and magic_art_choice == "ember_cycle" else 0
 	burning_hits = 0
 	hero_mp = maxf(0.0, hero_mp - _skill_mp_cost("flame_burst_slash"))
 	skill_cooldowns["flame_burst_slash"] = float(definition.cooldown)
 	var raw_damage := _magic_power() * 4.2 * fire_multiplier * _skill_level_multiplier("flame_burst_slash")
+	if effective_style_level("magic") >= 30 and magic_art_choice == "detonation":
+		raw_damage *= 1.3
 	if magic_release_remaining > 0.0:
 		raw_damage *= 1.4
 	if magic_specialization == "fire" and int(training.magic) >= 155:
 		raw_damage *= 1.1
 	if complete_release_remaining > 0.0:
 		raw_damage *= 1.45
-	_events.append({"type": "flame_burst_slash", "name": "炎爆斬", "damage": raw_damage})
+	_events.append({"type": "flame_burst_slash", "name": skill_display_name("flame_burst_slash"), "damage": raw_damage, "variant": magic_art_choice})
 	_events.append({"type": "magic_marks_changed", "value": magic_marks})
 	_events.append({"type": "burn_changed", "value": burn_stacks})
 	var defeated := _deal_damage(raw_damage, "flame_burst_slash", 0.2)
@@ -2232,7 +2258,9 @@ func _enemy_attack(block_override := "") -> void:
 	var blade_triggered := return_blade_ready
 	if blade_triggered and block_quality.is_empty():
 		block_quality = "block"
-	if physique_branch == "iron_wall" and immovable >= MAX_IMMOVABLE and block_quality == "block":
+	if blade_triggered and effective_style_level("physique") >= 30 and physique_art_choice == "mountain_guard":
+		block_quality = "perfect"
+	elif physique_branch == "iron_wall" and immovable >= MAX_IMMOVABLE and block_quality == "block":
 		block_quality = "perfect"
 	return_blade_ready = false
 	if block_quality.is_empty():
@@ -2263,7 +2291,7 @@ func _enemy_attack(block_override := "") -> void:
 		_events.append({"type": "immovable_changed", "value": immovable})
 	var guaranteed_counter := block_quality == "perfect" or blade_triggered or immovable_king_remaining > 0.0
 	if guaranteed_counter or rng.randf() < 0.35 + float(level) * 0.002:
-		_counter_attack(prevented, block_quality == "perfect", attack_type)
+		_counter_attack(prevented, block_quality == "perfect", attack_type, blade_triggered)
 	if hero_hp <= 0.0:
 		_defeat_hero()
 
@@ -2362,7 +2390,7 @@ func _lose_youren(attack_type: String) -> void:
 	instant_kill_ready = false
 	_events.append({"type": "youren_changed", "value": youren})
 
-func _counter_attack(prevented: float, perfect: bool, attack_type: String) -> void:
+func _counter_attack(prevented: float, perfect: bool, attack_type: String, blade_triggered := false) -> void:
 	counter_chain += 1
 	var raw_damage := _attack_power() * 0.8 + _defense() * 1.25
 	raw_damage *= _track_level_multiplier("physique", 10)
@@ -2373,6 +2401,7 @@ func _counter_attack(prevented: float, perfect: bool, attack_type: String) -> vo
 		if int(training.physique) >= 115: borrow_ratio = 0.5
 		if int(training.physique) >= 185: borrow_ratio = 0.65
 		if physique_branch == "borrowed_force": borrow_ratio += 0.15
+		if blade_triggered and effective_style_level("physique") >= 30 and physique_art_choice == "borrowed_edge": borrow_ratio += 0.5
 		borrowed = prevented * borrow_ratio
 		raw_damage += borrowed
 	if perfect:
@@ -2386,7 +2415,8 @@ func _counter_attack(prevented: float, perfect: bool, attack_type: String) -> vo
 		raw_damage *= 1.8
 		enemy_attack_remaining += 1.4 if int(training.physique) >= 95 else 1.0
 		_events.append({"type": "shock_return"})
-	_events.append({"type": "counter", "damage": raw_damage, "perfect": perfect, "chain": counter_chain, "borrowed": borrowed})
+	var counter_name := skill_display_name("return_blade") if blade_triggered else "反擊"
+	_events.append({"type": "counter", "name": counter_name, "damage": raw_damage, "perfect": perfect, "chain": counter_chain, "borrowed": borrowed, "variant": physique_art_choice if blade_triggered else ""})
 	_deal_damage(raw_damage, "counter", 0.15)
 
 func _trigger_heaven_return(incoming: float) -> void:
@@ -2705,6 +2735,8 @@ func _reset_for_inheritance(inherited_item: String, memory_track: String) -> voi
 	agility_branch = ""
 	martial_art_choice = "pursuit"
 	agility_art_choice = "returning_shadow"
+	physique_art_choice = "mountain_guard"
+	magic_art_choice = "detonation"
 	secondary_element = ""
 	magic_specialization = ""
 	faith_branch = ""
