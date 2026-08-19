@@ -721,7 +721,7 @@ func step(delta: float) -> Array[Dictionary]:
 		return _events.duplicate(true)
 	enemy_engagement_time += delta
 	var passive_gain := 5.0 * (2.0 if draw_stance_remaining > 0.0 else 1.0)
-	if int(training.martial) >= 10:
+	if effective_style_level("martial") >= 10:
 		_add_momentum(delta * passive_gain, "time")
 	if int(training.physique) >= 190 and immovable >= MAX_IMMOVABLE and consecutive_blocks >= 3 and immovable_king_remaining <= 0.0:
 		immovable_king_remaining = 6.0 if int(training.physique) >= 195 else 4.0
@@ -2830,7 +2830,7 @@ func _route_phase() -> String:
 	return "首領"
 
 func _add_momentum(amount: float, source: String) -> void:
-	if int(training.martial) < 10:
+	if effective_style_level("martial") < 10:
 		return
 	var multiplier := (1.0 + float(effective_style_level("martial")) * 0.003) * (1.0 + equipment_modifier("momentum_gain"))
 	momentum = minf(MAX_MOMENTUM, momentum + amount * multiplier)

@@ -108,6 +108,14 @@ func _test_equipment_style_levels_and_unlock_boundary() -> void:
 	_expect(model.skill_is_unlocked("guard_stance"), "裝備提高有效流派等級後必須能解鎖技能")
 	_expect(model.skill_is_equipment_supported("guard_stance"), "技能必須能辨識是否由裝備支撐解鎖")
 	_expect(model.equip_auto_skill("guard_stance"), "由裝備支撐解鎖的主動技必須可以裝入 AUTO")
+	model.training.martial = 2
+	model.grant_equipment("momentum_talisman")
+	model.equipment_enhancements.black_iron_sword = 5
+	_expect(model.equip_item("black_iron_sword") and model.equip_item("momentum_talisman"), "測試必須能裝備武藝加成武器與飾品")
+	_expect(model.effective_style_level("martial") >= 10, "裝備叠加必須能讓有效武藝跨過 Lv.10")
+	var momentum_before: float = model.momentum
+	model.step(0.2)
+	_expect(model.momentum > momentum_before, "有效武藝 Lv.10 必須立即解鎖勢的累積，不可只看 Base")
 	model.grant_equipment("temple_armor")
 	_expect(model.equip_item("temple_armor"), "同欄位裝備必須可以直接替換")
 	_expect(String(model.equipped_items.armor) == "temple_armor" and model.equipment_style_bonus("physique") == 5, "同欄位只能保留目前裝備的加成")
@@ -1220,6 +1228,8 @@ func _test_navigation() -> void:
 	scene.persistence_enabled = false
 	root.add_child(scene)
 	await process_frame
+	_expect(is_instance_valid(scene.start_overlay) and is_instance_valid(scene.new_game_button) and is_instance_valid(scene.continue_button), "開場必須提供新遊戲與讀取紀錄入口")
+	_expect(not scene.start_overlay.visible and scene.game_started, "無存檔測試模式必須直接進入遊戲")
 	_expect(scene.nav_buttons.size() == 5, "主分頁必須維持五個入口")
 	_expect(scene.auto_slot_buttons.size() == 5, "AUTO 編成底層必須保留五格優先序")
 	var visible_auto_slots := 0

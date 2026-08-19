@@ -2,6 +2,7 @@ extends Control
 
 const FIXED_STEP := 1.0 / 60.0
 const SAVE_PATH := "user://grunt_to_glory_save_v1.json"
+const SAVE_FILE_NAME := "grunt_to_glory_save_v1.json"
 const AUTO_SAVE_INTERVAL := 10.0
 const PAGE_NAMES := {"combat": "戰鬥", "character": "角色", "skills": "技能", "equipment": "裝備", "shop": "商店"}
 const UI_FONT := preload("res://assets/fonts/NotoSansTC-Variable.ttf")
@@ -26,6 +27,7 @@ var accumulator := 0.0
 var autosave_elapsed := 0.0
 var save_loaded := false
 var persistence_enabled := true
+var game_started := false
 var training_open := false
 var journey_open := false
 var journey_pending := false
@@ -89,19 +91,26 @@ var boss_reward_box: VBoxContainer
 var failure_overlay: Control
 var failure_detail: Label
 var boss_reward_summary := {}
+var start_overlay: Control
+var new_game_button: Button
+var continue_button: Button
+var save_preview_label: Label
 
 func _ready() -> void:
-	save_loaded = _load_game() if persistence_enabled else false
 	_build_ui()
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_apply_safe_area()
 	_update_hud(model.snapshot())
-	auto_slot_buttons[0].grab_focus()
-	_show_toast("進度已載入" if save_loaded else "AUTO 戰鬥開始", "角色會持續快速攻擊；你負責流派修練、技能編成與旅途選擇")
-	if model.awaiting_journey_choice:
-		call_deferred("_restore_pending_choice")
+	if persistence_enabled:
+		_show_start_screen()
+	else:
+		game_started = true
+		start_overlay.visible = false
+		auto_slot_buttons[0].grab_focus()
 
 func _process(delta: float) -> void:
+	if not game_started:
+		return
 	if persistence_enabled:
 		autosave_elapsed += delta
 		if autosave_elapsed >= AUTO_SAVE_INTERVAL:
@@ -124,11 +133,11 @@ func _process(delta: float) -> void:
 		_update_hud(model.snapshot())
 
 func _notification(what: int) -> void:
-	if persistence_enabled and (what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE):
+	if persistence_enabled and game_started and (what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE):
 		_save_game()
 
 func _save_game() -> bool:
-	if not persistence_enabled:
+	if not persistence_enabled or not game_started:
 		return false
 	autosave_elapsed = 0.0
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -155,6 +164,51 @@ func _restore_pending_choice() -> void:
 		_show_journey_choice()
 	else:
 		_show_boss_reward(model.boss_reward_options())
+
+func _show_start_screen() -> void:
+	start_overlay.visible = true
+	continue_button.disabled = not FileAccess.file_exists(SAVE_PATH)
+	save_preview_label.text = _save_preview_text()
+	(continue_button if not continue_button.disabled else new_game_button).grab_focus()
+
+func _save_preview_text() -> String:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return "目前沒有紀錄，從一名普通小兵開始。"
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return "紀錄無法讀取"
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	if not parsed is Dictionary or int(parsed.get("version", 0)) != 1:
+		return "紀錄版本不相容，請開始新遊戲。"
+	return "第 %d 戰｜擊倒 %d｜金幣 %d｜可用修練 %d" % [int(parsed.get("stage", 1)), int(parsed.get("kills", 0)), int(parsed.get("gold", 0)), int(parsed.get("training_points", 0))]
+
+func _start_new_game() -> void:
+	var user_dir := DirAccess.open("user://")
+	if user_dir != null and user_dir.file_exists(SAVE_FILE_NAME):
+		user_dir.remove(SAVE_FILE_NAME)
+	model = CombatModel.new()
+	save_loaded = false
+	_finish_startup("新遊戲開始")
+	_save_game()
+
+func _continue_game() -> void:
+	if not _load_game():
+		continue_button.disabled = true
+		save_preview_label.text = "紀錄無法讀取，請開始新遊戲。"
+		new_game_button.grab_focus()
+		return
+	save_loaded = true
+	_finish_startup("進度已載入")
+	if model.awaiting_journey_choice:
+		call_deferred("_restore_pending_choice")
+
+func _finish_startup(title: String) -> void:
+	game_started = true
+	start_overlay.visible = false
+	accumulator = 0.0
+	_update_hud(model.snapshot())
+	auto_slot_buttons[0].grab_focus()
+	_show_toast(title, "角色會持續快速攻擊；你負責流派修練、技能編成與旅途選擇")
 
 func _unhandled_input(event: InputEvent) -> void:
 	if journey_open or journey_pending or boss_reward_open:
@@ -403,6 +457,56 @@ func _build_ui() -> void:
 	_build_journey_overlay()
 	_build_boss_reward_overlay()
 	_build_failure_overlay()
+	_build_start_overlay()
+
+func _build_start_overlay() -> void:
+	start_overlay = Control.new()
+	start_overlay.z_index = 100
+	start_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	start_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(start_overlay)
+	var dim := ColorRect.new()
+	dim.color = Color("101917", 0.96)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	start_overlay.add_child(dim)
+	var safe := MarginContainer.new()
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side: String in ["left", "right"]:
+		safe.add_theme_constant_override("margin_%s" % side, 28)
+	safe.add_theme_constant_override("margin_top", 72)
+	safe.add_theme_constant_override("margin_bottom", 72)
+	start_overlay.add_child(safe)
+	var center := CenterContainer.new()
+	safe.add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(300, 0)
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("fff8e9", 0.98), Color("c4933e"), 3))
+	center.add_child(panel)
+	var margin := MarginContainer.new()
+	for side: String in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_%s" % side, 24)
+	panel.add_child(margin)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 14)
+	margin.add_child(box)
+	var title := _label("小兵的故事", 32, Color("32291f"))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	var subtitle := _label("從無名小兵，走出自己的劍術。", 15, Color("6e6254"))
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(subtitle)
+	var separator := HSeparator.new()
+	box.add_child(separator)
+	save_preview_label = _label("", 14, Color("675d50"))
+	save_preview_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	save_preview_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(save_preview_label)
+	continue_button = _button("讀取紀錄", Color("71552f"), 56)
+	continue_button.pressed.connect(_continue_game)
+	box.add_child(continue_button)
+	new_game_button = _button("開始新遊戲", Color("435a65"), 56)
+	new_game_button.pressed.connect(_start_new_game)
+	box.add_child(new_game_button)
 
 func _build_navigation(parent: VBoxContainer) -> void:
 	var nav := HBoxContainer.new()
@@ -1477,16 +1581,16 @@ func _update_hud(snapshot: Dictionary) -> void:
 	momentum_bar.value = float(snapshot.momentum)
 	var draw_text := " · 拔刀 %.1fs" % float(snapshot.draw_stance_remaining) if float(snapshot.draw_stance_remaining) > 0.0 else ""
 	momentum_label.text = "♨ 勢  %d/%d%s" % [roundi(snapshot.momentum), roundi(snapshot.max_momentum), draw_text]
-	var martial_active := int(snapshot.training.martial) >= 10
+	var martial_active := int(snapshot.effective_style_levels.martial) >= 10
 	momentum_hud.visible = martial_active
-	var physique_active := int(snapshot.training.physique) >= 10
+	var physique_active := int(snapshot.effective_style_levels.physique) >= 10
 	immovable_hud.visible = physique_active
 	var guard_text := " · 守勢 %.1f" % float(snapshot.guard_stance_remaining) if float(snapshot.guard_stance_remaining) > 0.0 else (" · 返刃" if bool(snapshot.return_blade_ready) else "")
 	immovable_label.text = "不動  %d/%d%s" % [int(snapshot.immovable), int(snapshot.max_immovable), guard_text]
 	for index in immovable_pips.size():
 		var filled := index < int(snapshot.immovable)
 		immovable_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("6a98aa") if filled else Color("bdc7c9"), Color("dff5fa") if filled else Color("70848b"), "shield", 2 if filled else 1))
-	var agility_active := int(snapshot.training.agility) >= 10
+	var agility_active := int(snapshot.effective_style_levels.agility) >= 10
 	youren_hud.visible = agility_active
 	var shadowless_text := " · 無影" if float(snapshot.shadowless_remaining) > 0.0 else ""
 	var swift_text := " · 瞬步" if bool(snapshot.swift_step_ready) else ""
@@ -1497,7 +1601,7 @@ func _update_hud(snapshot: Dictionary) -> void:
 	for index in youren_pips.size():
 		var filled := index < int(snapshot.youren)
 		youren_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("45a69b") if filled else Color("bdcbc8"), Color("dcfff8") if filled else Color("5d8781"), "slash", 2 if filled else 1))
-	var magic_active := int(snapshot.training.magic) >= 10
+	var magic_active := int(snapshot.effective_style_levels.magic) >= 10
 	magic_hud.visible = magic_active
 	var release_text := " · 全解放" if float(snapshot.complete_release_remaining) > 0.0 else (" · 解放" if float(snapshot.magic_release_remaining) > 0.0 else "")
 	var element_text := "火%d" % int(snapshot.burn_stacks)
@@ -1508,14 +1612,14 @@ func _update_hud(snapshot: Dictionary) -> void:
 	for index in magic_pips.size():
 		var filled := index < int(snapshot.magic_marks)
 		magic_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("865caf") if filled else Color("c9bfd1"), Color("ead7ff") if filled else Color("79638e"), "rune", 2 if filled else 1))
-	var faith_active := int(snapshot.training.faith) >= 10
+	var faith_active := int(snapshot.effective_style_levels.faith) >= 10
 	faith_hud.visible = faith_active
 	var holy_state := " · 降臨" if float(snapshot.holy_descent_remaining) > 0.0 else (" · 解放" if float(snapshot.holy_release_remaining) > 0.0 else "")
 	faith_label.text = "聖印 %d/%d · 盾%d%s" % [int(snapshot.holy_seals), int(snapshot.max_holy_seals), roundi(float(snapshot.holy_shield)), holy_state]
 	for index in faith_pips.size():
 		var filled := index < int(snapshot.holy_seals)
 		faith_pips[index].add_theme_stylebox_override("panel", _state_pip_style(Color("d8b94f") if filled else Color("d5ccb0"), Color("fff2ae") if filled else Color("9d8849"), "seal", 2 if filled else 1))
-	var command_active := int(snapshot.training.command) >= 10
+	var command_active := int(snapshot.effective_style_levels.command) >= 10
 	command_hud.visible = command_active
 	command_bar.max_value = float(snapshot.max_military_momentum)
 	command_bar.value = float(snapshot.military_momentum)
