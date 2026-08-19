@@ -188,7 +188,9 @@ func _process(delta: float) -> void:
 	if battlefield != null and battlefield.defeat_sequence_active():
 		accumulator = 0.0
 		return
-	if tutorial_open or training_open or journey_open or journey_pending or boss_reward_open or failure_open or current_page != "combat":
+	var navigation_paused := tutorial_open or training_open or journey_open or journey_pending or boss_reward_open or failure_open or current_page != "combat"
+	battlefield.set_navigation_paused(navigation_paused)
+	if navigation_paused:
 		return
 	if battlefield.navigation_blocks_combat():
 		accumulator = 0.0
@@ -293,9 +295,8 @@ func _finish_startup(title: String) -> void:
 	elif model.tutorial_step == "spend":
 		call_deferred("_resume_spend_tutorial")
 	else:
-		var detail := "角色會自動尋敵；先選接敵路線，再點右上「第一步：修練」" if _total_base_training() == 0 else "角色會自動尋敵與攻擊；你負責路線、流派與技能編成"
-		if String(battlefield.exploration_status().phase) != "choosing":
-			_show_toast(title, detail)
+		var detail := "角色會在戰場巡敵；先觀察戰鬥，再點右上「第一步：修練」" if _total_base_training() == 0 else "角色會自動巡敵與攻擊；你負責流派、裝備與技能編成"
+		_show_toast(title, detail)
 		if model.tutorial_step == "core":
 			call_deferred("_highlight_core_training_button")
 
@@ -311,7 +312,7 @@ func _show_tutorial(title: String, detail: String, action_text: String, action: 
 	tutorial_action_button.grab_focus()
 
 func _show_tutorial_intro() -> void:
-	_show_tutorial("你只是一名小兵", "角色會自動尋找敵人。接敵前可點選高地、直行或補給；不操作也會自動直行。", "開始探索", _tutorial_begin_observe)
+	_show_tutorial("你只是一名小兵", "角色會在限定戰場內自動巡敵、靠近並戰鬥。移動途中也可以點地面，短暫調整他的路線。", "開始巡敵", _tutorial_begin_observe)
 
 func _tutorial_begin_observe() -> void:
 	model.tutorial_step = "observe"
@@ -430,7 +431,6 @@ func _build_ui() -> void:
 
 	battlefield = Battlefield.new()
 	battlefield.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	battlefield.approach_selected.connect(_select_exploration_approach)
 	add_child(battlefield)
 	var shade := ColorRect.new()
 	shade.color = Color("6d7c87", 0.035)
@@ -1872,11 +1872,6 @@ func _retry_failed_stage() -> void:
 	_handle_events(events)
 	_update_hud(model.snapshot())
 
-func _select_exploration_approach(approach_id: String) -> void:
-	_handle_events(model.choose_exploration_approach(approach_id))
-	_update_hud(model.snapshot())
-	_save_game()
-
 func _spend_training(track: String) -> void:
 	var first_training := _total_base_training() == 0
 	var previous_levels := _effective_style_levels()
@@ -2175,8 +2170,6 @@ func _update_hud(snapshot: Dictionary) -> void:
 			button.add_theme_stylebox_override("normal", _slot_style(base if state == "就緒" else base.darkened(0.32), border, 2 if state == "就緒" else 1))
 	battlefield.set_state(snapshot)
 	battlefield.set_stage_bounds(top_panel.position.y + top_panel.size.y, combat_panel.position.y)
-	if String(battlefield.exploration_status().phase) == "choosing" and is_instance_valid(toast_panel):
-		toast_panel.visible = false
 	_update_training_rows(snapshot)
 	if current_page != "combat" and is_instance_valid(section_box):
 		_render_section(current_page, false)

@@ -1,8 +1,6 @@
 class_name Battlefield
 extends Control
 
-signal approach_selected(approach_id: String)
-
 const GORGE_BACKGROUND := preload("res://assets/visual/battle_hud_v2/ruins-arena.png")
 const PIXEL_BACKGROUND := preload("res://assets/visual/pixel_vertical_slice/background/frontier-ruins.png")
 const EXPLORATION_BACKGROUND := preload("res://assets/visual/exploration_map_v1/frontier-roaming-map.png")
@@ -210,7 +208,7 @@ const PIXEL_VERTICAL_SLICE := true
 const PIXEL_FEET_RATIO := 228.0 / 256.0
 const PIXEL_WOLF_FEET_RATIO := 244.0 / 256.0
 const DEFEAT_REWIND_DURATION := 1.8
-const AUTO_APPROACH_DELAY := 2.4
+const ROAMING_HINT_DURATION := 2.8
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -322,12 +320,15 @@ var _pixel_enemy_position := Vector2.ZERO
 var exploration_enabled := false
 var _exploration_phase := "disabled"
 var _encounter_key := ""
-var _selected_approach := ""
-var _approach_remaining := AUTO_APPROACH_DELAY
 var _hero_map_position := Vector2.ZERO
 var _hero_map_target := Vector2.ZERO
 var _enemy_map_position := Vector2.ZERO
 var _move_speed_bonus := 0.0
+var _patrol_cursor := -1
+var _manual_waypoint_active := false
+var _roaming_hint_remaining := 0.0
+var _hero_facing := 1.0
+var _navigation_paused := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -469,7 +470,7 @@ func set_state(snapshot: Dictionary) -> void:
 	ally_count = int(snapshot.ally_count)
 	_move_speed_bonus = float(snapshot.get("move_speed_bonus", 0.0))
 	if exploration_enabled and float(snapshot.enemy_hp) > 0.0:
-		var next_key := str(int(snapshot.stage))
+		var next_key := "%d:%d" % [int(snapshot.stage), int(snapshot.get("current_wave", 0))]
 		if next_key != _encounter_key:
 			_begin_exploration(next_key)
 
@@ -483,67 +484,75 @@ func set_exploration_enabled(value: bool) -> void:
 	queue_redraw()
 
 func navigation_blocks_combat() -> bool:
-	return exploration_enabled and _exploration_phase in ["choosing", "traveling"]
+	return exploration_enabled and _exploration_phase == "traveling"
+
+func set_navigation_paused(value: bool) -> void:
+	_navigation_paused = value
 
 func exploration_status() -> Dictionary:
 	return {
 		"phase": _exploration_phase,
-		"approach": _selected_approach,
-		"remaining": _approach_remaining,
+		"target": _enemy_map_position,
+		"manual_waypoint": _manual_waypoint_active,
 	}
 
 func _begin_exploration(key: String) -> void:
 	_encounter_key = key
-	_selected_approach = ""
-	_approach_remaining = AUTO_APPROACH_DELAY
-	_exploration_phase = "choosing"
 	var bottom := minf(stage_bottom - 8.0, size.y - 112.0)
 	if _hero_map_position == Vector2.ZERO:
 		_hero_map_position = Vector2(size.x * 0.5, bottom - 6.0)
 	else:
 		_hero_map_position.x = clampf(_hero_map_position.x, 52.0, size.x - 52.0)
 		_hero_map_position.y = clampf(_hero_map_position.y, stage_top + 96.0, bottom - 4.0)
-	_hero_map_target = _hero_map_position
-	_enemy_map_position = Vector2.ZERO
+	var patrol_points := _patrol_points()
+	_patrol_cursor = (_patrol_cursor + 1) % patrol_points.size()
+	_enemy_map_position = patrol_points[_patrol_cursor]
+	if _hero_map_position.distance_to(_enemy_map_position) < 150.0:
+		_patrol_cursor = (_patrol_cursor + 1) % patrol_points.size()
+		_enemy_map_position = patrol_points[_patrol_cursor]
+	_manual_waypoint_active = false
+	_roaming_hint_remaining = ROAMING_HINT_DURATION
+	_set_enemy_approach_target()
+	_exploration_phase = "traveling"
 	queue_redraw()
 
-func _approach_nodes() -> Dictionary:
+func _patrol_points() -> Array[Vector2]:
 	var bottom := minf(stage_bottom - 8.0, size.y - 112.0)
 	var height := maxf(220.0, bottom - stage_top)
-	return {
-		"scout": Vector2(size.x * 0.27, stage_top + height * 0.34),
-		"direct": Vector2(size.x * 0.51, stage_top + height * 0.5),
-		"supply": Vector2(size.x * 0.74, stage_top + height * 0.37),
-	}
+	return [
+		Vector2(size.x * 0.73, stage_top + height * 0.48),
+		Vector2(size.x * 0.31, stage_top + height * 0.62),
+		Vector2(size.x * 0.71, stage_top + height * 0.76),
+		Vector2(size.x * 0.43, stage_top + height * 0.54),
+		Vector2(size.x * 0.58, stage_top + height * 0.68),
+	]
 
-func _select_approach(approach_id: String) -> void:
-	if _exploration_phase != "choosing" or not _approach_nodes().has(approach_id):
-		return
-	_selected_approach = approach_id
-	_enemy_map_position = Vector2(_approach_nodes()[approach_id])
-	var approach_vector := (_hero_map_position - _enemy_map_position).normalized()
-	_hero_map_target = _enemy_map_position + approach_vector * 82.0 + Vector2(0.0, 12.0)
-	_exploration_phase = "traveling"
-	approach_selected.emit(approach_id)
-	queue_redraw()
+func _set_enemy_approach_target() -> void:
+	_hero_map_target = _enemy_map_position + Vector2(-142.0, 12.0)
+	_hero_map_target.x = clampf(_hero_map_target.x, 52.0, size.x - 52.0)
+	_hero_map_target.y = clampf(_hero_map_target.y, stage_top + 88.0, minf(stage_bottom - 12.0, size.y - 116.0))
 
 func _update_exploration(delta: float) -> void:
-	if not exploration_enabled:
+	if not exploration_enabled or _navigation_paused:
 		return
-	if _exploration_phase == "choosing":
-		_approach_remaining = maxf(0.0, _approach_remaining - delta)
-		if _approach_remaining <= 0.0:
-			_select_approach("direct")
-	elif _exploration_phase == "traveling":
+	_roaming_hint_remaining = maxf(0.0, _roaming_hint_remaining - delta)
+	if _exploration_phase == "traveling":
 		var speed := 118.0 * (1.0 + _move_speed_bonus)
+		if absf(_hero_map_target.x - _hero_map_position.x) > 2.0:
+			_hero_facing = signf(_hero_map_target.x - _hero_map_position.x)
 		_hero_map_position = _hero_map_position.move_toward(_hero_map_target, speed * delta)
 		if _hero_map_position.distance_to(_hero_map_target) <= 1.0:
 			_hero_map_position = _hero_map_target
-			_exploration_phase = "engaged"
+			if _manual_waypoint_active:
+				_manual_waypoint_active = false
+				_set_enemy_approach_target()
+			else:
+				_hero_facing = 1.0
+				_exploration_phase = "engaged"
 	queue_redraw()
 
 func _on_map_input(event: InputEvent) -> void:
-	if _exploration_phase != "choosing":
+	if _exploration_phase != "traveling":
 		return
 	var pointer := Vector2.ZERO
 	var pressed := false
@@ -555,16 +564,15 @@ func _on_map_input(event: InputEvent) -> void:
 		pressed = event.pressed and event.button_index == MOUSE_BUTTON_LEFT
 	if not pressed:
 		return
-	var closest := ""
-	var closest_distance := 74.0
-	for approach_id: String in _approach_nodes():
-		var distance := pointer.distance_to(Vector2(_approach_nodes()[approach_id]))
-		if distance < closest_distance:
-			closest = approach_id
-			closest_distance = distance
-	if not closest.is_empty():
-		accept_event()
-		_select_approach(closest)
+	var bottom := minf(stage_bottom - 12.0, size.y - 116.0)
+	_hero_map_target = Vector2(
+		clampf(pointer.x, 52.0, size.x - 52.0),
+		clampf(pointer.y, stage_top + 88.0, bottom)
+	)
+	_manual_waypoint_active = true
+	_roaming_hint_remaining = 1.2
+	accept_event()
+	queue_redraw()
 
 func set_stage_bounds(top: float, bottom: float) -> void:
 	stage_top = maxf(130.0, top)
@@ -945,8 +953,8 @@ func _draw_pixel_vertical_slice() -> void:
 	var hero_pos := _hero_map_position if exploration_enabled and _hero_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.29, 66.0, size.x - 160.0), battle_line + 20.0)
 	var enemy_pos := _enemy_map_position if exploration_enabled and _enemy_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.72, 170.0, size.x - 66.0), battle_line)
 	_pixel_enemy_position = enemy_pos
-	if exploration_enabled and _exploration_phase == "choosing":
-		_draw_approach_choices()
+	if exploration_enabled and _exploration_phase == "traveling":
+		_draw_roaming_path(hero_pos, enemy_pos)
 
 	if not defeat_sequence_active() or rewind_progress < 0.45:
 		for index in ally_count:
@@ -954,7 +962,7 @@ func _draw_pixel_vertical_slice() -> void:
 			var column := index % 2
 			_draw_ally(hero_pos + Vector2(-55.0 - float(column) * 30.0, -10.0 - float(row) * 42.0), index)
 
-	if (not exploration_enabled or _exploration_phase != "choosing") and (not defeat_sequence_active() or rewind_progress < 0.44):
+	if not defeat_sequence_active() or rewind_progress < 0.44:
 		_draw_pixel_enemy(enemy_pos)
 	_draw_pixel_hero(hero_pos)
 	_draw_style_formed_burst(hero_pos)
@@ -962,33 +970,20 @@ func _draw_pixel_vertical_slice() -> void:
 	if _hurt_vignette > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("a82e2e", _hurt_vignette * 0.13), false, 10.0)
 
-func _draw_approach_choices() -> void:
-	var prompt_width := minf(size.x - 32.0, 350.0)
-	var node_top := minf(float(Vector2(_approach_nodes().scout).y), minf(float(Vector2(_approach_nodes().direct).y), float(Vector2(_approach_nodes().supply).y)))
-	var prompt_rect := Rect2((size.x - prompt_width) * 0.5, node_top - 58.0, prompt_width, 34.0)
-	draw_style_box(_exploration_panel_style(), prompt_rect)
-	draw_string(UI_FONT, prompt_rect.position + Vector2(0.0, 23.0), "點選路線 · %.1f 秒後自動直行" % _approach_remaining, HORIZONTAL_ALIGNMENT_CENTER, prompt_rect.size.x, 16, Color("fff5d5"))
-	for approach_id: String in _approach_nodes():
-		var center := Vector2(_approach_nodes()[approach_id])
-		var color := _approach_color(approach_id)
-		var pulse := 1.0 + sin(_time * 4.0 + center.x * 0.01) * 0.05
-		draw_circle(center, 34.0 * pulse, Color("162529", 0.76))
-		draw_arc(center, 35.0 * pulse, 0.0, TAU, 28, color, 4.0)
-		match approach_id:
-			"scout":
-				draw_line(center + Vector2(-12.0, 9.0), center + Vector2(0.0, -10.0), color, 4.0)
-				draw_line(center + Vector2(0.0, -10.0), center + Vector2(12.0, 9.0), color, 4.0)
-			"direct":
-				draw_line(center + Vector2(-13.0, 0.0), center + Vector2(13.0, 0.0), color, 5.0)
-				draw_line(center + Vector2(5.0, -8.0), center + Vector2(13.0, 0.0), color, 5.0)
-				draw_line(center + Vector2(5.0, 8.0), center + Vector2(13.0, 0.0), color, 5.0)
-			"supply":
-				draw_line(center + Vector2(-11.0, 0.0), center + Vector2(11.0, 0.0), color, 6.0)
-				draw_line(center + Vector2(0.0, -11.0), center + Vector2(0.0, 11.0), color, 6.0)
-		var label_rect := Rect2(center.x - 58.0, center.y + 43.0, 116.0, 48.0)
-		draw_rect(label_rect, Color("122126", 0.76))
-		draw_string(UI_FONT, label_rect.position + Vector2(0.0, 19.0), _approach_name(approach_id), HORIZONTAL_ALIGNMENT_CENTER, label_rect.size.x, 17, Color.WHITE)
-		draw_string(UI_FONT, label_rect.position + Vector2(0.0, 40.0), _approach_short_effect(approach_id), HORIZONTAL_ALIGNMENT_CENTER, label_rect.size.x, 14, color.lightened(0.22))
+func _draw_roaming_path(hero_pos: Vector2, enemy_pos: Vector2) -> void:
+	var path_end := _hero_map_target if _manual_waypoint_active else enemy_pos
+	var distance := hero_pos.distance_to(path_end)
+	var steps := maxi(1, floori(distance / 24.0))
+	for index in steps:
+		var ratio := float(index + 1) / float(steps + 1)
+		draw_circle(hero_pos.lerp(path_end, ratio), 2.5, Color("d9c47a", 0.58))
+	draw_arc(path_end, 15.0 + sin(_time * 5.0) * 2.0, 0.0, TAU, 22, Color("f2d782", 0.76), 3.0)
+	if _roaming_hint_remaining > 0.0:
+		var prompt_width := minf(size.x - 56.0, 286.0)
+		var prompt_rect := Rect2((size.x - prompt_width) * 0.5, stage_top + 18.0, prompt_width, 34.0)
+		draw_style_box(_exploration_panel_style(), prompt_rect)
+		var hint := "已調整路線" if _manual_waypoint_active else "AUTO 巡敵 · 點地可調整移動"
+		draw_string(UI_FONT, prompt_rect.position + Vector2(0.0, 23.0), hint, HORIZONTAL_ALIGNMENT_CENTER, prompt_rect.size.x, 16, Color("fff5d5"))
 
 func _exploration_panel_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
@@ -997,15 +992,6 @@ func _exploration_panel_style() -> StyleBoxFlat:
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(10)
 	return style
-
-func _approach_color(approach_id: String) -> Color:
-	return {"scout": Color("72c9dd"), "direct": Color("efb25c"), "supply": Color("73d098")}.get(approach_id, Color.WHITE)
-
-func _approach_name(approach_id: String) -> String:
-	return {"scout": "高地偵察", "direct": "直取敵陣", "supply": "補給營火"}.get(approach_id, "接敵")
-
-func _approach_short_effect(approach_id: String) -> String:
-	return {"scout": "敵甲 -20%", "direct": "先手 -8% HP", "supply": "回復 8%"}.get(approach_id, "")
 
 func _draw_style_formed_burst(feet_position: Vector2) -> void:
 	if _style_formed_burst <= 0.0 or _hero_defeated:
@@ -1054,7 +1040,8 @@ func _draw_pixel_hero(feet_position: Vector2) -> void:
 
 	var shadow_size := Vector2(60.0, 8.0) if _hero_defeated else Vector2(43.0, 9.0)
 	_draw_ground_shadow(feet_position + Vector2(0.0, 2.0), shadow_size)
-	_draw_anchored_animation_frame(texture, feet_position + offset, 158.0 if exploration_enabled else 226.0, PIXEL_FEET_RATIO, 0.0, Vector2.ONE, tint)
+	var facing_scale := Vector2(_hero_facing if exploration_enabled else 1.0, 1.0)
+	_draw_anchored_animation_frame(texture, feet_position + offset, 158.0 if exploration_enabled else 226.0, PIXEL_FEET_RATIO, 0.0, facing_scale, tint)
 
 func _draw_pixel_rewind_hero(feet_position: Vector2) -> void:
 	var progress := defeat_rewind_progress()

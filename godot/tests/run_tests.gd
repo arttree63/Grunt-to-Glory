@@ -50,7 +50,7 @@ func _run_tests() -> void:
 	_test_enemy_archetypes_and_route_rhythm()
 	_test_enemy_traits_and_boss_phases()
 	_test_journey_choice_controls_next_area()
-	_test_exploration_approaches()
+	_test_auto_roaming()
 	_test_defeat_farms_previous_stage_until_retry()
 	_test_frontier_stage_waves()
 	_test_failure_report_keeps_idle_loop()
@@ -225,36 +225,24 @@ func _test_defeat_farms_previous_stage_until_retry() -> void:
 	_expect(model.stage == 6 and not model.retry_pending, "按下再次挑戰才可回到失敗關卡")
 	_expect(retry_events.any(func(event: Dictionary) -> bool: return event.type == "retry_started"), "再次挑戰必須送出明確戰鬥事件")
 
-func _test_exploration_approaches() -> void:
-	var scout = CombatModelScript.new()
-	var armor_before: float = scout.enemy_armor
-	var scout_events: Array[Dictionary] = scout.choose_exploration_approach("scout")
-	_expect(is_equal_approx(scout.enemy_armor, armor_before * 0.8), "高地偵察必須真正降低當前敵人護甲")
-	_expect(scout_events.any(func(event: Dictionary) -> bool: return event.type == "exploration_approach"), "選擇接敵路線必須送出可讀戰鬥事件")
-	var armor_after: float = scout.enemy_armor
-	scout.choose_exploration_approach("scout")
-	_expect(is_equal_approx(scout.enemy_armor, armor_after), "同一場遭遇不可重複套用路線收益")
-
-	var direct = CombatModelScript.new()
-	var hp_before: float = direct.enemy_hp
-	direct.choose_exploration_approach("direct")
-	_expect(direct.enemy_hp < hp_before, "直取敵陣必須提供可見的先手傷害")
-
-	var supply = CombatModelScript.new()
-	supply.hero_hp = supply._hero_max_hp() * 0.5
-	var hero_before: float = supply.hero_hp
-	supply.choose_exploration_approach("supply")
-	_expect(supply.hero_hp > hero_before, "補給營火必須在接敵前恢復生命")
-
+func _test_auto_roaming() -> void:
 	var battlefield = BattlefieldScript.new()
 	battlefield.size = Vector2(390.0, 844.0)
 	battlefield.set_stage_bounds(112.0, 590.0)
 	battlefield.set_exploration_enabled(true)
 	battlefield._begin_exploration("1:1")
-	_expect(battlefield.navigation_blocks_combat() and battlefield._approach_nodes().size() == 3, "半自動探索必須先提供三條可點擊路線並暫停交戰")
-	battlefield._select_approach("direct")
+	_expect(battlefield.navigation_blocks_combat() and battlefield._enemy_map_position != Vector2.ZERO, "自動巡敵開始時必須生成目標並暫停交戰")
+	var first_target: Vector2 = battlefield._enemy_map_position
 	battlefield._update_exploration(10.0)
-	_expect(not battlefield.navigation_blocks_combat() and String(battlefield.exploration_status().approach) == "direct", "角色抵達目標後才可恢復 AUTO 戰鬥")
+	_expect(not battlefield.navigation_blocks_combat(), "角色抵達敵人後才可恢復 AUTO 戰鬥")
+	battlefield._begin_exploration("1:2")
+	_expect(battlefield._enemy_map_position != first_target, "下一波敵人必須出現在地圖的不同位置")
+	battlefield._hero_map_target = Vector2(90.0, 360.0)
+	battlefield._manual_waypoint_active = true
+	battlefield._update_exploration(10.0)
+	_expect(battlefield.navigation_blocks_combat() and not battlefield._manual_waypoint_active, "手動路點完成後必須自動接回巡敵路線")
+	battlefield._update_exploration(10.0)
+	_expect(not battlefield.navigation_blocks_combat(), "巡敵接回後必須能正常接戰")
 	battlefield.free()
 
 func _test_frontier_stage_waves() -> void:
