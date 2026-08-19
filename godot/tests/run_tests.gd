@@ -75,12 +75,13 @@ func _run_tests() -> void:
 	_test_auto_tactic_conditions()
 	_test_battlefield_impact_tiers()
 	_test_playable_pace()
+	_test_first_area_progression_pace()
 	await _test_navigation()
 	if failures > 0:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 68")
+		print("Godot tests passed: 69")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -92,6 +93,11 @@ func _test_auto_attack_and_momentum() -> void:
 	_expect(events.any(func(event: Dictionary) -> bool: return event.type == "attack"), "沒有輸入時也必須自動普攻")
 	_expect(model.momentum > before, "時間與普攻必須累積勢")
 	_expect(model._current_attack_interval() <= 0.55, "取消點擊攻擊後，基礎 AUTO 節奏必須保持高速")
+	model.momentum = CombatModelScript.MAX_MOMENTUM
+	model.auto_attack_remaining = 0.0
+	var momentum_events: Array[Dictionary] = model.step(0.01)
+	_expect(momentum_events.any(func(event: Dictionary) -> bool: return event.type == "momentum_slash"), "武藝 Lv.10 滿勢後，下一次普攻必須自動轉化為勢斬")
+	_expect(model.momentum < CombatModelScript.MAX_MOMENTUM, "勢斬發動後必須消耗勢，完成 Lv.10 核心循環")
 	model.training.agility = 200
 	model.youren = CombatModelScript.MAX_YOUREN
 	model.shadowless_remaining = 3.0
@@ -348,11 +354,14 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(battlefield.impact_tier_for_source("attack") == "light", "普通攻擊必須使用輕量命中回饋")
 	_expect(battlefield.impact_tier_for_source("critical_attack") == "medium", "暴擊必須使用中量命中回饋")
 	_expect(battlefield.impact_tier_for_source("heavy_strike_base") == "medium", "基礎重擊不可使用極勢等級的重型回饋")
+	_expect(battlefield.impact_tier_for_source("momentum_slash") == "medium", "Lv.10 勢斬必須有明顯但不超越高階奧義的命中回饋")
 	_expect(battlefield.impact_tier_for_source("heavy_strike_extreme") == "heavy", "滿勢重擊必須使用重型命中回饋")
 	_expect(battlefield.impact_tier_for_source("heavy_strike_swift") == "medium", "敏捷迅擊必須使用中量高速回饋")
 	_expect(battlefield.impact_tier_for_source("mountain_break") == "heavy", "斷嶽必須使用重型命中回饋")
 	battlefield.play_events([{"type": "block"}, {"type": "dodge"}])
 	_expect(battlefield._hero_block_motion == 1.0 and battlefield._hero_dodge_motion == 1.0, "格擋與閃躲事件必須啟動對應逐格動作")
+	battlefield.play_events([{"type": "style_formed", "track": "martial"}])
+	_expect(battlefield._style_formed_burst == 1.0 and battlefield._style_formed_color == Color("e07845"), "流派成形事件必須啟動對應色彩的低位移視覺回饋")
 	battlefield.play_events([{"type": "defeat"}])
 	_expect(battlefield._hero_defeated, "主角死亡後必須停留在倒下狀態，直到真正復活")
 	_expect(battlefield.defeat_sequence_active(), "戰敗後必須啟動回到上一戰的視覺演出")
@@ -639,7 +648,7 @@ func _test_command_momentum_and_follow_up() -> void:
 func _test_ally_recruitment_and_auto_attack() -> void:
 	var model = CombatModelScript.new()
 	model.training.command = 9
-	model.training_points = 1
+	model.training_points = 3
 	var unlock_events := model.spend_training("command")
 	_expect(unlock_events.any(func(event: Dictionary) -> bool: return event.type == "ally_joined" and String(event.name) == "王國步兵"), "統御 Lv.10 必須明確通知王國步兵入隊")
 	_expect(model._ally_count() == 1 and model._unlocked_allies() == ["infantry"], "統御 Lv.10 必須實際擁有第一位友軍")
@@ -1223,6 +1232,36 @@ func _test_playable_pace() -> void:
 	_expect(int(model.training.martial) >= 10, "武藝首個核心技能應在 90 秒內解鎖")
 	_expect(elapsed >= 8.0, "核心技能不應在玩家看懂戰鬥前直接傾倒")
 
+func _test_first_area_progression_pace() -> void:
+	var model = CombatModelScript.new()
+	model.equip_item("black_iron_armor")
+	var elapsed := 0.0
+	var core_unlock_time := -1.0
+	var retry_wait := 0.0
+	var retry_count := 0
+	while elapsed < 360.0 and not model.awaiting_journey_choice:
+		if model.training_points > 0:
+			model.spend_training("martial")
+		if model.retry_pending:
+			retry_wait += 1.0 / 60.0
+			if retry_wait >= 5.0:
+				model.retry_failed_stage()
+				retry_wait = 0.0
+				retry_count += 1
+		model.step(1.0 / 60.0)
+		elapsed += 1.0 / 60.0
+		if core_unlock_time < 0.0 and model.effective_style_level("martial") >= 10:
+			core_unlock_time = elapsed
+	print("First area pace: core %.1fs, boss %.1fs, retries %d, stage %d/%d, Base Lv.%d" % [core_unlock_time, elapsed, retry_count, model.stage, model.retry_stage, model.base_style_level("martial")])
+	print("First area deaths: %s" % str(model.slice_metrics.stage_deaths))
+	if not model.last_failure_report.is_empty():
+		print("First area last failure: %s" % str(model.last_failure_report))
+	_expect(core_unlock_time >= 8.0 and core_unlock_time <= 45.0, "第一次流派成形應發生在玩家看懂 AUTO 後、首分鐘之前")
+	_expect(model.awaiting_journey_choice and elapsed <= 360.0, "集中單修應能在六分鐘內完成第一區並進入 Boss 獎勵")
+	_expect(not model.slice_metrics.stage_deaths.keys().any(func(value: Variant) -> bool: return int(value) < 10), "第一區前九戰必須能讓集中單修的新玩家穩定通過")
+	_expect(retry_count <= 1, "第一區只允許 Boss 教學性戰敗一次，不可反覆卡關")
+	_expect(model.base_style_level("martial") >= 10, "第一區結束前必須已形成至少一個完整流派核心")
+
 func _test_navigation() -> void:
 	var scene: Variant = load("res://main.tscn").instantiate()
 	scene.persistence_enabled = false
@@ -1240,6 +1279,11 @@ func _test_navigation() -> void:
 	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text == "第一步：修練", "新遊戲必須把既有修練入口轉成第一個可操作目標")
 	scene._spend_training("martial")
 	_expect(scene.training_alert_button.text.begins_with("可用修練") and "第一步完成" in scene.toast_title.text and scene.toast_panel.z_index > scene.training_overlay.z_index, "投入第一點修練後必須在修練頁上方說明下一個流派門檻")
+	scene.model.training.martial = 9
+	scene.model.training_points = 1
+	scene._spend_training("martial")
+	_expect("一刀流成形" in scene.toast_title.text and "累積勢" in scene.toast_detail.text, "有效武藝首次到 Lv.10 時必須說明一刀流核心循環")
+	_expect(scene.battlefield._style_formed_burst == 1.0, "流派成形時戰場必須同步顯示低位移光環")
 	_expect(is_instance_valid(scene.retry_button) and not scene.retry_button.visible, "未戰敗時不可顯示再次挑戰按鈕")
 	_expect(is_instance_valid(scene.journey_overlay) and scene.journey_buttons.size() == 3, "Boss 後旅途抉擇必須提供三條手機可操作路線")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")

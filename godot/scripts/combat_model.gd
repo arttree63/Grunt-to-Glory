@@ -388,7 +388,7 @@ const COMMAND_BRANCHES := {
 	"orders": {"name": "號令", "description": "降低軍勢消耗並提高軍團技能頻率"},
 }
 const MARTIAL_MILESTONES := {
-	5: {"name": "鋒刃磨練", "description": "攻擊與破甲提高"}, 10: {"name": "勢", "description": "解鎖一刀流專屬資源「勢」"},
+	5: {"name": "鋒刃磨練", "description": "攻擊與破甲提高"}, 10: {"name": "勢", "description": "累積滿勢後，下一次普攻自動發動勢斬"},
 	15: {"name": "蓄勢精進", "description": "勢的累積速度提高"}, 20: {"name": "斬殺", "description": "低血敵人受到更多一刀傷害"},
 	25: {"name": "回勢", "description": "擊殺返還額外勢"}, 30: {"name": "斷首", "description": "解鎖低血斬殺技能"},
 	35: {"name": "斷首續勢", "description": "斷首擊殺後加快下一輪蓄勢"}, 40: {"name": "裂甲蓄勢", "description": "高勢斬擊獲得額外破甲"},
@@ -1875,6 +1875,11 @@ func _auto_attack() -> void:
 
 func _basic_attack(manual: bool) -> void:
 	var damage := _attack_power()
+	var momentum_slash := effective_style_level("martial") >= 10 and momentum >= MAX_MOMENTUM
+	if momentum_slash:
+		damage *= 2.2
+		momentum = 0.0
+		_momentum_was_full = false
 	var critical := int(training.agility) > 0 and rng.randf() < _critical_chance()
 	var instant_kill := instant_kill_ready
 	if instant_kill:
@@ -1886,7 +1891,9 @@ func _basic_attack(manual: bool) -> void:
 			var cap := 14.0 if int(training.agility) >= 135 else 10.0
 			damage *= 1.0 + minf(cap, unharmed_duration) * 0.02
 	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill, "manual": manual, "youren": youren})
-	var attack_source := "critical_attack" if critical else ("flow_attack_full" if youren >= MAX_YOUREN else ("flow_attack" if youren >= 3 else "attack"))
+	if momentum_slash:
+		_events.append({"type": "momentum_slash", "name": "勢斬", "damage": damage, "critical": critical})
+	var attack_source := "momentum_slash" if momentum_slash else ("critical_attack" if critical else ("flow_attack_full" if youren >= MAX_YOUREN else ("flow_attack" if youren >= 3 else "attack")))
 	var defeated := _deal_damage(damage, attack_source)
 	_add_momentum(6.0, "attack")
 	_add_military_momentum(6.0 if int(training.command) >= 15 else 4.0, "attack")
@@ -2133,11 +2140,13 @@ func _enemy_attack(block_override := "") -> void:
 	_events.append({"type": "enemy_attack", "attack_type": attack_type, "archetype": enemy_archetype, "empowered": empowered})
 	var route_damage := 1.08 if journey_route == "mountain" else (0.92 if journey_route == "village" else (1.15 if journey_route == "battlefield" else 1.0))
 	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(_enemy_definition().damage) * route_damage
+	if area_number == 1:
+		raw_damage *= 0.72
 	if attack_type == "heavy":
 		raw_damage *= 1.0 + equipment_modifier("heavy_damage_taken")
 	if boss_enraged:
 		raw_damage *= 1.15
-	if enemy_is_elite:
+	if enemy_archetype == "centurion":
 		raw_damage *= 1.18
 	if enemy_weakened_remaining > 0.0:
 		raw_damage *= 0.82 if int(training.physique) >= 75 else 0.9
@@ -2487,9 +2496,12 @@ func _enemy_defeated() -> void:
 	var waves := _stage_waves(stage)
 	if current_wave + 1 < waves.size():
 		current_wave += 1
+		var wave_recovery := _hero_max_hp() * 0.1
+		hero_hp = minf(_hero_max_hp(), hero_hp + wave_recovery)
 		wave_transition_remaining = WAVE_TRANSITION_DURATION
 		_clear_enemy_state_for_transition()
 		_events.append({"type": "enemy_defeated", "stage": stage, "kills": kills, "boss": false, "wave_complete": true})
+		_events.append({"type": "wave_recovery", "amount": wave_recovery})
 		_events.append({"type": "wave_transition_started", "stage": stage, "wave": current_wave + 1, "wave_count": waves.size(), "duration": WAVE_TRANSITION_DURATION})
 		return
 	if not retry_pending:
@@ -2735,11 +2747,14 @@ func _spawn_enemy() -> void:
 	boss_enraged = false
 	boss_howl_triggered = false
 	boss_empowered_attack = false
-	enemy_is_elite = enemy_archetype == "centurion" or _route_position() == 9
+	var stage_waves := _stage_waves(stage)
+	var is_final_prelude_wave := _route_position() == 9 and current_wave >= stage_waves.size() - 1
+	enemy_is_elite = enemy_archetype == "centurion" or is_final_prelude_wave
 	enemy_guard_stacks = 3 if enemy_archetype == "shield" else 0
 	var definition := _enemy_definition()
 	var route_hp := 1.08 if journey_route == "mountain" else (0.95 if journey_route == "village" else (1.18 if journey_route == "battlefield" else 1.0))
-	enemy_max_hp = (52.0 + pow(float(stage - 1), 1.08) * 9.0) * float(definition.hp) * (1.35 if enemy_is_elite else 1.0) * route_hp
+	var elite_hp_multiplier := 1.35 if enemy_archetype == "centurion" else (1.15 if enemy_is_elite else 1.0)
+	enemy_max_hp = (52.0 + pow(float(stage - 1), 1.08) * 9.0) * float(definition.hp) * elite_hp_multiplier * route_hp
 	enemy_hp = enemy_max_hp
 	var route_armor := 1.12 if journey_route == "battlefield" else 1.0
 	enemy_armor = ((5.0 + float(stage) * 0.8) * float(definition.armor) + (20.0 if enemy_is_boss else 0.0)) * route_armor

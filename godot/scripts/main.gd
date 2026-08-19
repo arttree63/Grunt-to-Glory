@@ -9,6 +9,14 @@ const CORE_UNLOCK_NAMES := {
 	"martial": "勢", "physique": "不動", "agility": "疾斬",
 	"magic": "魔劍・魔紋", "faith": "聖劍・聖印", "command": "軍勢",
 }
+const CORE_UNLOCK_DESCRIPTIONS := {
+	"martial": "普攻與時間會累積勢；滿勢時下一次普攻自動發動勢斬",
+	"physique": "守勢提高格擋率，成功格擋會累積不動",
+	"agility": "兩段高速斬擊已解鎖，並自動加入 AUTO",
+	"magic": "普通攻擊開始附魔，並逐步累積魔紋",
+	"faith": "攻擊開始附加聖傷，並逐步累積聖印",
+	"command": "王國步兵正式入隊，主角與友軍會累積軍勢",
+}
 const UI_FONT := preload("res://assets/fonts/NotoSansTC-Variable.ttf")
 const CREST_ICON := preload("res://assets/ui/hud_v2/crest.png")
 const SKILL_SLOT_ICONS: Array[Texture2D] = [
@@ -86,6 +94,9 @@ var skill_tab_buttons: Dictionary = {}
 var toast_panel: PanelContainer
 var toast_title: Label
 var toast_detail: Label
+var toast_tween: Tween
+var pending_style_formation_tracks: Array[String] = []
+var pending_style_formation_equipment := false
 var journey_overlay: Control
 var journey_title: Label
 var journey_detail: Label
@@ -192,6 +203,7 @@ func _start_new_game() -> void:
 	if user_dir != null and user_dir.file_exists(SAVE_FILE_NAME):
 		user_dir.remove(SAVE_FILE_NAME)
 	model = CombatModel.new()
+	model.equip_item("black_iron_armor")
 	save_loaded = false
 	_finish_startup("新遊戲開始")
 	_save_game()
@@ -679,6 +691,8 @@ func _switch_page(page: String) -> void:
 		_render_section(page)
 	_refresh_navigation()
 	(nav_buttons[page] as Button).grab_focus()
+	if combat_visible:
+		call_deferred("_play_pending_style_formation")
 
 func _render_section(page: String) -> void:
 	for child: Node in section_box.get_children():
@@ -1070,12 +1084,14 @@ func _equip_item(item_id: String) -> void:
 	if not model.equip_item(item_id):
 		return
 	var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
+	var formed_tracks := _newly_formed_tracks(previous_levels)
 	var unlocks := _new_effective_unlock_names(previous_levels)
 	var detail := _equipment_style_text(item, model.equipment_enhancement(item_id))
 	if not unlocks.is_empty():
 		detail = "新解鎖：%s｜已可在技能頁編入 AUTO" % "、".join(unlocks.slice(0, 3))
 	_show_toast("已裝備：%s" % String(item.name), detail)
 	_update_hud(model.snapshot())
+	_queue_style_formation(formed_tracks, true)
 	_save_game()
 
 func _enhance_equipment(item_id: String) -> void:
@@ -1083,12 +1099,14 @@ func _enhance_equipment(item_id: String) -> void:
 	if not model.enhance_equipment(item_id):
 		return
 	var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
+	var formed_tracks := _newly_formed_tracks(previous_levels)
 	var unlocks := _new_effective_unlock_names(previous_levels)
 	var detail := _equipment_style_text(item, model.equipment_enhancement(item_id))
 	if not unlocks.is_empty():
 		detail = "新解鎖：%s｜裝備加成已立即生效" % "、".join(unlocks.slice(0, 3))
 	_show_toast("強化成功：%s +%d" % [String(item.name), model.equipment_enhancement(item_id)], detail)
 	_update_hud(model.snapshot())
+	_queue_style_formation(formed_tracks, true)
 	_save_game()
 
 func _effective_style_levels() -> Dictionary:
@@ -1113,6 +1131,40 @@ func _new_effective_unlock_names(previous_levels: Dictionary) -> Array[String]:
 			if previous < required_level and current >= required_level and not result.has(skill_name):
 				result.append(skill_name)
 	return result
+
+func _newly_formed_tracks(previous_levels: Dictionary) -> Array[String]:
+	var result: Array[String] = []
+	for track: String in CombatModel.TRAINING_ORDER:
+		if int(previous_levels.get(track, 0)) < 10 and model.effective_style_level(track) >= 10:
+			result.append(track)
+	return result
+
+func _queue_style_formation(tracks: Array[String], equipment_supported: bool) -> void:
+	for track: String in tracks:
+		if not pending_style_formation_tracks.has(track):
+			pending_style_formation_tracks.append(track)
+	pending_style_formation_equipment = pending_style_formation_equipment or equipment_supported
+	if current_page == "combat" and not training_open:
+		_play_pending_style_formation()
+
+func _play_pending_style_formation() -> void:
+	if pending_style_formation_tracks.is_empty() or current_page != "combat" or training_open:
+		return
+	var formed_tracks := pending_style_formation_tracks.duplicate()
+	var equipment_supported := pending_style_formation_equipment
+	pending_style_formation_tracks.clear()
+	pending_style_formation_equipment = false
+	var names: Array[String] = []
+	var cores: Array[String] = []
+	for track: String in formed_tracks:
+		names.append(String(CombatModel.TRAINING_DEFS[track].style))
+		cores.append("%s「%s」" % [String(CombatModel.TRAINING_DEFS[track].style), String(CORE_UNLOCK_NAMES[track])])
+	var title := "%s成形" % names[0] if names.size() == 1 else "多流派同時成形"
+	var detail := String(CORE_UNLOCK_DESCRIPTIONS[formed_tracks[0]]) if formed_tracks.size() == 1 else "、".join(cores)
+	if equipment_supported:
+		detail += "｜目前由裝備支撐"
+	battlefield.play_events([{"type": "style_formed", "track": formed_tracks[0]}])
+	_show_toast(title, detail, 3.0, _track_color(formed_tracks[0]).lightened(0.35), true)
 
 func _render_shop_page() -> void:
 	var snapshot := model.snapshot()
@@ -1329,7 +1381,8 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"training_point": _show_toast("獲得 %d 點修練" % int(event.get("gain", 1)), "現在有 %d 點可分配" % int(event.points))
 			"equipment_drop": _show_toast("獲得裝備：%s" % String(event.name), "%s｜前往裝備頁查看" % String(CombatModel.EQUIPMENT_QUALITY_NAMES[String(event.quality)]))
 			"equipment_duplicate": _show_toast("重複裝備：%s" % String(event.name), "轉換為 %d 金幣" % int(event.gold))
-			"momentum_full": _show_toast("勢已滿", "AUTO 將依技能優先序判斷")
+			"momentum_full": _show_toast("勢已滿", "下一次普通攻擊將自動發動勢斬")
+			"momentum_slash": _show_toast("勢斬", "滿勢已轉化為一次強力斬擊")
 			"branch_unlocked": _show_toast("解鎖：%s" % String(event.name), String(event.description))
 			"ally_joined": _show_toast("友軍入隊：%s" % String(event.name), String(event.description))
 			"armor_broken": _show_toast("破甲一閃", "敵方護甲降低 %d" % roundi(float(event.amount)))
@@ -1429,10 +1482,14 @@ func _retry_failed_stage() -> void:
 
 func _spend_training(track: String) -> void:
 	var first_training := _total_base_training() == 0
+	var previous_levels := _effective_style_levels()
 	var events := model.spend_training(track)
 	_handle_events(events)
 	_update_hud(model.snapshot())
-	if first_training and not events.is_empty():
+	var formed_tracks := _newly_formed_tracks(previous_levels)
+	if not formed_tracks.is_empty():
+		_queue_style_formation(formed_tracks, false)
+	elif first_training and not events.is_empty():
 		_show_toast("第一步完成：%s" % String(CombatModel.TRAINING_DEFS[track].name), "有效 Lv.10 將解鎖流派核心；裝備加成也會計入")
 	elif not events.is_empty() and not events.any(func(event: Dictionary) -> bool: return event.type == "unlock"):
 		_show_toast("%s提升" % String(CombatModel.TRAINING_DEFS[track].name), "現在是 Lv.%d" % int(model.training[track]))
@@ -1555,6 +1612,7 @@ func _close_training() -> void:
 	training_overlay.visible = false
 	if current_page == "combat": auto_slot_buttons[0].grab_focus()
 	else: (nav_buttons[current_page] as Button).grab_focus()
+	call_deferred("_play_pending_style_formation")
 
 func _show_journey_choice() -> void:
 	journey_pending = false
@@ -1726,17 +1784,21 @@ func _refresh_navigation() -> void:
 		label.add_theme_color_override("font_color", Color("8a5b16") if selected else Color("595b57"))
 		button.add_theme_stylebox_override("normal", _slot_style(Color("f8e9c6") if selected else Color("f4efe5"), Color("c68e2f") if selected else Color("d3c6b3"), 2 if selected else 1))
 
-func _show_toast(title: String, detail: String) -> void:
+func _show_toast(title: String, detail: String, duration := 1.8, accent := Color("f0c365"), emphasized := false) -> void:
+	if toast_tween != null and toast_tween.is_valid():
+		toast_tween.kill()
 	toast_title.text = title
 	toast_detail.text = detail
+	toast_title.add_theme_font_size_override("font_size", 21 if emphasized else 17)
+	toast_panel.add_theme_stylebox_override("panel", _panel_style(Color("2c2218", 0.96), accent, 3 if emphasized else 1))
 	toast_panel.visible = true
 	toast_panel.modulate = Color.WHITE
 	toast_panel.scale = Vector2(0.96, 0.96)
-	var tween := create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(toast_panel, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(toast_panel, "modulate:a", 0.0, 0.3).set_delay(1.8)
-	tween.chain().tween_callback(func() -> void: toast_panel.visible = false)
+	toast_tween = create_tween()
+	toast_tween.set_parallel(true)
+	toast_tween.tween_property(toast_panel, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	toast_tween.tween_property(toast_panel, "modulate:a", 0.0, 0.3).set_delay(duration)
+	toast_tween.chain().tween_callback(func() -> void: toast_panel.visible = false)
 
 func _apply_safe_area() -> void:
 	var safe := get_node("SafeArea") as MarginContainer
