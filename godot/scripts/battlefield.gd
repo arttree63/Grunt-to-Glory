@@ -570,10 +570,13 @@ func play_events(events: Array[Dictionary]) -> void:
 				_hero_dodge_motion = 1.0
 				_swift_step = 1.0
 				add_trauma(0.22)
-			"shadow_assault":
+			"shadow_assault", "shadow_return":
 				_hero_slash_motion = 1.0
 				_shadow_assault = 1.0
-				add_trauma(0.25)
+				add_trauma(0.25 if String(event.type) == "shadow_assault" else 0.16)
+			"flowing_shadow":
+				_flow_burst_strength = 0.75
+				_flow_burst = 1.0
 			"flying_swallow":
 				_hero_slash_motion = 1.0
 				_flying_swallow = 1.0
@@ -718,14 +721,14 @@ func impact_tier_for_source(source: String) -> String:
 		return "light"
 	if source in ["heavy_strike_high", "heavy_strike_extreme", "mountain_break", "armor_flash", "execute_slash", "collapse_counter", "heaven_return", "two_cut", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "shadowless_extreme", "ten_thousand_armies_one_sword"]:
 		return "heavy"
-	if source in ["heavy_strike_base", "heavy_strike_martial", "heavy_strike_swift", "momentum_slash", "critical_attack", "counter", "first_strike", "swift_step", "shadow_assault", "flying_swallow", "magic_slash", "judgment_slash"]:
+	if source in ["heavy_strike_base", "heavy_strike_martial", "heavy_strike_swift", "momentum_slash", "critical_attack", "counter", "first_strike", "swift_step", "shadow_assault", "shadow_return", "flying_swallow", "magic_slash", "judgment_slash"]:
 		return "medium"
 	return "light"
 
 func _apply_impact(tier: String, source: String) -> void:
 	_impact_burst = 1.0
 	_impact_strength = 0.45 if tier == "light" else (0.72 if tier == "medium" else 1.0)
-	_impact_color = Color("aeefff") if source in ["armor_flash", "counter", "collapse_counter", "heaven_return"] else (Color("d7c4ff") if source in ["swift_step", "shadow_assault", "flying_swallow", "shadowless_extreme"] else (Color("ff9a52") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash", "elemental_boundary_slash"] else Color("fff0b0")))
+	_impact_color = Color("aeefff") if source in ["armor_flash", "counter", "collapse_counter", "heaven_return"] else (Color("d7c4ff") if source in ["swift_step", "shadow_assault", "shadow_return", "flying_swallow", "shadowless_extreme"] else (Color("ff9a52") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash", "elemental_boundary_slash"] else Color("fff0b0")))
 	_enemy_knockback = maxf(_enemy_knockback, _impact_strength)
 	if tier == "heavy":
 		add_trauma(0.48)
@@ -1618,7 +1621,7 @@ func _spawn_damage(amount: float, source: String) -> void:
 	_damage_cursor = (_damage_cursor + 1) % _damage_pool.size()
 	label.visible = true
 	label.modulate = Color.WHITE
-	var large := source in ["heavy_strike_high", "heavy_strike_extreme", "mountain_break", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "two_cut", "magic_slash", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "minor_resonance"]
+	var large := source in ["heavy_strike_high", "heavy_strike_extreme", "mountain_break", "armor_flash", "execute_slash", "first_strike", "collapse_counter", "heaven_return", "swift_step", "shadow_assault", "shadow_return", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "two_cut", "magic_slash", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "minor_resonance"]
 	label.scale = Vector2(1.75, 1.75) if source == "two_cut" else (Vector2(1.4, 1.4) if large else Vector2.ONE)
 	var prefix := ""
 	if source in ["execute_slash", "two_cut"]:
@@ -1629,7 +1632,7 @@ func _spawn_damage(amount: float, source: String) -> void:
 		prefix = "迅 "
 	elif source in ["counter", "collapse_counter", "heaven_return", "first_strike"]:
 		prefix = "反 "
-	elif source in ["swift_step", "swift_cut", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme"]:
+	elif source in ["swift_step", "swift_cut", "shadow_assault", "shadow_return", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme"]:
 		prefix = "影 "
 	elif source in ["magic_slash", "flame_burst_slash", "elemental_resonance", "elemental_boundary_slash", "minor_resonance"]:
 		prefix = "爆 "
@@ -1638,7 +1641,7 @@ func _spawn_damage(amount: float, source: String) -> void:
 	elif source == "critical_attack":
 		prefix = "暴 "
 	label.text = "%s%d%s" % [prefix, roundi(amount), "!" if source == "critical_attack" else ""]
-	var color := Color("fff0a3") if source == "two_cut" else (Color("d7b2ff") if source in ["lightning_tick", "lightning_chain"] else (Color("a9edff") if source in ["elemental_resonance", "minor_resonance"] else (Color("ffb16f") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash", "elemental_boundary_slash"] else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["heavy_strike_swift", "flow_attack", "flow_attack_full", "swift_step", "swift_cut", "shadow_assault", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0"))))))))
+	var color := Color("fff0a3") if source == "two_cut" else (Color("d7b2ff") if source in ["lightning_tick", "lightning_chain"] else (Color("a9edff") if source in ["elemental_resonance", "minor_resonance"] else (Color("ffb16f") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash", "elemental_boundary_slash"] else (Color("f7c0b7") if source == "execute_slash" else (Color("d9ccff") if source in ["heavy_strike_swift", "flow_attack", "flow_attack_full", "swift_step", "swift_cut", "shadow_assault", "shadow_return", "flying_swallow", "swallow_return", "second_shadow", "shadowless_extreme", "critical_attack"] else (Color("c7f6ff") if source in ["armor_flash", "first_strike", "counter", "collapse_counter", "heaven_return"] else (Color("ffe07a") if large else Color("f4eee0"))))))))
 	label.add_theme_color_override("font_color", color)
 	var damage_origin := _pixel_enemy_position + Vector2(-18.0, -128.0) if PIXEL_VERTICAL_SLICE and _pixel_enemy_position != Vector2.ZERO else Vector2(size.x * 0.64, size.y * 0.28)
 	var lane_offsets := [Vector2(-20.0, 5.0), Vector2(9.0, -8.0), Vector2(-4.0, -21.0), Vector2(22.0, -34.0)]

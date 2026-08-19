@@ -43,6 +43,7 @@ func _run_tests() -> void:
 	_test_one_slash_mastery()
 	_test_execute_slash_condition()
 	_test_martial_branches()
+	_test_early_art_choices()
 	_test_boss_spawn()
 	_test_boss_rage_phase()
 	_test_enemy_archetypes_and_route_rhythm()
@@ -81,7 +82,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 69")
+		print("Godot tests passed: 70")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -819,6 +820,48 @@ func _test_martial_branches() -> void:
 	_expect(boss_multiplier > 1.3, "破軍專精必須強化 Boss 一刀")
 	_expect(execution.select_martial_branch("chain_slash"), "連斬專精必須可以切換")
 
+func _test_early_art_choices() -> void:
+	var locked = CombatModelScript.new()
+	_expect(not locked.select_early_art_choice("martial", "steel_break"), "Lv.30 前不可選擇劍路分岔")
+	var pursuit = CombatModelScript.new()
+	pursuit.training.martial = 30
+	pursuit.select_early_art_choice("martial", "pursuit")
+	pursuit.enemy_hp = 8.0
+	pursuit.enemy_max_hp = 100.0
+	pursuit.enemy_armor = 0.0
+	pursuit.momentum = CombatModelScript.MAX_MOMENTUM
+	pursuit._events.clear()
+	pursuit._basic_attack(false)
+	_expect(pursuit._events.any(func(event: Dictionary) -> bool: return event.type == "momentum_slash" and String(event.variant) == "pursuit" and String(event.name) == "蓄勢・追命一閃"), "追命式必須改變滿勢一閃的名稱與戰鬥事件")
+	_expect(pursuit.momentum >= 20.0, "追命式完成擊殺後必須返還勢")
+	var steel = CombatModelScript.new()
+	steel.training.martial = 30
+	steel.select_early_art_choice("martial", "steel_break")
+	steel.enemy_is_boss = true
+	steel.enemy_hp = 99999.0
+	steel.enemy_max_hp = 99999.0
+	steel.enemy_armor = 80.0
+	steel.momentum = CombatModelScript.MAX_MOMENTUM
+	steel._events.clear()
+	steel._basic_attack(false)
+	_expect(steel._events.any(func(event: Dictionary) -> bool: return event.type == "momentum_slash" and String(event.variant) == "steel_break" and is_equal_approx(float(event.armor_ignore), 0.4)), "斷鋼式必須把滿勢一閃改為高穿甲首領技")
+	var returning = CombatModelScript.new()
+	returning.training.agility = 30
+	returning.select_early_art_choice("agility", "returning_shadow")
+	returning.enemy_hp = 99999.0
+	returning._events.clear()
+	returning._cast_shadow_assault()
+	_expect(returning._events.any(func(event: Dictionary) -> bool: return event.type == "shadow_return"), "折返式影襲必須追加第二次斬擊")
+	var flowing = CombatModelScript.new()
+	flowing.training.agility = 30
+	flowing.select_early_art_choice("agility", "flowing_shadow")
+	flowing.enemy_hp = 99999.0
+	flowing.skill_cooldowns["swift_cut"] = 2.0
+	flowing._events.clear()
+	flowing._cast_shadow_assault()
+	_expect(flowing.youren == 2 and is_equal_approx(float(flowing.skill_cooldowns.swift_cut), 1.2), "流風式影襲必須建立游刃並加速雙燕疾斬")
+	_expect(flowing._events.any(func(event: Dictionary) -> bool: return event.type == "flowing_shadow"), "流風式必須產生可辨識戰鬥事件")
+
 func _test_boss_spawn() -> void:
 	var model = CombatModelScript.new()
 	model.stage = 10
@@ -1323,7 +1366,7 @@ func _test_navigation() -> void:
 	await process_frame
 	var martial_level_text := (scene.training_rows.martial.level as Label).text
 	_expect("Base 10" in martial_level_text and "裝備 +5" in martial_level_text and "有效 15" in martial_level_text, "修練加點介面必須同時顯示 Base、裝備加成與有效等級")
-	_expect("斷首・追命" in (scene.training_rows.martial.hint as Label).text, "修練介面必須直接顯示下一個重大劍技幻想")
+	_expect("一閃劍路" in (scene.training_rows.martial.hint as Label).text, "修練介面必須直接顯示下一個重大劍技幻想")
 	scene._close_training()
 	scene._switch_page("character")
 	await process_frame
@@ -1344,6 +1387,7 @@ func _test_navigation() -> void:
 	await process_frame
 	_expect(scene.current_skill_tab == "martial", "已完成流派必須能獨立切換成長路線")
 	_expect(scene.section_box.get_node_or_null("Signature_martial_10") != null and scene.section_box.get_node_or_null("Signature_martial_200") != null, "技能頁必須以 Lv.10～200 重大節點呈現流派劍技樹")
+	_expect(scene.section_box.get_node_or_null("EarlyChoice_martial_pursuit") != null, "武藝技能頁必須呈現 Lv.30 可選劍路")
 	scene._switch_page("equipment")
 	await process_frame
 	_expect(scene.section_box.get_node_or_null("EquipmentDetail") != null, "裝備頁必須以欄位、選中詳情與背包呈現")

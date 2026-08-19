@@ -377,6 +377,14 @@ const AGILITY_BRANCHES := {
 	"traceless": {"name": "無蹤", "description": "滿層游刃時，消耗全部游刃閃開一次原本會命中的普通攻擊"},
 	"instant_kill": {"name": "瞬殺", "description": "閃避後的下一次普通攻擊必定造成強力暴擊"},
 }
+const MARTIAL_ART_CHOICES := {
+	"pursuit": {"name": "追命式", "description": "蓄勢一閃對生命 35% 以下敵人增傷 30%；擊殺返還 20 勢。"},
+	"steel_break": {"name": "斷鋼式", "description": "蓄勢一閃穿透 40% 護甲，對首領額外增傷 20%。"},
+}
+const AGILITY_ART_CHOICES := {
+	"returning_shadow": {"name": "折返式", "description": "影襲命中後追加一次 55% 傷害的折返斬。"},
+	"flowing_shadow": {"name": "流風式", "description": "影襲後獲得 2 層游刃，並縮短雙燕疾斬 0.8 秒冷卻。"},
+}
 const FAITH_BRANCHES := {
 	"radiance": {"name": "光耀", "description": "偏向聖傷、制裁與審判斬爆發"},
 	"guardian": {"name": "守護", "description": "偏向護盾、減傷與神恩保命"},
@@ -590,6 +598,8 @@ var temporary_style_modifiers := {"martial": 0, "physique": 0, "agility": 0, "ma
 var martial_branch := ""
 var physique_branch := ""
 var agility_branch := ""
+var martial_art_choice := "pursuit"
+var agility_art_choice := "returning_shadow"
 var momentum := 0.0
 var draw_stance_remaining := 0.0
 var time_since_one_slash := 0.0
@@ -987,6 +997,15 @@ func select_agility_branch(branch_id: String) -> bool:
 	agility_branch = branch_id
 	return true
 
+func select_early_art_choice(track: String, choice_id: String) -> bool:
+	if track == "martial" and effective_style_level(track) >= 30 and MARTIAL_ART_CHOICES.has(choice_id):
+		martial_art_choice = choice_id
+		return true
+	if track == "agility" and effective_style_level(track) >= 30 and AGILITY_ART_CHOICES.has(choice_id):
+		agility_art_choice = choice_id
+		return true
+	return false
+
 func select_secondary_element(element_id: String) -> bool:
 	if int(training.magic) < 70 or not MAGIC_SECONDARIES.has(element_id):
 		return false
@@ -1123,6 +1142,7 @@ func save_data() -> Dictionary:
 		"inheritance_unlocked": inheritance_unlocked, "battle_souls": battle_souls, "inheritance_count": inheritance_count,
 		"legacy_choice": legacy_choice, "legacy_track": legacy_track, "legacy_item": legacy_item,
 		"martial_branch": martial_branch, "physique_branch": physique_branch, "agility_branch": agility_branch,
+		"martial_art_choice": martial_art_choice, "agility_art_choice": agility_art_choice,
 		"secondary_element": secondary_element, "magic_specialization": magic_specialization,
 		"faith_branch": faith_branch, "command_branch": command_branch,
 		"auto_skill_slots": auto_skill_slots.duplicate(), "auto_tactics": auto_tactics.duplicate(true),
@@ -1172,6 +1192,8 @@ func load_save_data(data: Dictionary) -> bool:
 	martial_branch = _valid_choice(data, "martial_branch", MARTIAL_BRANCHES)
 	physique_branch = _valid_choice(data, "physique_branch", PHYSIQUE_BRANCHES)
 	agility_branch = _valid_choice(data, "agility_branch", AGILITY_BRANCHES)
+	martial_art_choice = _valid_choice_or_default(data, "martial_art_choice", MARTIAL_ART_CHOICES, "pursuit")
+	agility_art_choice = _valid_choice_or_default(data, "agility_art_choice", AGILITY_ART_CHOICES, "returning_shadow")
 	secondary_element = _valid_choice(data, "secondary_element", MAGIC_SECONDARIES)
 	magic_specialization = _valid_choice(data, "magic_specialization", MAGIC_SPECIALIZATIONS)
 	faith_branch = _valid_choice(data, "faith_branch", FAITH_BRANCHES)
@@ -1204,6 +1226,10 @@ func _load_number_map(target: Dictionary, source_value: Variant, allowed_keys: A
 func _valid_choice(data: Dictionary, key: String, choices: Dictionary) -> String:
 	var value := String(data.get(key, ""))
 	return value if choices.has(value) else ""
+
+func _valid_choice_or_default(data: Dictionary, key: String, choices: Dictionary, fallback: String) -> String:
+	var value := String(data.get(key, fallback))
+	return value if choices.has(value) else fallback
 
 func snapshot() -> Dictionary:
 	var route_definition := _journey_definition()
@@ -1239,11 +1265,11 @@ func snapshot() -> Dictionary:
 		"equipment_collection": equipment_collection.duplicate(true), "shop_items": shop_items.duplicate(), "shop_refresh_cost": shop_refresh_cost(),
 		"shop_refresh_count": shop_refresh_count, "inheritance_unlocked": inheritance_unlocked, "battle_souls": battle_souls,
 		"inheritance_count": inheritance_count, "legacy_choice": legacy_choice, "legacy_track": legacy_track, "legacy_item": legacy_item,
-		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch, "draw_stance_remaining": draw_stance_remaining,
+		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch, "martial_art_choice": martial_art_choice, "draw_stance_remaining": draw_stance_remaining,
 		"immovable": immovable, "max_immovable": MAX_IMMOVABLE, "physique_branch": physique_branch,
 		"return_blade_ready": return_blade_ready, "guard_stance_remaining": guard_stance_remaining, "counter_chain": counter_chain,
 		"youren": youren, "max_youren": MAX_YOUREN, "flow_hits": flow_hits, "flow_hits_required": FLOW_HITS_REQUIRED,
-		"swift_cut_hits": swift_cut_hits, "swift_cut_hits_required": 1 if int(training.agility) >= 140 else 2, "agility_branch": agility_branch,
+		"swift_cut_hits": swift_cut_hits, "swift_cut_hits_required": 1 if int(training.agility) >= 140 else 2, "agility_branch": agility_branch, "agility_art_choice": agility_art_choice,
 		"swift_step_ready": swift_step_ready, "shadow_assault_ready": shadow_assault_ready, "shadowless_remaining": shadowless_remaining,
 		"magic_marks": magic_marks, "max_magic_marks": MAX_MAGIC_MARKS,
 		"burn_stacks": burn_stacks, "max_burn": MAX_BURN, "frost_stacks": frost_stacks,
@@ -1489,6 +1515,8 @@ func heavy_strike_modifiers() -> Array[String]:
 	return []
 
 func skill_display_name(skill_id: String, short := false) -> String:
+	if skill_id == "shadow_assault" and effective_style_level("agility") >= 30:
+		return "影襲・折返" if agility_art_choice == "returning_shadow" else "影襲・流風"
 	return String(SKILL_DEFS[skill_id].short if short else SKILL_DEFS[skill_id].name)
 
 func base_skill_description(skill_id: String) -> String:
@@ -1523,8 +1551,18 @@ func _cast_shadow_assault() -> void:
 	if int(training.agility) >= 165: shadow_damage *= 1.15
 	if shadowless_remaining > 0.0:
 		shadow_damage *= 2.0 if int(training.agility) >= 195 else 1.8
-	_events.append({"type": "shadow_assault", "skill_id": "shadow_assault", "name": "影襲", "damage": shadow_damage})
-	if _deal_damage(shadow_damage, "shadow_assault", 0.15):
+	var cast_name := skill_display_name("shadow_assault")
+	_events.append({"type": "shadow_assault", "skill_id": "shadow_assault", "name": cast_name, "damage": shadow_damage, "variant": agility_art_choice})
+	var defeated := _deal_damage(shadow_damage, "shadow_assault", 0.15)
+	if agility_art_choice == "flowing_shadow":
+		_add_youren(2, "flowing_shadow")
+		skill_cooldowns["swift_cut"] = maxf(0.0, float(skill_cooldowns.get("swift_cut", 0.0)) - 0.8)
+		_events.append({"type": "flowing_shadow", "name": "流風", "youren": youren})
+	elif not defeated:
+		var return_damage := shadow_damage * 0.55
+		_events.append({"type": "shadow_return", "name": "折返斬", "damage": return_damage})
+		defeated = _deal_damage(return_damage, "shadow_return", 0.12)
+	if defeated:
 		return
 	var flying_chance := 0.5 if int(training.agility) >= 95 else 0.3
 	if int(training.agility) >= 90 and rng.randf() < flying_chance:
@@ -1880,8 +1918,19 @@ func _auto_attack() -> void:
 func _basic_attack(manual: bool) -> void:
 	var damage := _attack_power()
 	var momentum_slash := effective_style_level("martial") >= 10 and momentum >= MAX_MOMENTUM
+	var momentum_armor_ignore := 0.15
+	var momentum_name := "蓄勢・一閃"
 	if momentum_slash:
 		damage *= 2.8
+		if effective_style_level("martial") >= 30 and martial_art_choice == "pursuit":
+			momentum_name = "蓄勢・追命一閃"
+			if enemy_hp / maxf(1.0, enemy_max_hp) <= 0.35:
+				damage *= 1.3
+		elif effective_style_level("martial") >= 30 and martial_art_choice == "steel_break":
+			momentum_name = "蓄勢・斷鋼一閃"
+			momentum_armor_ignore = 0.4
+			if enemy_is_boss:
+				damage *= 1.2
 		momentum = 0.0
 		_momentum_was_full = false
 	var critical := int(training.agility) > 0 and rng.randf() < _critical_chance()
@@ -1896,9 +1945,11 @@ func _basic_attack(manual: bool) -> void:
 			damage *= 1.0 + minf(cap, unharmed_duration) * 0.02
 	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill, "manual": manual, "youren": youren})
 	if momentum_slash:
-		_events.append({"type": "momentum_slash", "name": "蓄勢・一閃", "damage": damage, "critical": critical})
+		_events.append({"type": "momentum_slash", "name": momentum_name, "damage": damage, "critical": critical, "variant": martial_art_choice, "armor_ignore": momentum_armor_ignore})
 	var attack_source := "momentum_slash" if momentum_slash else ("critical_attack" if critical else ("flow_attack_full" if youren >= MAX_YOUREN else ("flow_attack" if youren >= 3 else "attack")))
-	var defeated := _deal_damage(damage, attack_source, 0.15 if momentum_slash else 0.0)
+	var defeated := _deal_damage(damage, attack_source, momentum_armor_ignore if momentum_slash else 0.0)
+	if defeated and momentum_slash and martial_art_choice == "pursuit":
+		_add_momentum(20.0, "pursuit_refund")
 	_add_momentum(6.0, "attack")
 	_add_military_momentum(6.0 if int(training.command) >= 15 else 4.0, "attack")
 	_record_flow_attack()
@@ -2652,6 +2703,8 @@ func _reset_for_inheritance(inherited_item: String, memory_track: String) -> voi
 	martial_branch = ""
 	physique_branch = ""
 	agility_branch = ""
+	martial_art_choice = "pursuit"
+	agility_art_choice = "returning_shadow"
 	secondary_element = ""
 	magic_specialization = ""
 	faith_branch = ""

@@ -20,7 +20,7 @@ const CORE_UNLOCK_DESCRIPTIONS := {
 const SIGNATURE_TREE := {
 	"martial": [
 		{"level": 10, "name": "蓄勢・一閃", "description": "勢滿後，普攻化為 280% ATK 的集中一閃，並穿透 15% 護甲。"},
-		{"level": 30, "name": "斷首・追命", "description": "鎖定瀕死敵人，以 600% ATK 斬擊完成收割。"},
+		{"level": 30, "name": "一閃劍路", "description": "在追命與斷鋼之間選擇，決定蓄勢一閃如何終結敵人。"},
 		{"level": 50, "name": "拔刀・無拍", "description": "進入爆發架勢，加速蓄勢並強化第一刀。"},
 		{"level": 100, "name": "一刀極意・斷界", "description": "滿勢斬擊開始造成破防與失衡，Boss 也必須接下這一刀。"},
 		{"level": 200, "name": "奧義・一刀兩斷", "description": "消耗滿勢揮出 1200% ATK 終極斬擊。"},
@@ -34,7 +34,7 @@ const SIGNATURE_TREE := {
 	],
 	"agility": [
 		{"level": 10, "name": "雙燕疾斬", "description": "快速斬擊兩次，每一刀都能獨立暴擊。"},
-		{"level": 30, "name": "影襲・折返", "description": "閃避後立刻從死角追擊，將敵人的揮空變成破綻。"},
+		{"level": 30, "name": "影襲身法", "description": "在折返與流風之間選擇，決定影襲轉為追加傷害或高速循環。"},
 		{"level": 50, "name": "瞬步・留影", "description": "面對危險攻擊留下殘影，保證閃開下一次可閃攻擊。"},
 		{"level": 100, "name": "流轉・千葉", "description": "追擊反過來維持游刃，快劍循環開始自行運轉。"},
 		{"level": 200, "name": "奧義・無影極境", "description": "一次閃避展開影襲、飛燕、燕返與疾斬連攜。"},
@@ -994,6 +994,7 @@ func _render_skills_page(snapshot: Dictionary) -> void:
 	if current_skill_tab == "command":
 		_render_command_allies(snapshot)
 	_render_signature_tree(current_skill_tab, snapshot)
+	_render_early_art_choices(current_skill_tab, snapshot)
 	_render_track_skills(current_skill_tab, "可編成招式與被動", slots)
 	if current_skill_tab != "magic":
 		_render_branch_choices(current_skill_tab, snapshot)
@@ -1155,7 +1156,7 @@ func _render_track_skills(track: String, heading: String, slots: Array) -> void:
 		var skill_row := HBoxContainer.new()
 		skill_row.add_theme_constant_override("separation", 6)
 		section_box.add_child(skill_row)
-		var skill_card := _section_row(String(definition.name), "%s｜%s｜%s" % [status, String(definition.condition), model.skill_power_hint(skill_id)])
+		var skill_card := _section_row(model.skill_display_name(skill_id), "%s｜%s｜%s" % [status, String(definition.condition), model.skill_power_hint(skill_id)])
 		skill_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		skill_row.add_child(skill_card)
 		if String(definition.type) == "active" or (String(definition.type) == "ultimate" and not bool(definition.get("reactive", false))):
@@ -1165,6 +1166,34 @@ func _render_track_skills(track: String, heading: String, slots: Array) -> void:
 			equip.disabled = not model.skill_is_unlocked(skill_id) or slots.has(skill_id) or not slots.has("")
 			equip.pressed.connect(_equip_auto_skill.bind(skill_id))
 			skill_row.add_child(equip)
+
+func _render_early_art_choices(track: String, snapshot: Dictionary) -> void:
+	if track not in ["martial", "agility"]:
+		return
+	var choices: Dictionary = CombatModel.MARTIAL_ART_CHOICES if track == "martial" else CombatModel.AGILITY_ART_CHOICES
+	var selected := String(snapshot.martial_art_choice if track == "martial" else snapshot.agility_art_choice)
+	var effective_level := int(snapshot.effective_style_levels[track])
+	section_box.add_child(_label("Lv.30 劍路分岔", 18, _track_color(track).lightened(0.35)))
+	var current_text := String(choices[selected].name) if effective_level >= 30 else "尚未解鎖"
+	section_box.add_child(_label("目前：%s｜測試期間可自由切換" % current_text, 14, Color("cbd5cc")))
+	for choice_id: String in choices:
+		var choice: Dictionary = choices[choice_id]
+		var card := PanelContainer.new()
+		card.name = "EarlyChoice_%s_%s" % [track, choice_id]
+		card.add_theme_stylebox_override("panel", _panel_style(Color("26302b"), _track_color(track).darkened(0.05), 1))
+		var content := VBoxContainer.new()
+		content.add_theme_constant_override("separation", 5)
+		card.add_child(content)
+		content.add_child(_label(String(choice.name), 16, Color("f4eee0")))
+		var detail := _label(String(choice.description), 13, Color("b7c7bd"))
+		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		content.add_child(detail)
+		var button_text := "Lv.30 解鎖" if effective_level < 30 else ("使用中" if choice_id == selected else "選擇這條劍路")
+		var choose := _button(button_text, _track_color(track).darkened(0.35), 44)
+		choose.disabled = effective_level < 30 or choice_id == selected
+		choose.pressed.connect(_select_early_art_choice.bind(track, choice_id))
+		content.add_child(choose)
+		section_box.add_child(card)
 
 func _render_branch_choices(track: String, snapshot: Dictionary) -> void:
 	var branches: Dictionary = {
@@ -1889,6 +1918,15 @@ func _select_martial_branch(branch_id: String) -> void:
 		return
 	var branch: Dictionary = CombatModel.MARTIAL_BRANCHES[branch_id]
 	_show_toast("已選擇：%s" % String(branch.name), String(branch.description))
+	_update_hud(model.snapshot())
+	_save_game()
+
+func _select_early_art_choice(track: String, choice_id: String) -> void:
+	if not model.select_early_art_choice(track, choice_id):
+		return
+	var choices: Dictionary = CombatModel.MARTIAL_ART_CHOICES if track == "martial" else CombatModel.AGILITY_ART_CHOICES
+	var choice: Dictionary = choices[choice_id]
+	_show_toast("劍路切換：%s" % String(choice.name), String(choice.description))
 	_update_hud(model.snapshot())
 	_save_game()
 
