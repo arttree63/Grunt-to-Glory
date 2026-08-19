@@ -262,6 +262,10 @@ func _test_auto_roaming() -> void:
 	_expect(not battlefield.navigation_blocks_combat(), "巡敵接回後必須能正常接戰")
 	battlefield._begin_exploration("1:3")
 	var detour_landmark: Dictionary = battlefield._landmarks()[1]
+	battlefield._hero_map_position = Vector2(detour_landmark.position) + Vector2(100.0, 0.0)
+	battlefield._discovered_landmarks.clear()
+	battlefield._update_landmark_discovery_hint()
+	_expect(battlefield._nearby_landmark_name == "斷旗丘" and battlefield._roaming_hint_remaining >= 2.4, "首次靠近地標必須出現一次可繞行情境提示")
 	var detour_click := InputEventMouseButton.new()
 	detour_click.button_index = MOUSE_BUTTON_LEFT
 	detour_click.pressed = true

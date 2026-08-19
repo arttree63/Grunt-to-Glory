@@ -333,6 +333,8 @@ var _selected_landmark_name := ""
 var _selected_landmark_effect := ""
 var _claimed_landmark_name := ""
 var _claimed_landmark_effect := ""
+var _nearby_landmark_name := ""
+var _discovered_landmarks: Dictionary = {}
 var _roaming_hint_remaining := 0.0
 var _hero_facing := 1.0
 var _navigation_paused := false
@@ -508,6 +510,7 @@ func exploration_status() -> Dictionary:
 		"landmark_effect": active_landmark_effect(),
 		"selected_landmark": _selected_landmark_name,
 		"claimed_landmark": _claimed_landmark_name,
+		"nearby_landmark": _nearby_landmark_name,
 		"enemy_group_size": maxi(1, _encounter_wave_count - _encounter_wave + 1),
 	}
 
@@ -547,6 +550,7 @@ func _begin_exploration(key: String) -> void:
 	_selected_landmark_effect = ""
 	_claimed_landmark_name = ""
 	_claimed_landmark_effect = ""
+	_nearby_landmark_name = ""
 	_roaming_hint_remaining = ROAMING_HINT_DURATION
 	_set_enemy_approach_target()
 	_exploration_phase = "traveling"
@@ -647,8 +651,27 @@ func _update_exploration(delta: float) -> void:
 			else:
 				_hero_facing = 1.0
 				_exploration_phase = "engaged"
+		_update_landmark_discovery_hint()
 	_update_exploration_camera(delta)
 	queue_redraw()
+
+func _update_landmark_discovery_hint() -> void:
+	if not _selected_landmark_name.is_empty() or not _claimed_landmark_name.is_empty():
+		return
+	var nearest_name := ""
+	var nearest_distance := 221.0
+	for landmark: Dictionary in _landmarks():
+		var landmark_name := String(landmark.name)
+		if _discovered_landmarks.has(landmark_name):
+			continue
+		var distance := _hero_map_position.distance_to(Vector2(landmark.position))
+		if distance < nearest_distance:
+			nearest_name = landmark_name
+			nearest_distance = distance
+	if not nearest_name.is_empty():
+		_discovered_landmarks[nearest_name] = true
+		_nearby_landmark_name = nearest_name
+		_roaming_hint_remaining = 2.4
 
 func _on_map_input(event: InputEvent) -> void:
 	if _exploration_phase != "traveling":
@@ -1102,16 +1125,22 @@ func _draw_landmarks() -> void:
 		if screen_position.x < -36.0 or screen_position.x > size.x + 36.0 \
 			or screen_position.y < stage_top + 74.0 or screen_position.y > visible_bottom + 20.0:
 			continue
-		_draw_landmark_symbol(screen_position, String(landmark.kind), String(landmark.name) == _selected_landmark_name)
-		if _hero_map_position.distance_to(world_position) <= 170.0:
-			var label_position := screen_position + Vector2(-72.0, -30.0)
+		var distance_to_hero := _hero_map_position.distance_to(world_position)
+		var interactable := _exploration_phase == "traveling" and distance_to_hero <= 220.0
+		_draw_landmark_symbol(screen_position, String(landmark.kind), String(landmark.name) == _selected_landmark_name, interactable)
+		if distance_to_hero <= 200.0:
+			var label_position := screen_position + Vector2(-72.0, -43.0)
 			draw_string(UI_FONT, label_position + Vector2(1.0, 2.0), String(landmark.name), HORIZONTAL_ALIGNMENT_CENTER, 144.0, 15, Color("172229", 0.8))
 			draw_string(UI_FONT, label_position, String(landmark.name), HORIZONTAL_ALIGNMENT_CENTER, 144.0, 15, Color("fff0bf", 0.92))
+			if interactable:
+				draw_string(UI_FONT, label_position + Vector2(0.0, 18.0), "點擊繞行", HORIZONTAL_ALIGNMENT_CENTER, 144.0, 14, Color("ffe08a", 0.94))
 
-func _draw_landmark_symbol(position: Vector2, kind: String, selected: bool) -> void:
+func _draw_landmark_symbol(position: Vector2, kind: String, selected: bool, interactable: bool) -> void:
 	draw_circle(position + Vector2(0.0, 4.0), 18.0, Color("17262a", 0.34))
 	if selected:
 		draw_arc(position + Vector2(0.0, 1.0), 27.0 + sin(_time * 5.0) * 2.0, 0.0, TAU, 24, Color("ffe49a", 0.9), 4.0)
+	elif interactable:
+		draw_arc(position + Vector2(0.0, 1.0), 25.0, 0.0, TAU, 24, Color("e8cd78", 0.46), 3.0)
 	match kind:
 		"tower":
 			draw_rect(Rect2(position + Vector2(-8.0, -20.0), Vector2(16.0, 24.0)), Color("819096", 0.72))
@@ -1157,6 +1186,8 @@ func _draw_roaming_path(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 			hint = "繞行：%s" % _selected_landmark_name
 		elif not _claimed_landmark_name.is_empty() and _manual_waypoint_active == false:
 			hint = "已取得：%s" % _claimed_landmark_name
+		elif not _nearby_landmark_name.is_empty():
+			hint = "可繞行：%s" % _nearby_landmark_name
 		elif _manual_waypoint_active:
 			hint = "已調整路線"
 		draw_string(UI_FONT, prompt_rect.position + Vector2(0.0, 23.0), hint, HORIZONTAL_ALIGNMENT_CENTER, prompt_rect.size.x, 16, Color("fff5d5"))
