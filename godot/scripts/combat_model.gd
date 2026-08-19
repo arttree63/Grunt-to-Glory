@@ -75,7 +75,7 @@ const JOURNEY_ROUTES := {
 	"battlefield": {"name": "沉眠古戰場", "intro": "鏽劍遍地，亡者仍守著早已不存在的軍旗。", "effect": "敵人生命與護甲提高｜擊敗 Boss 額外獲得 3 修練"},
 }
 const EXPLORATION_APPROACHES := {
-	"scout": {"name": "瞭望塔視野", "effect": "看清敵陣，本戰敵方護甲降低 20%"},
+	"scout": {"name": "哨塔視野", "effect": "看清敵陣，本戰敵方護甲降低 20%"},
 	"direct": {"name": "斷旗戰意", "effect": "乘勢突入，先手削減敵人 8% 生命"},
 	"supply": {"name": "古石餘光", "effect": "回復 8% 生命與魔力"},
 }

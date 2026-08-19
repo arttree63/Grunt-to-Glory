@@ -1756,8 +1756,8 @@ func _handle_events(events: Array[Dictionary]) -> void:
 		_show_training_tutorial()
 	for event: Dictionary in events:
 		match String(event.type):
-			"exploration_approach": _show_toast(String(event.name), String(event.effect), 1.5, Color("e7bd65"))
-			"wave_started": _show_toast("第 %d/%d 波" % [int(event.wave), int(event.wave_count)], String(event.enemy))
+			"exploration_approach": pass
+			"wave_started": pass
 			"boss_reward_choice":
 				journey_pending = true
 				_show_toast("黑鐵哨站突破", "選擇一件戰利品，讓流派立即變強")
@@ -1775,7 +1775,7 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"enemy_guard_broken": _show_toast("盾勢瓦解", "後續攻擊將造成完整傷害")
 			"unlock": _show_toast("解鎖：%s" % String(event.name), String(event.description))
 			"milestone": _show_toast("流派強化：%s" % String(event.name), String(event.description))
-			"training_point": _show_toast("獲得 %d 點修練" % int(event.get("gain", 1)), "現在有 %d 點可分配" % int(event.points))
+			"training_point": pass
 			"equipment_drop": _show_toast("獲得裝備：%s" % String(event.name), "%s｜前往裝備頁查看" % String(CombatModel.EQUIPMENT_QUALITY_NAMES[String(event.quality)]))
 			"equipment_duplicate": _show_toast("重複裝備：%s" % String(event.name), "轉換為 %d 金幣" % int(event.gold))
 			"momentum_full": _show_toast("勢已滿", "下一次普通攻擊將自動發動勢斬")
