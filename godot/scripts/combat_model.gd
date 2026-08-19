@@ -546,6 +546,7 @@ var awaiting_journey_choice := false
 var boss_reward_claimed := false
 var retry_pending := false
 var retry_stage := 0
+var tutorial_step := "complete"
 var current_wave := 0
 var wave_transition_remaining := 0.0
 var last_failure_report := {}
@@ -1113,6 +1114,7 @@ func save_data() -> Dictionary:
 		"stage": stage, "area_number": area_number, "journey_route": journey_route,
 		"awaiting_journey_choice": awaiting_journey_choice, "boss_reward_claimed": boss_reward_claimed,
 		"retry_pending": retry_pending, "retry_stage": retry_stage, "current_wave": current_wave,
+		"tutorial_step": tutorial_step,
 		"hero_hp": hero_hp, "hero_mp": hero_mp, "kills": kills, "gold": gold,
 		"training_points": training_points, "training": training.duplicate(true),
 		"equipped_items": equipped_items.duplicate(true), "owned_equipment": owned_equipment.duplicate(true),
@@ -1138,6 +1140,8 @@ func load_save_data(data: Dictionary) -> bool:
 	boss_reward_claimed = bool(data.get("boss_reward_claimed", false))
 	retry_pending = bool(data.get("retry_pending", false))
 	retry_stage = maxi(0, int(data.get("retry_stage", 0)))
+	var saved_tutorial_step := String(data.get("tutorial_step", "complete"))
+	tutorial_step = saved_tutorial_step if saved_tutorial_step in ["intro", "observe", "training", "spend", "core", "complete"] else "complete"
 	kills = maxi(0, int(data.get("kills", 0)))
 	gold = maxi(0, int(data.get("gold", 0)))
 	training_points = maxi(0, int(data.get("training_points", 0)))

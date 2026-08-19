@@ -17,7 +17,7 @@ const CORE_UNLOCK_DESCRIPTIONS := {
 	"faith": "攻擊開始附加聖傷，並逐步累積聖印",
 	"command": "王國步兵正式入隊，主角與友軍會累積軍勢",
 }
-const UI_FONT := preload("res://assets/fonts/NotoSansTC-Variable.ttf")
+const UI_FONT := preload("res://assets/fonts/NotoSansTC-Regular.otf")
 const CREST_ICON := preload("res://assets/ui/hud_v2/crest.png")
 const SKILL_SLOT_ICONS: Array[Texture2D] = [
 	preload("res://assets/ui/hud_v2/skill-heavy.png"),
@@ -45,8 +45,11 @@ var journey_open := false
 var journey_pending := false
 var boss_reward_open := false
 var failure_open := false
+var tutorial_open := false
 var current_page := "combat"
 var current_skill_tab := "auto"
+var selected_equipment_slot := "weapon"
+var selected_equipment_id := ""
 var battlefield: Battlefield
 var enemy_label: Label
 var kills_label: Label
@@ -110,6 +113,11 @@ var start_overlay: Control
 var new_game_button: Button
 var continue_button: Button
 var save_preview_label: Label
+var tutorial_overlay: Control
+var tutorial_title: Label
+var tutorial_detail: Label
+var tutorial_action_button: Button
+var tutorial_action := Callable()
 
 func _ready() -> void:
 	_build_ui()
@@ -134,7 +142,7 @@ func _process(delta: float) -> void:
 	if battlefield != null and battlefield.defeat_sequence_active():
 		accumulator = 0.0
 		return
-	if training_open or journey_open or journey_pending or boss_reward_open or failure_open or current_page != "combat":
+	if tutorial_open or training_open or journey_open or journey_pending or boss_reward_open or failure_open or current_page != "combat":
 		return
 	accumulator = minf(accumulator + delta, FIXED_STEP * 5.0)
 	var stepped := false
@@ -204,6 +212,7 @@ func _start_new_game() -> void:
 		user_dir.remove(SAVE_FILE_NAME)
 	model = CombatModel.new()
 	model.equip_item("black_iron_armor")
+	model.tutorial_step = "intro"
 	save_loaded = false
 	_finish_startup("新遊戲開始")
 	_save_game()
@@ -225,8 +234,90 @@ func _finish_startup(title: String) -> void:
 	accumulator = 0.0
 	_update_hud(model.snapshot())
 	auto_slot_buttons[0].grab_focus()
-	var detail := "戰鬥會自動進行；先點右上「第一步：修練」，選擇你的第一條道路" if _total_base_training() == 0 else "角色會持續快速攻擊；你負責流派修練、技能編成與旅途選擇"
-	_show_toast(title, detail)
+	if model.tutorial_step == "intro":
+		call_deferred("_show_tutorial_intro")
+	elif model.tutorial_step == "training":
+		call_deferred("_show_training_tutorial")
+	elif model.tutorial_step == "spend":
+		call_deferred("_resume_spend_tutorial")
+	else:
+		var detail := "戰鬥會自動進行；先點右上「第一步：修練」，選擇你的第一條道路" if _total_base_training() == 0 else "角色會持續快速攻擊；你負責流派修練、技能編成與旅途選擇"
+		_show_toast(title, detail)
+
+func _show_tutorial(title: String, detail: String, action_text: String, action: Callable) -> void:
+	tutorial_open = true
+	tutorial_overlay.visible = true
+	tutorial_title.text = title
+	tutorial_detail.text = detail
+	tutorial_action_button.text = action_text
+	tutorial_action = action
+	tutorial_action_button.grab_focus()
+
+func _show_tutorial_intro() -> void:
+	_show_tutorial("你只是一名小兵", "戰鬥會自動進行。這一步先不談技能與裝備，只看角色完成第一次攻擊與擊倒。", "開始第一戰", _tutorial_begin_observe)
+
+func _tutorial_begin_observe() -> void:
+	model.tutorial_step = "observe"
+	_close_tutorial()
+	_update_hud(model.snapshot())
+	_refresh_navigation()
+	_save_game()
+
+func _show_training_tutorial() -> void:
+	model.tutorial_step = "training"
+	_show_tutorial("第一次成長", "擊倒敵人會獲得修練點。現在只做一件事：選一條你想嘗試的流派，投入第一點。", "前往修練", _tutorial_open_training)
+	_save_game()
+
+func _tutorial_open_training() -> void:
+	_close_tutorial()
+	model.tutorial_step = "spend"
+	_open_training()
+	_save_game()
+
+func _resume_spend_tutorial() -> void:
+	_open_training()
+	_show_tutorial("選擇第一條道路", "先在任一流派按一次＋。這不會鎖死流派，以後仍可以混修。", "我知道了", _close_tutorial)
+
+func _show_first_training_complete(track: String) -> void:
+	var definition: Dictionary = CombatModel.TRAINING_DEFS[track]
+	_show_tutorial("道路開始形成", "你投入了%s。修練會同時提高基礎能力；有效 Lv.10 會解鎖這條流派的核心機制。" % String(definition.name), "回到戰鬥", _tutorial_return_to_combat)
+
+func _tutorial_return_to_combat() -> void:
+	model.tutorial_step = "core"
+	_close_tutorial()
+	_close_training()
+	_update_hud(model.snapshot())
+	_refresh_navigation()
+	_save_game()
+
+func _show_core_tutorial(track: String) -> void:
+	model.tutorial_step = "complete"
+	_show_tutorial("%s流派成形" % String(CombatModel.TRAINING_DEFS[track].style), "%s：%s。從現在開始，你再自由研究技能、裝備與其他流派。" % [String(CORE_UNLOCK_NAMES[track]), String(CORE_UNLOCK_DESCRIPTIONS[track])], "完成教學", _tutorial_finish)
+	_save_game()
+
+func _tutorial_finish() -> void:
+	_close_tutorial()
+	if training_open:
+		_close_training()
+	_save_game()
+
+func _run_tutorial_action() -> void:
+	if tutorial_action.is_valid():
+		tutorial_action.call()
+
+func _close_tutorial() -> void:
+	tutorial_open = false
+	tutorial_overlay.visible = false
+	tutorial_action = Callable()
+
+func _skip_tutorial() -> void:
+	model.tutorial_step = "complete"
+	_close_tutorial()
+	if training_open:
+		_close_training()
+	_update_hud(model.snapshot())
+	_refresh_navigation()
+	_save_game()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if journey_open or journey_pending or boss_reward_open:
@@ -475,6 +566,7 @@ func _build_ui() -> void:
 	_build_journey_overlay()
 	_build_boss_reward_overlay()
 	_build_failure_overlay()
+	_build_tutorial_overlay()
 	_build_start_overlay()
 
 func _build_start_overlay() -> void:
@@ -560,11 +652,62 @@ func _build_section_overlay() -> void:
 	section_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	section_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	section_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	section_scroll.follow_focus = false
+	section_scroll.scroll_deadzone = 14
 	panel.add_child(section_scroll)
 	section_box = VBoxContainer.new()
 	section_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	section_box.add_theme_constant_override("separation", 9)
 	section_scroll.add_child(section_box)
+
+func _build_tutorial_overlay() -> void:
+	tutorial_overlay = Control.new()
+	tutorial_overlay.visible = false
+	tutorial_overlay.z_index = 90
+	tutorial_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	tutorial_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(tutorial_overlay)
+	var dim := ColorRect.new()
+	dim.color = Color("08100e", 0.78)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	tutorial_overlay.add_child(dim)
+	var safe := MarginContainer.new()
+	safe.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side: String in ["left", "right"]:
+		safe.add_theme_constant_override("margin_%s" % side, 24)
+	safe.add_theme_constant_override("margin_top", 120)
+	safe.add_theme_constant_override("margin_bottom", 120)
+	tutorial_overlay.add_child(safe)
+	var center := CenterContainer.new()
+	safe.add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(310, 0)
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("fff8e9", 0.99), Color("c18a31"), 3))
+	center.add_child(panel)
+	var margin := MarginContainer.new()
+	for side: String in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_%s" % side, 22)
+	panel.add_child(margin)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	margin.add_child(box)
+	var step_label := _label("專注教學", 13, Color("9a6a20"))
+	step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(step_label)
+	tutorial_title = _label("", 26, Color("30291f"))
+	tutorial_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(tutorial_title)
+	tutorial_detail = _label("", 15, Color("62594e"))
+	tutorial_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tutorial_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(tutorial_detail)
+	tutorial_action_button = _button("繼續", Color("75562c"), 52)
+	tutorial_action_button.pressed.connect(_run_tutorial_action)
+	box.add_child(tutorial_action_button)
+	var skip := _button("跳過新手教學", Color("ebe3d3"), 42)
+	skip.add_theme_color_override("font_color", Color("6a6258"))
+	skip.pressed.connect(_skip_tutorial)
+	box.add_child(skip)
 
 func _build_journey_overlay() -> void:
 	journey_overlay = Control.new()
@@ -694,18 +837,26 @@ func _switch_page(page: String) -> void:
 	if combat_visible:
 		call_deferred("_play_pending_style_formation")
 
-func _render_section(page: String) -> void:
+func _render_section(page: String, reset_scroll := true) -> void:
+	var previous_scroll := section_scroll.scroll_vertical
 	for child: Node in section_box.get_children():
 		section_box.remove_child(child)
 		child.queue_free()
 	var snapshot := model.snapshot()
-	section_scroll.scroll_vertical = 0
+	if reset_scroll:
+		section_scroll.scroll_vertical = 0
 	section_box.add_child(_label(String(PAGE_NAMES[page]), 27, Color("ffe09a")))
 	match page:
 		"character": _render_character_page(snapshot)
 		"skills": _render_skills_page(snapshot)
 		"equipment": _render_equipment_page(snapshot)
 		"shop": _render_shop_page()
+	if not reset_scroll:
+		call_deferred("_restore_section_scroll", previous_scroll)
+
+func _restore_section_scroll(value: int) -> void:
+	if is_instance_valid(section_scroll):
+		section_scroll.scroll_vertical = value
 
 func _render_character_page(snapshot: Dictionary) -> void:
 	section_box.add_child(_label("無名小兵 · 擊倒 %d" % int(snapshot.kills), 17, Color("d8e0d8")))
@@ -837,17 +988,12 @@ func _render_auto_setup(slots: Array) -> void:
 			tactic_button.pressed.connect(_cycle_auto_tactic.bind(skill_id))
 			row.add_child(tactic_button)
 	var grace_unlocked := model.skill_is_unlocked("grace")
-	var grace_row := HBoxContainer.new()
-	grace_row.add_theme_constant_override("separation", 5)
-	section_box.add_child(grace_row)
 	var grace_card := _section_row("被動戰術｜恩典治療", model.auto_tactic_description("grace_heal") if grace_unlocked else "信仰 Lv.20 解鎖")
-	grace_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grace_row.add_child(grace_card)
+	section_box.add_child(grace_card)
 	var grace_button := _button(model.auto_tactic_label("grace_heal"), Color("6b6335"), 44)
-	grace_button.custom_minimum_size.x = 82
 	grace_button.disabled = not grace_unlocked
 	grace_button.pressed.connect(_cycle_auto_tactic.bind("grace_heal"))
-	grace_row.add_child(grace_button)
+	section_box.add_child(grace_button)
 	section_box.add_child(_label("到各流派分頁選擇要裝入的主動技能。", 13, Color("9fb0a5")))
 
 func _render_command_allies(snapshot: Dictionary) -> void:
@@ -1015,52 +1161,115 @@ func _magic_choice_name(choices: Dictionary, choice_id: String) -> String:
 	return String(choices[choice_id].name) if choices.has(choice_id) else "尚未選擇"
 
 func _render_equipment_page(snapshot: Dictionary) -> void:
-	var equipment_intro := _label("裝備會提高有效流派等級並解鎖技能；卸下後若等級不足，該技能會暫停生效。", 14, Color("cbd5cc"))
+	var equipment_intro := _label("欄位決定穿戴，背包用來挑選。裝備提高有效流派等級，可直接支撐技能解鎖。", 14, Color("cbd5cc"))
 	equipment_intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	section_box.add_child(equipment_intro)
 	section_box.add_child(_section_row("持有金幣", "%d" % int(snapshot.gold)))
-	section_box.add_child(_label("目前裝備", 18, Color("f6d27d")))
+	section_box.add_child(_label("裝備欄位", 18, Color("f6d27d")))
+	var slots := HBoxContainer.new()
+	slots.add_theme_constant_override("separation", 6)
+	section_box.add_child(slots)
 	for slot: String in CombatModel.EQUIPMENT_SLOT_NAMES:
-		var item_id := String(snapshot.equipped_items[slot])
-		var item_name := "尚未裝備" if item_id.is_empty() else "%s +%d" % [String(CombatModel.EQUIPMENT_DEFS[item_id].name), int(snapshot.equipment_enhancements[item_id])]
-		section_box.add_child(_section_row(String(CombatModel.EQUIPMENT_SLOT_NAMES[slot]), item_name))
-	section_box.add_child(_label("流派等級", 18, Color("f6d27d")))
-	for track: String in CombatModel.TRAINING_ORDER:
-		var bonus := int(snapshot.equipment_style_bonuses[track])
-		if bonus <= 0:
-			continue
-		var definition: Dictionary = CombatModel.TRAINING_DEFS[track]
-		section_box.add_child(_section_row("%s｜%s" % [String(definition.name), String(definition.style)], "Base %d + 裝備 %d = 有效 %d" % [int(snapshot.base_style_levels[track]), bonus, int(snapshot.effective_style_levels[track])]))
-	section_box.add_child(_label("可用裝備", 18, Color("f6d27d")))
+		var equipped_id := String(snapshot.equipped_items[slot])
+		var item_name := "空欄位" if equipped_id.is_empty() else String(CombatModel.EQUIPMENT_DEFS[equipped_id].name)
+		var enhancement := 0 if equipped_id.is_empty() else int(snapshot.equipment_enhancements[equipped_id])
+		var selected := slot == selected_equipment_slot
+		var button := _button("%s\n%s%s" % [String(CombatModel.EQUIPMENT_SLOT_NAMES[slot]), item_name, " +%d" % enhancement if enhancement > 0 else ""], Color("6a5635") if selected else Color("34433c"), 60)
+		button.add_theme_font_size_override("font_size", 13)
+		button.pressed.connect(_select_equipment_slot.bind(slot))
+		slots.add_child(button)
+	_ensure_equipment_selection(snapshot)
+	_render_equipment_detail(snapshot)
+	section_box.add_child(_label("背包", 18, Color("f6d27d")))
+	var owned_ids := _owned_equipment_ids_for_slot(snapshot, selected_equipment_slot)
+	var total_owned := 0
 	for item_id: String in CombatModel.EQUIPMENT_DEFS:
+		if int(snapshot.owned_equipment.get(item_id, 0)) > 0:
+			total_owned += 1
+	section_box.add_child(_label("已取得 %d / %d｜目前顯示%s" % [total_owned, CombatModel.EQUIPMENT_DEFS.size(), String(CombatModel.EQUIPMENT_SLOT_NAMES[selected_equipment_slot])], 13, Color("aebfb4")))
+	if owned_ids.is_empty():
+		section_box.add_child(_section_row("尚無裝備", "擊敗敵人或從商店取得"))
+		return
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	section_box.add_child(grid)
+	for item_id: String in owned_ids:
 		var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
-		var slot := String(item.slot)
-		var owned := int(snapshot.owned_equipment.get(item_id, 0)) > 0
 		var enhancement := int(snapshot.equipment_enhancements.get(item_id, 0))
-		var quality := String(item.get("quality", "common"))
-		var item_panel := PanelContainer.new()
-		item_panel.add_theme_stylebox_override("panel", _panel_style(Color("202e28"), _equipment_quality_color(quality), 2 if owned else 1))
-		section_box.add_child(item_panel)
-		var card := VBoxContainer.new()
-		card.add_theme_constant_override("separation", 3)
-		item_panel.add_child(card)
-		card.add_child(_label("%s｜%s +%d｜%s" % [String(CombatModel.EQUIPMENT_SLOT_NAMES[slot]), String(item.name), enhancement, String(CombatModel.EQUIPMENT_QUALITY_NAMES[quality])], 16, _equipment_quality_color(quality)))
-		var detail_text := "%s｜%s" % [_equipment_style_text(item, enhancement), String(item.description)] if owned else "尚未取得｜擊敗敵人有機會掉落，首領必定掉落裝備"
-		var detail := _label(detail_text, 13, Color("aebfb4"))
-		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		card.add_child(detail)
-		var equipped := String(snapshot.equipped_items[slot]) == item_id
-		var equip_button := _button("裝備中" if equipped else ("裝備" if owned else "未取得"), Color("4f6657") if equipped else Color("685737"), 40)
-		equip_button.disabled = equipped or not owned
-		equip_button.pressed.connect(_equip_item.bind(item_id))
-		card.add_child(equip_button)
-		if owned:
-			var cost := model.equipment_enhancement_cost(item_id)
-			var enhance_text := "已達 +5" if cost < 0 else "強化至 +%d｜%d 金" % [enhancement + 1, cost]
-			var enhance_button := _button(enhance_text, Color("435a65"), 40)
-			enhance_button.disabled = cost < 0 or int(snapshot.gold) < cost
-			enhance_button.pressed.connect(_enhance_equipment.bind(item_id))
-			card.add_child(enhance_button)
+		var equipped := String(snapshot.equipped_items[selected_equipment_slot]) == item_id
+		var selected := selected_equipment_id == item_id
+		var state := "裝備中" if equipped else String(CombatModel.EQUIPMENT_QUALITY_NAMES[String(item.get("quality", "common"))])
+		var button := _button("%s%s\n%s" % [String(item.name), " +%d" % enhancement if enhancement > 0 else "", state], Color("665437") if selected else Color("2d3b35"), 64)
+		button.add_theme_font_size_override("font_size", 13)
+		button.pressed.connect(_select_equipment_item.bind(item_id))
+		grid.add_child(button)
+
+func _ensure_equipment_selection(snapshot: Dictionary) -> void:
+	if selected_equipment_slot not in CombatModel.EQUIPMENT_SLOT_NAMES:
+		selected_equipment_slot = "weapon"
+	if CombatModel.EQUIPMENT_DEFS.has(selected_equipment_id) and String(CombatModel.EQUIPMENT_DEFS[selected_equipment_id].slot) == selected_equipment_slot and int(snapshot.owned_equipment.get(selected_equipment_id, 0)) > 0:
+		return
+	selected_equipment_id = String(snapshot.equipped_items[selected_equipment_slot])
+	if selected_equipment_id.is_empty():
+		var owned_ids := _owned_equipment_ids_for_slot(snapshot, selected_equipment_slot)
+		selected_equipment_id = "" if owned_ids.is_empty() else String(owned_ids[0])
+
+func _owned_equipment_ids_for_slot(snapshot: Dictionary, slot: String) -> Array[String]:
+	var result: Array[String] = []
+	for item_id: String in CombatModel.EQUIPMENT_DEFS:
+		if String(CombatModel.EQUIPMENT_DEFS[item_id].slot) == slot and int(snapshot.owned_equipment.get(item_id, 0)) > 0:
+			result.append(item_id)
+	return result
+
+func _render_equipment_detail(snapshot: Dictionary) -> void:
+	var panel := PanelContainer.new()
+	panel.name = "EquipmentDetail"
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("1f2b27"), Color("b78b48"), 2))
+	section_box.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	panel.add_child(box)
+	if selected_equipment_id.is_empty():
+		box.add_child(_label("這個欄位還沒有裝備", 16, Color("d8e0d8")))
+		return
+	var item: Dictionary = CombatModel.EQUIPMENT_DEFS[selected_equipment_id]
+	var enhancement := int(snapshot.equipment_enhancements.get(selected_equipment_id, 0))
+	var quality := String(item.get("quality", "common"))
+	var equipped := String(snapshot.equipped_items[selected_equipment_slot]) == selected_equipment_id
+	box.add_child(_label("%s%s｜%s" % [String(item.name), " +%d" % enhancement if enhancement > 0 else "", "裝備中" if equipped else String(CombatModel.EQUIPMENT_QUALITY_NAMES[quality])], 18, _equipment_quality_color(quality)))
+	var details := _label("%s\n%s" % [_equipment_style_text(item, enhancement), String(item.description)], 13, Color("cbd5cc"))
+	details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(details)
+	var equipped_id := String(snapshot.equipped_items[selected_equipment_slot])
+	if not equipped and not equipped_id.is_empty():
+		var current: Dictionary = CombatModel.EQUIPMENT_DEFS[equipped_id]
+		box.add_child(_label("比較目前：%s → %s" % [_equipment_style_text(current, int(snapshot.equipment_enhancements[equipped_id])), _equipment_style_text(item, enhancement)], 12, Color("aebfb4")))
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 6)
+	box.add_child(actions)
+	var equip_button := _button("裝備中" if equipped else "穿上", Color("4f6657") if equipped else Color("76592f"), 46)
+	equip_button.disabled = equipped
+	equip_button.pressed.connect(_equip_item.bind(selected_equipment_id))
+	actions.add_child(equip_button)
+	var cost := model.equipment_enhancement_cost(selected_equipment_id)
+	var enhance_text := "已達 +5" if cost < 0 else "強化 +%d｜%d 金" % [enhancement + 1, cost]
+	var enhance_button := _button(enhance_text, Color("435a65"), 46)
+	enhance_button.disabled = cost < 0 or int(snapshot.gold) < cost
+	enhance_button.pressed.connect(_enhance_equipment.bind(selected_equipment_id))
+	actions.add_child(enhance_button)
+
+func _select_equipment_slot(slot: String) -> void:
+	selected_equipment_slot = slot
+	selected_equipment_id = ""
+	_render_section("equipment", false)
+
+func _select_equipment_item(item_id: String) -> void:
+	selected_equipment_id = item_id
+	selected_equipment_slot = String(CombatModel.EQUIPMENT_DEFS[item_id].slot)
+	_render_section("equipment", false)
 
 func _equipment_style_text(item: Dictionary, enhancement := 0) -> String:
 	var parts: Array[String] = []
@@ -1358,6 +1567,8 @@ func _handle_events(events: Array[Dictionary]) -> void:
 	if events.is_empty():
 		return
 	battlefield.play_events(events)
+	if model.tutorial_step == "observe" and events.any(func(event: Dictionary) -> bool: return String(event.type) == "enemy_defeated"):
+		_show_training_tutorial()
 	for event: Dictionary in events:
 		match String(event.type):
 			"wave_started": _show_toast("第 %d/%d 波" % [int(event.wave), int(event.wave_count)], String(event.enemy))
@@ -1487,7 +1698,11 @@ func _spend_training(track: String) -> void:
 	_handle_events(events)
 	_update_hud(model.snapshot())
 	var formed_tracks := _newly_formed_tracks(previous_levels)
-	if not formed_tracks.is_empty():
+	if model.tutorial_step == "spend" and not events.is_empty():
+		_show_first_training_complete(track)
+	elif model.tutorial_step == "core" and not formed_tracks.is_empty():
+		_show_core_tutorial(String(formed_tracks[0]))
+	elif not formed_tracks.is_empty():
 		_queue_style_formation(formed_tracks, false)
 	elif first_training and not events.is_empty():
 		_show_toast("第一步完成：%s" % String(CombatModel.TRAINING_DEFS[track].name), "有效 Lv.10 將解鎖流派核心；裝備加成也會計入")
@@ -1669,6 +1884,7 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var first_training := game_started and _total_base_training() == 0 and training_points > 0
 	training_alert_button.text = "第一步：修練" if first_training else "可用修練 %d" % training_points
 	training_alert_button.tooltip_text = "選擇一條流派投入第一點修練" if first_training else "前往修練分配可用點數"
+	training_alert_button.disabled = model.tutorial_step in ["intro", "observe"]
 	training_alert_button.add_theme_stylebox_override("normal", _panel_style(Color("fff5df") if training_points > 0 else Color("e0d9ce"), Color("c58a28") if training_points > 0 else Color("81796f"), 2))
 	var retry_pending := bool(snapshot.get("retry_pending", false))
 	var retry_stage := int(snapshot.get("retry_stage", 0))
@@ -1759,7 +1975,7 @@ func _update_hud(snapshot: Dictionary) -> void:
 	battlefield.set_stage_bounds(top_panel.position.y + top_panel.size.y, combat_panel.position.y)
 	_update_training_rows(snapshot)
 	if current_page != "combat" and is_instance_valid(section_box):
-		_render_section(current_page)
+		_render_section(current_page, false)
 
 func _update_training_rows(snapshot: Dictionary) -> void:
 	if training_rows.is_empty(): return
@@ -1779,6 +1995,7 @@ func _refresh_navigation() -> void:
 	for page: String in PAGE_NAMES:
 		var button := nav_buttons[page] as Button
 		var selected := page == current_page
+		button.disabled = model.tutorial_step in ["intro", "observe"] and page != "combat"
 		var label := button.get_node("Content/Label") as Label
 		label.text = String(PAGE_NAMES[page])
 		label.add_theme_color_override("font_color", Color("8a5b16") if selected else Color("595b57"))
@@ -1818,6 +2035,7 @@ func _resource_card(text_value: String, value: float, max_value: float, color: C
 
 func _section_row(title_value: String, detail_value: String) -> PanelContainer:
 	var panel := PanelContainer.new()
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_theme_stylebox_override("panel", _panel_style(Color("202e28"), Color("53675b"), 1))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)

@@ -303,6 +303,7 @@ func _test_save_data_roundtrip() -> void:
 	source.boss_reward_claimed = true
 	source.retry_pending = true
 	source.retry_stage = 26
+	source.tutorial_step = "core"
 	source.training.magic = 44
 	source.training_points = 7
 	source.gold = 345
@@ -323,6 +324,7 @@ func _test_save_data_roundtrip() -> void:
 	_expect(restored.load_save_data(source.save_data()), "版本相容的存檔必須可以載入")
 	_expect(restored.stage == 27 and restored.area_number == 3 and restored.journey_route == "mountain", "存檔必須恢復關卡與旅途")
 	_expect(restored.awaiting_journey_choice and restored.boss_reward_claimed and restored.retry_pending, "Boss 獎勵、旅途與再挑戰狀態必須恢復")
+	_expect(restored.tutorial_step == "core", "專注教學進度必須跟著存檔恢復")
 	_expect(int(restored.training.magic) == 44 and restored.training_points == 7, "修練等級與未分配點數必須恢復")
 	_expect(String(restored.equipped_items.weapon) == "magic_rune_sword" and int(restored.equipment_enhancements.magic_rune_sword) == 3, "裝備與強化必須恢復")
 	_expect(restored.inheritance_unlocked and restored.battle_souls == 2 and restored.legacy_track == "magic", "轉生與遺產必須恢復")
@@ -1288,6 +1290,7 @@ func _test_navigation() -> void:
 	_expect(is_instance_valid(scene.journey_overlay) and scene.journey_buttons.size() == 3, "Boss 後旅途抉擇必須提供三條手機可操作路線")
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")
 	_expect(is_instance_valid(scene.section_scroll), "功能頁內容必須可捲動")
+	_expect(not scene.section_scroll.follow_focus and scene.section_scroll.scroll_deadzone >= 12, "手機滑動不可被卡片焦點搶走")
 	scene.model.training.martial = 10
 	scene.model.training.physique = 30
 	scene.model.training.agility = 30
@@ -1329,6 +1332,24 @@ func _test_navigation() -> void:
 	scene._select_skill_tab("martial")
 	await process_frame
 	_expect(scene.current_skill_tab == "martial", "已完成流派必須能獨立切換成長路線")
+	scene._switch_page("equipment")
+	await process_frame
+	_expect(scene.section_box.get_node_or_null("EquipmentDetail") != null, "裝備頁必須以欄位、選中詳情與背包呈現")
+	scene.selected_equipment_id = "black_iron_sword"
+	scene.model.gold = 1000
+	scene._enhance_equipment("black_iron_sword")
+	await process_frame
+	await process_frame
+	_expect(scene.selected_equipment_id == "black_iron_sword", "裝備強化後必須保留目前選中裝備")
+	scene._switch_page("skills")
+	scene._select_skill_tab("martial")
+	await process_frame
+	scene.section_scroll.scroll_vertical = 80
+	await process_frame
+	scene._update_hud(scene.model.snapshot())
+	await process_frame
+	await process_frame
+	_expect(scene.section_scroll.scroll_vertical == 80, "技能或裝備頁更新後不可自動跳回頂部")
 	scene._switch_page("combat")
 	await process_frame
 	_expect(not scene.section_overlay.visible, "返回戰鬥頁必須關閉功能面板")
