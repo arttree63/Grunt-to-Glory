@@ -1783,8 +1783,8 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"unlock": _show_toast("解鎖：%s" % String(event.name), String(event.description))
 			"milestone": pass
 			"training_point": pass
-			"equipment_drop": _show_toast("獲得裝備：%s" % String(event.name), "%s｜前往裝備頁查看" % String(CombatModel.EQUIPMENT_QUALITY_NAMES[String(event.quality)]))
-			"equipment_duplicate": _show_toast("重複裝備：%s" % String(event.name), "轉換為 %d 金幣" % int(event.gold))
+			"equipment_drop": pass
+			"equipment_duplicate": pass
 			"momentum_full": _show_toast("勢已滿", "下一次普通攻擊將自動發動勢斬")
 			"momentum_slash": _show_toast("蓄勢・一閃", "滿勢化為 280% 一閃，並穿透 15% 護甲")
 			"branch_unlocked": _show_toast("解鎖：%s" % String(event.name), String(event.description))
@@ -2018,6 +2018,7 @@ func _toggle_training() -> void:
 
 func _open_training() -> void:
 	training_open = true
+	toast_panel.visible = false
 	training_overlay.visible = true
 	_update_training_rows(model.snapshot())
 	(training_rows["martial"].button as Button).grab_focus()

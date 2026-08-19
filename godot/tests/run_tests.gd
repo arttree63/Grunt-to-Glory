@@ -145,6 +145,9 @@ func _test_equipment_style_levels_and_unlock_boundary() -> void:
 func _test_equipment_drop_quality_and_enhancement() -> void:
 	var model = CombatModelScript.new()
 	_expect(String(CombatModelScript.EQUIPMENT_DEFS.magic_rune_sword.quality) == "rare", "裝備資料必須包含品質")
+	_expect(is_equal_approx(model.equipment_drop_chance(false, false), 0.18), "普通敵人必須有可感知的隨機裝備掉率")
+	_expect(is_equal_approx(model.equipment_drop_chance(false, true), 0.55), "精英敵人的裝備掉率必須明顯較高")
+	_expect(is_equal_approx(model.equipment_drop_chance(true, false), 1.0), "Boss 必須保證掉落裝備")
 	model.gold = 1000
 	model.equip_item("black_iron_sword")
 	var effective_before := model.effective_style_level("martial")
@@ -159,6 +162,12 @@ func _test_equipment_drop_quality_and_enhancement() -> void:
 	model._award_gold_and_equipment(true, false)
 	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type in ["equipment_drop", "equipment_duplicate"]), "首領必須保證產生裝備或重複裝備補償")
 	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "gold_gain"), "每場戰鬥必須固定獲得金幣")
+	var wave_model = CombatModelScript.new()
+	wave_model.stage = 2
+	wave_model.current_wave = 0
+	wave_model._events.clear()
+	wave_model._enemy_defeated()
+	_expect(wave_model.current_wave == 1 and wave_model._events.any(func(event: Dictionary) -> bool: return event.type == "gold_gain"), "敵群內每一隻敵人都必須獨立結算戰利品，不可只算最後一隻")
 
 func _test_equipment_skill_unlocks_all_tiers() -> void:
 	var model = CombatModelScript.new()
@@ -491,6 +500,8 @@ func _test_battlefield_impact_tiers() -> void:
 	battlefield.enemy_is_boss = true
 	var boss_health_bar: Rect2 = battlefield.enemy_health_bar_rect(Vector2(240.0, 420.0), 176.0, 1.15)
 	_expect(boss_health_bar.size.x > normal_health_bar.size.x and normal_health_bar.size.y == 9.0, "敵人頭頂必須使用精簡血條，Boss 僅以較寬血條區分")
+	battlefield.play_events([{"type": "equipment_drop", "name": "游風羽飾", "quality": "rare"}])
+	_expect(battlefield._loot_drop_fx == 1.0 and battlefield._loot_drop_name == "游風羽飾" and battlefield._loot_drop_quality == "rare", "隨機裝備掉落必須改用戰場內短暫提示，不可依賴中央 Toast")
 	battlefield.play_events([{"type": "style_formed", "track": "martial"}])
 	_expect(battlefield._style_formed_burst == 1.0 and battlefield._style_formed_color == Color("e07845"), "流派成形事件必須啟動對應色彩的低位移視覺回饋")
 	battlefield.play_events([{"type": "swift_cut", "milestone_track": "agility", "milestone_level": 100, "milestone_mode": "flow"}])

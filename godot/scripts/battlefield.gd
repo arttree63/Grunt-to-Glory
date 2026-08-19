@@ -351,6 +351,11 @@ var _roaming_hint_remaining := 0.0
 var _landmark_acquire_fx := 0.0
 var _landmark_acquire_name := ""
 var _landmark_acquire_effect := ""
+var _loot_drop_fx := 0.0
+var _loot_drop_name := ""
+var _loot_drop_quality := "common"
+var _loot_drop_duplicate := false
+var _loot_drop_gold := 0
 var _hero_facing := 1.0
 var _enemy_facing := 1.0
 var _navigation_paused := false
@@ -446,6 +451,7 @@ func _process(delta: float) -> void:
 	_style_formed_burst = maxf(0.0, _style_formed_burst - delta / 0.95)
 	_milestone_fx = maxf(0.0, _milestone_fx - delta / (0.45 if _milestone_mode == "impact" else 0.7))
 	_landmark_acquire_fx = maxf(0.0, _landmark_acquire_fx - delta / 1.05)
+	_loot_drop_fx = maxf(0.0, _loot_drop_fx - delta / 1.45)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
 	_hero_flash = maxf(0.0, _hero_flash - delta * 7.0)
 	_enemy_knockback = maxf(0.0, _enemy_knockback - delta * 5.8)
@@ -947,6 +953,19 @@ func play_events(events: Array[Dictionary]) -> void:
 				trauma = 0.0
 				_boss_intro_motion = 1.0
 				_hit_stop(0.06)
+			"equipment_drop":
+				_loot_drop_fx = 1.0
+				_loot_drop_name = String(event.get("name", "未知裝備"))
+				_loot_drop_quality = String(event.get("quality", "common"))
+				_loot_drop_duplicate = false
+				_loot_drop_gold = 0
+				_play_sfx("landmark")
+			"equipment_duplicate":
+				_loot_drop_fx = 1.0
+				_loot_drop_name = String(event.get("name", "重複裝備"))
+				_loot_drop_quality = String(event.get("quality", "common"))
+				_loot_drop_duplicate = true
+				_loot_drop_gold = int(event.get("gold", 0))
 			"boss_enraged":
 				_boss_enrage_burst = 1.0
 				add_trauma(0.14)
@@ -1339,6 +1358,7 @@ func _draw_pixel_vertical_slice() -> void:
 	_draw_landmark_acquire_fx(hero_pos)
 	_draw_style_formed_burst(hero_pos)
 	_draw_pixel_combat_fx(hero_pos, enemy_pos)
+	_draw_loot_drop_fx(enemy_pos)
 	if _hurt_vignette > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("a82e2e", _hurt_vignette * 0.13), false, 10.0)
 
@@ -1429,6 +1449,30 @@ func _draw_landmark_acquire_fx(hero_position: Vector2) -> void:
 		draw_style_box(_exploration_panel_style(), panel_rect)
 		draw_string(UI_FONT, panel_rect.position + Vector2(0.0, 21.0), "取得 · %s" % _landmark_acquire_name, HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 16, Color("fff1c8", alpha))
 		draw_string(UI_FONT, panel_rect.position + Vector2(0.0, 42.0), detail, HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 14, Color(effect_color, alpha * 0.96))
+
+func _draw_loot_drop_fx(enemy_position: Vector2) -> void:
+	if _loot_drop_fx <= 0.0:
+		return
+	var progress := 1.0 - _loot_drop_fx
+	var alpha := clampf(_loot_drop_fx * 2.4, 0.0, 1.0)
+	var quality_color := {
+		"common": Color("d8d2c4"), "uncommon": Color("75d292"),
+		"rare": Color("72b9f0"), "epic": Color("c591eb"),
+	}.get(_loot_drop_quality, Color("d8d2c4")) as Color
+	var center := enemy_position + Vector2(0.0, -104.0 - progress * 18.0)
+	center.x = clampf(center.x, 88.0, size.x - 88.0)
+	var diamond := PackedVector2Array([
+		center + Vector2(0.0, -9.0), center + Vector2(9.0, 0.0),
+		center + Vector2(0.0, 9.0), center + Vector2(-9.0, 0.0),
+	])
+	draw_colored_polygon(diamond, Color(quality_color, alpha))
+	draw_polyline(PackedVector2Array([diamond[0], diamond[1], diamond[2], diamond[3], diamond[0]]), Color("fff4d0", alpha), 2.0)
+	var detail := "+%d 金" % _loot_drop_gold if _loot_drop_duplicate else "已放入裝備背包"
+	var panel_rect := Rect2(center.x - 78.0, center.y + 14.0, 156.0, 40.0)
+	draw_rect(panel_rect, Color("172126", 0.82 * alpha), true)
+	draw_rect(panel_rect, Color(quality_color, 0.72 * alpha), false, 1.5)
+	draw_string(UI_FONT, panel_rect.position + Vector2(0.0, 17.0), _loot_drop_name, HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 14, Color(quality_color, alpha))
+	draw_string(UI_FONT, panel_rect.position + Vector2(0.0, 34.0), detail, HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 11, Color("eee8da", alpha))
 
 func _draw_enemy_group_reserves(enemy_position: Vector2) -> void:
 	var reserve_count := mini(2, maxi(0, _encounter_wave_count - _encounter_wave))

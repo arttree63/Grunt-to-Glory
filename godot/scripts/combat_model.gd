@@ -29,6 +29,9 @@ const TRAINING_DEFS := {
 const EQUIPMENT_SLOT_NAMES := {"weapon": "武器", "armor": "防具", "accessory": "飾品"}
 const EQUIPMENT_QUALITY_NAMES := {"common": "普通", "uncommon": "良品", "rare": "稀有", "epic": "史詩"}
 const EQUIPMENT_QUALITY_COSTS := {"common": 60, "uncommon": 90, "rare": 140, "epic": 220}
+const NORMAL_EQUIPMENT_DROP_CHANCE := 0.18
+const ELITE_EQUIPMENT_DROP_CHANCE := 0.55
+const BOSS_EQUIPMENT_DROP_CHANCE := 1.0
 const EQUIPMENT_DEFS := {
 	"black_iron_cleaver": {"name": "黑鐵斬劍", "slot": "weapon", "quality": "rare", "primary_style": "martial", "description": "對重甲敵人更有效的哨站軍官劍。", "style_bonuses": {"martial": 6}, "modifiers": {"armored_damage": 0.1}},
 	"black_iron_sword": {"name": "黑鐵長劍", "slot": "weapon", "quality": "common", "primary_style": "martial", "description": "制式軍劍，適合磨練穩定的一刀。", "style_bonuses": {"martial": 5}},
@@ -2802,6 +2805,7 @@ func _enemy_defeated() -> void:
 	var defeated_boss := enemy_is_boss
 	var defeated_elite := enemy_is_elite
 	kills += 1
+	_award_gold_and_equipment(defeated_boss, defeated_elite)
 	var waves := _stage_waves(stage)
 	if current_wave + 1 < waves.size():
 		current_wave += 1
@@ -2850,7 +2854,6 @@ func _enemy_defeated() -> void:
 		_events.append({"type": "boss_entered", "name": _enemy_display_name()})
 	if defeated_boss and not retry_pending:
 		_events.append({"type": "boss_reward_choice", "area": area_number, "completed_route": journey_route, "options": boss_reward_options()})
-	_award_gold_and_equipment(defeated_boss, defeated_elite)
 
 func boss_reward_options() -> Array[Dictionary]:
 	var highest_track := "martial"
@@ -2987,7 +2990,7 @@ func _award_gold_and_equipment(defeated_boss: bool, defeated_elite: bool) -> voi
 	var gold_gain := maxi(4, 6 + stage * 2) * (5 if defeated_boss else (2 if defeated_elite else 1))
 	gold += gold_gain
 	_events.append({"type": "gold_gain", "gain": gold_gain, "gold": gold})
-	var drop_chance := 1.0 if defeated_boss else (0.28 if defeated_elite else 0.08)
+	var drop_chance := equipment_drop_chance(defeated_boss, defeated_elite)
 	if rng.randf() > drop_chance:
 		return
 	var item_id := _roll_equipment_drop(defeated_boss)
@@ -2998,10 +3001,15 @@ func _award_gold_and_equipment(defeated_boss: bool, defeated_elite: bool) -> voi
 		var quality := String(definition.get("quality", "common"))
 		var duplicate_gold := int(EQUIPMENT_QUALITY_COSTS.get(quality, 60))
 		gold += duplicate_gold
-		_events.append({"type": "equipment_duplicate", "item_id": item_id, "name": String(definition.name), "gold": duplicate_gold, "total_gold": gold})
+		_events.append({"type": "equipment_duplicate", "item_id": item_id, "name": String(definition.name), "quality": quality, "gold": duplicate_gold, "total_gold": gold})
 		return
 	grant_equipment(item_id)
-	_events.append({"type": "equipment_drop", "item_id": item_id, "name": String(definition.name), "quality": String(definition.get("quality", "common"))})
+	_events.append({"type": "equipment_drop", "item_id": item_id, "name": String(definition.name), "quality": String(definition.get("quality", "common")), "slot": String(definition.slot), "style": String(definition.primary_style)})
+
+func equipment_drop_chance(defeated_boss: bool, defeated_elite: bool) -> float:
+	if defeated_boss:
+		return BOSS_EQUIPMENT_DROP_CHANCE
+	return ELITE_EQUIPMENT_DROP_CHANCE if defeated_elite else NORMAL_EQUIPMENT_DROP_CHANCE
 
 func _roll_equipment_drop(prefer_unowned := false) -> String:
 	var weighted_items: Array[String] = []
