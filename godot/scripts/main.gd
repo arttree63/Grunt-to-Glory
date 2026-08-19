@@ -118,6 +118,7 @@ var tutorial_title: Label
 var tutorial_detail: Label
 var tutorial_action_button: Button
 var tutorial_action := Callable()
+var tutorial_core_hint_shown := false
 
 func _ready() -> void:
 	_build_ui()
@@ -213,6 +214,7 @@ func _start_new_game() -> void:
 	model = CombatModel.new()
 	model.equip_item("black_iron_armor")
 	model.tutorial_step = "intro"
+	tutorial_core_hint_shown = false
 	save_loaded = false
 	_finish_startup("新遊戲開始")
 	_save_game()
@@ -224,6 +226,7 @@ func _continue_game() -> void:
 		new_game_button.grab_focus()
 		return
 	save_loaded = true
+	tutorial_core_hint_shown = false
 	_finish_startup("進度已載入")
 	if model.awaiting_journey_choice:
 		call_deferred("_restore_pending_choice")
@@ -243,6 +246,8 @@ func _finish_startup(title: String) -> void:
 	else:
 		var detail := "戰鬥會自動進行；先點右上「第一步：修練」，選擇你的第一條道路" if _total_base_training() == 0 else "角色會持續快速攻擊；你負責流派修練、技能編成與旅途選擇"
 		_show_toast(title, detail)
+		if model.tutorial_step == "core":
+			call_deferred("_highlight_core_training_button")
 
 func _show_tutorial(title: String, detail: String, action_text: String, action: Callable) -> void:
 	tutorial_open = true
@@ -251,6 +256,8 @@ func _show_tutorial(title: String, detail: String, action_text: String, action: 
 	tutorial_detail.text = detail
 	tutorial_action_button.text = action_text
 	tutorial_action = action
+	tutorial_action_button.add_theme_stylebox_override("normal", _panel_style(Color("8d6528"), Color("ffe5a3"), 3))
+	_pulse_tutorial_target(tutorial_action_button)
 	tutorial_action_button.grab_focus()
 
 func _show_tutorial_intro() -> void:
@@ -272,11 +279,16 @@ func _tutorial_open_training() -> void:
 	_close_tutorial()
 	model.tutorial_step = "spend"
 	_open_training()
+	call_deferred("_highlight_training_choices")
 	_save_game()
 
 func _resume_spend_tutorial() -> void:
 	_open_training()
-	_show_tutorial("選擇第一條道路", "先在任一流派按一次＋。這不會鎖死流派，以後仍可以混修。", "我知道了", _close_tutorial)
+	_show_tutorial("選擇第一條道路", "先在任一流派按一次＋。這不會鎖死流派，以後仍可以混修。", "我知道了", _tutorial_reveal_training_choices)
+
+func _tutorial_reveal_training_choices() -> void:
+	_close_tutorial()
+	call_deferred("_highlight_training_choices")
 
 func _show_first_training_complete(track: String) -> void:
 	var definition: Dictionary = CombatModel.TRAINING_DEFS[track]
@@ -284,10 +296,12 @@ func _show_first_training_complete(track: String) -> void:
 
 func _tutorial_return_to_combat() -> void:
 	model.tutorial_step = "core"
+	tutorial_core_hint_shown = false
 	_close_tutorial()
 	_close_training()
 	_update_hud(model.snapshot())
 	_refresh_navigation()
+	call_deferred("_highlight_core_training_button")
 	_save_game()
 
 func _show_core_tutorial(track: String) -> void:
@@ -309,6 +323,36 @@ func _close_tutorial() -> void:
 	tutorial_open = false
 	tutorial_overlay.visible = false
 	tutorial_action = Callable()
+
+func _pulse_tutorial_target(control: Control) -> void:
+	if not is_instance_valid(control) or bool(control.get_meta("tutorial_pulsing", false)):
+		return
+	control.set_meta("tutorial_pulsing", true)
+	control.modulate = Color.WHITE
+	var tween := create_tween()
+	tween.tween_property(control, "modulate", Color("fff0a8"), 0.18).set_trans(Tween.TRANS_SINE)
+	tween.tween_property(control, "modulate", Color.WHITE, 0.34).set_trans(Tween.TRANS_SINE)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(control):
+			control.set_meta("tutorial_pulsing", false)
+	)
+
+func _highlight_training_choices() -> void:
+	if model.tutorial_step != "spend" or not training_open:
+		return
+	for track: String in CombatModel.TRAINING_ORDER:
+		var button := training_rows[track].button as Button
+		if button.disabled:
+			continue
+		button.add_theme_stylebox_override("normal", _panel_style(Color("926520"), Color("ffe39a"), 4))
+		_pulse_tutorial_target(button)
+
+func _highlight_core_training_button() -> void:
+	if tutorial_core_hint_shown or model.tutorial_step != "core" or model.training_points <= 0:
+		return
+	tutorial_core_hint_shown = true
+	training_alert_button.add_theme_stylebox_override("normal", _panel_style(Color("fff0c7"), Color("efae38"), 4))
+	_pulse_tutorial_target(training_alert_button)
 
 func _skip_tutorial() -> void:
 	model.tutorial_step = "complete"
@@ -1885,7 +1929,10 @@ func _update_hud(snapshot: Dictionary) -> void:
 	training_alert_button.text = "第一步：修練" if first_training else "可用修練 %d" % training_points
 	training_alert_button.tooltip_text = "選擇一條流派投入第一點修練" if first_training else "前往修練分配可用點數"
 	training_alert_button.disabled = model.tutorial_step in ["intro", "observe"]
-	training_alert_button.add_theme_stylebox_override("normal", _panel_style(Color("fff5df") if training_points > 0 else Color("e0d9ce"), Color("c58a28") if training_points > 0 else Color("81796f"), 2))
+	var emphasize_training := model.tutorial_step == "core" and training_points > 0
+	training_alert_button.add_theme_stylebox_override("normal", _panel_style(Color("fff0c7") if emphasize_training else (Color("fff5df") if training_points > 0 else Color("e0d9ce")), Color("efae38") if emphasize_training else (Color("c58a28") if training_points > 0 else Color("81796f")), 4 if emphasize_training else 2))
+	if emphasize_training and not tutorial_core_hint_shown:
+		call_deferred("_highlight_core_training_button")
 	var retry_pending := bool(snapshot.get("retry_pending", false))
 	var retry_stage := int(snapshot.get("retry_stage", 0))
 	retry_button.visible = retry_pending and not battlefield.defeat_sequence_active()
@@ -1990,6 +2037,8 @@ func _update_training_rows(snapshot: Dictionary) -> void:
 		var add_button := widgets.button as Button
 		add_button.text = "+" if bool(definition.implemented) else "鎖"
 		add_button.disabled = not bool(definition.implemented) or int(snapshot.training_points) <= 0 or level >= CombatModel.MAX_TRAINING_LEVEL
+		var tutorial_choice := model.tutorial_step == "spend" and not add_button.disabled
+		add_button.add_theme_stylebox_override("normal", _panel_style(Color("926520") if tutorial_choice else Color("71552f"), Color("ffe39a") if tutorial_choice else Color("c8aa70"), 4 if tutorial_choice else 2))
 
 func _refresh_navigation() -> void:
 	for page: String in PAGE_NAMES:

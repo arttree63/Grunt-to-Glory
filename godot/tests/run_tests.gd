@@ -1279,6 +1279,16 @@ func _test_navigation() -> void:
 	_expect(visible_auto_slots == 5, "手機戰鬥 HUD 必須呈現完整五格技能優先序")
 	_expect(not scene.mp_hud.visible and not scene.momentum_hud.visible and not scene.state_panel.visible, "未投入的流派資源不可預先出現在戰鬥 HUD")
 	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text == "第一步：修練", "新遊戲必須把既有修練入口轉成第一個可操作目標")
+	var ui_font: Font = load("res://assets/fonts/NotoSansTC-Regular.otf")
+	for character: String in ["教", "學", "裝", "備", "解", "鎖", "流", "派", "強", "化", "背", "包", "較"]:
+		_expect(ui_font.has_char(character.unicode_at(0)), "中文字型子集必須保留目前介面用字：%s" % character)
+	scene.model.tutorial_step = "spend"
+	scene.model.training_points = 1
+	scene._open_training()
+	scene._highlight_training_choices()
+	_expect(bool((scene.training_rows.martial.button as Button).get_meta("tutorial_pulsing", false)), "專注教學必須讓目前可操作的＋按鈕短暫亮起")
+	scene._close_training()
+	scene.model.tutorial_step = "complete"
 	scene._spend_training("martial")
 	_expect(scene.training_alert_button.text.begins_with("可用修練") and "第一步完成" in scene.toast_title.text and scene.toast_panel.z_index > scene.training_overlay.z_index, "投入第一點修練後必須在修練頁上方說明下一個流派門檻")
 	scene.model.training.martial = 9
