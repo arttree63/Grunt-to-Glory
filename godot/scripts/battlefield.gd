@@ -1272,11 +1272,13 @@ func _draw_pixel_vertical_slice() -> void:
 	if exploration_enabled:
 		_draw_landmarks()
 		_draw_roaming_enemy_camps()
+		_draw_active_enemy_indicator()
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
 	var battle_line := lerpf(stage_top, visible_bottom, 0.79)
 	var hero_pos := _world_to_screen(_hero_map_position) if exploration_enabled and _hero_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.29, 66.0, size.x - 160.0), battle_line + 20.0)
-	var enemy_pos := _world_to_screen(_enemy_map_position) if exploration_enabled and _enemy_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.72, 170.0, size.x - 66.0), battle_line)
-	var enemy_in_view := not exploration_enabled or _enemy_visible_on_map(enemy_pos)
+	var enemy_world_screen := _world_to_screen(_enemy_map_position) if exploration_enabled and _enemy_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.72, 170.0, size.x - 66.0), battle_line)
+	var enemy_pos := _enemy_presentation_position(enemy_world_screen) if exploration_enabled else enemy_world_screen
+	var enemy_in_view := not exploration_enabled or _exploration_phase == "engaged" or _enemy_visible_on_map(enemy_world_screen)
 	_pixel_enemy_position = enemy_pos
 	if exploration_enabled and _exploration_phase == "traveling":
 		_draw_roaming_path(hero_pos, enemy_pos)
@@ -1303,6 +1305,15 @@ func _enemy_visible_on_map(screen_position: Vector2) -> bool:
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
 	return screen_position.x >= 22.0 and screen_position.x <= size.x - 22.0 \
 		and screen_position.y >= stage_top + 168.0 and screen_position.y <= visible_bottom + 16.0
+
+func _enemy_presentation_position(screen_position: Vector2) -> Vector2:
+	if _exploration_phase != "engaged":
+		return screen_position
+	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
+	return Vector2(
+		clampf(screen_position.x, 86.0, size.x - 86.0),
+		clampf(screen_position.y, stage_top + 164.0, visible_bottom)
+	)
 
 func _draw_landmarks() -> void:
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
@@ -1406,6 +1417,30 @@ func _draw_roaming_enemy_camps() -> void:
 		_draw_ground_shadow(screen_position + Vector2(0.0, 2.0), Vector2(28.0, 7.0))
 		_draw_anchored_animation_frame(texture, screen_position, 96.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2.ONE, Color(0.72, 0.76, 0.76, 0.78))
 		draw_arc(screen_position + Vector2(0.0, 4.0), 24.0, 0.0, TAU, 22, Color("b74f45", 0.55), 2.5)
+
+func _draw_active_enemy_indicator() -> void:
+	if _exploration_phase != "traveling" or _active_enemy_camp_index < 0 or _active_enemy_camp_index >= _enemy_camps.size():
+		return
+	var screen_position := _world_to_screen(_enemy_camps[_active_enemy_camp_index])
+	if _enemy_visible_on_map(screen_position):
+		return
+	var marker_position := _active_enemy_indicator_position(screen_position)
+	var direction := marker_position.direction_to(screen_position)
+	if direction.length_squared() < 0.01:
+		direction = Vector2.UP
+	_draw_ground_shadow(marker_position + Vector2(0.0, 3.0), Vector2(23.0, 6.0))
+	_draw_anchored_animation_frame(_pixel_enemy_preview_texture(), marker_position, 72.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2.ONE, Color(0.86, 0.82, 0.72, 0.9))
+	draw_arc(marker_position + Vector2(0.0, 4.0), 25.0, 0.0, TAU, 22, Color("f0c765", 0.86), 3.0)
+	var arrow_center := marker_position + direction * 35.0
+	var side := direction.orthogonal() * 6.0
+	draw_polygon(PackedVector2Array([arrow_center + direction * 8.0, arrow_center - direction * 6.0 + side, arrow_center - direction * 6.0 - side]), PackedColorArray([Color("ffe28a", 0.92)]))
+
+func _active_enemy_indicator_position(screen_position: Vector2) -> Vector2:
+	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
+	return Vector2(
+		clampf(screen_position.x, 46.0, size.x - 46.0),
+		clampf(screen_position.y, stage_top + 96.0, visible_bottom - 28.0)
+	)
 
 func _pixel_enemy_preview_texture() -> Texture2D:
 	var combat_frames := _pixel_enemy_combat_frames()

@@ -453,25 +453,28 @@ func _build_ui() -> void:
 	safe.add_child(layout)
 
 	top_panel = PanelContainer.new()
-	top_panel.add_theme_stylebox_override("panel", _panel_style(Color("fffaf0", 0.96), Color("b98532"), 2))
+	var compact_top_style := _panel_style(Color("fffaf0", 0.96), Color("b98532"), 2)
+	compact_top_style.content_margin_top = 4
+	compact_top_style.content_margin_bottom = 4
+	top_panel.add_theme_stylebox_override("panel", compact_top_style)
 	layout.add_child(top_panel)
 	var top_box := VBoxContainer.new()
-	top_box.add_theme_constant_override("separation", 5)
+	top_box.add_theme_constant_override("separation", 3)
 	top_panel.add_child(top_box)
 	var identity := HBoxContainer.new()
 	top_box.add_child(identity)
 	var crest := TextureRect.new()
 	crest.texture = CREST_ICON
-	crest.custom_minimum_size = Vector2(44, 44)
+	crest.custom_minimum_size = Vector2(38, 38)
 	crest.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	crest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	crest.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	identity.add_child(crest)
-	var hero_name := _label("無名小兵", 22, Color("292824"))
+	var hero_name := _label("無名小兵", 20, Color("292824"))
 	hero_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	identity.add_child(hero_name)
-	training_alert_button = _button("可用修練 0", Color("f5ead0"), 44)
-	training_alert_button.custom_minimum_size.x = 116
+	training_alert_button = _button("可用修練 0", Color("f5ead0"), 38)
+	training_alert_button.custom_minimum_size.x = 108
 	training_alert_button.size_flags_horizontal = Control.SIZE_SHRINK_END
 	training_alert_button.add_theme_font_size_override("font_size", 14)
 	training_alert_button.add_theme_color_override("font_color", Color("8a5b16"))
@@ -479,13 +482,15 @@ func _build_ui() -> void:
 	training_alert_button.add_theme_color_override("font_pressed_color", Color("2b1e10"))
 	training_alert_button.pressed.connect(_open_training)
 	identity.add_child(training_alert_button)
-	enemy_label = _label("林地哥布林 · 第 1 戰", 16, Color("373733"))
-	enemy_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	enemy_label = _label("林地哥布林 · 護甲 0", 14, Color("373733"))
+	enemy_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	enemy_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	top_box.add_child(enemy_label)
-	enemy_bar = _progress_bar(Color("d8cbbb"), Color("9c4138"), 16)
+	enemy_bar = _progress_bar(Color("d8cbbb"), Color("9c4138"), 10)
 	top_box.add_child(enemy_bar)
 	kills_label = _label("擊倒 0", 14, Color("4e514f"))
 	kills_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	kills_label.visible = false
 	top_box.add_child(kills_label)
 	failure_status = HBoxContainer.new()
 	failure_status.visible = false
@@ -2075,8 +2080,8 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var rage_mark := " · 狂怒" if bool(snapshot.get("boss_enraged", false)) else ""
 	var attack_hint := " · %s準備" % String(snapshot.enemy_attack_type) if String(snapshot.enemy_attack_type) != "普通" and float(snapshot.enemy_attack_remaining) <= 0.8 else ""
 	var wave_text := "｜波 %d/%d" % [int(snapshot.wave), int(snapshot.wave_count)] if int(snapshot.wave_count) > 1 else ""
-	enemy_label.text = "第%d區・%s｜%d/10・%s%s\n%s%s｜%s · 護甲 %d%s%s" % [int(snapshot.area_number), String(snapshot.journey_name), int(snapshot.route_position), String(snapshot.route_phase), wave_text, boss_mark, String(snapshot.enemy_name), String(snapshot.enemy_role), roundi(float(snapshot.enemy_armor)), rage_mark, attack_hint]
-	enemy_label.tooltip_text = String(snapshot.enemy_hint)
+	enemy_label.text = "第%d區 %d/10%s｜%s%s · 甲%d%s%s" % [int(snapshot.area_number), int(snapshot.route_position), wave_text, boss_mark, String(snapshot.enemy_name), roundi(float(snapshot.enemy_armor)), rage_mark, attack_hint]
+	enemy_label.tooltip_text = "%s｜%s\n擊倒 %d｜金幣 %d" % [String(snapshot.enemy_role), String(snapshot.enemy_hint), int(snapshot.kills), int(snapshot.gold)]
 	kills_label.text = "擊倒 %d｜金幣 %d" % [int(snapshot.kills), int(snapshot.gold)]
 	var training_points := int(snapshot.training_points)
 	var first_training := game_started and _total_base_training() == 0 and training_points > 0

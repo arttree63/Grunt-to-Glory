@@ -263,6 +263,8 @@ func _test_auto_roaming() -> void:
 	battlefield._on_map_input(camp_click)
 	_expect(battlefield._enemy_map_position != initial_camp_target and battlefield._active_enemy_camp_index == alternate_camp_index, "點擊其他敵群必須立即切換半自動狩獵目標")
 	_expect(not battlefield._enemy_visible_on_map(Vector2(195.0, battlefield.stage_top + 150.0)) and battlefield._enemy_visible_on_map(Vector2(195.0, battlefield.stage_top + 175.0)), "接敵安全區必須容納完整敵人 Sprite，不可只判斷腳底進入畫面")
+	var target_indicator := battlefield._active_enemy_indicator_position(Vector2(-180.0, battlefield.stage_top - 90.0))
+	_expect(target_indicator.x == 46.0 and target_indicator.y == battlefield.stage_top + 96.0, "AUTO 目標離開安全區時必須留在邊緣指示位置")
 	battlefield._encounter_wave = 1
 	battlefield._encounter_wave_count = 3
 	var encounter_status: Dictionary = battlefield.exploration_status()
@@ -274,6 +276,8 @@ func _test_auto_roaming() -> void:
 	_expect(not battlefield.navigation_blocks_combat(), "角色抵達敵人後才可恢復 AUTO 戰鬥")
 	var framed_enemy_screen := battlefield._world_to_screen(battlefield._enemy_map_position)
 	_expect(framed_enemy_screen.x >= 96.0 and framed_enemy_screen.x <= battlefield.size.x - 96.0, "接敵鏡頭必須保留敵人完整橫向輪廓")
+	var edge_enemy := battlefield._enemy_presentation_position(Vector2(-120.0, battlefield.stage_top - 80.0))
+	_expect(edge_enemy.x == 86.0 and edge_enemy.y == battlefield.stage_top + 164.0, "接戰敵人越過安全區時必須停在畫面邊緣，不可突然消失")
 	var first_target: Vector2 = battlefield._enemy_map_position
 	var banner: Dictionary = battlefield._landmarks()[1]
 	battlefield._enemy_map_position = Vector2(banner.position)
