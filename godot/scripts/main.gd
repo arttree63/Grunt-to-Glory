@@ -195,6 +195,10 @@ func _process(delta: float) -> void:
 	if battlefield.navigation_blocks_combat():
 		accumulator = 0.0
 		return
+	var landmark_effect := battlefield.active_landmark_effect()
+	if not landmark_effect.is_empty() and not model.exploration_approach_applied:
+		_handle_events(model.choose_exploration_approach(landmark_effect))
+		_update_hud(model.snapshot())
 	accumulator = minf(accumulator + delta, FIXED_STEP * 5.0)
 	var stepped := false
 	while accumulator >= FIXED_STEP:

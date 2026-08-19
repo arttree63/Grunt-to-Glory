@@ -75,9 +75,9 @@ const JOURNEY_ROUTES := {
 	"battlefield": {"name": "沉眠古戰場", "intro": "鏽劍遍地，亡者仍守著早已不存在的軍旗。", "effect": "敵人生命與護甲提高｜擊敗 Boss 額外獲得 3 修練"},
 }
 const EXPLORATION_APPROACHES := {
-	"scout": {"name": "高地偵察", "effect": "繞到側翼，敵方護甲降低 20%"},
-	"direct": {"name": "直取敵陣", "effect": "快速接敵，先手削減敵人 8% 生命"},
-	"supply": {"name": "補給營火", "effect": "繞行補給點，回復 8% 生命與魔力"},
+	"scout": {"name": "瞭望塔視野", "effect": "看清敵陣，本戰敵方護甲降低 20%"},
+	"direct": {"name": "斷旗戰意", "effect": "乘勢突入，先手削減敵人 8% 生命"},
+	"supply": {"name": "古石餘光", "effect": "回復 8% 生命與魔力"},
 }
 const ROUTE_ENEMY_NAMES := {
 	"frontier": {"grunt": "黑鐵新兵", "raider": "黑鐵劍兵", "brute": "黑鐵重槌兵", "shield": "黑鐵盾衛", "centurion": "黑鐵百夫長", "caster": "林地咒術師", "boss": "黑鐵統領"},

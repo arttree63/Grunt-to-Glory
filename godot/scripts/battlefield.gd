@@ -501,8 +501,23 @@ func exploration_status() -> Dictionary:
 		"target": _enemy_map_position,
 		"manual_waypoint": _manual_waypoint_active,
 		"landmark": _current_landmark_name(),
+		"landmark_effect": active_landmark_effect(),
 		"enemy_group_size": maxi(1, _encounter_wave_count - _encounter_wave + 1),
 	}
+
+func active_landmark_effect() -> String:
+	if _exploration_phase != "engaged" or _enemy_map_position == Vector2.ZERO:
+		return ""
+	var nearest_kind := ""
+	var nearest_distance := INF
+	for landmark: Dictionary in _landmarks():
+		var distance := _enemy_map_position.distance_to(Vector2(landmark.position))
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_kind = String(landmark.kind)
+	if nearest_distance > 190.0:
+		return ""
+	return {"tower": "scout", "banner": "direct", "stones": "supply"}.get(nearest_kind, "")
 
 func _begin_exploration(key: String) -> void:
 	_encounter_key = key

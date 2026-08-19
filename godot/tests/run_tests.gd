@@ -239,11 +239,16 @@ func _test_auto_roaming() -> void:
 	battlefield._encounter_wave_count = 3
 	var encounter_status: Dictionary = battlefield.exploration_status()
 	_expect(String(encounter_status.landmark) != "" and int(encounter_status.enemy_group_size) == 3, "巡敵目標必須提供地標與剩餘敵群數量")
+	_expect(String(encounter_status.landmark_effect).is_empty(), "尚未接敵時不可提前取得地標效果")
 	var hero_screen: Vector2 = battlefield._world_to_screen(battlefield._hero_map_position)
 	_expect(hero_screen.x >= 0.0 and hero_screen.x <= battlefield.size.x and hero_screen.y >= battlefield.stage_top, "鏡頭必須把巡敵中的角色留在可視戰場")
 	var first_target: Vector2 = battlefield._enemy_map_position
 	battlefield._update_exploration(10.0)
 	_expect(not battlefield.navigation_blocks_combat(), "角色抵達敵人後才可恢復 AUTO 戰鬥")
+	var banner: Dictionary = battlefield._landmarks()[1]
+	battlefield._enemy_map_position = Vector2(banner.position)
+	battlefield._exploration_phase = "engaged"
+	_expect(battlefield.active_landmark_effect() == "direct", "斷旗丘接敵必須提供先手戰意效果")
 	battlefield._begin_exploration("1:2")
 	_expect(battlefield._enemy_map_position != first_target, "下一波敵人必須出現在地圖的不同位置")
 	var waypoint_screen := Vector2(90.0, 360.0)
@@ -268,6 +273,11 @@ func _test_auto_roaming() -> void:
 	battlefield.set_state(group_model.snapshot())
 	_expect(battlefield._exploration_phase == "engaged" and battlefield._enemy_map_position == held_target, "同一戰的後續敵人必須留在原遭遇點，不可重新巡路")
 	battlefield.free()
+	var landmark_model = CombatModelScript.new()
+	var armor_before: float = landmark_model.enemy_armor
+	var landmark_events: Array[Dictionary] = landmark_model.choose_exploration_approach("scout")
+	_expect(is_equal_approx(landmark_model.enemy_armor, armor_before * 0.8), "瞭望塔效果必須實際降低敵方護甲")
+	_expect(landmark_events.any(func(event: Dictionary) -> bool: return event.type == "exploration_approach" and event.name == "瞭望塔視野"), "地標效果必須產生可讀的戰鬥回饋")
 
 func _test_frontier_stage_waves() -> void:
 	var model = CombatModelScript.new()
