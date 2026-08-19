@@ -485,8 +485,10 @@ func _build_ui() -> void:
 	enemy_label = _label("林地哥布林 · 護甲 0", 14, Color("373733"))
 	enemy_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	enemy_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	enemy_label.visible = false
 	top_box.add_child(enemy_label)
 	enemy_bar = _progress_bar(Color("d8cbbb"), Color("9c4138"), 10)
+	enemy_bar.visible = false
 	top_box.add_child(enemy_bar)
 	kills_label = _label("擊倒 0", 14, Color("4e514f"))
 	kills_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -1779,7 +1781,7 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"boss_enraged": _show_toast("首領狂怒", "攻擊速度提高，重擊與必中技更加頻繁")
 			"enemy_guard_broken": _show_toast("盾勢瓦解", "後續攻擊將造成完整傷害")
 			"unlock": _show_toast("解鎖：%s" % String(event.name), String(event.description))
-			"milestone": _show_toast("流派強化：%s" % String(event.name), String(event.description))
+			"milestone": pass
 			"training_point": pass
 			"equipment_drop": _show_toast("獲得裝備：%s" % String(event.name), "%s｜前往裝備頁查看" % String(CombatModel.EQUIPMENT_QUALITY_NAMES[String(event.quality)]))
 			"equipment_duplicate": _show_toast("重複裝備：%s" % String(event.name), "轉換為 %d 金幣" % int(event.gold))
@@ -1882,7 +1884,6 @@ func _retry_failed_stage() -> void:
 	_update_hud(model.snapshot())
 
 func _spend_training(track: String) -> void:
-	var first_training := _total_base_training() == 0
 	var previous_levels := _effective_style_levels()
 	var events := model.spend_training(track)
 	_handle_events(events)
@@ -1894,10 +1895,6 @@ func _spend_training(track: String) -> void:
 		_show_core_tutorial(String(formed_tracks[0]))
 	elif not formed_tracks.is_empty():
 		_queue_style_formation(formed_tracks, false)
-	elif first_training and not events.is_empty():
-		_show_toast("第一步完成：%s" % String(CombatModel.TRAINING_DEFS[track].name), "有效 Lv.10 將解鎖流派核心；裝備加成也會計入")
-	elif not events.is_empty() and not events.any(func(event: Dictionary) -> bool: return event.type == "unlock"):
-		_show_toast("%s提升" % String(CombatModel.TRAINING_DEFS[track].name), "現在是 Lv.%d" % int(model.training[track]))
 	if not events.is_empty():
 		_save_game()
 

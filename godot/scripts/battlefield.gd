@@ -1559,17 +1559,15 @@ func _draw_pixel_hero(feet_position: Vector2) -> void:
 	elif _hero_slash_motion > 0.0:
 		var progress := 1.0 - _hero_slash_motion
 		texture = PIXEL_HERO_ATTACK_FRAMES[mini(3, floori(progress * 4.0))]
-		offset.x += sin(progress * PI) * 10.0
 	elif _hero_block_motion > 0.0 or guard_stance_active:
 		var progress := 0.55 if guard_stance_active else 1.0 - _hero_block_motion
 		texture = PIXEL_HERO_BLOCK_FRAMES[mini(3, floori(progress * 4.0))]
 	elif _hero_dodge_motion > 0.0:
 		var progress := 1.0 - _hero_dodge_motion
 		texture = PIXEL_HERO_DODGE_FRAMES[mini(3, floori(progress * 4.0))]
-		offset.x += sin(progress * PI) * 12.0
 		tint.a = 0.78
 	if _hero_recoil > 0.0 and not _hero_defeated:
-		offset.x -= sin(_hero_recoil * PI) * 4.0
+		offset.x -= sin(_hero_recoil * PI) * 2.0
 	if _hero_flash > 0.0 and not _hero_defeated:
 		tint = Color(1.35, 1.35, 1.35, tint.a)
 
@@ -1683,6 +1681,24 @@ func _draw_enemy_role_badge(feet_position: Vector2, alpha: float) -> void:
 		var danger_alpha := (0.7 + sin(_time * 4.0) * 0.2) * alpha
 		draw_arc(badge_center, 18.0, -2.7, -0.45, 14, Color("ffb05f", danger_alpha), 3.0)
 
+func enemy_health_bar_rect(feet_position: Vector2, enemy_height: float, archetype_scale: float) -> Rect2:
+	var bar_width := 96.0 if enemy_is_boss else 74.0
+	var sprite_top := feet_position.y - enemy_height * archetype_scale * PIXEL_WOLF_FEET_RATIO
+	var bar_y := maxf(stage_top + 5.0, sprite_top - 13.0)
+	return Rect2(feet_position.x - bar_width * 0.5, bar_y, bar_width, 9.0)
+
+func _draw_enemy_health_bar(feet_position: Vector2, enemy_height: float, archetype_scale: float, alpha: float) -> void:
+	if _enemy_death_motion > 0.0:
+		return
+	var bar_rect := enemy_health_bar_rect(feet_position, enemy_height, archetype_scale)
+	var border_color := Color("edc56c", 0.94 * alpha) if enemy_is_boss else Color("e8e1d2", 0.82 * alpha)
+	draw_rect(bar_rect, Color("172126", 0.86 * alpha), true)
+	var fill_rect := bar_rect.grow(-2.0)
+	fill_rect.size.x *= enemy_hp_ratio
+	if fill_rect.size.x > 0.0:
+		draw_rect(fill_rect, Color("bd443b", 0.96 * alpha), true)
+	draw_rect(bar_rect, border_color, false, 1.5)
+
 func _draw_pixel_enemy(feet_position: Vector2) -> void:
 	var combat_frames := _pixel_enemy_combat_frames()
 	var uses_custom_enemy := not combat_frames.is_empty()
@@ -1768,7 +1784,7 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 	if exploration_enabled:
 		action_scale.x *= _enemy_facing
 	_draw_anchored_animation_frame(texture, feet_position + offset, enemy_height * archetype_scale, PIXEL_WOLF_FEET_RATIO, 0.0, action_scale, tint)
-	_draw_enemy_role_badge(feet_position, entry_alpha)
+	_draw_enemy_health_bar(feet_position, enemy_height, archetype_scale, entry_alpha)
 	if enemy_heavy_windup and _enemy_death_motion <= 0.0:
 		var intent_center := feet_position + Vector2(0.0, -91.0 if exploration_enabled else -128.0)
 		var intent_color := Color("ef684f") if enemy_attack_type == "重擊" else Color("d594ef")

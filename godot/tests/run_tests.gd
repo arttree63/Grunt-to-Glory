@@ -487,6 +487,10 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(battlefield.impact_tier_for_source("mountain_break") == "heavy", "斷嶽必須使用重型命中回饋")
 	battlefield.play_events([{"type": "block"}, {"type": "dodge"}])
 	_expect(battlefield._hero_block_motion == 1.0 and battlefield._hero_dodge_motion == 1.0, "格擋與閃躲事件必須啟動對應逐格動作")
+	var normal_health_bar: Rect2 = battlefield.enemy_health_bar_rect(Vector2(240.0, 420.0), 164.0, 1.0)
+	battlefield.enemy_is_boss = true
+	var boss_health_bar: Rect2 = battlefield.enemy_health_bar_rect(Vector2(240.0, 420.0), 176.0, 1.15)
+	_expect(boss_health_bar.size.x > normal_health_bar.size.x and normal_health_bar.size.y == 9.0, "敵人頭頂必須使用精簡血條，Boss 僅以較寬血條區分")
 	battlefield.play_events([{"type": "style_formed", "track": "martial"}])
 	_expect(battlefield._style_formed_burst == 1.0 and battlefield._style_formed_color == Color("e07845"), "流派成形事件必須啟動對應色彩的低位移視覺回饋")
 	battlefield.play_events([{"type": "swift_cut", "milestone_track": "agility", "milestone_level": 100, "milestone_mode": "flow"}])
@@ -1503,6 +1507,7 @@ func _test_navigation() -> void:
 	for button: Button in scene.auto_slot_buttons:
 		if button.visible: visible_auto_slots += 1
 	_expect(visible_auto_slots == 5, "手機戰鬥 HUD 必須呈現完整五格技能優先序")
+	_expect(not scene.enemy_label.visible and not scene.enemy_bar.visible, "敵人說明與大型血條不可再佔據頂部戰鬥空間")
 	_expect(not scene.mp_hud.visible and not scene.momentum_hud.visible and not scene.state_panel.visible, "未投入的流派資源不可預先出現在戰鬥 HUD")
 	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text == "第一步：修練", "新遊戲必須把既有修練入口轉成第一個可操作目標")
 	var ui_font: Font = load("res://assets/fonts/NotoSansTC-Regular.otf")
@@ -1515,8 +1520,10 @@ func _test_navigation() -> void:
 	_expect(bool((scene.training_rows.martial.button as Button).get_meta("tutorial_pulsing", false)), "專注教學必須讓目前可操作的＋按鈕短暫亮起")
 	scene._close_training()
 	scene.model.tutorial_step = "complete"
+	scene.toast_panel.visible = false
+	scene.toast_title.text = ""
 	scene._spend_training("martial")
-	_expect(scene.training_alert_button.text.begins_with("可用修練") and "第一步完成" in scene.toast_title.text and scene.toast_panel.z_index > scene.training_overlay.z_index, "投入第一點修練後必須在修練頁上方說明下一個流派門檻")
+	_expect(scene.training_alert_button.text.begins_with("可用修練") and not scene.toast_panel.visible and scene.toast_title.text.is_empty(), "普通修練升級只更新修練數字，不可反覆跳出提示")
 	scene.model.training.martial = 9
 	scene.model.training_points = 1
 	scene._spend_training("martial")
