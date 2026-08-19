@@ -96,7 +96,7 @@ func _test_auto_attack_and_momentum() -> void:
 	model.momentum = CombatModelScript.MAX_MOMENTUM
 	model.auto_attack_remaining = 0.0
 	var momentum_events: Array[Dictionary] = model.step(0.01)
-	_expect(momentum_events.any(func(event: Dictionary) -> bool: return event.type == "momentum_slash"), "武藝 Lv.10 滿勢後，下一次普攻必須自動轉化為勢斬")
+	_expect(momentum_events.any(func(event: Dictionary) -> bool: return event.type == "momentum_slash" and String(event.name) == "蓄勢・一閃"), "武藝 Lv.10 滿勢後，下一次普攻必須自動轉化為蓄勢一閃")
 	_expect(model.momentum < CombatModelScript.MAX_MOMENTUM, "勢斬發動後必須消耗勢，完成 Lv.10 核心循環")
 	model.training.agility = 200
 	model.youren = CombatModelScript.MAX_YOUREN
@@ -1092,8 +1092,8 @@ func _test_shadow_assault_and_opening() -> void:
 	swift.enemy_armor = 0.0
 	swift._events.clear()
 	swift._cast_skill("swift_cut")
-	_expect(swift._events.any(func(event: Dictionary) -> bool: return event.type == "swift_cut" and int(event.hits) == 2), "敏捷 Lv.10 疾斬必須造成兩段高速斬擊")
-	_expect(is_equal_approx(float(swift.skill_cooldowns.swift_cut), 3.2), "疾斬必須使用 3.2 秒冷卻")
+	_expect(swift._events.any(func(event: Dictionary) -> bool: return event.type == "swift_cut" and int(event.hits) == 2 and String(event.name) == "雙燕疾斬"), "敏捷 Lv.10 雙燕疾斬必須造成兩段高速斬擊")
+	_expect(is_equal_approx(float(swift.skill_cooldowns.swift_cut), 2.8), "雙燕疾斬必須使用 2.8 秒冷卻")
 
 func _test_agility_branches() -> void:
 	var traceless = CombatModelScript.new()
@@ -1323,6 +1323,7 @@ func _test_navigation() -> void:
 	await process_frame
 	var martial_level_text := (scene.training_rows.martial.level as Label).text
 	_expect("Base 10" in martial_level_text and "裝備 +5" in martial_level_text and "有效 15" in martial_level_text, "修練加點介面必須同時顯示 Base、裝備加成與有效等級")
+	_expect("斷首・追命" in (scene.training_rows.martial.hint as Label).text, "修練介面必須直接顯示下一個重大劍技幻想")
 	scene._close_training()
 	scene._switch_page("character")
 	await process_frame
@@ -1342,6 +1343,7 @@ func _test_navigation() -> void:
 	scene._select_skill_tab("martial")
 	await process_frame
 	_expect(scene.current_skill_tab == "martial", "已完成流派必須能獨立切換成長路線")
+	_expect(scene.section_box.get_node_or_null("Signature_martial_10") != null and scene.section_box.get_node_or_null("Signature_martial_200") != null, "技能頁必須以 Lv.10～200 重大節點呈現流派劍技樹")
 	scene._switch_page("equipment")
 	await process_frame
 	_expect(scene.section_box.get_node_or_null("EquipmentDetail") != null, "裝備頁必須以欄位、選中詳情與背包呈現")

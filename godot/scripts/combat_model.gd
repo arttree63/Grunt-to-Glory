@@ -203,9 +203,9 @@ const SKILL_DEFS := {
 		"condition": "連續攻擊與閃避累積游刃；滿層每 2 次普攻追加追斬", "tags": ["DODGE", "STACK", "FOLLOW_UP"], "implemented": true,
 	},
 	"swift_cut": {
-		"name": "疾斬", "short": "疾斬", "type": "active", "track": "agility", "level": 10,
-		"cooldown": 3.2, "resource": "none", "cost": 0.0,
-		"condition": "敵人在攻擊範圍內；快速連斬兩次", "damage_multiplier": 0.8,
+		"name": "雙燕疾斬", "short": "疾斬", "type": "active", "track": "agility", "level": 10,
+		"cooldown": 2.8, "resource": "none", "cost": 0.0,
+		"condition": "敵人在攻擊範圍內；兩段斬擊各自判定暴擊", "damage_multiplier": 0.95,
 		"tags": ["MELEE", "FOLLOW_UP"], "implemented": true,
 	},
 	"shadow_assault": {
@@ -388,7 +388,7 @@ const COMMAND_BRANCHES := {
 	"orders": {"name": "號令", "description": "降低軍勢消耗並提高軍團技能頻率"},
 }
 const MARTIAL_MILESTONES := {
-	5: {"name": "鋒刃磨練", "description": "攻擊與破甲提高"}, 10: {"name": "勢", "description": "累積滿勢後，下一次普攻自動發動勢斬"},
+	5: {"name": "鋒刃磨練", "description": "攻擊與破甲提高"}, 10: {"name": "蓄勢・一閃", "description": "滿勢時，下一次普攻化為強力一閃並穿透護甲"},
 	15: {"name": "蓄勢精進", "description": "勢的累積速度提高"}, 20: {"name": "斬殺", "description": "低血敵人受到更多一刀傷害"},
 	25: {"name": "回勢", "description": "擊殺返還額外勢"}, 30: {"name": "斷首", "description": "解鎖低血斬殺技能"},
 	35: {"name": "斷首續勢", "description": "斷首擊殺後加快下一輪蓄勢"}, 40: {"name": "裂甲蓄勢", "description": "高勢斬擊獲得額外破甲"},
@@ -432,7 +432,7 @@ const PHYSIQUE_MILESTONES := {
 	195: {"name": "明王深化", "description": "不動明王時間與反擊提高"}, 200: {"name": "不動返天", "description": "解鎖純體術終極奧義"},
 }
 const AGILITY_MILESTONES := {
-	5: {"name": "行動效率", "description": "攻速、暴擊與閃避提高"}, 10: {"name": "疾斬", "description": "解鎖兩段高速斬擊"},
+	5: {"name": "行動效率", "description": "攻速、暴擊與閃避提高"}, 10: {"name": "雙燕疾斬", "description": "解鎖兩段各自判定暴擊的高速斬擊"},
 	15: {"name": "迅擊磨練", "description": "疾斬傷害小幅提高"}, 20: {"name": "游刃", "description": "順暢攻防累積游刃；滿層普攻追加追斬"},
 	25: {"name": "節奏維持", "description": "擊殺與閃避更容易維持游刃"}, 30: {"name": "影襲", "description": "閃避後追加高速攻擊"},
 	35: {"name": "影襲強化", "description": "影襲傷害提高"}, 40: {"name": "游刃有餘", "description": "滿層時提高攻速、暴擊與疾斬"},
@@ -1507,7 +1507,7 @@ func _cast_swift_cut() -> void:
 			critical_hits += 1
 		total_damage += hit_damage
 	skill_cooldowns["swift_cut"] = float(definition.cooldown)
-	_events.append({"type": "swift_cut", "skill_id": "swift_cut", "name": "疾斬", "damage": total_damage, "hits": 2, "critical_hits": critical_hits})
+	_events.append({"type": "swift_cut", "skill_id": "swift_cut", "name": String(definition.name), "damage": total_damage, "hits": 2, "critical_hits": critical_hits})
 	var defeated := _deal_damage(total_damage, "swift_cut", 0.05)
 	if not defeated and skill_is_unlocked("flowing_ease"):
 		_add_youren(1, "swift_cut")
@@ -1881,7 +1881,7 @@ func _basic_attack(manual: bool) -> void:
 	var damage := _attack_power()
 	var momentum_slash := effective_style_level("martial") >= 10 and momentum >= MAX_MOMENTUM
 	if momentum_slash:
-		damage *= 2.2
+		damage *= 2.8
 		momentum = 0.0
 		_momentum_was_full = false
 	var critical := int(training.agility) > 0 and rng.randf() < _critical_chance()
@@ -1896,9 +1896,9 @@ func _basic_attack(manual: bool) -> void:
 			damage *= 1.0 + minf(cap, unharmed_duration) * 0.02
 	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill, "manual": manual, "youren": youren})
 	if momentum_slash:
-		_events.append({"type": "momentum_slash", "name": "勢斬", "damage": damage, "critical": critical})
+		_events.append({"type": "momentum_slash", "name": "蓄勢・一閃", "damage": damage, "critical": critical})
 	var attack_source := "momentum_slash" if momentum_slash else ("critical_attack" if critical else ("flow_attack_full" if youren >= MAX_YOUREN else ("flow_attack" if youren >= 3 else "attack")))
-	var defeated := _deal_damage(damage, attack_source)
+	var defeated := _deal_damage(damage, attack_source, 0.15 if momentum_slash else 0.0)
 	_add_momentum(6.0, "attack")
 	_add_military_momentum(6.0 if int(training.command) >= 15 else 4.0, "attack")
 	_record_flow_attack()

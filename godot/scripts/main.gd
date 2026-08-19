@@ -6,16 +6,60 @@ const SAVE_FILE_NAME := "grunt_to_glory_save_v1.json"
 const AUTO_SAVE_INTERVAL := 10.0
 const PAGE_NAMES := {"combat": "戰鬥", "character": "角色", "skills": "技能", "equipment": "裝備", "shop": "商店"}
 const CORE_UNLOCK_NAMES := {
-	"martial": "勢", "physique": "不動", "agility": "疾斬",
+	"martial": "蓄勢・一閃", "physique": "不動", "agility": "雙燕疾斬",
 	"magic": "魔劍・魔紋", "faith": "聖劍・聖印", "command": "軍勢",
 }
 const CORE_UNLOCK_DESCRIPTIONS := {
-	"martial": "普攻與時間會累積勢；滿勢時下一次普攻自動發動勢斬",
+	"martial": "普攻與時間會累積勢；滿勢時下一次普攻化為 280% 一閃並穿透 15% 護甲",
 	"physique": "守勢提高格擋率，成功格擋會累積不動",
-	"agility": "兩段高速斬擊已解鎖，並自動加入 AUTO",
+	"agility": "兩段各自判定暴擊的高速斬擊已解鎖，並自動加入 AUTO",
 	"magic": "普通攻擊開始附魔，並逐步累積魔紋",
 	"faith": "攻擊開始附加聖傷，並逐步累積聖印",
 	"command": "王國步兵正式入隊，主角與友軍會累積軍勢",
+}
+const SIGNATURE_TREE := {
+	"martial": [
+		{"level": 10, "name": "蓄勢・一閃", "description": "勢滿後，普攻化為 280% ATK 的集中一閃，並穿透 15% 護甲。"},
+		{"level": 30, "name": "斷首・追命", "description": "鎖定瀕死敵人，以 600% ATK 斬擊完成收割。"},
+		{"level": 50, "name": "拔刀・無拍", "description": "進入爆發架勢，加速蓄勢並強化第一刀。"},
+		{"level": 100, "name": "一刀極意・斷界", "description": "滿勢斬擊開始造成破防與失衡，Boss 也必須接下這一刀。"},
+		{"level": 200, "name": "奧義・一刀兩斷", "description": "消耗滿勢揮出 1200% ATK 終極斬擊。"},
+	],
+	"physique": [
+		{"level": 10, "name": "守勢・鐵門", "description": "進入守勢提高格擋率，成功格擋開始累積不動。"},
+		{"level": 30, "name": "返刃・逆流", "description": "敵人出手時架起防禦，擋下攻擊後立刻返斬。"},
+		{"level": 50, "name": "崩勢反擊", "description": "將不動、防禦與借來的力量一次打回敵人身上。"},
+		{"level": 100, "name": "返刃極意・山崩", "description": "完美格擋串聯不動、借力、失衡與返刃。"},
+		{"level": 200, "name": "奧義・不動返天", "description": "正面接下致命重擊，再把敵人的力量完整反還。"},
+	],
+	"agility": [
+		{"level": 10, "name": "雙燕疾斬", "description": "快速斬擊兩次，每一刀都能獨立暴擊。"},
+		{"level": 30, "name": "影襲・折返", "description": "閃避後立刻從死角追擊，將敵人的揮空變成破綻。"},
+		{"level": 50, "name": "瞬步・留影", "description": "面對危險攻擊留下殘影，保證閃開下一次可閃攻擊。"},
+		{"level": 100, "name": "流轉・千葉", "description": "追擊反過來維持游刃，快劍循環開始自行運轉。"},
+		{"level": 200, "name": "奧義・無影極境", "description": "一次閃避展開影襲、飛燕、燕返與疾斬連攜。"},
+	],
+	"magic": [
+		{"level": 10, "name": "魔劍・刻紋", "description": "劍刃附魔並留下魔紋，普通斬擊正式成為施法媒介。"},
+		{"level": 30, "name": "炎爆斬・焚城", "description": "消耗魔紋與燃燒，將累積的火焰一次引爆。"},
+		{"level": 50, "name": "魔劍解放", "description": "短時間加速魔紋、燃燒與魔劍傷害循環。"},
+		{"level": 100, "name": "魔劍共鳴", "description": "兩種元素彼此反應，爆發後返還資源並強化下一輪。"},
+		{"level": 200, "name": "奧義・魔劍完全解放", "description": "劍、魔力與元素完全融合，連續引發元素共鳴。"},
+	],
+	"faith": [
+		{"level": 10, "name": "聖劍・初誓", "description": "攻擊附帶聖傷並凝聚聖印，劍與誓言開始合一。"},
+		{"level": 30, "name": "聖光斬・恩典", "description": "斬擊敵人的同時回復生命，聖印會進一步化為護盾。"},
+		{"level": 50, "name": "聖劍解放", "description": "加速聖印生成，讓攻擊、治療與護盾同時運轉。"},
+		{"level": 100, "name": "聖劍極意・光環", "description": "聖印同時強化制裁、恩典與守護。"},
+		{"level": 200, "name": "奧義・聖劍降臨", "description": "每一次斬擊都化為聖光，每一次治療都溢出為護盾。"},
+	],
+	"command": [
+		{"level": 10, "name": "第一名戰友", "description": "王國步兵永久入隊；你的旅途第一次不再是單人作戰。"},
+		{"level": 30, "name": "先鋒斬・同袍", "description": "主角先出劍，前排友軍立刻響應追擊。"},
+		{"level": 50, "name": "軍團號令", "description": "消耗軍勢，命令所有存活友軍同時發動特殊攻擊。"},
+		{"level": 100, "name": "軍團劍陣", "description": "主角、先鋒與後排形成連續響應的軍團劍術。"},
+		{"level": 200, "name": "奧義・萬軍一劍", "description": "主角揮出一劍，所有存活友軍以自己的方式響應。"},
+	],
 }
 const UI_FONT := preload("res://assets/fonts/NotoSansTC-Regular.otf")
 const CREST_ICON := preload("res://assets/ui/hud_v2/crest.png")
@@ -949,7 +993,8 @@ func _render_skills_page(snapshot: Dictionary) -> void:
 	section_box.add_child(_label("%s｜%s" % [skill_level_text, String(definition.special)], 14, Color("cbd5cc")))
 	if current_skill_tab == "command":
 		_render_command_allies(snapshot)
-	_render_track_skills(current_skill_tab, "核心技能", slots)
+	_render_signature_tree(current_skill_tab, snapshot)
+	_render_track_skills(current_skill_tab, "可編成招式與被動", slots)
 	if current_skill_tab != "magic":
 		_render_branch_choices(current_skill_tab, snapshot)
 		_render_track_milestones(current_skill_tab, snapshot)
@@ -1051,6 +1096,44 @@ func _render_command_allies(snapshot: Dictionary) -> void:
 		var status := "已入隊 · 會自動參戰" if joined else "Lv.%d 入隊" % unlock_level
 		var marker := "●" if joined else "○"
 		section_box.add_child(_section_row("%s %s" % [marker, String(ally.name)], "%s｜%s" % [status, String(ally.role)]))
+
+func _render_signature_tree(track: String, snapshot: Dictionary) -> void:
+	section_box.add_child(_label("流派劍技樹", 19, _track_color(track).lightened(0.35)))
+	var explanation := _label("修練點提高主幹等級，重大劍技會自動解鎖；主動技仍由 AUTO 欄決定是否編成。", 13, Color("cbd5cc"))
+	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	section_box.add_child(explanation)
+	var base_level := int(snapshot.base_style_levels[track])
+	var effective_level := int(snapshot.effective_style_levels[track])
+	var next_found := false
+	for node: Dictionary in SIGNATURE_TREE[track]:
+		var target := int(node.level)
+		var unlocked := effective_level >= target
+		var is_next := not unlocked and not next_found
+		if is_next:
+			next_found = true
+		var state := "未解鎖"
+		if unlocked:
+			state = "裝備支撐" if base_level < target else "已掌握"
+		elif is_next:
+			state = "下一個目標"
+		var card := PanelContainer.new()
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.name = "Signature_%s_%d" % [track, target]
+		var fill := _track_color(track).darkened(0.42) if unlocked else (Color("493b27") if is_next else Color("232a26"))
+		var border := _track_color(track).lightened(0.35) if unlocked else (Color("e5bd65") if is_next else Color("59645d"))
+		card.add_theme_stylebox_override("panel", _panel_style(fill, border, 2 if unlocked or is_next else 1))
+		var content := VBoxContainer.new()
+		content.add_theme_constant_override("separation", 3)
+		card.add_child(content)
+		content.add_child(_label("Lv.%d｜%s" % [target, String(node.name)], 15, Color("fff0c7") if is_next else Color("f4eee0")))
+		var detail := _label("%s｜%s" % [state, String(node.description)], 12, Color("e6c676") if is_next else Color("aebfb4"))
+		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		content.add_child(detail)
+		section_box.add_child(card)
+		if target < 200:
+			var connector := _label("↓", 14, border)
+			connector.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			section_box.add_child(connector)
 
 func _render_track_skills(track: String, heading: String, slots: Array) -> void:
 	var heading_color := _track_color(track).lightened(0.35)
@@ -1179,7 +1262,7 @@ func _render_track_milestones(track: String, snapshot: Dictionary) -> void:
 	var level := int(snapshot.effective_style_levels[track])
 	var style_name := String(CombatModel.TRAINING_DEFS[track].style)
 	var color := _track_color(track).lightened(0.35)
-	section_box.add_child(_label("%s成長路線" % style_name, 18, color))
+	section_box.add_child(_label("詳細修練節點｜%s" % style_name, 18, color))
 	for target: int in table:
 		if target in [5, 55, 105, 155]:
 			section_box.add_child(_label(_route_stage_name(target), 15, Color("d6c5a2")))
@@ -1595,6 +1678,7 @@ func _build_training_overlay() -> void:
 		var definition: Dictionary = CombatModel.TRAINING_DEFS[track]
 		text_box.add_child(_label("%s｜%s" % [String(definition.name), String(definition.style)], 16, Color("f4eee0")))
 		var hint_label := _label("", 12, Color("aebfb4"))
+		hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		text_box.add_child(hint_label)
 		var level_label := _label("Base 0\n裝備 +0\n有效 0", 12, Color("f6d27d"))
 		level_label.custom_minimum_size.x = 72
@@ -1637,7 +1721,7 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"equipment_drop": _show_toast("獲得裝備：%s" % String(event.name), "%s｜前往裝備頁查看" % String(CombatModel.EQUIPMENT_QUALITY_NAMES[String(event.quality)]))
 			"equipment_duplicate": _show_toast("重複裝備：%s" % String(event.name), "轉換為 %d 金幣" % int(event.gold))
 			"momentum_full": _show_toast("勢已滿", "下一次普通攻擊將自動發動勢斬")
-			"momentum_slash": _show_toast("勢斬", "滿勢已轉化為一次強力斬擊")
+			"momentum_slash": _show_toast("蓄勢・一閃", "滿勢化為 280% 一閃，並穿透 15% 護甲")
 			"branch_unlocked": _show_toast("解鎖：%s" % String(event.name), String(event.description))
 			"ally_joined": _show_toast("友軍入隊：%s" % String(event.name), String(event.description))
 			"armor_broken": _show_toast("破甲一閃", "敵方護甲降低 %d" % roundi(float(event.amount)))
@@ -2033,12 +2117,18 @@ func _update_training_rows(snapshot: Dictionary) -> void:
 		var equipment_bonus := int(snapshot.equipment_style_bonuses[track])
 		var effective_level := int(snapshot.effective_style_levels[track])
 		(widgets.level as Label).text = "Base %d\n裝備 +%d\n有效 %d" % [level, equipment_bonus, effective_level]
-		(widgets.hint as Label).text = model.training_hint(track)
+		(widgets.hint as Label).text = _training_tree_hint(track, effective_level)
 		var add_button := widgets.button as Button
 		add_button.text = "+" if bool(definition.implemented) else "鎖"
 		add_button.disabled = not bool(definition.implemented) or int(snapshot.training_points) <= 0 or level >= CombatModel.MAX_TRAINING_LEVEL
 		var tutorial_choice := model.tutorial_step == "spend" and not add_button.disabled
 		add_button.add_theme_stylebox_override("normal", _panel_style(Color("926520") if tutorial_choice else Color("71552f"), Color("ffe39a") if tutorial_choice else Color("c8aa70"), 4 if tutorial_choice else 2))
+
+func _training_tree_hint(track: String, effective_level: int) -> String:
+	for node: Dictionary in SIGNATURE_TREE[track]:
+		if effective_level < int(node.level):
+			return "下一劍技 Lv.%d｜%s\n%s" % [int(node.level), String(node.name), String(node.description)]
+	return "劍途已完成｜終極奧義已掌握"
 
 func _refresh_navigation() -> void:
 	for page: String in PAGE_NAMES:
