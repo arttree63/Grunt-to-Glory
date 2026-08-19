@@ -283,6 +283,18 @@ func _test_auto_roaming() -> void:
 	_expect(framed_enemy_screen.x >= 96.0 and framed_enemy_screen.x <= battlefield.size.x - 96.0, "接敵鏡頭必須保留敵人完整橫向輪廓")
 	var edge_enemy := battlefield._enemy_presentation_position(Vector2(-120.0, battlefield.stage_top - 80.0))
 	_expect(edge_enemy.x == 86.0 and edge_enemy.y == battlefield.stage_top + 164.0, "接戰敵人越過安全區時必須停在畫面邊緣，不可突然消失")
+	battlefield._enemy_death_motion = 0.0
+	battlefield._enemy_map_position = Vector2(120.0, 300.0)
+	battlefield._hero_map_position = Vector2(260.0, 300.0)
+	battlefield._update_enemy_facing()
+	_expect(battlefield._enemy_facing == -1.0, "主角移到敵人右側時，敵人 Sprite 必須轉向主角")
+	battlefield._enemy_death_motion = 1.0
+	battlefield._hero_map_position = Vector2(60.0, 300.0)
+	battlefield._update_enemy_facing()
+	_expect(battlefield._enemy_facing == -1.0, "敵人死亡期間必須鎖定最後朝向，不可讓屍體突然翻面")
+	battlefield._enemy_death_motion = 0.0
+	battlefield._update_enemy_facing()
+	_expect(battlefield._enemy_facing == 1.0, "敵人存活且主角穿越左側後必須重新轉向")
 	var first_target: Vector2 = battlefield._enemy_map_position
 	var banner: Dictionary = battlefield._landmarks()[1]
 	battlefield._enemy_map_position = Vector2(banner.position)

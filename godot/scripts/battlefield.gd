@@ -352,6 +352,7 @@ var _landmark_acquire_fx := 0.0
 var _landmark_acquire_name := ""
 var _landmark_acquire_effect := ""
 var _hero_facing := 1.0
+var _enemy_facing := 1.0
 var _navigation_paused := false
 var _camera_top_left := Vector2.ZERO
 var _pointer_down := false
@@ -744,6 +745,7 @@ func _update_exploration(delta: float) -> void:
 		_update_landmark_discovery_hint()
 	elif _exploration_phase == "engaged":
 		_update_enemy_chase(delta)
+	_update_enemy_facing()
 	_update_exploration_camera(delta)
 	queue_redraw()
 
@@ -790,6 +792,19 @@ func _update_enemy_chase(delta: float) -> void:
 			_enemy_camps[_active_enemy_camp_index] = _enemy_map_position
 	if not _steering_active:
 		_hero_facing = 1.0 if _enemy_map_position.x >= _hero_map_position.x else -1.0
+
+func _update_enemy_facing() -> void:
+	if not exploration_enabled or _enemy_death_motion > 0.0 or _hero_map_position == Vector2.ZERO or _enemy_map_position == Vector2.ZERO:
+		return
+	var horizontal_distance := _hero_map_position.x - _enemy_map_position.x
+	if absf(horizontal_distance) <= 3.0:
+		return
+	_enemy_facing = -1.0 if horizontal_distance > 0.0 else 1.0
+
+func _enemy_facing_for_world_position(world_position: Vector2) -> float:
+	if _hero_map_position == Vector2.ZERO or absf(_hero_map_position.x - world_position.x) <= 3.0:
+		return 1.0
+	return -1.0 if _hero_map_position.x > world_position.x else 1.0
 
 func _play_landmark_acquired(landmark_name: String, effect: String) -> void:
 	_landmark_acquire_fx = 1.0
@@ -1426,7 +1441,7 @@ func _draw_enemy_group_reserves(enemy_position: Vector2) -> void:
 		var reserve_position := enemy_position + Vector2(horizontal_direction * (34.0 + float(index) * 24.0), -34.0 + side * 22.0)
 		reserve_position.x = clampf(reserve_position.x, 46.0, size.x - 46.0)
 		_draw_ground_shadow(reserve_position + Vector2(0.0, 2.0), Vector2(31.0, 7.0))
-		_draw_anchored_animation_frame(texture, reserve_position, 108.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2.ONE, Color(0.72, 0.78, 0.8, 0.62))
+		_draw_anchored_animation_frame(texture, reserve_position, 108.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2(_enemy_facing, 1.0), Color(0.72, 0.78, 0.8, 0.62))
 
 func _draw_roaming_enemy_camps() -> void:
 	if _exploration_phase != "traveling":
@@ -1441,7 +1456,7 @@ func _draw_roaming_enemy_camps() -> void:
 			or screen_position.y < stage_top + 120.0 or screen_position.y > visible_bottom + 12.0:
 			continue
 		_draw_ground_shadow(screen_position + Vector2(0.0, 2.0), Vector2(28.0, 7.0))
-		_draw_anchored_animation_frame(texture, screen_position, 96.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2.ONE, Color(0.72, 0.76, 0.76, 0.78))
+		_draw_anchored_animation_frame(texture, screen_position, 96.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2(_enemy_facing_for_world_position(_enemy_camps[index]), 1.0), Color(0.72, 0.76, 0.76, 0.78))
 		draw_arc(screen_position + Vector2(0.0, 4.0), 24.0, 0.0, TAU, 22, Color("b74f45", 0.55), 2.5)
 
 func _draw_active_enemy_indicator() -> void:
@@ -1455,7 +1470,7 @@ func _draw_active_enemy_indicator() -> void:
 	if direction.length_squared() < 0.01:
 		direction = Vector2.UP
 	_draw_ground_shadow(marker_position + Vector2(0.0, 3.0), Vector2(23.0, 6.0))
-	_draw_anchored_animation_frame(_pixel_enemy_preview_texture(), marker_position, 72.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2.ONE, Color(0.86, 0.82, 0.72, 0.9))
+	_draw_anchored_animation_frame(_pixel_enemy_preview_texture(), marker_position, 72.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2(_enemy_facing_for_world_position(_enemy_camps[_active_enemy_camp_index]), 1.0), Color(0.86, 0.82, 0.72, 0.9))
 	draw_arc(marker_position + Vector2(0.0, 4.0), 25.0, 0.0, TAU, 22, Color("f0c765", 0.86), 3.0)
 	var arrow_center := marker_position + direction * 35.0
 	var side := direction.orthogonal() * 6.0
@@ -1731,13 +1746,13 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 			var angle := _time * 0.4 + float(index) * TAU / 4.0
 			draw_circle(rune_center + Vector2.from_angle(angle) * 42.0, 3.0, Color("e5b1ff", 0.62))
 	elif enemy_archetype == "shield" and enemy_guard_stacks > 0 and _enemy_death_motion <= 0.0:
-		var guard_center := feet_position + Vector2(-43.0, -58.0)
+		var guard_center := feet_position + Vector2(-43.0 * _enemy_facing, -58.0)
 		draw_arc(guard_center, 34.0, -PI * 0.72, PI * 0.72, 20, Color("8dd5ed", 0.72), 5.0)
 		for index in enemy_guard_stacks:
 			draw_rect(Rect2(guard_center + Vector2(-14.0 + float(index) * 11.0, -43.0), Vector2(7.0, 7.0)), Color("c9f4ff", 0.9))
 	if _enemy_guard_flash > 0.0:
 		var guard_alpha := sin((1.0 - _enemy_guard_flash) * PI)
-		draw_arc(feet_position + Vector2(-38.0, -60.0), 40.0, -PI * 0.75, PI * 0.75, 24, Color("d8f7ff", guard_alpha), 8.0)
+		draw_arc(feet_position + Vector2(-38.0 * _enemy_facing, -60.0), 40.0, -PI * 0.75, PI * 0.75, 24, Color("d8f7ff", guard_alpha), 8.0)
 
 	if enemy_is_boss and _enemy_death_motion <= 0.0:
 		var aura_center := feet_position + Vector2(0.0, -64.0)
@@ -1750,6 +1765,8 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 	_draw_ground_shadow(feet_position + Vector2(0.0, 3.0), Vector2((61.0 if enemy_is_boss else 55.0) * archetype_scale, (11.0 if enemy_is_boss else 10.0) * archetype_scale))
 	tint.a *= entry_alpha
 	var enemy_height := (176.0 if enemy_is_boss else 164.0) if exploration_enabled else (252.0 if enemy_is_boss else 238.0)
+	if exploration_enabled:
+		action_scale.x *= _enemy_facing
 	_draw_anchored_animation_frame(texture, feet_position + offset, enemy_height * archetype_scale, PIXEL_WOLF_FEET_RATIO, 0.0, action_scale, tint)
 	_draw_enemy_role_badge(feet_position, entry_alpha)
 	if enemy_heavy_windup and _enemy_death_motion <= 0.0:
