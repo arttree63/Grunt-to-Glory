@@ -286,6 +286,10 @@ var _ally_action := 0.0
 var _momentum_pulse := 0.0
 var _style_formed_burst := 0.0
 var _style_formed_color := Color("f0c365")
+var _milestone_fx := 0.0
+var _milestone_mode := "impact"
+var _milestone_level := 10
+var _milestone_color := Color("e07845")
 var _enemy_flash := 0.0
 var _hero_flash := 0.0
 var _visual_freeze_remaining := 0.0
@@ -391,6 +395,7 @@ func _process(delta: float) -> void:
 	_ally_action = maxf(0.0, _ally_action - delta / 0.48)
 	_momentum_pulse = maxf(0.0, _momentum_pulse - delta * 1.8)
 	_style_formed_burst = maxf(0.0, _style_formed_burst - delta / 0.95)
+	_milestone_fx = maxf(0.0, _milestone_fx - delta / (0.45 if _milestone_mode == "impact" else 0.7))
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
 	_hero_flash = maxf(0.0, _hero_flash - delta * 7.0)
 	_enemy_knockback = maxf(0.0, _enemy_knockback - delta * 5.8)
@@ -453,6 +458,8 @@ func set_stage_bounds(top: float, bottom: float) -> void:
 
 func play_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
+		if event.has("milestone_track"):
+			_play_milestone_choice_fx(event)
 		match String(event.type):
 			"wave_started":
 				_enemy_death_motion = 0.0
@@ -709,6 +716,18 @@ func play_events(events: Array[Dictionary]) -> void:
 				trauma = 0.0
 				_hit_stop(0.08)
 				_play_sfx("defeat")
+
+func _play_milestone_choice_fx(event: Dictionary) -> void:
+	_milestone_fx = 1.0
+	_milestone_mode = String(event.get("milestone_mode", "impact"))
+	_milestone_level = int(event.get("milestone_level", 10))
+	_milestone_color = {
+		"martial": Color("ef794f"), "physique": Color("73b5d2"), "agility": Color("66d2b1"),
+		"magic": Color("bd75e2"), "faith": Color("f0d978"), "command": Color("c85f4f"),
+	}.get(String(event.get("milestone_track", "martial")), Color("f0c365"))
+	if _milestone_mode == "impact":
+		_hit_stop(0.025 + float(_milestone_level) / 2000.0)
+		add_trauma(0.06 + float(_milestone_level) / 800.0)
 
 func defeat_sequence_active() -> bool:
 	return _defeat_rewind_motion > 0.0
@@ -1598,6 +1617,21 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 			var color: Color = [Color("ff8a45"), Color("9eeaff"), Color("d5a2ff")][index]
 			draw_arc(center, 82.0 + float(index) * 24.0 + phase * 62.0, 0.0, TAU, 40, Color(color, alpha * (1.0 - float(index) * 0.15)), 12.0)
 		draw_line(hero_pos + Vector2(-20, 18), enemy_pos + Vector2(32, -76), Color("ffffff", alpha), 24.0)
+	if _milestone_fx > 0.0:
+		var phase := 1.0 - _milestone_fx
+		var alpha := sin(clampf(phase * 1.65, 0.0, 1.0) * PI)
+		var strength := 0.75 + float(_milestone_level) / 400.0
+		if _milestone_mode == "impact":
+			var center := enemy_pos + Vector2(0, -40)
+			draw_arc(center, 34.0 + phase * 72.0 * strength, 0.0, TAU, 36, Color(_milestone_color, alpha), 5.0 + 6.0 * strength)
+			for index in 4:
+				var angle := -0.8 + float(index) * 0.52
+				draw_line(center - Vector2.from_angle(angle) * 22.0, center + Vector2.from_angle(angle) * (48.0 + phase * 36.0), Color(_milestone_color.lightened(0.45), alpha * 0.8), 3.0 + strength)
+		else:
+			var center := hero_pos.lerp(enemy_pos, 0.55) + Vector2(0, -36)
+			for index in 3:
+				var offset := Vector2(-18.0 * float(index), 9.0 * float(index - 1))
+				draw_arc(center + offset, 48.0 + float(index) * 13.0 + phase * 28.0, -2.3, 0.45, 26, Color(_milestone_color.lightened(float(index) * 0.12), alpha * (0.9 - float(index) * 0.18)), 3.0 + strength)
 	if _impact_burst > 0.0:
 		var phase := 1.0 - _impact_burst
 		var center := enemy_pos + Vector2(0, -38)

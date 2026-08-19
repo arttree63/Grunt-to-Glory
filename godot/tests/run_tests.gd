@@ -44,6 +44,7 @@ func _run_tests() -> void:
 	_test_execute_slash_condition()
 	_test_martial_branches()
 	_test_early_art_choices()
+	_test_major_milestone_choices()
 	_test_boss_spawn()
 	_test_boss_rage_phase()
 	_test_enemy_archetypes_and_route_rhythm()
@@ -82,7 +83,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 70")
+		print("Godot tests passed: 71")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -365,6 +366,8 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(battlefield._hero_block_motion == 1.0 and battlefield._hero_dodge_motion == 1.0, "格擋與閃躲事件必須啟動對應逐格動作")
 	battlefield.play_events([{"type": "style_formed", "track": "martial"}])
 	_expect(battlefield._style_formed_burst == 1.0 and battlefield._style_formed_color == Color("e07845"), "流派成形事件必須啟動對應色彩的低位移視覺回饋")
+	battlefield.play_events([{"type": "swift_cut", "milestone_track": "agility", "milestone_level": 100, "milestone_mode": "flow"}])
+	_expect(battlefield._milestone_fx == 1.0 and battlefield._milestone_color == Color("66d2b1") and battlefield._milestone_mode == "flow", "重大劍技必須啟動依流派與爆發／循環區分的通用演出")
 	battlefield.play_events([{"type": "defeat"}])
 	_expect(battlefield._hero_defeated, "主角死亡後必須停留在倒下狀態，直到真正復活")
 	_expect(battlefield.defeat_sequence_active(), "戰敗後必須啟動回到上一戰的視覺演出")
@@ -748,7 +751,7 @@ func _test_guard_stance_window() -> void:
 	model.step(0.01)
 	_expect(model.guard_stance_remaining > 3.9, "體術 Lv.10 的守勢必須自動開啟 4 秒格擋窗口")
 	_expect(is_equal_approx(float(model.skill_cooldowns.guard_stance), 10.0), "守勢冷卻必須為 10 秒")
-	_expect(is_equal_approx(model._block_chance(), 0.44), "Lv.10 守勢期間普通格擋率必須提高到 44%")
+	_expect(is_equal_approx(model._block_chance(), 0.59), "鐵門式守勢期間普通格擋率必須提高到 59%")
 	_expect(is_equal_approx(model._perfect_block_chance(), 0.09), "Lv.10 守勢期間完美格擋率必須提高到 9%")
 	model.immovable = CombatModelScript.MAX_IMMOVABLE
 	model.guard_stance_remaining = 0.0
@@ -900,6 +903,24 @@ func _test_early_art_choices() -> void:
 	var ember_events: Array = ember._events.filter(func(event: Dictionary) -> bool: return event.type == "flame_burst_slash")
 	_expect(not detonation_events.is_empty() and not ember_events.is_empty() and float(detonation_events[0].damage) > float(ember_events[0].damage) * 1.25, "焚盡式炎爆必須提供明顯的一次性爆發")
 	_expect(ember.burn_stacks == 2 and String(ember_events[0].variant) == "ember_cycle", "餘燼式炎爆必須保留兩層燃燒以銜接下一輪")
+
+func _test_major_milestone_choices() -> void:
+	var model = CombatModelScript.new()
+	for track: String in CombatModelScript.TRAINING_ORDER:
+		model.training[track] = 200
+		for level: int in CombatModelScript.MAJOR_MILESTONES:
+			var choices: Dictionary = CombatModelScript.MILESTONE_CHOICES[track][level]
+			var second_choice := String(choices.keys()[1])
+			_expect(model.select_milestone_choice(track, level, second_choice), "%s Lv.%d 必須能選擇第二條重大劍路" % [track, level])
+			_expect(model.milestone_choice(track, level) == second_choice, "%s Lv.%d 必須保存目前重大劍路" % [track, level])
+	model.momentum = CombatModelScript.MAX_MOMENTUM
+	model.enemy_hp = 99999.0
+	model._events.clear()
+	model._basic_attack(false)
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "momentum_slash" and int(event.milestone_level) == 10 and String(event.milestone_mode) == "flow"), "重大劍技事件必須把節點與演出模式送到戰場")
+	var loaded = CombatModelScript.new()
+	_expect(loaded.load_save_data(model.save_data()), "重大劍技選擇存檔必須可讀回")
+	_expect(loaded.milestone_choice("faith", 200) == model.milestone_choice("faith", 200), "重大劍技選擇必須跨存檔保存")
 
 func _test_boss_spawn() -> void:
 	var model = CombatModelScript.new()
@@ -1426,7 +1447,8 @@ func _test_navigation() -> void:
 	await process_frame
 	_expect(scene.current_skill_tab == "martial", "已完成流派必須能獨立切換成長路線")
 	_expect(scene.section_box.get_node_or_null("Signature_martial_10") != null and scene.section_box.get_node_or_null("Signature_martial_200") != null, "技能頁必須以 Lv.10～200 重大節點呈現流派劍技樹")
-	_expect(scene.section_box.get_node_or_null("EarlyChoice_martial_pursuit") != null, "武藝技能頁必須呈現 Lv.30 可選劍路")
+	_expect(scene.section_box.find_child("MilestoneTab_martial_30", true, false) != null, "武藝技能頁必須提供 Lv.30 重大劍技分頁")
+	_expect(scene.section_box.get_node_or_null("MilestoneChoice_martial_10_concentrated_edge") != null, "武藝技能頁必須呈現目前重大劍技選擇")
 	scene._switch_page("equipment")
 	await process_frame
 	_expect(scene.section_box.get_node_or_null("EquipmentDetail") != null, "裝備頁必須以欄位、選中詳情與背包呈現")

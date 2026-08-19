@@ -92,6 +92,7 @@ var failure_open := false
 var tutorial_open := false
 var current_page := "combat"
 var current_skill_tab := "auto"
+var current_major_milestone := 10
 var selected_equipment_slot := "weapon"
 var selected_equipment_id := ""
 var battlefield: Battlefield
@@ -994,7 +995,7 @@ func _render_skills_page(snapshot: Dictionary) -> void:
 	if current_skill_tab == "command":
 		_render_command_allies(snapshot)
 	_render_signature_tree(current_skill_tab, snapshot)
-	_render_early_art_choices(current_skill_tab, snapshot)
+	_render_major_milestone_choices(current_skill_tab, snapshot)
 	_render_track_skills(current_skill_tab, "可編成招式與被動", slots)
 	if current_skill_tab != "magic":
 		_render_branch_choices(current_skill_tab, snapshot)
@@ -1115,6 +1116,9 @@ func _render_signature_tree(track: String, snapshot: Dictionary) -> void:
 		var state := "未解鎖"
 		if unlocked:
 			state = "裝備支撐" if base_level < target else "已掌握"
+			if CombatModel.MAJOR_MILESTONES.has(target):
+				var chosen := model.milestone_choice_definition(track, target)
+				state += "・%s" % String(chosen.get("name", "未選擇"))
 		elif is_next:
 			state = "下一個目標"
 		var card := PanelContainer.new()
@@ -1167,44 +1171,43 @@ func _render_track_skills(track: String, heading: String, slots: Array) -> void:
 			equip.pressed.connect(_equip_auto_skill.bind(skill_id))
 			skill_row.add_child(equip)
 
-func _render_early_art_choices(track: String, snapshot: Dictionary) -> void:
-	var choices: Dictionary = {}
-	var selected := ""
-	match track:
-		"martial":
-			choices = CombatModel.MARTIAL_ART_CHOICES
-			selected = String(snapshot.martial_art_choice)
-		"physique":
-			choices = CombatModel.PHYSIQUE_ART_CHOICES
-			selected = String(snapshot.physique_art_choice)
-		"agility":
-			choices = CombatModel.AGILITY_ART_CHOICES
-			selected = String(snapshot.agility_art_choice)
-		"magic":
-			choices = CombatModel.MAGIC_ART_CHOICES
-			selected = String(snapshot.magic_art_choice)
-		_:
-			return
+func _render_major_milestone_choices(track: String, snapshot: Dictionary) -> void:
 	var effective_level := int(snapshot.effective_style_levels[track])
-	section_box.add_child(_label("Lv.30 重大技能分岔", 18, _track_color(track).lightened(0.35)))
-	var current_text := String(choices[selected].name) if effective_level >= 30 else "尚未解鎖"
-	section_box.add_child(_label("目前：%s｜測試期間可自由切換" % current_text, 14, Color("cbd5cc")))
+	section_box.add_child(_label("重大劍技選擇", 18, _track_color(track).lightened(0.35)))
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 4)
+	section_box.add_child(tabs)
+	for level: int in CombatModel.MAJOR_MILESTONES:
+		var unlocked := effective_level >= level
+		var active := current_major_milestone == level
+		var tab := _button("Lv.%d" % level, _track_color(track).darkened(0.3) if active else Color("303a34"), 44)
+		tab.name = "MilestoneTab_%s_%d" % [track, level]
+		tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tab.tooltip_text = "已解鎖" if unlocked else "有效等級 Lv.%d 解鎖" % level
+		tab.pressed.connect(_select_major_milestone_tab.bind(level))
+		tabs.add_child(tab)
+	var level := current_major_milestone
+	var choices: Dictionary = CombatModel.MILESTONE_CHOICES[track][level]
+	var selected := model.milestone_choice(track, level)
+	var selected_name := String(choices[selected].name) if effective_level >= level else "尚未解鎖"
+	section_box.add_child(_label("Lv.%d｜目前：%s｜可自由切換測試" % [level, selected_name], 14, Color("cbd5cc")))
 	for choice_id: String in choices:
 		var choice: Dictionary = choices[choice_id]
 		var card := PanelContainer.new()
-		card.name = "EarlyChoice_%s_%s" % [track, choice_id]
-		card.add_theme_stylebox_override("panel", _panel_style(Color("26302b"), _track_color(track).darkened(0.05), 1))
+		card.name = "MilestoneChoice_%s_%d_%s" % [track, level, choice_id]
+		var selected_choice := choice_id == selected and effective_level >= level
+		card.add_theme_stylebox_override("panel", _panel_style(Color("29352f") if selected_choice else Color("222925"), _track_color(track).lightened(0.2) if selected_choice else Color("59645d"), 2 if selected_choice else 1))
 		var content := VBoxContainer.new()
 		content.add_theme_constant_override("separation", 5)
 		card.add_child(content)
-		content.add_child(_label(String(choice.name), 16, Color("f4eee0")))
+		content.add_child(_label("%s｜%s型" % [String(choice.name), "爆發" if String(choice.get("mode", "impact")) == "impact" else "循環"], 16, Color("fff0c7") if selected_choice else Color("f4eee0")))
 		var detail := _label(String(choice.description), 13, Color("b7c7bd"))
 		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		content.add_child(detail)
-		var button_text := "Lv.30 解鎖" if effective_level < 30 else ("使用中" if choice_id == selected else "選擇這條劍路")
-		var choose := _button(button_text, _track_color(track).darkened(0.35), 44)
-		choose.disabled = effective_level < 30 or choice_id == selected
-		choose.pressed.connect(_select_early_art_choice.bind(track, choice_id))
+		var button_text := "Lv.%d 解鎖" % level if effective_level < level else ("使用中" if selected_choice else "選擇這條劍路")
+		var choose := _button(button_text, _track_color(track).darkened(0.35), 46)
+		choose.disabled = effective_level < level or selected_choice
+		choose.pressed.connect(_select_milestone_choice.bind(track, level, choice_id))
 		content.add_child(choose)
 		section_box.add_child(card)
 
@@ -1934,18 +1937,16 @@ func _select_martial_branch(branch_id: String) -> void:
 	_update_hud(model.snapshot())
 	_save_game()
 
-func _select_early_art_choice(track: String, choice_id: String) -> void:
-	if not model.select_early_art_choice(track, choice_id):
+func _select_major_milestone_tab(level: int) -> void:
+	current_major_milestone = level
+	_render_section("skills")
+
+func _select_milestone_choice(track: String, level: int, choice_id: String) -> void:
+	if not model.select_milestone_choice(track, level, choice_id):
 		return
-	var choices: Dictionary = {}
-	match track:
-		"martial": choices = CombatModel.MARTIAL_ART_CHOICES
-		"physique": choices = CombatModel.PHYSIQUE_ART_CHOICES
-		"agility": choices = CombatModel.AGILITY_ART_CHOICES
-		"magic": choices = CombatModel.MAGIC_ART_CHOICES
-		_: return
+	var choices: Dictionary = CombatModel.MILESTONE_CHOICES[track][level]
 	var choice: Dictionary = choices[choice_id]
-	_show_toast("劍路切換：%s" % String(choice.name), String(choice.description))
+	_show_toast("Lv.%d 劍路：%s" % [level, String(choice.name)], String(choice.description))
 	_update_hud(model.snapshot())
 	_save_game()
 

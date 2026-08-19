@@ -393,6 +393,51 @@ const MAGIC_ART_CHOICES := {
 	"detonation": {"name": "焚盡式", "description": "炎爆斬傷害提高 30%，一次引爆全部魔紋與燃燒。"},
 	"ember_cycle": {"name": "餘燼式", "description": "炎爆後保留 2 層燃燒，更快開始下一輪魔劍循環。"},
 }
+const MAJOR_MILESTONES := [10, 30, 50, 100, 200]
+const MILESTONE_CHOICES := {
+	"martial": {
+		10: {"concentrated_edge": {"name": "凝鋒式", "description": "滿勢一閃傷害提高 30%。", "mode": "impact"}, "flowing_momentum": {"name": "行勢式", "description": "滿勢一閃後保留 20 勢。", "mode": "flow"}},
+		30: MARTIAL_ART_CHOICES,
+		50: {"decisive_draw": {"name": "決勝拔刀", "description": "拔刀期間第一記一刀傷害提高 35%。", "mode": "impact"}, "endless_draw": {"name": "無拍拔刀", "description": "拔刀持續延長 4 秒，冷卻縮短 3 秒。", "mode": "flow"}},
+		100: {"world_break": {"name": "斷界極意", "description": "滿勢斬擊額外穿透 20% 護甲。", "mode": "impact"}, "empty_mind": {"name": "無心極意", "description": "滿勢斬擊再保留 25 勢。", "mode": "flow"}},
+		200: {"heaven_cut": {"name": "天斷", "description": "一刀兩斷傷害提高 30%。", "mode": "impact"}, "moon_return": {"name": "回月", "description": "一刀兩斷後保留 50 勢。", "mode": "flow"}},
+	},
+	"physique": {
+		10: {"iron_gate": {"name": "鐵門式", "description": "守勢期間格擋率再提高 15%。", "mode": "impact"}, "still_heart": {"name": "磐心式", "description": "施放守勢立即獲得 1 層不動。", "mode": "flow"}},
+		30: PHYSIQUE_ART_CHOICES,
+		50: {"mountain_collapse": {"name": "崩山", "description": "崩勢反擊傷害提高 30%。", "mode": "impact"}, "rooted_counter": {"name": "守元", "description": "崩勢反擊後保留 2 層不動。", "mode": "flow"}},
+		100: {"mirror_return": {"name": "明鏡返刃", "description": "完美格擋的反擊傷害提高 25%。", "mode": "impact"}, "earth_guard": {"name": "厚土不動", "description": "滿不動時受到的傷害降低 15%。", "mode": "flow"}},
+		200: {"heaven_reversal": {"name": "返天擊", "description": "不動返天反擊傷害提高 30%。", "mode": "impact"}, "undying_body": {"name": "不滅身", "description": "不動返天同時回復 25% 最大生命。", "mode": "flow"}},
+	},
+	"agility": {
+		10: {"twin_swallow": {"name": "雙燕式", "description": "雙燕疾斬傷害提高 25%。", "mode": "impact"}, "chasing_wind": {"name": "追風式", "description": "雙燕疾斬冷卻縮短 0.6 秒。", "mode": "flow"}},
+		30: AGILITY_ART_CHOICES,
+		50: {"piercing_step": {"name": "穿影", "description": "瞬步反擊傷害提高 35%。", "mode": "impact"}, "lingering_image": {"name": "留影", "description": "瞬步成功時額外獲得 2 層游刃。", "mode": "flow"}},
+		100: {"thousand_leaves": {"name": "千葉流轉", "description": "影襲與追擊傷害提高 25%。", "mode": "impact"}, "endless_flow": {"name": "無間流轉", "description": "閃避會縮短疾斬與影襲冷卻 0.6 秒。", "mode": "flow"}},
+		200: {"hundred_shadows": {"name": "百影", "description": "無影極境連攜傷害提高 35%。", "mode": "impact"}, "traceless_extreme": {"name": "無蹤極境", "description": "發動後保留滿游刃並重新準備瞬步。", "mode": "flow"}},
+	},
+	"magic": {
+		10: {"rune_edge": {"name": "魔鋒", "description": "魔劍附傷提高 25%。", "mode": "impact"}, "rapid_inscription": {"name": "疾紋", "description": "魔紋生成速度提高。", "mode": "flow"}},
+		30: MAGIC_ART_CHOICES,
+		50: {"overload_release": {"name": "過載解放", "description": "解放期間魔劍傷害提高 25%。", "mode": "impact"}, "endless_release": {"name": "循環解放", "description": "魔劍解放持續延長 4 秒。", "mode": "flow"}},
+		100: {"resonance_burst": {"name": "爆鳴共鳴", "description": "元素共鳴傷害提高 30%。", "mode": "impact"}, "echo_cycle": {"name": "回響共鳴", "description": "共鳴額外返還魔紋並縮短解放冷卻。", "mode": "flow"}},
+		200: {"elemental_cataclysm": {"name": "元素天災", "description": "完全解放期間傷害提高 25%。", "mode": "impact"}, "eternal_sword": {"name": "永續魔劍", "description": "完全解放持續延長 6 秒。", "mode": "flow"}},
+	},
+	"faith": {
+		10: {"holy_edge": {"name": "聖鋒", "description": "聖劍附傷提高 25%。", "mode": "impact"}, "gathering_prayer": {"name": "聚禱", "description": "聖印生成速度提高。", "mode": "flow"}},
+		30: {"judgment_grace": {"name": "制裁聖光", "description": "聖光斬傷害提高 30%。", "mode": "impact"}, "merciful_light": {"name": "恩典聖光", "description": "聖光斬治療與護盾提高 40%。", "mode": "flow"}},
+		50: {"radiant_release": {"name": "光耀解放", "description": "解放期間聖傷提高 25%。", "mode": "impact"}, "sanctuary_release": {"name": "庇護解放", "description": "施放解放時立即獲得護盾。", "mode": "flow"}},
+		100: {"judgment_halo": {"name": "審判光環", "description": "聖印對傷害的強化提高 25%。", "mode": "impact"}, "grace_halo": {"name": "恩典光環", "description": "聖印對治療與護盾的強化提高 30%。", "mode": "flow"}},
+		200: {"descending_judgment": {"name": "降世審判", "description": "聖劍降臨期間傷害提高 35%。", "mode": "impact"}, "divine_shelter": {"name": "神域庇護", "description": "聖劍降臨時回復 30% 最大生命並展開護盾。", "mode": "flow"}},
+	},
+	"command": {
+		10: {"veteran_companion": {"name": "老兵同行", "description": "友軍傷害提高 25%。", "mode": "impact"}, "drilled_formation": {"name": "軍律同行", "description": "軍勢獲取提高 25%。", "mode": "flow"}},
+		30: {"spearhead": {"name": "先鋒突擊", "description": "先鋒斬傷害提高 35%。", "mode": "impact"}, "synchronized_advance": {"name": "齊步進擊", "description": "先鋒斬必定觸發一次友軍追擊。", "mode": "flow"}},
+		50: {"all_out_command": {"name": "全軍總攻", "description": "軍團號令傷害提高 30%。", "mode": "impact"}, "sustained_command": {"name": "續戰號令", "description": "軍團號令後保留 30 軍勢並進入奮戰。", "mode": "flow"}},
+		100: {"sword_formation": {"name": "軍團劍陣", "description": "軍團技能追加一次劍陣斬擊。", "mode": "impact"}, "shield_formation": {"name": "軍團盾陣", "description": "高軍勢時受到傷害降低 15%。", "mode": "flow"}},
+		200: {"legion_sword": {"name": "萬軍劍令", "description": "萬軍一劍傷害提高 30%。", "mode": "impact"}, "unbroken_army": {"name": "不滅軍魂", "description": "萬軍一劍後回復 50 軍勢並進入奮戰。", "mode": "flow"}},
+	},
+}
 const FAITH_BRANCHES := {
 	"radiance": {"name": "光耀", "description": "偏向聖傷、制裁與審判斬爆發"},
 	"guardian": {"name": "守護", "description": "偏向護盾、減傷與神恩保命"},
@@ -610,6 +655,7 @@ var martial_art_choice := "pursuit"
 var agility_art_choice := "returning_shadow"
 var physique_art_choice := "mountain_guard"
 var magic_art_choice := "detonation"
+var milestone_choices := {}
 var momentum := 0.0
 var draw_stance_remaining := 0.0
 var time_since_one_slash := 0.0
@@ -679,8 +725,54 @@ var _events: Array[Dictionary] = []
 
 func _init() -> void:
 	rng.seed = 1337
+	_reset_milestone_choices()
 	_record_stage_reached()
 	_generate_shop_items()
+
+func _reset_milestone_choices() -> void:
+	milestone_choices.clear()
+	for track: String in TRAINING_ORDER:
+		milestone_choices[track] = {}
+		for level: int in MAJOR_MILESTONES:
+			var choices: Dictionary = MILESTONE_CHOICES[track][level]
+			milestone_choices[track][level] = String(choices.keys()[0])
+	_sync_legacy_art_choices()
+
+func _sync_legacy_art_choices() -> void:
+	martial_art_choice = String(milestone_choices.martial[30])
+	physique_art_choice = String(milestone_choices.physique[30])
+	agility_art_choice = String(milestone_choices.agility[30])
+	magic_art_choice = String(milestone_choices.magic[30])
+
+func milestone_choice(track: String, level: int) -> String:
+	if not milestone_choices.has(track) or not Dictionary(milestone_choices[track]).has(level):
+		return ""
+	return String(milestone_choices[track][level])
+
+func milestone_choice_definition(track: String, level: int) -> Dictionary:
+	var choice_id := milestone_choice(track, level)
+	if not MILESTONE_CHOICES.has(track) or not Dictionary(MILESTONE_CHOICES[track]).has(level):
+		return {}
+	return Dictionary(MILESTONE_CHOICES[track][level]).get(choice_id, {})
+
+func milestone_choice_mode(track: String, level: int) -> String:
+	return String(milestone_choice_definition(track, level).get("mode", "impact"))
+
+func _milestone_is(track: String, level: int, choice_id: String) -> bool:
+	return effective_style_level(track) >= level and milestone_choice(track, level) == choice_id
+
+func select_milestone_choice(track: String, level: int, choice_id: String) -> bool:
+	if not MILESTONE_CHOICES.has(track) or not MAJOR_MILESTONES.has(level):
+		return false
+	var choices: Dictionary = MILESTONE_CHOICES[track][level]
+	if effective_style_level(track) < level or not choices.has(choice_id):
+		return false
+	milestone_choices[track][level] = choice_id
+	_sync_legacy_art_choices()
+	return true
+
+func _milestone_event(track: String, level: int) -> Dictionary:
+	return {"milestone_track": track, "milestone_level": level, "milestone_choice": milestone_choice(track, level), "milestone_mode": milestone_choice_mode(track, level)}
 
 func step(delta: float) -> Array[Dictionary]:
 	_events.clear()
@@ -1008,19 +1100,7 @@ func select_agility_branch(branch_id: String) -> bool:
 	return true
 
 func select_early_art_choice(track: String, choice_id: String) -> bool:
-	if track == "martial" and effective_style_level(track) >= 30 and MARTIAL_ART_CHOICES.has(choice_id):
-		martial_art_choice = choice_id
-		return true
-	if track == "agility" and effective_style_level(track) >= 30 and AGILITY_ART_CHOICES.has(choice_id):
-		agility_art_choice = choice_id
-		return true
-	if track == "physique" and effective_style_level(track) >= 30 and PHYSIQUE_ART_CHOICES.has(choice_id):
-		physique_art_choice = choice_id
-		return true
-	if track == "magic" and effective_style_level(track) >= 30 and MAGIC_ART_CHOICES.has(choice_id):
-		magic_art_choice = choice_id
-		return true
-	return false
+	return select_milestone_choice(track, 30, choice_id)
 
 func select_secondary_element(element_id: String) -> bool:
 	if int(training.magic) < 70 or not MAGIC_SECONDARIES.has(element_id):
@@ -1160,6 +1240,7 @@ func save_data() -> Dictionary:
 		"martial_branch": martial_branch, "physique_branch": physique_branch, "agility_branch": agility_branch,
 		"martial_art_choice": martial_art_choice, "agility_art_choice": agility_art_choice,
 		"physique_art_choice": physique_art_choice, "magic_art_choice": magic_art_choice,
+		"milestone_choices": milestone_choices.duplicate(true),
 		"secondary_element": secondary_element, "magic_specialization": magic_specialization,
 		"faith_branch": faith_branch, "command_branch": command_branch,
 		"auto_skill_slots": auto_skill_slots.duplicate(), "auto_tactics": auto_tactics.duplicate(true),
@@ -1213,6 +1294,20 @@ func load_save_data(data: Dictionary) -> bool:
 	agility_art_choice = _valid_choice_or_default(data, "agility_art_choice", AGILITY_ART_CHOICES, "returning_shadow")
 	physique_art_choice = _valid_choice_or_default(data, "physique_art_choice", PHYSIQUE_ART_CHOICES, "mountain_guard")
 	magic_art_choice = _valid_choice_or_default(data, "magic_art_choice", MAGIC_ART_CHOICES, "detonation")
+	_reset_milestone_choices()
+	var saved_milestones: Dictionary = data.get("milestone_choices", {})
+	for track: String in TRAINING_ORDER:
+		var saved_track: Dictionary = saved_milestones.get(track, {})
+		for level: int in MAJOR_MILESTONES:
+			var saved_choice := String(saved_track.get(str(level), saved_track.get(level, "")))
+			if Dictionary(MILESTONE_CHOICES[track][level]).has(saved_choice):
+				milestone_choices[track][level] = saved_choice
+	if not saved_milestones.has("martial"):
+		milestone_choices.martial[30] = martial_art_choice
+		milestone_choices.physique[30] = physique_art_choice
+		milestone_choices.agility[30] = agility_art_choice
+		milestone_choices.magic[30] = magic_art_choice
+	_sync_legacy_art_choices()
 	secondary_element = _valid_choice(data, "secondary_element", MAGIC_SECONDARIES)
 	magic_specialization = _valid_choice(data, "magic_specialization", MAGIC_SPECIALIZATIONS)
 	faith_branch = _valid_choice(data, "faith_branch", FAITH_BRANCHES)
@@ -1284,6 +1379,7 @@ func snapshot() -> Dictionary:
 		"equipment_collection": equipment_collection.duplicate(true), "shop_items": shop_items.duplicate(), "shop_refresh_cost": shop_refresh_cost(),
 		"shop_refresh_count": shop_refresh_count, "inheritance_unlocked": inheritance_unlocked, "battle_souls": battle_souls,
 		"inheritance_count": inheritance_count, "legacy_choice": legacy_choice, "legacy_track": legacy_track, "legacy_item": legacy_item,
+		"milestone_choices": milestone_choices.duplicate(true),
 		"momentum": momentum, "max_momentum": MAX_MOMENTUM, "martial_branch": martial_branch, "martial_art_choice": martial_art_choice, "draw_stance_remaining": draw_stance_remaining,
 		"immovable": immovable, "max_immovable": MAX_IMMOVABLE, "physique_branch": physique_branch, "physique_art_choice": physique_art_choice,
 		"return_blade_ready": return_blade_ready, "guard_stance_remaining": guard_stance_remaining, "counter_chain": counter_chain,
@@ -1443,13 +1539,21 @@ func _cast_skill(skill_id: String) -> void:
 		return
 	if skill_id == "guard_stance":
 		guard_stance_remaining = 4.0
+		if _milestone_is("physique", 10, "still_heart"):
+			immovable = mini(MAX_IMMOVABLE, immovable + 1)
+			_events.append({"type": "immovable_changed", "value": immovable})
 		skill_cooldowns[skill_id] = float(definition.cooldown)
-		_events.append({"type": "guard_stance", "skill_id": skill_id, "name": String(definition.name), "duration": guard_stance_remaining})
+		var guard_event := {"type": "guard_stance", "skill_id": skill_id, "name": String(definition.name), "duration": guard_stance_remaining}
+		guard_event.merge(_milestone_event("physique", 10))
+		_events.append(guard_event)
 		return
 	if skill_id == "draw_stance":
 		draw_stance_remaining = 10.0 if int(training.martial) >= 115 else 8.0
-		skill_cooldowns[skill_id] = float(definition.cooldown)
-		_events.append({"type": "draw_stance", "skill_id": skill_id, "name": String(definition.name), "duration": draw_stance_remaining})
+		if _milestone_is("martial", 50, "endless_draw"): draw_stance_remaining += 4.0
+		skill_cooldowns[skill_id] = maxf(1.0, float(definition.cooldown) - (3.0 if _milestone_is("martial", 50, "endless_draw") else 0.0))
+		var draw_event := {"type": "draw_stance", "skill_id": skill_id, "name": String(definition.name), "duration": draw_stance_remaining}
+		draw_event.merge(_milestone_event("martial", 50))
+		_events.append(draw_event)
 		return
 	if skill_id == "swift_step":
 		swift_step_ready = true
@@ -1473,16 +1577,21 @@ func _cast_skill(skill_id: String) -> void:
 	if skill_id == "magic_sword_release":
 		hero_mp = maxf(0.0, hero_mp - _skill_mp_cost(skill_id))
 		magic_release_remaining = 10.0 if int(training.magic) >= 115 else 8.0
+		if _milestone_is("magic", 50, "endless_release"): magic_release_remaining += 4.0
 		skill_cooldowns[skill_id] = float(definition.cooldown)
-		_events.append({"type": "magic_sword_release", "skill_id": skill_id, "name": String(definition.name), "duration": magic_release_remaining})
+		var release_event := {"type": "magic_sword_release", "skill_id": skill_id, "name": String(definition.name), "duration": magic_release_remaining}
+		release_event.merge(_milestone_event("magic", 50))
+		_events.append(release_event)
 		return
 	if skill_id == "magic_sword_complete_release":
 		hero_mp = maxf(0.0, hero_mp - _skill_mp_cost(skill_id))
-		complete_release_remaining = 12.0
+		complete_release_remaining = 18.0 if _milestone_is("magic", 200, "eternal_sword") else 12.0
 		magic_release_remaining = maxf(magic_release_remaining, complete_release_remaining)
 		fusion_remaining = maxf(fusion_remaining, complete_release_remaining)
 		skill_cooldowns[skill_id] = float(definition.cooldown)
-		_events.append({"type": "magic_sword_complete_release", "skill_id": skill_id, "name": String(definition.name), "duration": complete_release_remaining})
+		var complete_event := {"type": "magic_sword_complete_release", "skill_id": skill_id, "name": String(definition.name), "duration": complete_release_remaining}
+		complete_event.merge(_milestone_event("magic", 200))
+		_events.append(complete_event)
 		return
 	if skill_id in ["holy_light_slash", "judgment_slash", "holy_sword_release", "holy_sword_descent"]:
 		_cast_faith_skill(skill_id)
@@ -1497,15 +1606,23 @@ func _cast_skill(skill_id: String) -> void:
 	skill_cooldowns[skill_id] = float(definition.cooldown)
 	var mastery := _one_slash_mastery_multiplier(momentum_before)
 	var raw_damage := _attack_power() * float(definition.damage_multiplier) * mastery * _skill_level_multiplier(skill_id) * _martial_slash_multiplier(skill_id, momentum_before)
+	if draw_stance_remaining > 0.0 and _milestone_is("martial", 50, "decisive_draw"): raw_damage *= 1.35
+	if skill_id == "two_cut" and _milestone_is("martial", 200, "heaven_cut"): raw_damage *= 1.3
 	reduced_next_slash_cost = false
 	var armor_ignore := float(definition.get("armor_ignore", 0.0))
+	if momentum_before >= MAX_MOMENTUM and _milestone_is("martial", 100, "world_break"): armor_ignore += 0.2
 	if int(training.martial) >= 40 and momentum_before >= 80.0: armor_ignore += 0.12
 	if int(training.martial) >= 100 and momentum_before >= MAX_MOMENTUM: armor_ignore += 0.12
-	_events.append({"type": skill_id, "skill_id": skill_id, "name": String(definition.name), "damage": raw_damage, "mastery": mastery})
+	var slash_event := {"type": skill_id, "skill_id": skill_id, "name": String(definition.name), "damage": raw_damage, "mastery": mastery}
+	var slash_level := 200 if skill_id == "two_cut" else (100 if effective_style_level("martial") >= 100 else 50)
+	slash_event.merge(_milestone_event("martial", slash_level))
+	_events.append(slash_event)
 	var defeated := _deal_damage(raw_damage, skill_id, armor_ignore)
 	time_since_one_slash = 0.0
 	if int(training.martial) >= 110 and momentum_before >= MAX_MOMENTUM:
 		_add_momentum(10.0 if int(training.martial) < 140 else 20.0, "extreme_refund")
+	if momentum_before >= MAX_MOMENTUM and _milestone_is("martial", 100, "empty_mind"): _add_momentum(25.0, "empty_mind")
+	if skill_id == "two_cut" and _milestone_is("martial", 200, "moon_return"): _add_momentum(50.0, "moon_return")
 	if defeated and int(training.martial) >= 90:
 		reduced_next_slash_cost = true
 		if int(training.martial) >= 180: extreme_momentum_remaining = 4.0
@@ -1558,8 +1675,11 @@ func _cast_swift_cut() -> void:
 			hit_damage *= 1.75
 			critical_hits += 1
 		total_damage += hit_damage
-	skill_cooldowns["swift_cut"] = float(definition.cooldown)
-	_events.append({"type": "swift_cut", "skill_id": "swift_cut", "name": String(definition.name), "damage": total_damage, "hits": 2, "critical_hits": critical_hits})
+	if _milestone_is("agility", 10, "twin_swallow"): total_damage *= 1.25
+	skill_cooldowns["swift_cut"] = maxf(0.8, float(definition.cooldown) - (0.6 if _milestone_is("agility", 10, "chasing_wind") else 0.0))
+	var swift_event := {"type": "swift_cut", "skill_id": "swift_cut", "name": String(definition.name), "damage": total_damage, "hits": 2, "critical_hits": critical_hits}
+	swift_event.merge(_milestone_event("agility", 10))
+	_events.append(swift_event)
 	var defeated := _deal_damage(total_damage, "swift_cut", 0.05)
 	if not defeated and skill_is_unlocked("flowing_ease"):
 		_add_youren(1, "swift_cut")
@@ -1573,6 +1693,7 @@ func _cast_shadow_assault() -> void:
 	if int(training.agility) >= 60: shadow_damage *= 1.0 + float(youren) * 0.05
 	if int(training.agility) >= 115: shadow_damage *= 1.15
 	if int(training.agility) >= 165: shadow_damage *= 1.15
+	if _milestone_is("agility", 100, "thousand_leaves"): shadow_damage *= 1.25
 	if shadowless_remaining > 0.0:
 		shadow_damage *= 2.0 if int(training.agility) >= 195 else 1.8
 	var cast_name := skill_display_name("shadow_assault")
@@ -1602,18 +1723,26 @@ func _cast_shadow_assault() -> void:
 		_deal_damage(second_damage, "second_shadow", 0.15)
 	if int(training.agility) >= 200 and shadowless_remaining > 0.0:
 		var extreme_damage := shadow_damage * 0.8
+		if _milestone_is("agility", 200, "hundred_shadows"): extreme_damage *= 1.35
 		_events.append({"type": "shadowless_extreme", "damage": extreme_damage})
 		_deal_damage(extreme_damage, "shadowless_extreme", 0.25)
+		if _milestone_is("agility", 200, "traceless_extreme"):
+			youren = MAX_YOUREN
+			swift_step_ready = true
+			_events.append({"type": "youren_changed", "value": youren})
 
 func _cast_collapse_counter() -> void:
 	var definition: Dictionary = SKILL_DEFS.collapse_counter
 	var spent := immovable
-	immovable = 1 if int(training.physique) >= 140 else 0
+	immovable = 2 if _milestone_is("physique", 50, "rooted_counter") else (1 if int(training.physique) >= 140 else 0)
 	skill_cooldowns["collapse_counter"] = float(definition.cooldown)
 	var raw_damage := _attack_power() * 2.2 + _defense() * 4.2 + recent_prevented_damage * 0.8
 	raw_damage *= 1.0 + float(spent) * 0.35
 	raw_damage *= _skill_level_multiplier("collapse_counter")
-	_events.append({"type": "collapse_counter", "name": "不動崩返", "damage": raw_damage, "spent": spent})
+	if _milestone_is("physique", 50, "mountain_collapse"): raw_damage *= 1.3
+	var collapse_event := {"type": "collapse_counter", "name": "不動崩返", "damage": raw_damage, "spent": spent}
+	collapse_event.merge(_milestone_event("physique", 50))
+	_events.append(collapse_event)
 	_deal_damage(raw_damage, "collapse_counter", 0.3)
 	recent_prevented_damage = 0.0
 	_events.append({"type": "immovable_changed", "value": immovable})
@@ -1685,25 +1814,37 @@ func _cast_faith_skill(skill_id: String) -> void:
 	hero_mp = maxf(0.0, hero_mp - _skill_mp_cost(skill_id))
 	if skill_id == "holy_sword_release":
 		holy_release_remaining = 10.0 if int(training.faith) >= 115 else 8.0
-		_events.append({"type": "holy_sword_release", "name": String(definition.name), "duration": holy_release_remaining})
+		if _milestone_is("faith", 50, "sanctuary_release"): _add_holy_shield(_hero_max_hp() * 0.2, "sanctuary_release")
+		var holy_release_event := {"type": "holy_sword_release", "name": String(definition.name), "duration": holy_release_remaining}
+		holy_release_event.merge(_milestone_event("faith", 50))
+		_events.append(holy_release_event)
 		return
 	if skill_id == "holy_sword_descent":
 		holy_seals = 0
 		holy_descent_remaining = 12.0
 		holy_release_remaining = maxf(holy_release_remaining, holy_descent_remaining)
-		_events.append({"type": "holy_sword_descent", "name": String(definition.name), "duration": holy_descent_remaining})
+		if _milestone_is("faith", 200, "divine_shelter"):
+			_heal_hero(_hero_max_hp() * 0.3, "divine_shelter")
+			_add_holy_shield(_hero_max_hp() * 0.3, "divine_shelter")
+		var descent_event := {"type": "holy_sword_descent", "name": String(definition.name), "duration": holy_descent_remaining}
+		descent_event.merge(_milestone_event("faith", 200))
+		_events.append(descent_event)
 		_events.append({"type": "holy_seals_changed", "value": holy_seals})
 		return
 	var spent := _holy_seal_cost(skill_id)
 	holy_seals = maxi(0, holy_seals - spent)
 	var multiplier := 3.2 if skill_id == "holy_light_slash" else 5.6
 	var raw_damage := (_attack_power() * 0.7 + _faith_power()) * multiplier * _skill_level_multiplier(skill_id) * _holy_damage_multiplier()
+	if skill_id == "holy_light_slash" and _milestone_is("faith", 30, "judgment_grace"): raw_damage *= 1.3
 	if skill_id == "judgment_slash" and (enemy_is_boss or hero_hp / maxf(1.0, _hero_max_hp()) <= 0.4):
 		raw_damage *= 1.45
 	var heal := _faith_power() * (0.55 if skill_id == "holy_light_slash" else 0.35) * _healing_multiplier()
+	if skill_id == "holy_light_slash" and _milestone_is("faith", 30, "merciful_light"): heal *= 1.4
 	_heal_hero(heal, skill_id)
 	_add_holy_shield(heal * (0.8 if skill_id == "holy_light_slash" else 0.45), skill_id)
-	_events.append({"type": skill_id, "name": String(definition.name), "damage": raw_damage, "spent": spent})
+	var faith_event := {"type": skill_id, "name": String(definition.name), "damage": raw_damage, "spent": spent}
+	faith_event.merge(_milestone_event("faith", 30 if skill_id == "holy_light_slash" else 100))
+	_events.append(faith_event)
 	_events.append({"type": "holy_seals_changed", "value": holy_seals})
 	_deal_damage(raw_damage, skill_id, 0.2 if skill_id == "judgment_slash" else 0.08)
 
@@ -1718,30 +1859,55 @@ func _cast_command_skill(skill_id: String) -> void:
 	elif skill_id == "army_break_order": multiplier = 3.4 + float(allies) * 0.6
 	elif skill_id == "ten_thousand_armies_one_sword": multiplier = 5.0 + float(allies) * 1.35
 	var raw_damage := _attack_power() * multiplier * _skill_level_multiplier(skill_id) * _command_damage_multiplier()
+	if skill_id == "vanguard_slash" and _milestone_is("command", 30, "spearhead"): raw_damage *= 1.35
+	if skill_id == "legion_command" and _milestone_is("command", 50, "all_out_command"): raw_damage *= 1.3
+	if skill_id == "ten_thousand_armies_one_sword" and _milestone_is("command", 200, "legion_sword"): raw_damage *= 1.3
 	var armor_ignore := 0.35 if skill_id == "army_break_order" else (0.45 if skill_id == "ten_thousand_armies_one_sword" else 0.1)
 	if skill_id == "legion_command" and int(training.command) >= 180:
 		legion_fervor_remaining = 7.0
 		_events.append({"type": "legion_fervor", "duration": legion_fervor_remaining})
-	_events.append({"type": skill_id, "name": String(definition.name), "damage": raw_damage, "allies": allies})
+	var command_level := 200 if skill_id == "ten_thousand_armies_one_sword" else (50 if skill_id == "legion_command" else 30)
+	var command_event := {"type": skill_id, "name": String(definition.name), "damage": raw_damage, "allies": allies}
+	command_event.merge(_milestone_event("command", command_level))
+	_events.append(command_event)
 	_events.append({"type": "military_momentum_changed", "value": military_momentum})
 	_deal_damage(raw_damage, skill_id, armor_ignore)
+	if enemy_hp > 0.0 and _milestone_is("command", 100, "sword_formation"):
+		var formation_damage := raw_damage * 0.4
+		var formation_event := {"type": "coordinated_pursuit", "damage": formation_damage, "allies": allies, "source": "sword_formation"}
+		formation_event.merge(_milestone_event("command", 100))
+		_events.append(formation_event)
+		_deal_damage(formation_damage, "coordinated_pursuit", 0.12)
 	if skill_id == "army_break_order" and enemy_hp > 0.0:
 		var armor_broken := minf(enemy_armor, 6.0 + float(allies) * 2.0)
 		enemy_armor -= armor_broken
 		_events.append({"type": "armor_broken", "amount": armor_broken, "remaining": enemy_armor})
 	if int(training.command) >= 160 and spent >= 100.0:
 		_add_military_momentum(25.0, "command_retention")
+	if skill_id == "vanguard_slash" and _milestone_is("command", 30, "synchronized_advance"):
+		var follow_damage := _attack_power() * 0.7 * maxi(1, allies)
+		_events.append({"type": "coordinated_pursuit", "damage": follow_damage, "allies": allies, "source": "synchronized_advance"})
+		_deal_damage(follow_damage, "coordinated_pursuit", 0.05)
+	if skill_id == "legion_command" and _milestone_is("command", 50, "sustained_command"):
+		_add_military_momentum(30.0, "sustained_command")
+		legion_fervor_remaining = maxf(legion_fervor_remaining, 6.0)
+	if skill_id == "ten_thousand_armies_one_sword" and _milestone_is("command", 200, "unbroken_army"):
+		_add_military_momentum(50.0, "unbroken_army")
+		legion_fervor_remaining = maxf(legion_fervor_remaining, 8.0)
 
 func _holy_sword_hit(manual: bool) -> void:
 	if not skill_is_unlocked("holy_sword_seals"):
 		return
 	var damage := _faith_power() * 0.38 * _skill_level_multiplier("holy_sword_seals") * _holy_damage_multiplier()
+	if _milestone_is("faith", 10, "holy_edge"): damage *= 1.25
+	if holy_release_remaining > 0.0 and _milestone_is("faith", 50, "radiant_release"): damage *= 1.25
+	if holy_descent_remaining > 0.0 and _milestone_is("faith", 200, "descending_judgment"): damage *= 1.35
 	if holy_release_remaining > 0.0: damage *= 1.4
 	if holy_descent_remaining > 0.0: damage *= 1.45
 	_events.append({"type": "holy_enchant", "damage": damage, "manual": manual})
 	_deal_damage(damage, "holy_enchant", 0.08)
 	holy_hit_counter += 1
-	var required := 2 if holy_release_remaining > 0.0 else 3
+	var required := 2 if holy_release_remaining > 0.0 or _milestone_is("faith", 10, "gathering_prayer") else 3
 	if holy_hit_counter >= required:
 		holy_hit_counter = 0
 		_add_holy_seals(2 if holy_descent_remaining > 0.0 else 1, "holy_attack")
@@ -1773,6 +1939,7 @@ func _ally_auto_attack() -> void:
 	var ally: Dictionary = ALLY_DEFS[ally_id]
 	var multiplier: float = float({"infantry": 0.58, "scout": 0.46, "mage": 0.72, "cleric": 0.38}.get(ally_id, 0.5))
 	var damage := _attack_power() * multiplier * _track_level_multiplier("command", int(ally.unlock_level)) * _command_damage_multiplier()
+	if _milestone_is("command", 10, "veteran_companion"): damage *= 1.25
 	var armor_ignore := 0.2 if ally_id == "mage" else 0.05
 	_events.append({"type": "ally_attack", "ally_id": ally_id, "name": String(ally.name), "damage": damage})
 	_deal_damage(damage, "ally_%s" % ally_id, armor_ignore)
@@ -1862,6 +2029,7 @@ func _add_military_momentum(amount: float, source: String) -> void:
 	if int(training.command) >= 65: efficiency += 0.15
 	if int(training.command) >= 185: efficiency += 0.15
 	if _war_god_active(): efficiency += 0.2
+	if _milestone_is("command", 10, "drilled_formation"): efficiency *= 1.25
 	var previous := military_momentum
 	military_momentum = minf(MAX_MILITARY_MOMENTUM, military_momentum + amount * efficiency)
 	if not is_equal_approx(previous, military_momentum):
@@ -1890,6 +2058,7 @@ func _healing_multiplier() -> float:
 	if int(training.faith) >= 185: multiplier *= 1.15
 	if faith_branch == "grace": multiplier *= 1.25
 	if holy_descent_remaining > 0.0: multiplier *= 1.35
+	if _milestone_is("faith", 100, "grace_halo"): multiplier *= 1.3
 	return multiplier
 
 func _holy_damage_multiplier() -> float:
@@ -1898,6 +2067,7 @@ func _holy_damage_multiplier() -> float:
 	if int(training.faith) >= 120 and hero_hp / maxf(1.0, _hero_max_hp()) <= 0.4: multiplier *= 1.2
 	if faith_branch == "radiance": multiplier *= 1.25
 	if _divine_manifest_active(): multiplier *= 1.25 if int(training.faith) >= 195 else 1.15
+	if _milestone_is("faith", 100, "judgment_halo"): multiplier *= 1.25
 	return multiplier
 
 func _divine_manifest_active() -> bool:
@@ -1948,6 +2118,7 @@ func _basic_attack(manual: bool) -> void:
 	var momentum_name := "蓄勢・一閃"
 	if momentum_slash:
 		damage *= 2.8
+		if _milestone_is("martial", 10, "concentrated_edge"): damage *= 1.3
 		if effective_style_level("martial") >= 30 and martial_art_choice == "pursuit":
 			momentum_name = "蓄勢・追命一閃"
 			if enemy_hp / maxf(1.0, enemy_max_hp) <= 0.35:
@@ -1957,7 +2128,9 @@ func _basic_attack(manual: bool) -> void:
 			momentum_armor_ignore = 0.4
 			if enemy_is_boss:
 				damage *= 1.2
-		momentum = 0.0
+		momentum = 20.0 if _milestone_is("martial", 10, "flowing_momentum") else 0.0
+		if _milestone_is("martial", 100, "empty_mind"): momentum = maxf(momentum, 25.0)
+		if _milestone_is("martial", 100, "world_break"): momentum_armor_ignore += 0.2
 		_momentum_was_full = false
 	var critical := int(training.agility) > 0 and rng.randf() < _critical_chance()
 	var instant_kill := instant_kill_ready
@@ -1971,7 +2144,9 @@ func _basic_attack(manual: bool) -> void:
 			damage *= 1.0 + minf(cap, unharmed_duration) * 0.02
 	_events.append({"type": "attack", "damage": damage, "critical": critical, "instant_kill": instant_kill, "manual": manual, "youren": youren})
 	if momentum_slash:
-		_events.append({"type": "momentum_slash", "name": momentum_name, "damage": damage, "critical": critical, "variant": martial_art_choice, "armor_ignore": momentum_armor_ignore})
+		var momentum_event := {"type": "momentum_slash", "name": momentum_name, "damage": damage, "critical": critical, "variant": martial_art_choice, "armor_ignore": momentum_armor_ignore}
+		momentum_event.merge(_milestone_event("martial", 10))
+		_events.append(momentum_event)
 	var attack_source := "momentum_slash" if momentum_slash else ("critical_attack" if critical else ("flow_attack_full" if youren >= MAX_YOUREN else ("flow_attack" if youren >= 3 else "attack")))
 	var defeated := _deal_damage(damage, attack_source, momentum_armor_ignore if momentum_slash else 0.0)
 	if defeated and momentum_slash and martial_art_choice == "pursuit":
@@ -1993,14 +2168,17 @@ func _magic_enchanted_hit(manual: bool) -> void:
 	var marks_were_full := magic_marks >= MAX_MAGIC_MARKS
 	var element := _current_magic_element()
 	var enchant_damage := _magic_power() * 0.42 * _element_damage_multiplier(element) * _skill_level_multiplier("magic_sword_marks")
+	if _milestone_is("magic", 10, "rune_edge"): enchant_damage *= 1.25
 	if skill_is_unlocked("blazing_magic") and marks_were_full:
 		enchant_damage *= 1.2
 	if magic_release_remaining > 0.0:
 		enchant_damage *= 1.4
+		if _milestone_is("magic", 50, "overload_release"): enchant_damage *= 1.25
 	if _magic_manifest_active():
 		enchant_damage *= 1.25 if int(training.magic) >= 195 else 1.15
 	if complete_release_remaining > 0.0:
 		enchant_damage *= 1.35
+		if _milestone_is("magic", 200, "elemental_cataclysm"): enchant_damage *= 1.25
 	_events.append({"type": "magic_enchant", "damage": enchant_damage, "manual": manual, "element": element})
 	var defeated := _deal_damage(enchant_damage, "magic_enchant", 0.1)
 	if not defeated and marks_were_full:
@@ -2025,6 +2203,7 @@ func _magic_enchanted_hit(manual: bool) -> void:
 		if not defeated:
 			_try_elemental_resonance()
 	var mark_gain := 3 if complete_release_remaining > 0.0 else (2 if magic_release_remaining > 0.0 else 1)
+	if _milestone_is("magic", 10, "rapid_inscription"): mark_gain += 1
 	if skill_is_unlocked("burning_inscription") and burn_stacks > 0:
 		burning_hits += 1
 		if burning_hits >= 2:
@@ -2123,6 +2302,7 @@ func _try_elemental_resonance() -> bool:
 	if stacks < 3:
 		return false
 	var damage := _magic_power() * (2.6 if element == "ice" else 2.9) * _resonance_multiplier() * _track_level_multiplier("magic", 90)
+	if _milestone_is("magic", 100, "resonance_burst"): damage *= 1.3
 	if element == "ice":
 		frost_stacks = 0
 		enemy_attack_remaining += 1.0
@@ -2133,8 +2313,10 @@ func _try_elemental_resonance() -> bool:
 	_deal_damage(damage, "elemental_resonance", 0.2)
 	if int(training.magic) >= 100:
 		_add_magic_marks(3 if int(training.magic) >= 110 else 2, "resonance")
+		if _milestone_is("magic", 100, "echo_cycle"): _add_magic_marks(1, "echo_cycle")
 		resonance_slash_ready = true
 		skill_cooldowns["magic_sword_release"] = maxf(0.0, float(skill_cooldowns.get("magic_sword_release", 0.0)) - 1.0)
+		if _milestone_is("magic", 100, "echo_cycle"): skill_cooldowns["magic_sword_release"] = maxf(0.0, float(skill_cooldowns.get("magic_sword_release", 0.0)) - 2.0)
 	return true
 
 func _try_minor_resonance(element: String) -> void:
@@ -2222,7 +2404,7 @@ func _enemy_attack(block_override := "") -> void:
 	var route_damage := 1.08 if journey_route == "mountain" else (0.92 if journey_route == "village" else (1.15 if journey_route == "battlefield" else 1.0))
 	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(_enemy_definition().damage) * route_damage
 	if area_number == 1:
-		raw_damage *= 0.72
+		raw_damage *= 0.62
 	if attack_type == "heavy":
 		raw_damage *= 1.0 + equipment_modifier("heavy_damage_taken")
 	if boss_enraged:
@@ -2232,6 +2414,8 @@ func _enemy_attack(block_override := "") -> void:
 	if enemy_weakened_remaining > 0.0:
 		raw_damage *= 0.82 if int(training.physique) >= 75 else 0.9
 	var incoming := raw_damage * 100.0 / (100.0 + _defense())
+	if immovable >= MAX_IMMOVABLE and _milestone_is("physique", 100, "earth_guard"): incoming *= 0.85
+	if military_momentum >= 70.0 and _milestone_is("command", 100, "shield_formation"): incoming *= 0.85
 	if int(training.physique) >= 180 and incoming >= hero_hp and immovable > 0:
 		incoming *= 0.5
 		_events.append({"type": "fatal_guard"})
@@ -2307,7 +2491,9 @@ func _perfect_block_chance() -> float:
 	return minf(0.3, 0.03 + float(training.physique) * 0.001 + (0.05 if guard_stance_remaining > 0.0 else 0.0))
 
 func _block_chance() -> float:
-	return minf(0.8, 0.12 + float(training.physique) * 0.002 + float(immovable) * 0.05 + (0.3 if guard_stance_remaining > 0.0 else 0.0))
+	var stance_bonus := 0.3 if guard_stance_remaining > 0.0 else 0.0
+	if guard_stance_remaining > 0.0 and _milestone_is("physique", 10, "iron_gate"): stance_bonus += 0.15
+	return minf(0.8, 0.12 + float(training.physique) * 0.002 + float(immovable) * 0.05 + stance_bonus)
 
 func _take_unblocked_hit(damage: float) -> void:
 	damage = _absorb_holy_shield(damage)
@@ -2359,6 +2545,9 @@ func _dodge_modifier(attack_type: String) -> float:
 func _resolve_dodge(attack_type: String, used_swift_step: bool) -> void:
 	_events.append({"type": "dodge", "attack_type": attack_type, "chance": _dodge_chance(), "swift_step": used_swift_step})
 	_add_youren(2, "dodge")
+	if _milestone_is("agility", 100, "endless_flow"):
+		skill_cooldowns["swift_cut"] = maxf(0.0, float(skill_cooldowns.get("swift_cut", 0.0)) - 0.6)
+		skill_cooldowns["shadow_assault"] = maxf(0.0, float(skill_cooldowns.get("shadow_assault", 0.0)) - 0.6)
 	if skill_is_unlocked("exploit_opening"):
 		opening_remaining = 2.0
 		_events.append({"type": "opening", "duration": opening_remaining})
@@ -2366,7 +2555,11 @@ func _resolve_dodge(attack_type: String, used_swift_step: bool) -> void:
 		instant_kill_ready = true
 	if used_swift_step:
 		var swift_damage := _attack_power() * 1.4 * _skill_level_multiplier("swift_step")
-		_events.append({"type": "swift_step", "damage": swift_damage})
+		if _milestone_is("agility", 50, "piercing_step"): swift_damage *= 1.35
+		if _milestone_is("agility", 50, "lingering_image"): _add_youren(2, "lingering_image")
+		var step_event := {"type": "swift_step", "damage": swift_damage}
+		step_event.merge(_milestone_event("agility", 50))
+		_events.append(step_event)
 		if _deal_damage(swift_damage, "swift_step", 0.1):
 			return
 	if skill_is_unlocked("shadow_assault"):
@@ -2406,6 +2599,7 @@ func _counter_attack(prevented: float, perfect: bool, attack_type: String, blade
 		raw_damage += borrowed
 	if perfect:
 		raw_damage *= 1.55
+		if _milestone_is("physique", 100, "mirror_return"): raw_damage *= 1.25
 	if int(training.physique) >= 130:
 		raw_damage *= 1.0 + float(mini(counter_chain - 1, 7 if int(training.physique) >= 135 else 5)) * 0.12
 	if physique_branch == "return_blade": raw_damage *= 1.25
@@ -2424,7 +2618,11 @@ func _trigger_heaven_return(incoming: float) -> void:
 	hero_hp = maxf(1.0, hero_hp - damage)
 	immovable = 0
 	var raw_counter := (_attack_power() * 2.5 + _defense() * 7.0 + incoming * 1.25) * _skill_level_multiplier("heaven_return")
-	_events.append({"type": "heaven_return", "amount": damage, "prevented": incoming - damage, "damage": raw_counter})
+	if _milestone_is("physique", 200, "heaven_reversal"): raw_counter *= 1.3
+	if _milestone_is("physique", 200, "undying_body"): _heal_hero(_hero_max_hp() * 0.25, "undying_body")
+	var heaven_event := {"type": "heaven_return", "amount": damage, "prevented": incoming - damage, "damage": raw_counter}
+	heaven_event.merge(_milestone_event("physique", 200))
+	_events.append(heaven_event)
 	_events.append({"type": "immovable_changed", "value": immovable})
 	_deal_damage(raw_counter, "heaven_return", 0.5)
 
@@ -2733,10 +2931,7 @@ func _reset_for_inheritance(inherited_item: String, memory_track: String) -> voi
 	martial_branch = ""
 	physique_branch = ""
 	agility_branch = ""
-	martial_art_choice = "pursuit"
-	agility_art_choice = "returning_shadow"
-	physique_art_choice = "mountain_guard"
-	magic_art_choice = "detonation"
+	_reset_milestone_choices()
 	secondary_element = ""
 	magic_specialization = ""
 	faith_branch = ""
