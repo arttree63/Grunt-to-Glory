@@ -209,6 +209,7 @@ const PIXEL_FEET_RATIO := 228.0 / 256.0
 const PIXEL_WOLF_FEET_RATIO := 244.0 / 256.0
 const DEFEAT_REWIND_DURATION := 1.8
 const ROAMING_HINT_DURATION := 2.8
+const EXPLORATION_WORLD_SCALE := Vector2(1.65, 1.6)
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -329,6 +330,7 @@ var _manual_waypoint_active := false
 var _roaming_hint_remaining := 0.0
 var _hero_facing := 1.0
 var _navigation_paused := false
+var _camera_top_left := Vector2.ZERO
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -498,12 +500,13 @@ func exploration_status() -> Dictionary:
 
 func _begin_exploration(key: String) -> void:
 	_encounter_key = key
-	var bottom := minf(stage_bottom - 8.0, size.y - 112.0)
+	var world_size := _exploration_world_size()
+	var first_spawn := _hero_map_position == Vector2.ZERO
 	if _hero_map_position == Vector2.ZERO:
-		_hero_map_position = Vector2(size.x * 0.5, bottom - 6.0)
+		_hero_map_position = Vector2(world_size.x * 0.5, world_size.y * 0.82)
 	else:
-		_hero_map_position.x = clampf(_hero_map_position.x, 52.0, size.x - 52.0)
-		_hero_map_position.y = clampf(_hero_map_position.y, stage_top + 96.0, bottom - 4.0)
+		_hero_map_position.x = clampf(_hero_map_position.x, 52.0, world_size.x - 52.0)
+		_hero_map_position.y = clampf(_hero_map_position.y, 150.0, world_size.y - 36.0)
 	var patrol_points := _patrol_points()
 	_patrol_cursor = (_patrol_cursor + 1) % patrol_points.size()
 	_enemy_map_position = patrol_points[_patrol_cursor]
@@ -514,23 +517,50 @@ func _begin_exploration(key: String) -> void:
 	_roaming_hint_remaining = ROAMING_HINT_DURATION
 	_set_enemy_approach_target()
 	_exploration_phase = "traveling"
+	_update_exploration_camera(1.0, first_spawn)
 	queue_redraw()
 
 func _patrol_points() -> Array[Vector2]:
-	var bottom := minf(stage_bottom - 8.0, size.y - 112.0)
-	var height := maxf(220.0, bottom - stage_top)
+	var world_size := _exploration_world_size()
 	return [
-		Vector2(size.x * 0.73, stage_top + height * 0.48),
-		Vector2(size.x * 0.31, stage_top + height * 0.62),
-		Vector2(size.x * 0.71, stage_top + height * 0.76),
-		Vector2(size.x * 0.43, stage_top + height * 0.54),
-		Vector2(size.x * 0.58, stage_top + height * 0.68),
+		Vector2(world_size.x * 0.78, world_size.y * 0.34),
+		Vector2(world_size.x * 0.23, world_size.y * 0.5),
+		Vector2(world_size.x * 0.76, world_size.y * 0.72),
+		Vector2(world_size.x * 0.42, world_size.y * 0.28),
+		Vector2(world_size.x * 0.55, world_size.y * 0.62),
+		Vector2(world_size.x * 0.18, world_size.y * 0.76),
 	]
 
 func _set_enemy_approach_target() -> void:
+	var world_size := _exploration_world_size()
 	_hero_map_target = _enemy_map_position + Vector2(-142.0, 12.0)
-	_hero_map_target.x = clampf(_hero_map_target.x, 52.0, size.x - 52.0)
-	_hero_map_target.y = clampf(_hero_map_target.y, stage_top + 88.0, minf(stage_bottom - 12.0, size.y - 116.0))
+	_hero_map_target.x = clampf(_hero_map_target.x, 52.0, world_size.x - 52.0)
+	_hero_map_target.y = clampf(_hero_map_target.y, 150.0, world_size.y - 36.0)
+
+func _visible_map_size() -> Vector2:
+	var bottom := minf(stage_bottom - 8.0, size.y - 112.0)
+	return Vector2(size.x, maxf(260.0, bottom - stage_top))
+
+func _exploration_world_size() -> Vector2:
+	var view_size := _visible_map_size()
+	return Vector2(
+		maxf(view_size.x * EXPLORATION_WORLD_SCALE.x, view_size.x + 220.0),
+		maxf(view_size.y * EXPLORATION_WORLD_SCALE.y, view_size.y + 220.0)
+	)
+
+func _update_exploration_camera(delta: float, snap := false) -> void:
+	var view_size := _visible_map_size()
+	var world_size := _exploration_world_size()
+	var desired := _hero_map_position - view_size * 0.5
+	desired.x = clampf(desired.x, 0.0, world_size.x - view_size.x)
+	desired.y = clampf(desired.y, 0.0, world_size.y - view_size.y)
+	_camera_top_left = desired if snap else _camera_top_left.lerp(desired, minf(1.0, delta * 4.5))
+
+func _world_to_screen(world_position: Vector2) -> Vector2:
+	return Vector2(world_position.x - _camera_top_left.x, stage_top + world_position.y - _camera_top_left.y)
+
+func _screen_to_world(screen_position: Vector2) -> Vector2:
+	return Vector2(screen_position.x + _camera_top_left.x, screen_position.y - stage_top + _camera_top_left.y)
 
 func _update_exploration(delta: float) -> void:
 	if not exploration_enabled or _navigation_paused:
@@ -549,6 +579,7 @@ func _update_exploration(delta: float) -> void:
 			else:
 				_hero_facing = 1.0
 				_exploration_phase = "engaged"
+	_update_exploration_camera(delta)
 	queue_redraw()
 
 func _on_map_input(event: InputEvent) -> void:
@@ -564,10 +595,11 @@ func _on_map_input(event: InputEvent) -> void:
 		pressed = event.pressed and event.button_index == MOUSE_BUTTON_LEFT
 	if not pressed:
 		return
-	var bottom := minf(stage_bottom - 12.0, size.y - 116.0)
+	var world_size := _exploration_world_size()
+	var world_pointer := _screen_to_world(pointer)
 	_hero_map_target = Vector2(
-		clampf(pointer.x, 52.0, size.x - 52.0),
-		clampf(pointer.y, stage_top + 88.0, bottom)
+		clampf(world_pointer.x, 52.0, world_size.x - 52.0),
+		clampf(world_pointer.y, 150.0, world_size.y - 36.0)
 	)
 	_manual_waypoint_active = true
 	_roaming_hint_remaining = 1.2
@@ -945,13 +977,21 @@ func _draw_pixel_vertical_slice() -> void:
 	if defeat_sequence_active() and rewind_progress >= 0.42 and rewind_progress <= 0.84:
 		rewind_pan = sin((rewind_progress - 0.42) / 0.42 * PI) * 0.075
 	var background_texture: Texture2D = EXPLORATION_BACKGROUND if exploration_enabled else PIXEL_BACKGROUND
-	var background_focus := Vector2(0.5 + rewind_pan, 0.56 if exploration_enabled else 0.59)
+	var background_focus := Vector2(0.5 + rewind_pan, 0.59)
+	if exploration_enabled:
+		var world_size := _exploration_world_size()
+		var view_size := _visible_map_size()
+		background_focus = Vector2(
+			clampf((_camera_top_left.x + view_size.x * 0.5) / world_size.x + rewind_pan, 0.18, 0.82),
+			clampf((_camera_top_left.y + view_size.y * 0.5) / world_size.y, 0.2, 0.8)
+		)
 	_draw_cover_texture(background_texture, Rect2(Vector2.ZERO, size), background_focus)
 	draw_rect(Rect2(Vector2.ZERO, size), Color("193041", 0.05))
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
 	var battle_line := lerpf(stage_top, visible_bottom, 0.79)
-	var hero_pos := _hero_map_position if exploration_enabled and _hero_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.29, 66.0, size.x - 160.0), battle_line + 20.0)
-	var enemy_pos := _enemy_map_position if exploration_enabled and _enemy_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.72, 170.0, size.x - 66.0), battle_line)
+	var hero_pos := _world_to_screen(_hero_map_position) if exploration_enabled and _hero_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.29, 66.0, size.x - 160.0), battle_line + 20.0)
+	var enemy_pos := _world_to_screen(_enemy_map_position) if exploration_enabled and _enemy_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.72, 170.0, size.x - 66.0), battle_line)
+	var enemy_in_view := not exploration_enabled or _enemy_visible_on_map(enemy_pos)
 	_pixel_enemy_position = enemy_pos
 	if exploration_enabled and _exploration_phase == "traveling":
 		_draw_roaming_path(hero_pos, enemy_pos)
@@ -962,7 +1002,7 @@ func _draw_pixel_vertical_slice() -> void:
 			var column := index % 2
 			_draw_ally(hero_pos + Vector2(-55.0 - float(column) * 30.0, -10.0 - float(row) * 42.0), index)
 
-	if not defeat_sequence_active() or rewind_progress < 0.44:
+	if enemy_in_view and (not defeat_sequence_active() or rewind_progress < 0.44):
 		_draw_pixel_enemy(enemy_pos)
 	_draw_pixel_hero(hero_pos)
 	_draw_style_formed_burst(hero_pos)
@@ -970,8 +1010,13 @@ func _draw_pixel_vertical_slice() -> void:
 	if _hurt_vignette > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("a82e2e", _hurt_vignette * 0.13), false, 10.0)
 
+func _enemy_visible_on_map(screen_position: Vector2) -> bool:
+	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
+	return screen_position.x >= 22.0 and screen_position.x <= size.x - 22.0 \
+		and screen_position.y >= stage_top + 132.0 and screen_position.y <= visible_bottom + 16.0
+
 func _draw_roaming_path(hero_pos: Vector2, enemy_pos: Vector2) -> void:
-	var path_end := _hero_map_target if _manual_waypoint_active else enemy_pos
+	var path_end := _world_to_screen(_hero_map_target) if _manual_waypoint_active else enemy_pos
 	var distance := hero_pos.distance_to(path_end)
 	var steps := maxi(1, floori(distance / 24.0))
 	for index in steps:

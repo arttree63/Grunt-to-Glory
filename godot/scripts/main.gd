@@ -2168,8 +2168,8 @@ func _update_hud(snapshot: Dictionary) -> void:
 			}.get(track, Color("3a403b"))
 			var border := Color("f1d590") if state == "就緒" else Color("7b817a")
 			button.add_theme_stylebox_override("normal", _slot_style(base if state == "就緒" else base.darkened(0.32), border, 2 if state == "就緒" else 1))
-	battlefield.set_state(snapshot)
 	battlefield.set_stage_bounds(top_panel.position.y + top_panel.size.y, combat_panel.position.y)
+	battlefield.set_state(snapshot)
 	_update_training_rows(snapshot)
 	if current_page != "combat" and is_instance_valid(section_box):
 		_render_section(current_page, false)

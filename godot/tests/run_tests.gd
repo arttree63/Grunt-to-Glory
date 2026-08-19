@@ -231,13 +231,21 @@ func _test_auto_roaming() -> void:
 	battlefield.set_stage_bounds(112.0, 590.0)
 	battlefield.set_exploration_enabled(true)
 	battlefield._begin_exploration("1:1")
+	var world_size: Vector2 = battlefield._exploration_world_size()
+	var visible_size: Vector2 = battlefield._visible_map_size()
+	_expect(world_size.x > visible_size.x and world_size.y > visible_size.y, "探索世界必須大於手機單一可視畫面")
 	_expect(battlefield.navigation_blocks_combat() and battlefield._enemy_map_position != Vector2.ZERO, "自動巡敵開始時必須生成目標並暫停交戰")
+	var hero_screen: Vector2 = battlefield._world_to_screen(battlefield._hero_map_position)
+	_expect(hero_screen.x >= 0.0 and hero_screen.x <= battlefield.size.x and hero_screen.y >= battlefield.stage_top, "鏡頭必須把巡敵中的角色留在可視戰場")
 	var first_target: Vector2 = battlefield._enemy_map_position
 	battlefield._update_exploration(10.0)
 	_expect(not battlefield.navigation_blocks_combat(), "角色抵達敵人後才可恢復 AUTO 戰鬥")
 	battlefield._begin_exploration("1:2")
 	_expect(battlefield._enemy_map_position != first_target, "下一波敵人必須出現在地圖的不同位置")
-	battlefield._hero_map_target = Vector2(90.0, 360.0)
+	var waypoint_screen := Vector2(90.0, 360.0)
+	var waypoint_world := battlefield._screen_to_world(waypoint_screen)
+	_expect(waypoint_world != waypoint_screen, "捲動後點地座標必須換算成大地圖世界座標")
+	battlefield._hero_map_target = waypoint_world
 	battlefield._manual_waypoint_active = true
 	battlefield._update_exploration(10.0)
 	_expect(battlefield.navigation_blocks_combat() and not battlefield._manual_waypoint_active, "手動路點完成後必須自動接回巡敵路線")
