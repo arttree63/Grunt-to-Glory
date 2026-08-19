@@ -235,6 +235,10 @@ func _test_auto_roaming() -> void:
 	var visible_size: Vector2 = battlefield._visible_map_size()
 	_expect(world_size.x > visible_size.x and world_size.y > visible_size.y, "探索世界必須大於手機單一可視畫面")
 	_expect(battlefield.navigation_blocks_combat() and battlefield._enemy_map_position != Vector2.ZERO, "自動巡敵開始時必須生成目標並暫停交戰")
+	battlefield._encounter_wave = 1
+	battlefield._encounter_wave_count = 3
+	var encounter_status: Dictionary = battlefield.exploration_status()
+	_expect(String(encounter_status.landmark) != "" and int(encounter_status.enemy_group_size) == 3, "巡敵目標必須提供地標與剩餘敵群數量")
 	var hero_screen: Vector2 = battlefield._world_to_screen(battlefield._hero_map_position)
 	_expect(hero_screen.x >= 0.0 and hero_screen.x <= battlefield.size.x and hero_screen.y >= battlefield.stage_top, "鏡頭必須把巡敵中的角色留在可視戰場")
 	var first_target: Vector2 = battlefield._enemy_map_position
@@ -251,6 +255,18 @@ func _test_auto_roaming() -> void:
 	_expect(battlefield.navigation_blocks_combat() and not battlefield._manual_waypoint_active, "手動路點完成後必須自動接回巡敵路線")
 	battlefield._update_exploration(10.0)
 	_expect(not battlefield.navigation_blocks_combat(), "巡敵接回後必須能正常接戰")
+	var group_model = CombatModelScript.new()
+	group_model.stage = 2
+	group_model.current_wave = 0
+	group_model._spawn_enemy()
+	battlefield._encounter_key = "2"
+	battlefield._exploration_phase = "engaged"
+	var held_target: Vector2 = battlefield._enemy_map_position
+	battlefield.set_state(group_model.snapshot())
+	group_model.current_wave = 1
+	group_model._spawn_enemy()
+	battlefield.set_state(group_model.snapshot())
+	_expect(battlefield._exploration_phase == "engaged" and battlefield._enemy_map_position == held_target, "同一戰的後續敵人必須留在原遭遇點，不可重新巡路")
 	battlefield.free()
 
 func _test_frontier_stage_waves() -> void:

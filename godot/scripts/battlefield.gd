@@ -326,6 +326,8 @@ var _hero_map_target := Vector2.ZERO
 var _enemy_map_position := Vector2.ZERO
 var _move_speed_bonus := 0.0
 var _patrol_cursor := -1
+var _encounter_wave := 1
+var _encounter_wave_count := 1
 var _manual_waypoint_active := false
 var _roaming_hint_remaining := 0.0
 var _hero_facing := 1.0
@@ -470,9 +472,11 @@ func set_state(snapshot: Dictionary) -> void:
 	magic_manifest_active = bool(snapshot.magic_manifest_active)
 	complete_release_active = float(snapshot.complete_release_remaining) > 0.0
 	ally_count = int(snapshot.ally_count)
+	_encounter_wave = int(snapshot.get("wave", 1))
+	_encounter_wave_count = int(snapshot.get("wave_count", 1))
 	_move_speed_bonus = float(snapshot.get("move_speed_bonus", 0.0))
 	if exploration_enabled and float(snapshot.enemy_hp) > 0.0:
-		var next_key := "%d:%d" % [int(snapshot.stage), int(snapshot.get("current_wave", 0))]
+		var next_key := str(int(snapshot.stage))
 		if next_key != _encounter_key:
 			_begin_exploration(next_key)
 
@@ -496,6 +500,8 @@ func exploration_status() -> Dictionary:
 		"phase": _exploration_phase,
 		"target": _enemy_map_position,
 		"manual_waypoint": _manual_waypoint_active,
+		"landmark": _current_landmark_name(),
+		"enemy_group_size": maxi(1, _encounter_wave_count - _encounter_wave + 1),
 	}
 
 func _begin_exploration(key: String) -> void:
@@ -530,6 +536,26 @@ func _patrol_points() -> Array[Vector2]:
 		Vector2(world_size.x * 0.55, world_size.y * 0.62),
 		Vector2(world_size.x * 0.18, world_size.y * 0.76),
 	]
+
+func _landmarks() -> Array[Dictionary]:
+	var world_size := _exploration_world_size()
+	return [
+		{"name": "殘破瞭望塔", "kind": "tower", "position": Vector2(world_size.x * 0.42, world_size.y * 0.28)},
+		{"name": "斷旗丘", "kind": "banner", "position": Vector2(world_size.x * 0.23, world_size.y * 0.5)},
+		{"name": "古戰場石環", "kind": "stones", "position": Vector2(world_size.x * 0.76, world_size.y * 0.72)},
+	]
+
+func _current_landmark_name() -> String:
+	if _enemy_map_position == Vector2.ZERO:
+		return ""
+	var nearest_name := "荒地巡路"
+	var nearest_distance := INF
+	for landmark: Dictionary in _landmarks():
+		var distance := _enemy_map_position.distance_to(Vector2(landmark.position))
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_name = String(landmark.name)
+	return nearest_name if nearest_distance <= 190.0 else "荒地巡路"
 
 func _set_enemy_approach_target() -> void:
 	var world_size := _exploration_world_size()
@@ -987,6 +1013,8 @@ func _draw_pixel_vertical_slice() -> void:
 		)
 	_draw_cover_texture(background_texture, Rect2(Vector2.ZERO, size), background_focus)
 	draw_rect(Rect2(Vector2.ZERO, size), Color("193041", 0.05))
+	if exploration_enabled:
+		_draw_landmarks()
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
 	var battle_line := lerpf(stage_top, visible_bottom, 0.79)
 	var hero_pos := _world_to_screen(_hero_map_position) if exploration_enabled and _hero_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.29, 66.0, size.x - 160.0), battle_line + 20.0)
@@ -1003,6 +1031,7 @@ func _draw_pixel_vertical_slice() -> void:
 			_draw_ally(hero_pos + Vector2(-55.0 - float(column) * 30.0, -10.0 - float(row) * 42.0), index)
 
 	if enemy_in_view and (not defeat_sequence_active() or rewind_progress < 0.44):
+		_draw_enemy_group_reserves(enemy_pos)
 		_draw_pixel_enemy(enemy_pos)
 	_draw_pixel_hero(hero_pos)
 	_draw_style_formed_burst(hero_pos)
@@ -1014,6 +1043,50 @@ func _enemy_visible_on_map(screen_position: Vector2) -> bool:
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
 	return screen_position.x >= 22.0 and screen_position.x <= size.x - 22.0 \
 		and screen_position.y >= stage_top + 132.0 and screen_position.y <= visible_bottom + 16.0
+
+func _draw_landmarks() -> void:
+	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
+	for landmark: Dictionary in _landmarks():
+		var world_position := Vector2(landmark.position)
+		var screen_position := _world_to_screen(world_position)
+		if screen_position.x < -36.0 or screen_position.x > size.x + 36.0 \
+			or screen_position.y < stage_top + 74.0 or screen_position.y > visible_bottom + 20.0:
+			continue
+		_draw_landmark_symbol(screen_position, String(landmark.kind))
+		if _hero_map_position.distance_to(world_position) <= 170.0:
+			var label_position := screen_position + Vector2(-72.0, -30.0)
+			draw_string(UI_FONT, label_position + Vector2(1.0, 2.0), String(landmark.name), HORIZONTAL_ALIGNMENT_CENTER, 144.0, 15, Color("172229", 0.8))
+			draw_string(UI_FONT, label_position, String(landmark.name), HORIZONTAL_ALIGNMENT_CENTER, 144.0, 15, Color("fff0bf", 0.92))
+
+func _draw_landmark_symbol(position: Vector2, kind: String) -> void:
+	draw_circle(position + Vector2(0.0, 4.0), 18.0, Color("17262a", 0.34))
+	match kind:
+		"tower":
+			draw_rect(Rect2(position + Vector2(-8.0, -20.0), Vector2(16.0, 24.0)), Color("819096", 0.72))
+			draw_polyline(PackedVector2Array([position + Vector2(-11.0, -20.0), position + Vector2(-3.0, -28.0), position + Vector2(3.0, -22.0), position + Vector2(10.0, -27.0)]), Color("c1c9c5", 0.72), 4.0)
+		"banner":
+			draw_line(position + Vector2(-6.0, -25.0), position + Vector2(-6.0, 7.0), Color("b7a27b", 0.86), 4.0)
+			draw_polygon(PackedVector2Array([position + Vector2(-4.0, -24.0), position + Vector2(14.0, -19.0), position + Vector2(-4.0, -11.0)]), PackedColorArray([Color("a44f43", 0.84)]))
+		"stones":
+			for offset in [Vector2(-12.0, -3.0), Vector2(0.0, -10.0), Vector2(12.0, -2.0)]:
+				draw_circle(position + offset, 7.0, Color("9aa5a0", 0.76))
+
+func _draw_enemy_group_reserves(enemy_position: Vector2) -> void:
+	var reserve_count := mini(2, maxi(0, _encounter_wave_count - _encounter_wave))
+	if reserve_count <= 0 or _enemy_death_motion > 0.0:
+		return
+	var texture := _pixel_enemy_preview_texture()
+	for index in reserve_count:
+		var side := -1.0 if index % 2 == 0 else 1.0
+		var horizontal_direction := -1.0 if enemy_position.x > size.x * 0.62 else 1.0
+		var reserve_position := enemy_position + Vector2(horizontal_direction * (34.0 + float(index) * 24.0), -34.0 + side * 22.0)
+		reserve_position.x = clampf(reserve_position.x, 46.0, size.x - 46.0)
+		_draw_ground_shadow(reserve_position + Vector2(0.0, 2.0), Vector2(31.0, 7.0))
+		_draw_anchored_animation_frame(texture, reserve_position, 108.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2.ONE, Color(0.72, 0.78, 0.8, 0.62))
+
+func _pixel_enemy_preview_texture() -> Texture2D:
+	var combat_frames := _pixel_enemy_combat_frames()
+	return combat_frames[0] if not combat_frames.is_empty() else PIXEL_WOLF_IDLE_FRAMES[0]
 
 func _draw_roaming_path(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 	var path_end := _world_to_screen(_hero_map_target) if _manual_waypoint_active else enemy_pos
