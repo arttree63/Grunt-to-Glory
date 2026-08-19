@@ -260,6 +260,18 @@ func _test_auto_roaming() -> void:
 	_expect(battlefield.navigation_blocks_combat() and not battlefield._manual_waypoint_active, "手動路點完成後必須自動接回巡敵路線")
 	battlefield._update_exploration(10.0)
 	_expect(not battlefield.navigation_blocks_combat(), "巡敵接回後必須能正常接戰")
+	battlefield._begin_exploration("1:3")
+	var detour_landmark: Dictionary = battlefield._landmarks()[1]
+	var detour_click := InputEventMouseButton.new()
+	detour_click.button_index = MOUSE_BUTTON_LEFT
+	detour_click.pressed = true
+	detour_click.position = battlefield._world_to_screen(Vector2(detour_landmark.position))
+	battlefield._on_map_input(detour_click)
+	_expect(battlefield._selected_landmark_name == "斷旗丘" and battlefield._manual_waypoint_active, "點擊地標必須改為地標繞行目標")
+	battlefield._update_exploration(10.0)
+	_expect(battlefield._claimed_landmark_effect == "direct" and battlefield.navigation_blocks_combat(), "抵達地標必須取得優勢並自動接回巡敵")
+	battlefield._update_exploration(10.0)
+	_expect(battlefield.active_landmark_effect() == "direct" and not battlefield.navigation_blocks_combat(), "完成繞行後必須在接敵時啟用所選地標效果")
 	var group_model = CombatModelScript.new()
 	group_model.stage = 2
 	group_model.current_wave = 0

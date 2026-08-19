@@ -316,7 +316,7 @@ func _show_tutorial(title: String, detail: String, action_text: String, action: 
 	tutorial_action_button.grab_focus()
 
 func _show_tutorial_intro() -> void:
-	_show_tutorial("你只是一名小兵", "角色會在限定戰場內自動巡敵、靠近並戰鬥。移動途中也可以點地面，短暫調整他的路線。", "開始巡敵", _tutorial_begin_observe)
+	_show_tutorial("你只是一名小兵", "角色會在限定戰場內自動巡敵、靠近並戰鬥。移動途中可點地調整，也能點地標繞行取得優勢。", "開始巡敵", _tutorial_begin_observe)
 
 func _tutorial_begin_observe() -> void:
 	model.tutorial_step = "observe"

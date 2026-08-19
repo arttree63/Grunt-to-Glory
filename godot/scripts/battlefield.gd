@@ -329,6 +329,10 @@ var _patrol_cursor := -1
 var _encounter_wave := 1
 var _encounter_wave_count := 1
 var _manual_waypoint_active := false
+var _selected_landmark_name := ""
+var _selected_landmark_effect := ""
+var _claimed_landmark_name := ""
+var _claimed_landmark_effect := ""
 var _roaming_hint_remaining := 0.0
 var _hero_facing := 1.0
 var _navigation_paused := false
@@ -502,12 +506,16 @@ func exploration_status() -> Dictionary:
 		"manual_waypoint": _manual_waypoint_active,
 		"landmark": _current_landmark_name(),
 		"landmark_effect": active_landmark_effect(),
+		"selected_landmark": _selected_landmark_name,
+		"claimed_landmark": _claimed_landmark_name,
 		"enemy_group_size": maxi(1, _encounter_wave_count - _encounter_wave + 1),
 	}
 
 func active_landmark_effect() -> String:
 	if _exploration_phase != "engaged" or _enemy_map_position == Vector2.ZERO:
 		return ""
+	if not _claimed_landmark_effect.is_empty():
+		return _claimed_landmark_effect
 	var nearest_kind := ""
 	var nearest_distance := INF
 	for landmark: Dictionary in _landmarks():
@@ -517,7 +525,7 @@ func active_landmark_effect() -> String:
 			nearest_kind = String(landmark.kind)
 	if nearest_distance > 190.0:
 		return ""
-	return {"tower": "scout", "banner": "direct", "stones": "supply"}.get(nearest_kind, "")
+	return _landmark_effect_for_kind(nearest_kind)
 
 func _begin_exploration(key: String) -> void:
 	_encounter_key = key
@@ -535,6 +543,10 @@ func _begin_exploration(key: String) -> void:
 		_patrol_cursor = (_patrol_cursor + 1) % patrol_points.size()
 		_enemy_map_position = patrol_points[_patrol_cursor]
 	_manual_waypoint_active = false
+	_selected_landmark_name = ""
+	_selected_landmark_effect = ""
+	_claimed_landmark_name = ""
+	_claimed_landmark_effect = ""
 	_roaming_hint_remaining = ROAMING_HINT_DURATION
 	_set_enemy_approach_target()
 	_exploration_phase = "traveling"
@@ -559,6 +571,15 @@ func _landmarks() -> Array[Dictionary]:
 		{"name": "斷旗丘", "kind": "banner", "position": Vector2(world_size.x * 0.23, world_size.y * 0.5)},
 		{"name": "古戰場石環", "kind": "stones", "position": Vector2(world_size.x * 0.76, world_size.y * 0.72)},
 	]
+
+func _landmark_effect_for_kind(kind: String) -> String:
+	return {"tower": "scout", "banner": "direct", "stones": "supply"}.get(kind, "")
+
+func _landmark_at(world_position: Vector2) -> Dictionary:
+	for landmark: Dictionary in _landmarks():
+		if world_position.distance_to(Vector2(landmark.position)) <= 54.0:
+			return landmark
+	return {}
 
 func _current_landmark_name() -> String:
 	if _enemy_map_position == Vector2.ZERO:
@@ -616,6 +637,12 @@ func _update_exploration(delta: float) -> void:
 			_hero_map_position = _hero_map_target
 			if _manual_waypoint_active:
 				_manual_waypoint_active = false
+				if not _selected_landmark_effect.is_empty():
+					_claimed_landmark_name = _selected_landmark_name
+					_claimed_landmark_effect = _selected_landmark_effect
+					_selected_landmark_name = ""
+					_selected_landmark_effect = ""
+					_roaming_hint_remaining = 1.8
 				_set_enemy_approach_target()
 			else:
 				_hero_facing = 1.0
@@ -638,12 +665,20 @@ func _on_map_input(event: InputEvent) -> void:
 		return
 	var world_size := _exploration_world_size()
 	var world_pointer := _screen_to_world(pointer)
-	_hero_map_target = Vector2(
-		clampf(world_pointer.x, 52.0, world_size.x - 52.0),
-		clampf(world_pointer.y, 150.0, world_size.y - 36.0)
-	)
+	var landmark := _landmark_at(world_pointer)
+	if landmark.is_empty():
+		_selected_landmark_name = ""
+		_selected_landmark_effect = ""
+		_hero_map_target = Vector2(
+			clampf(world_pointer.x, 52.0, world_size.x - 52.0),
+			clampf(world_pointer.y, 150.0, world_size.y - 36.0)
+		)
+	else:
+		_selected_landmark_name = String(landmark.name)
+		_selected_landmark_effect = _landmark_effect_for_kind(String(landmark.kind))
+		_hero_map_target = Vector2(landmark.position)
 	_manual_waypoint_active = true
-	_roaming_hint_remaining = 1.2
+	_roaming_hint_remaining = 1.8 if not _selected_landmark_name.is_empty() else 1.2
 	accept_event()
 	queue_redraw()
 
@@ -1067,14 +1102,16 @@ func _draw_landmarks() -> void:
 		if screen_position.x < -36.0 or screen_position.x > size.x + 36.0 \
 			or screen_position.y < stage_top + 74.0 or screen_position.y > visible_bottom + 20.0:
 			continue
-		_draw_landmark_symbol(screen_position, String(landmark.kind))
+		_draw_landmark_symbol(screen_position, String(landmark.kind), String(landmark.name) == _selected_landmark_name)
 		if _hero_map_position.distance_to(world_position) <= 170.0:
 			var label_position := screen_position + Vector2(-72.0, -30.0)
 			draw_string(UI_FONT, label_position + Vector2(1.0, 2.0), String(landmark.name), HORIZONTAL_ALIGNMENT_CENTER, 144.0, 15, Color("172229", 0.8))
 			draw_string(UI_FONT, label_position, String(landmark.name), HORIZONTAL_ALIGNMENT_CENTER, 144.0, 15, Color("fff0bf", 0.92))
 
-func _draw_landmark_symbol(position: Vector2, kind: String) -> void:
+func _draw_landmark_symbol(position: Vector2, kind: String, selected: bool) -> void:
 	draw_circle(position + Vector2(0.0, 4.0), 18.0, Color("17262a", 0.34))
+	if selected:
+		draw_arc(position + Vector2(0.0, 1.0), 27.0 + sin(_time * 5.0) * 2.0, 0.0, TAU, 24, Color("ffe49a", 0.9), 4.0)
 	match kind:
 		"tower":
 			draw_rect(Rect2(position + Vector2(-8.0, -20.0), Vector2(16.0, 24.0)), Color("819096", 0.72))
@@ -1115,7 +1152,13 @@ func _draw_roaming_path(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var prompt_width := minf(size.x - 56.0, 286.0)
 		var prompt_rect := Rect2((size.x - prompt_width) * 0.5, stage_top + 18.0, prompt_width, 34.0)
 		draw_style_box(_exploration_panel_style(), prompt_rect)
-		var hint := "已調整路線" if _manual_waypoint_active else "AUTO 巡敵 · 點地可調整移動"
+		var hint := "AUTO 巡敵 · 點地標可繞行"
+		if not _selected_landmark_name.is_empty():
+			hint = "繞行：%s" % _selected_landmark_name
+		elif not _claimed_landmark_name.is_empty() and _manual_waypoint_active == false:
+			hint = "已取得：%s" % _claimed_landmark_name
+		elif _manual_waypoint_active:
+			hint = "已調整路線"
 		draw_string(UI_FONT, prompt_rect.position + Vector2(0.0, 23.0), hint, HORIZONTAL_ALIGNMENT_CENTER, prompt_rect.size.x, 16, Color("fff5d5"))
 
 func _exploration_panel_style() -> StyleBoxFlat:
