@@ -1342,8 +1342,6 @@ func _draw_pixel_vertical_slice() -> void:
 	var enemy_pos := _enemy_presentation_position(enemy_world_screen) if exploration_enabled else enemy_world_screen
 	var enemy_in_view := not exploration_enabled or _exploration_phase == "engaged" or _enemy_visible_on_map(enemy_world_screen)
 	_pixel_enemy_position = enemy_pos
-	if exploration_enabled and _exploration_phase == "traveling":
-		_draw_roaming_path(hero_pos, enemy_pos)
 	if exploration_enabled:
 		_draw_drag_control()
 
@@ -1560,7 +1558,6 @@ func _draw_roaming_enemy_camps() -> void:
 			continue
 		_draw_ground_shadow(screen_position + Vector2(0.0, 2.0), Vector2(28.0, 7.0))
 		_draw_anchored_animation_frame(texture, screen_position, 96.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2(_enemy_facing_for_world_position(_enemy_camps[index]), 1.0), Color(0.72, 0.76, 0.76, 0.78))
-		draw_arc(screen_position + Vector2(0.0, 4.0), 24.0, 0.0, TAU, 22, Color("b74f45", 0.55), 2.5)
 
 func _draw_active_enemy_indicator() -> void:
 	if _exploration_phase != "traveling" or _active_enemy_camp_index < 0 or _active_enemy_camp_index >= _enemy_camps.size():
@@ -1572,12 +1569,14 @@ func _draw_active_enemy_indicator() -> void:
 	var direction := marker_position.direction_to(screen_position)
 	if direction.length_squared() < 0.01:
 		direction = Vector2.UP
-	_draw_ground_shadow(marker_position + Vector2(0.0, 3.0), Vector2(23.0, 6.0))
-	_draw_anchored_animation_frame(_pixel_enemy_preview_texture(), marker_position, 72.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2(_enemy_facing_for_world_position(_enemy_camps[_active_enemy_camp_index]), 1.0), Color(0.86, 0.82, 0.72, 0.9))
-	draw_arc(marker_position + Vector2(0.0, 4.0), 25.0, 0.0, TAU, 22, Color("f0c765", 0.86), 3.0)
-	var arrow_center := marker_position + direction * 35.0
-	var side := direction.orthogonal() * 6.0
-	draw_polygon(PackedVector2Array([arrow_center + direction * 8.0, arrow_center - direction * 6.0 + side, arrow_center - direction * 6.0 - side]), PackedColorArray([Color("ffe28a", 0.92)]))
+	var side := direction.orthogonal() * 8.0
+	var arrow := PackedVector2Array([
+		marker_position + direction * 11.0,
+		marker_position - direction * 7.0 + side,
+		marker_position - direction * 7.0 - side,
+	])
+	draw_colored_polygon(arrow, Color("ffe28a", 0.94))
+	draw_polyline(PackedVector2Array([arrow[0], arrow[1], arrow[2], arrow[0]]), Color("4b3b24", 0.9), 2.0)
 
 func _active_enemy_indicator_position(screen_position: Vector2) -> Vector2:
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
@@ -1589,31 +1588,6 @@ func _active_enemy_indicator_position(screen_position: Vector2) -> Vector2:
 func _pixel_enemy_preview_texture() -> Texture2D:
 	var combat_frames := _pixel_enemy_combat_frames()
 	return combat_frames[0] if not combat_frames.is_empty() else PIXEL_WOLF_IDLE_FRAMES[0]
-
-func _draw_roaming_path(hero_pos: Vector2, enemy_pos: Vector2) -> void:
-	var path_end := _world_to_screen(_hero_map_target) if _manual_waypoint_active else enemy_pos
-	var distance := hero_pos.distance_to(path_end)
-	var steps := maxi(1, floori(distance / 24.0))
-	for index in steps:
-		var ratio := float(index + 1) / float(steps + 1)
-		draw_circle(hero_pos.lerp(path_end, ratio), 2.5, Color("d9c47a", 0.58))
-	draw_arc(path_end, 15.0 + sin(_time * 5.0) * 2.0, 0.0, TAU, 22, Color("f2d782", 0.76), 3.0)
-	if _roaming_hint_remaining > 0.0:
-		var prompt_width := minf(size.x - 132.0, 216.0)
-		var prompt_rect := Rect2(12.0, stage_top + 18.0, prompt_width, 34.0)
-		draw_style_box(_exploration_panel_style(), prompt_rect)
-		var hint := "拖曳移動 · 放開 AUTO"
-		if not _selected_landmark_name.is_empty():
-			hint = "繞行：%s" % _selected_landmark_name
-		elif not _claimed_landmark_name.is_empty() and _manual_waypoint_active == false:
-			hint = "已取得：%s" % _claimed_landmark_name
-		elif not _nearby_landmark_name.is_empty():
-			hint = "可繞行：%s" % _nearby_landmark_name
-		elif not _manual_waypoint_active and _active_enemy_camp_index >= 0:
-			hint = "自動鎖定最近敵群"
-		elif _manual_waypoint_active:
-			hint = "已調整路線"
-		draw_string(UI_FONT, prompt_rect.position + Vector2(0.0, 23.0), hint, HORIZONTAL_ALIGNMENT_CENTER, prompt_rect.size.x, 16, Color("fff5d5"))
 
 func _draw_drag_control() -> void:
 	if not _pointer_down:
@@ -1805,9 +1779,7 @@ func _draw_enemy_health_bar(feet_position: Vector2, enemy_height: float, archety
 func _draw_pixel_enemy(feet_position: Vector2) -> void:
 	var combat_frames := _pixel_enemy_combat_frames()
 	var uses_custom_enemy := not combat_frames.is_empty()
-	var idle_frame_count := 2 if uses_custom_enemy else PIXEL_WOLF_IDLE_FRAMES.size()
-	var frame_index := floori(_time / 0.36) % idle_frame_count
-	var texture: Texture2D = combat_frames[frame_index] if uses_custom_enemy else PIXEL_WOLF_IDLE_FRAMES[frame_index]
+	var texture: Texture2D = combat_frames[0] if uses_custom_enemy else PIXEL_WOLF_IDLE_FRAMES[0]
 	var tint := Color(1.08, 0.92, 0.78) if enemy_archetype == "boss" else Color.WHITE
 	var archetype_scale: float = {
 		"raider": 0.88, "brute": 1.03, "shield": 0.98, "caster": 0.94, "boss": 1.15,
@@ -1820,7 +1792,6 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 		entry_alpha = clampf(entry_progress * 2.4, 0.12, 1.0)
 		if not reduced_motion:
 			offset.x += (1.0 - entry_progress) * 18.0
-			action_scale = Vector2(0.96 + entry_progress * 0.04, 0.96 + entry_progress * 0.04)
 	if _enemy_death_motion > 0.0:
 		var death_progress := 1.0 - _enemy_death_motion
 		if uses_custom_enemy:
@@ -1840,13 +1811,8 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 			texture = PIXEL_WOLF_ATTACK_FRAMES[attack_frame]
 		var lunge_distance: float = 7.0 if enemy_archetype == "raider" else (2.0 if enemy_archetype == "caster" else 4.0)
 		offset.x += _enemy_attack_lunge_direction() * sin(progress * PI) * lunge_distance
-		if not reduced_motion:
-			if enemy_archetype == "brute": action_scale = Vector2(1.05, 0.95) if progress < 0.46 else Vector2(0.98, 1.02)
-			elif enemy_archetype == "shield": action_scale = Vector2(1.02, 0.98)
-			elif enemy_archetype == "caster": offset.y -= sin(progress * PI) * 3.0
 	elif enemy_heavy_windup:
 		texture = combat_frames[2] if uses_custom_enemy else PIXEL_WOLF_ATTACK_FRAMES[0]
-		if not reduced_motion and enemy_archetype == "brute": action_scale = Vector2(1.04, 0.96)
 	if _enemy_knockback > 0.0:
 		offset.x += sin(_enemy_knockback * PI) * 5.0
 	if _enemy_flash > 0.0:
