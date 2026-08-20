@@ -210,14 +210,12 @@ const PIXEL_WOLF_FEET_RATIO := 244.0 / 256.0
 const DEFEAT_REWIND_DURATION := 1.8
 const ROAMING_HINT_DURATION := 2.8
 const EXPLORATION_WORLD_SCALE := Vector2(1.65, 1.6)
-const EXPLORATION_BACKGROUND_ZOOM := 0.76
 const HERO_MAP_SPEED := 146.0
 const ENEMY_CHASE_SPEED := 112.0
 const ENCOUNTER_DISTANCE := 104.0
 const COMBAT_DISTANCE := 122.0
 const DRAG_THRESHOLD := 14.0
 const CAMERA_FOLLOW_SPEED := 5.2
-const CAMERA_LOOK_AHEAD := Vector2(0.11, 0.055)
 const CAMERA_DEAD_ZONE := Vector2(0.12, 0.1)
 
 var reduced_motion := false
@@ -730,15 +728,13 @@ func _update_exploration_camera(delta: float, snap := false) -> void:
 	desired.x = clampf(desired.x, 0.0, world_size.x - view_size.x)
 	desired.y = clampf(desired.y, 0.0, world_size.y - view_size.y)
 	var follow_weight := 1.0 if snap else 1.0 - exp(-CAMERA_FOLLOW_SPEED * maxf(delta, 0.0))
-	_camera_top_left = desired if snap else _camera_top_left.lerp(desired, follow_weight)
+	var next_camera := desired if snap else _camera_top_left.lerp(desired, follow_weight)
+	_camera_top_left = Vector2(roundf(next_camera.x), roundf(next_camera.y))
 
 func _camera_focus_position(view_size: Vector2) -> Vector2:
 	if _exploration_phase == "engaged" and _enemy_map_position != Vector2.ZERO:
 		return _hero_map_position.lerp(_enemy_map_position, 0.46)
-	var travel_direction := _steering_vector
-	if travel_direction.length_squared() < 0.01 and _hero_map_target != Vector2.ZERO:
-		travel_direction = _hero_map_position.direction_to(_hero_map_target)
-	return _hero_map_position + Vector2(travel_direction.x * view_size.x * CAMERA_LOOK_AHEAD.x, travel_direction.y * view_size.y * CAMERA_LOOK_AHEAD.y)
+	return _hero_map_position
 
 func _world_to_screen(world_position: Vector2) -> Vector2:
 	return Vector2(world_position.x - _camera_top_left.x, stage_top + world_position.y - _camera_top_left.y)
@@ -1349,7 +1345,8 @@ func _draw_pixel_vertical_slice() -> void:
 			clampf((_camera_top_left.y + view_size.y * 0.5) / world_size.y, 0.2, 0.8)
 		)
 	if exploration_enabled:
-		_draw_exploration_background(background_texture, Rect2(Vector2.ZERO, size))
+		var map_view_size := _visible_map_size()
+		_draw_exploration_background(background_texture, Rect2(Vector2(0.0, stage_top), map_view_size))
 	else:
 		_draw_cover_texture(background_texture, Rect2(Vector2.ZERO, size), background_focus)
 	draw_rect(Rect2(Vector2.ZERO, size), Color("193041", 0.05))
@@ -1843,9 +1840,6 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 		if not reduced_motion:
 			offset.x += (1.0 - entry_progress) * 18.0
 			action_scale = Vector2(0.96 + entry_progress * 0.04, 0.96 + entry_progress * 0.04)
-	elif not reduced_motion and _enemy_death_motion <= 0.0 and _enemy_attack_recover <= 0.0 and not enemy_heavy_windup:
-		if enemy_archetype == "raider": offset.x += sin(_time * 2.4) * 1.2
-		elif enemy_archetype == "caster": offset.y += sin(_time * 2.0) * 1.8
 	if _enemy_death_motion > 0.0:
 		var death_progress := 1.0 - _enemy_death_motion
 		if uses_custom_enemy:
@@ -2277,21 +2271,22 @@ func _draw_exploration_background(texture: Texture2D, destination: Rect2) -> voi
 func _exploration_background_source_rect(texture_size: Vector2, destination_size: Vector2) -> Rect2:
 	if texture_size.x <= 0.0 or texture_size.y <= 0.0 or destination_size.x <= 0.0 or destination_size.y <= 0.0:
 		return Rect2(Vector2.ZERO, texture_size)
-	var destination_aspect := destination_size.x / destination_size.y
-	var cover_size := texture_size
-	if texture_size.x / texture_size.y > destination_aspect:
-		cover_size.x = texture_size.y * destination_aspect
-	else:
-		cover_size.y = texture_size.x / destination_aspect
-	var source_size := cover_size * EXPLORATION_BACKGROUND_ZOOM
-	var view_size := _visible_map_size()
 	var world_size := _exploration_world_size()
-	var camera_range := world_size - view_size
-	var camera_progress := Vector2(
-		0.5 if camera_range.x <= 0.0 else clampf(_camera_top_left.x / camera_range.x, 0.0, 1.0),
-		0.5 if camera_range.y <= 0.0 else clampf(_camera_top_left.y / camera_range.y, 0.0, 1.0)
+	var world_aspect := world_size.x / world_size.y
+	var world_source := Rect2(Vector2.ZERO, texture_size)
+	if texture_size.x / texture_size.y > world_aspect:
+		world_source.size.x = texture_size.y * world_aspect
+		world_source.position.x = (texture_size.x - world_source.size.x) * 0.5
+	else:
+		world_source.size.y = texture_size.x / world_aspect
+		world_source.position.y = (texture_size.y - world_source.size.y) * 0.5
+	var view_ratio := Vector2(destination_size.x / world_size.x, destination_size.y / world_size.y)
+	var source_size := world_source.size * view_ratio
+	var source_position := world_source.position + world_source.size * Vector2(
+		_camera_top_left.x / world_size.x,
+		_camera_top_left.y / world_size.y
 	)
-	return Rect2((texture_size - source_size) * camera_progress, source_size)
+	return Rect2(source_position, source_size)
 
 func _draw_afterimages(origin: Vector2) -> void:
 	var count := 0

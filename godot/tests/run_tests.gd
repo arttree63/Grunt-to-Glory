@@ -300,8 +300,13 @@ func _test_auto_roaming() -> void:
 	var hero_screen: Vector2 = battlefield._world_to_screen(battlefield._hero_map_position)
 	_expect(hero_screen.x >= 0.0 and hero_screen.x <= battlefield.size.x and hero_screen.y >= battlefield.stage_top, "鏡頭必須把巡敵中的角色留在可視戰場")
 	var traveling_focus := battlefield._camera_focus_position(visible_size)
-	var target_direction: Vector2 = battlefield._hero_map_position.direction_to(battlefield._hero_map_target)
-	_expect(traveling_focus.dot(target_direction) > battlefield._hero_map_position.dot(target_direction), "巡敵鏡頭必須朝移動方向保留預視空間")
+	_expect(traveling_focus == battlefield._hero_map_position, "巡敵鏡頭必須穩定跟隨角色，不可因目標方向讓人物在畫面內漂移")
+	battlefield._camera_top_left = Vector2(37.0, 23.0)
+	var source_before := battlefield._exploration_background_source_rect(Vector2(1536.0, 1024.0), visible_size)
+	battlefield._camera_top_left += Vector2(41.0, 29.0)
+	var source_after := battlefield._exploration_background_source_rect(Vector2(1536.0, 1024.0), visible_size)
+	var rendered_background_shift := (source_after.position - source_before.position) * visible_size / source_before.size
+	_expect(rendered_background_shift.distance_to(Vector2(41.0, 29.0)) < 0.1, "背景與地標必須使用同一世界投影，不可在鏡頭移動時彼此漂移")
 	battlefield._update_exploration(10.0)
 	_expect(not battlefield.navigation_blocks_combat(), "角色抵達敵人後才可恢復 AUTO 戰鬥")
 	var combat_focus := battlefield._camera_focus_position(visible_size)
@@ -1576,6 +1581,8 @@ func _test_navigation() -> void:
 	_expect(not scene.enemy_label.visible and not scene.enemy_bar.visible, "敵人說明與大型血條不可再佔據頂部戰鬥空間")
 	_expect(not scene.mp_hud.visible and not scene.momentum_hud.visible and not scene.state_panel.visible, "未投入的流派資源不可預先出現在戰鬥 HUD")
 	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text == "第一步：修練", "新遊戲必須把既有修練入口轉成第一個可操作目標")
+	_expect(scene.objective_label.text.begins_with("第1區・第1關"), "戰鬥 HUD 必須持續顯示目前區域與關卡")
+	_expect(scene.model.tutorial_step == "complete" and not scene.tutorial_overlay.visible, "新遊戲不可用連續講解框打斷 AUTO 戰鬥")
 	var ui_font: Font = load("res://assets/fonts/NotoSansTC-Regular.otf")
 	for character: String in ["教", "學", "裝", "備", "解", "鎖", "流", "派", "強", "化", "背", "包", "較"]:
 		_expect(ui_font.has_char(character.unicode_at(0)), "中文字型子集必須保留目前介面用字：%s" % character)
@@ -1588,6 +1595,9 @@ func _test_navigation() -> void:
 	scene.model.tutorial_step = "complete"
 	scene.toast_panel.visible = false
 	scene.toast_title.text = ""
+	var repetitive_events: Array[Dictionary] = [{"type": "momentum_full"}, {"type": "perfect_block", "prevented": 10.0}, {"type": "flow_state_entered"}]
+	scene._handle_events(repetitive_events)
+	_expect(not scene.toast_panel.visible and scene.toast_title.text.is_empty(), "高頻戰鬥觸發只能使用戰場特效，不可反覆跳出講解框")
 	scene._spend_training("martial")
 	_expect(scene.training_alert_button.text == "流派" and scene.experience_label.text.begins_with("成長") and not scene.toast_panel.visible and scene.toast_title.text.is_empty(), "普通修練升級只更新常駐成長資訊，不可反覆跳出提示")
 	scene.model.training.martial = 9

@@ -264,7 +264,10 @@ func _save_preview_text() -> String:
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	if not parsed is Dictionary or int(parsed.get("version", 0)) != 1:
 		return "紀錄版本不相容，請開始新遊戲。"
-	return "Lv.%d｜第 %d 戰｜擊倒 %d｜金幣 %d｜修練 %d" % [int(parsed.get("player_level", 1)), int(parsed.get("stage", 1)), int(parsed.get("kills", 0)), int(parsed.get("gold", 0)), int(parsed.get("training_points", 0))]
+	var saved_stage := maxi(1, int(parsed.get("stage", 1)))
+	var saved_area := maxi(1, int(parsed.get("area_number", floori(float(saved_stage - 1) / 10.0) + 1)))
+	var saved_route_position := ((saved_stage - 1) % 10) + 1
+	return "Lv.%d｜第%d區・第%d關｜擊倒 %d｜金幣 %d｜修練 %d" % [int(parsed.get("player_level", 1)), saved_area, saved_route_position, int(parsed.get("kills", 0)), int(parsed.get("gold", 0)), int(parsed.get("training_points", 0))]
 
 func _start_new_game() -> void:
 	var user_dir := DirAccess.open("user://")
@@ -272,7 +275,7 @@ func _start_new_game() -> void:
 		user_dir.remove(SAVE_FILE_NAME)
 	model = CombatModel.new()
 	model.equip_item("black_iron_armor")
-	model.tutorial_step = "intro"
+	model.tutorial_step = "complete"
 	tutorial_core_hint_shown = false
 	save_loaded = false
 	_finish_startup("新遊戲開始")
@@ -297,17 +300,9 @@ func _finish_startup(title: String) -> void:
 	battlefield.set_exploration_enabled(true)
 	_update_hud(model.snapshot())
 	auto_slot_buttons[0].grab_focus()
-	if model.tutorial_step == "intro":
-		call_deferred("_show_tutorial_intro")
-	elif model.tutorial_step == "training":
-		call_deferred("_show_training_tutorial")
-	elif model.tutorial_step == "spend":
-		call_deferred("_resume_spend_tutorial")
-	else:
-		var detail := "角色會在戰場巡敵；先觀察戰鬥，再點右上「第一步：修練」" if _total_base_training() == 0 else "角色會自動巡敵與攻擊；你負責流派、裝備與技能編成"
-		_show_toast(title, detail)
-		if model.tutorial_step == "core":
-			call_deferred("_highlight_core_training_button")
+	if model.tutorial_step != "complete":
+		model.tutorial_step = "complete"
+		_save_game()
 
 func _show_tutorial(title: String, detail: String, action_text: String, action: Callable) -> void:
 	tutorial_open = true
@@ -1786,8 +1781,6 @@ func _handle_events(events: Array[Dictionary]) -> void:
 	if events.is_empty():
 		return
 	battlefield.play_events(events)
-	if model.tutorial_step == "observe" and events.any(func(event: Dictionary) -> bool: return String(event.type) == "enemy_defeated"):
-		_show_training_tutorial()
 	for event: Dictionary in events:
 		match String(event.type):
 			"exploration_approach": pass
@@ -1804,7 +1797,7 @@ func _handle_events(events: Array[Dictionary]) -> void:
 				_show_toast("區域突破", "戰鬥暫歇，決定下一段旅程")
 				get_tree().create_timer(1.15).timeout.connect(_show_journey_choice)
 			"journey_selected": _show_toast("前往：%s" % String(event.name), String(event.intro))
-			"boss_howl": _show_toast(String(event.name), "下一擊：%s" % String(event.next_attack))
+			"boss_howl": pass
 			"boss_enraged": _show_toast("首領狂怒", "攻擊速度提高，重擊與必中技更加頻繁")
 			"enemy_guard_broken": _show_toast("盾勢瓦解", "後續攻擊將造成完整傷害")
 			"unlock": _show_toast("解鎖：%s" % String(event.name), String(event.description))
@@ -1814,39 +1807,17 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"training_point": pass
 			"equipment_drop": pass
 			"equipment_duplicate": pass
-			"momentum_full": _show_toast("勢已滿", "下一次普通攻擊將自動發動勢斬")
-			"momentum_slash": _show_toast("蓄勢・一閃", "滿勢化為 280% 一閃，並穿透 15% 護甲")
+			"momentum_full": pass
+			"momentum_slash": pass
 			"branch_unlocked": _show_toast("解鎖：%s" % String(event.name), String(event.description))
 			"ally_joined": _show_toast("友軍入隊：%s" % String(event.name), String(event.description))
-			"armor_broken": _show_toast("破甲一閃", "敵方護甲降低 %d" % roundi(float(event.amount)))
-			"no_beat": _show_toast("無拍子", "擊殺後額外回復 %d 勢" % roundi(float(event.amount)))
-			"draw_stance": _show_toast("拔刀", "蓄勢加速，第一刀降低消耗並提高傷害")
-			"mindless": _show_toast("無心", "極勢與一念合一，下一刀全面強化")
-			"perfect_block": _show_toast("完美格擋", "減免 %d 傷害並立即反擊" % roundi(float(event.prevented)))
-			"heaven_return": _show_toast("奧義・不動返天", "硬接重擊，將敵人的力量反還")
-			"immovable_king": _show_toast("不動明王", "連續格擋完成，期間每次格擋必定返刃")
-			"shadowless": _show_toast("無影", "六秒內攻速與影襲大幅提升")
-			"shadowless_extreme": _show_toast("奧義・無影極境", "影襲連攜完整展開")
-			"flow_state_entered": _show_toast("游刃有餘", "快劍節奏啟動 · 疾斬開始運作")
-			"traceless": _show_toast("無蹤", "消耗滿層游刃，閃開原本會命中的攻擊")
-			"blazing_magic_entered": _show_toast("魔紋已滿", "下一次附魔攻擊將觸發魔力斬")
-			"scorching_entered": _show_toast("燃燒已滿", "炎爆斬的爆發條件已成立")
-			"flame_burst_slash": _show_toast("炎爆斬", "消耗魔紋與燃燒，造成元素爆發")
-			"magic_sword_release": _show_toast("魔劍解放", "八秒內魔紋、燃燒與魔劍傷害全面加速")
-			"elemental_resonance": _show_toast(String(event.name), "元素共鳴觸發，返還魔紋並強化循環")
-			"minor_resonance": _show_toast("小型共鳴", "專精元素滿層，自動釋放元素力量")
-			"elemental_boundary_slash": _show_toast("元素斷界斬", "%s元素效果已釋放" % {"fire": "火", "ice": "冰", "lightning": "雷"}.get(String(event.element), "火"))
-			"elemental_fusion": _show_toast("雙元素融合", "六秒內追加副元素附魔")
-			"magic_sword_manifestation": _show_toast("魔劍顯現", "滿魔紋與元素異常使魔劍進入高階狀態")
-			"magic_sword_complete_release": _show_toast("奧義・魔劍完全解放", "劍、魔力與元素完全融合")
-			"holy_sword_release": _show_toast("聖劍解放", "聖印生成、聖傷與治療全面提高")
-			"holy_sword_descent": _show_toast("奧義・聖劍降臨", "攻擊、治療與護盾進入神聖循環")
-			"divine_grace": _show_toast("神恩", "避免致命傷害，恢復生命並展開護盾")
-			"divine_manifestation": _show_toast("神聖顯現", "滿聖印已強化聖傷與溢出治療")
-			"legion_command": _show_toast("軍團號令", "全體存活友軍同時進攻")
-			"legion_fervor": _show_toast("奮戰", "全軍攻速、追擊與軍勢獲取提高")
-			"war_god": _show_toast("軍神", "主角與友軍進入雙向連攜")
-			"ten_thousand_armies_one_sword": _show_toast("奧義・萬軍一劍", "一劍起，萬軍動")
+			"armor_broken", "no_beat", "draw_stance", "mindless", "perfect_block", "heaven_return", "immovable_king": pass
+			"shadowless", "shadowless_extreme", "flow_state_entered", "traceless": pass
+			"blazing_magic_entered", "scorching_entered", "flame_burst_slash", "magic_sword_release": pass
+			"elemental_resonance", "minor_resonance", "elemental_boundary_slash", "elemental_fusion": pass
+			"magic_sword_manifestation", "magic_sword_complete_release": pass
+			"holy_sword_release", "holy_sword_descent", "divine_grace", "divine_manifestation": pass
+			"legion_command", "legion_fervor", "war_god", "ten_thousand_armies_one_sword": pass
 			"retry_started": _show_toast("再次挑戰", "重新進入第 %d 戰" % int(event.stage))
 			"defeat": _show_toast("第 %d 戰突破失敗" % int(event.failed_stage), "已退回第 %d 戰整備，AUTO 持續進行" % int(event.fallback_stage))
 	if events.any(func(event: Dictionary) -> bool: return String(event.type) in ["enemy_defeated", "defeat", "equipment_drop", "equipment_duplicate", "boss_reward_choice", "inheritance_unlocked"]):
@@ -2116,17 +2087,20 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var area_kills := int(snapshot.area_kills)
 	var boss_kills_required := int(snapshot.boss_kills_required)
 	var boss_kills_remaining := int(snapshot.boss_kills_remaining)
+	var area_number := int(snapshot.area_number)
+	var route_position := int(snapshot.route_position)
+	var stage_prefix := "第%d區・第%d關" % [area_number, route_position]
 	hero_name_label.text = "無名小兵 Lv.%d" % player_level
 	objective_bar.max_value = boss_kills_required
 	objective_bar.value = boss_kills_required if bool(snapshot.enemy_is_boss) else area_kills
 	if bool(snapshot.enemy_is_boss):
-		objective_label.text = "首領戰 · %s" % String(snapshot.enemy_name)
+		objective_label.text = "第%d區・首領戰" % area_number
 		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("b63e35")))
 	elif boss_kills_remaining <= CombatModel.BOSS_WARNING_REMAINING:
-		objective_label.text = "首領逼近 · 還差 %d" % boss_kills_remaining
+		objective_label.text = "%s｜首領差%d" % [stage_prefix, boss_kills_remaining]
 		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("bd563e")))
 	else:
-		objective_label.text = "擊倒敵人 %d/%d" % [area_kills, boss_kills_required]
+		objective_label.text = "%s｜%d/%d" % [stage_prefix, area_kills, boss_kills_required]
 		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("a75240")))
 	experience_bar.max_value = experience_required
 	experience_bar.value = experience
