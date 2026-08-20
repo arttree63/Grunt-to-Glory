@@ -231,6 +231,7 @@ var enemy_hp_ratio := 1.0
 var current_stage := 0
 var enemy_guard_stacks := 0
 var journey_route := "frontier"
+var _map_region_name := "沉眠古戰場"
 var immovable_level := 0
 var return_blade_ready := false
 var guard_stance_active := false
@@ -495,6 +496,7 @@ func set_state(snapshot: Dictionary) -> void:
 	current_stage = next_stage
 	enemy_guard_stacks = int(snapshot.get("enemy_guard_stacks", 0))
 	journey_route = String(snapshot.journey_route)
+	_map_region_name = String(snapshot.get("journey_name", "沉眠古戰場"))
 	var attack_remaining := float(snapshot.enemy_attack_remaining)
 	var windup_window := 0.75 if enemy_attack_type != "普通" else 0.35
 	enemy_windup_ratio = clampf((windup_window - attack_remaining) / windup_window, 0.0, 1.0)
@@ -695,7 +697,7 @@ func _set_enemy_approach_target() -> void:
 	_hero_map_target.y = clampf(_hero_map_target.y, 150.0, world_size.y - 36.0)
 
 func _visible_map_size() -> Vector2:
-	var bottom := minf(stage_bottom - 8.0, size.y - 112.0)
+	var bottom := minf(stage_bottom, size.y - 112.0)
 	return Vector2(size.x, maxf(260.0, bottom - stage_top))
 
 func _exploration_world_size() -> Vector2:
@@ -917,8 +919,8 @@ func _handle_map_tap(pointer: Vector2) -> void:
 	queue_redraw()
 
 func set_stage_bounds(top: float, bottom: float) -> void:
-	stage_top = maxf(130.0, top)
-	stage_bottom = maxf(stage_top + 250.0, bottom)
+	stage_top = maxf(96.0, top + 2.0)
+	stage_bottom = maxf(stage_top + 250.0, bottom - 2.0)
 
 func play_events(events: Array[Dictionary]) -> void:
 	for event: Dictionary in events:
@@ -1390,33 +1392,55 @@ func _draw_landmarks() -> void:
 		var distance_to_hero := _hero_map_position.distance_to(world_position)
 		var interactable := _exploration_phase == "traveling" and distance_to_hero <= 220.0
 		_draw_landmark_symbol(screen_position, String(landmark.kind), String(landmark.name) == _selected_landmark_name, interactable)
-		if distance_to_hero <= 200.0:
+		if distance_to_hero <= 140.0 or String(landmark.name) == _selected_landmark_name:
 			var label_position := screen_position + Vector2(-72.0, -43.0)
 			draw_string(UI_FONT, label_position + Vector2(1.0, 2.0), String(landmark.name), HORIZONTAL_ALIGNMENT_CENTER, 144.0, 15, Color("172229", 0.8))
 			draw_string(UI_FONT, label_position, String(landmark.name), HORIZONTAL_ALIGNMENT_CENTER, 144.0, 15, Color("fff0bf", 0.92))
-			if interactable:
-				draw_string(UI_FONT, label_position + Vector2(0.0, 18.0), "點擊繞行", HORIZONTAL_ALIGNMENT_CENTER, 144.0, 14, Color("ffe08a", 0.94))
+
+func _minimap_plot_rect(map_rect: Rect2) -> Rect2:
+	var plot := map_rect.grow(-8.0)
+	plot.position.y += 12.0
+	plot.size.y -= 12.0
+	return plot
+
+func _minimap_viewport_rect(plot: Rect2) -> Rect2:
+	var world_size := _exploration_world_size()
+	var view_size := _visible_map_size()
+	return Rect2(
+		plot.position + _camera_top_left / world_size * plot.size,
+		view_size / world_size * plot.size
+	)
 
 func _draw_exploration_minimap() -> void:
 	if not exploration_enabled or _hero_map_position == Vector2.ZERO:
 		return
-	var map_rect := Rect2(size.x - 102.0, stage_top + 12.0, 90.0, 62.0)
+	var map_rect := Rect2(size.x - 114.0, stage_top + 10.0, 102.0, 74.0)
 	draw_style_box(_exploration_panel_style(), map_rect)
-	draw_string(UI_FONT, map_rect.position + Vector2(8.0, 16.0), "區域", HORIZONTAL_ALIGNMENT_LEFT, 42.0, 11, Color("d9cda9", 0.86))
-	var plot := map_rect.grow(-8.0)
-	plot.position.y += 10.0
-	plot.size.y -= 10.0
+	draw_string(UI_FONT, map_rect.position + Vector2(8.0, 16.0), _map_region_name, HORIZONTAL_ALIGNMENT_LEFT, map_rect.size.x - 16.0, 11, Color("e8ddbe", 0.9))
+	var plot := _minimap_plot_rect(map_rect)
 	var world_size := _exploration_world_size()
+	var viewport_rect := _minimap_viewport_rect(plot)
+	draw_rect(viewport_rect, Color("7fc6d9", 0.1), true)
+	draw_rect(viewport_rect, Color("bdebf3", 0.68), false, 1.0)
 	for landmark: Dictionary in _landmarks():
 		var landmark_position := Vector2(landmark.position)
 		var point := plot.position + Vector2(landmark_position.x / world_size.x * plot.size.x, landmark_position.y / world_size.y * plot.size.y)
-		draw_circle(point, 2.2, Color("d6bb70", 0.66))
-	for camp_position: Vector2 in _enemy_camps:
+		draw_rect(Rect2(point - Vector2(2.0, 2.0), Vector2(4.0, 4.0)), Color("d6bb70", 0.78))
+	for index in _enemy_camps.size():
+		var camp_position := _enemy_camps[index]
 		var camp_point := plot.position + Vector2(camp_position.x / world_size.x * plot.size.x, camp_position.y / world_size.y * plot.size.y)
-		draw_circle(camp_point, 2.8, Color("c85d4d", 0.86))
+		if index == _active_enemy_camp_index:
+			var target_shape := PackedVector2Array([camp_point + Vector2(0.0, -4.5), camp_point + Vector2(4.5, 0.0), camp_point + Vector2(0.0, 4.5), camp_point + Vector2(-4.5, 0.0)])
+			draw_colored_polygon(target_shape, Color("ef8d62", 0.98))
+			draw_polyline(PackedVector2Array([target_shape[0], target_shape[1], target_shape[2], target_shape[3], target_shape[0]]), Color("fff0ca", 0.94), 1.2)
+		else:
+			draw_circle(camp_point, 2.7, Color("c85d4d", 0.82))
 	var hero_point := plot.position + Vector2(_hero_map_position.x / world_size.x * plot.size.x, _hero_map_position.y / world_size.y * plot.size.y)
-	draw_circle(hero_point, 3.8, Color("79cce2", 0.98))
-	draw_arc(hero_point, 5.6, 0.0, TAU, 12, Color("ecfbff", 0.9), 1.4)
+	var hero_direction := Vector2(_hero_facing, 0.0)
+	var hero_side := Vector2(0.0, 3.2)
+	var hero_shape := PackedVector2Array([hero_point + hero_direction * 5.0, hero_point - hero_direction * 3.0 + hero_side, hero_point - hero_direction * 3.0 - hero_side])
+	draw_colored_polygon(hero_shape, Color("79cce2", 0.98))
+	draw_polyline(PackedVector2Array([hero_shape[0], hero_shape[1], hero_shape[2], hero_shape[0]]), Color("ecfbff", 0.94), 1.2)
 
 func _draw_progression_fx(hero_position: Vector2, enemy_position: Vector2) -> void:
 	if _experience_orb_fx > 0.0:
@@ -1454,7 +1478,7 @@ func _draw_boss_arrival_notice() -> void:
 func _draw_landmark_symbol(position: Vector2, kind: String, selected: bool, interactable: bool) -> void:
 	draw_circle(position + Vector2(0.0, 4.0), 18.0, Color("17262a", 0.34))
 	if selected:
-		draw_arc(position + Vector2(0.0, 1.0), 27.0 + sin(_time * 5.0) * 2.0, 0.0, TAU, 24, Color("ffe49a", 0.9), 4.0)
+		draw_arc(position + Vector2(0.0, 1.0), 27.0, 0.0, TAU, 24, Color("ffe49a", 0.9), 4.0)
 	elif interactable:
 		draw_arc(position + Vector2(0.0, 1.0), 25.0, 0.0, TAU, 24, Color("e8cd78", 0.46), 3.0)
 	match kind:

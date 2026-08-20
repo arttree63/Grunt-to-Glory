@@ -100,6 +100,7 @@ var hero_name_label: Label
 var enemy_label: Label
 var kills_label: Label
 var objective_label: Label
+var boss_progress_label: Label
 var objective_bar: ProgressBar
 var experience_label: Label
 var experience_bar: ProgressBar
@@ -449,13 +450,13 @@ func _build_ui() -> void:
 	add_child(safe)
 	var layout := VBoxContainer.new()
 	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layout.add_theme_constant_override("separation", 7)
+	layout.add_theme_constant_override("separation", 4)
 	safe.add_child(layout)
 
 	top_panel = PanelContainer.new()
 	var compact_top_style := _panel_style(Color("fffaf0", 0.96), Color("b98532"), 2)
-	compact_top_style.content_margin_top = 4
-	compact_top_style.content_margin_bottom = 4
+	compact_top_style.content_margin_top = 3
+	compact_top_style.content_margin_bottom = 3
 	top_panel.add_theme_stylebox_override("panel", compact_top_style)
 	layout.add_child(top_panel)
 	var top_box := VBoxContainer.new()
@@ -470,40 +471,44 @@ func _build_ui() -> void:
 	crest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	crest.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	identity.add_child(crest)
-	hero_name_label = _label("無名小兵 Lv.1", 20, Color("292824"))
+	var identity_progress := VBoxContainer.new()
+	identity_progress.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	identity_progress.add_theme_constant_override("separation", 2)
+	identity.add_child(identity_progress)
+	var identity_head := HBoxContainer.new()
+	identity_progress.add_child(identity_head)
+	hero_name_label = _label("無名小兵 Lv.1", 18, Color("292824"))
 	hero_name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	identity.add_child(hero_name_label)
+	identity_head.add_child(hero_name_label)
+	experience_label = _label("成長 0/32", 14, Color("385f69"))
+	experience_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	identity_head.add_child(experience_label)
+	experience_bar = _progress_bar(Color("c8d2d0"), Color("4f8c91"), 5)
+	identity_progress.add_child(experience_bar)
 	training_alert_button = _button("可用修練 0", Color("f5ead0"), 38)
-	training_alert_button.custom_minimum_size.x = 128
+	training_alert_button.custom_minimum_size.x = 104
 	training_alert_button.size_flags_horizontal = Control.SIZE_SHRINK_END
-	training_alert_button.add_theme_font_size_override("font_size", 12)
+	training_alert_button.add_theme_font_size_override("font_size", 14)
 	training_alert_button.add_theme_color_override("font_color", Color("8a5b16"))
 	training_alert_button.add_theme_color_override("font_hover_color", Color("2b1e10"))
 	training_alert_button.add_theme_color_override("font_pressed_color", Color("2b1e10"))
 	training_alert_button.pressed.connect(_open_training)
 	identity.add_child(training_alert_button)
-	var run_progress := HBoxContainer.new()
-	run_progress.add_theme_constant_override("separation", 10)
-	top_box.add_child(run_progress)
 	var objective_box := VBoxContainer.new()
 	objective_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	objective_box.add_theme_constant_override("separation", 2)
-	run_progress.add_child(objective_box)
-	objective_label = _label("擊倒敵人 0/12", 13, Color("5b4031"))
+	top_box.add_child(objective_box)
+	var objective_head := HBoxContainer.new()
+	objective_box.add_child(objective_head)
+	objective_label = _label("第1區・沉眠古戰場｜第1關", 14, Color("5b4031"))
+	objective_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	objective_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	objective_box.add_child(objective_label)
+	objective_head.add_child(objective_label)
+	boss_progress_label = _label("首領 0/12", 14, Color("8d3f32"))
+	boss_progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	objective_head.add_child(boss_progress_label)
 	objective_bar = _progress_bar(Color("d8cec0"), Color("a75240"), 7)
 	objective_box.add_child(objective_bar)
-	var experience_box := VBoxContainer.new()
-	experience_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	experience_box.add_theme_constant_override("separation", 2)
-	run_progress.add_child(experience_box)
-	experience_label = _label("成長 0/32", 13, Color("385f69"))
-	experience_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	experience_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	experience_box.add_child(experience_label)
-	experience_bar = _progress_bar(Color("c8d2d0"), Color("4f8c91"), 7)
-	experience_box.add_child(experience_bar)
 	enemy_label = _label("林地哥布林 · 護甲 0", 14, Color("373733"))
 	enemy_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	enemy_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -559,10 +564,13 @@ func _build_ui() -> void:
 	toast_box.add_child(toast_detail)
 
 	combat_panel = PanelContainer.new()
-	combat_panel.add_theme_stylebox_override("panel", _panel_style(Color("fffaf1", 0.97), Color("b99258"), 2))
+	var compact_combat_style := _panel_style(Color("fffaf1", 0.97), Color("b99258"), 2)
+	compact_combat_style.content_margin_top = 5
+	compact_combat_style.content_margin_bottom = 5
+	combat_panel.add_theme_stylebox_override("panel", compact_combat_style)
 	layout.add_child(combat_panel)
 	var bottom_box := VBoxContainer.new()
-	bottom_box.add_theme_constant_override("separation", 7)
+	bottom_box.add_theme_constant_override("separation", 5)
 	combat_panel.add_child(bottom_box)
 	var resource_row := HBoxContainer.new()
 	resource_row.add_theme_constant_override("separation", 8)
@@ -572,14 +580,14 @@ func _build_ui() -> void:
 	resource_row.add_child(hp_box)
 	hp_label = _label("♥ 生命", 15, Color("a33d32"))
 	hp_box.add_child(hp_label)
-	hp_bar = _progress_bar(Color("d9cbc0"), Color("b85245"), 18)
+	hp_bar = _progress_bar(Color("d9cbc0"), Color("b85245"), 14)
 	hp_box.add_child(hp_bar)
 	mp_hud = VBoxContainer.new()
 	mp_hud.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	resource_row.add_child(mp_hud)
 	mp_label = _label("◆ MP  尚未啟用", 15, Color("36586a"))
 	mp_hud.add_child(mp_label)
-	mp_bar = _progress_bar(Color("c8d1d3"), Color("477d91"), 18)
+	mp_bar = _progress_bar(Color("c8d1d3"), Color("477d91"), 14)
 	mp_hud.add_child(mp_bar)
 	momentum_hud = VBoxContainer.new()
 	momentum_hud.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -589,7 +597,7 @@ func _build_ui() -> void:
 	momentum_label = _label("♨ 勢  0/100", 15, Color("9c4a24"))
 	momentum_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	momentum_head.add_child(momentum_label)
-	momentum_bar = _progress_bar(Color("dac9b7"), Color("c65d20"), 18)
+	momentum_bar = _progress_bar(Color("dac9b7"), Color("c65d20"), 14)
 	momentum_hud.add_child(momentum_bar)
 
 	state_panel = PanelContainer.new()
@@ -678,7 +686,7 @@ func _build_ui() -> void:
 	var slot_title := _label("主技能 AUTO", 14, Color("344750"))
 	slot_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slot_heading.add_child(slot_title)
-	slot_heading.add_child(_label("完整 5 格於技能頁", 14, Color("66767b")))
+	slot_heading.add_child(_label("左 → 右優先", 14, Color("66767b")))
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 5)
 	bottom_box.add_child(actions)
@@ -2089,25 +2097,29 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var boss_kills_remaining := int(snapshot.boss_kills_remaining)
 	var area_number := int(snapshot.area_number)
 	var route_position := int(snapshot.route_position)
-	var stage_prefix := "第%d區・第%d關" % [area_number, route_position]
+	var journey_name := String(snapshot.get("journey_name", "沉眠古戰場"))
+	var stage_prefix := "第%d區・%s｜第%d關" % [area_number, journey_name, route_position]
 	hero_name_label.text = "無名小兵 Lv.%d" % player_level
 	objective_bar.max_value = boss_kills_required
 	objective_bar.value = boss_kills_required if bool(snapshot.enemy_is_boss) else area_kills
 	if bool(snapshot.enemy_is_boss):
-		objective_label.text = "第%d區・首領戰" % area_number
+		objective_label.text = "第%d區・%s｜首領戰" % [area_number, journey_name]
+		boss_progress_label.text = "首領戰"
 		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("b63e35")))
 	elif boss_kills_remaining <= CombatModel.BOSS_WARNING_REMAINING:
-		objective_label.text = "%s｜首領差%d" % [stage_prefix, boss_kills_remaining]
+		objective_label.text = stage_prefix
+		boss_progress_label.text = "首領差 %d" % boss_kills_remaining
 		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("bd563e")))
 	else:
-		objective_label.text = "%s｜%d/%d" % [stage_prefix, area_kills, boss_kills_required]
+		objective_label.text = stage_prefix
+		boss_progress_label.text = "首領 %d/%d" % [area_kills, boss_kills_required]
 		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("a75240")))
 	experience_bar.max_value = experience_required
 	experience_bar.value = experience
 	experience_label.text = "成長 %d/%d" % [experience, experience_required]
 	var training_points := int(snapshot.training_points)
 	var first_training := game_started and _total_base_training() == 0 and training_points > 0
-	training_alert_button.text = "第一步：修練" if first_training else ("修練 %d" % training_points if training_points > 0 else "流派")
+	training_alert_button.text = "修練 %d" % training_points if training_points > 0 else "流派"
 	training_alert_button.tooltip_text = "選擇一條流派投入第一點修練" if first_training else "Lv.%d｜經驗 %d/%d｜可用修練 %d" % [player_level, experience, experience_required, training_points]
 	training_alert_button.disabled = model.tutorial_step in ["intro", "observe"]
 	var emphasize_training := model.tutorial_step == "core" and training_points > 0
@@ -2199,11 +2211,17 @@ func _update_hud(snapshot: Dictionary) -> void:
 			}.get(track, Color("3a403b"))
 			var border := Color("f1d590") if state == "就緒" else Color("7b817a")
 			button.add_theme_stylebox_override("normal", _slot_style(base if state == "就緒" else base.darkened(0.32), border, 2 if state == "就緒" else 1))
-	battlefield.set_stage_bounds(top_panel.position.y + top_panel.size.y, combat_panel.position.y)
+	_sync_battlefield_bounds()
+	call_deferred("_sync_battlefield_bounds")
 	battlefield.set_state(snapshot)
 	_update_training_rows(snapshot)
 	if current_page != "combat" and is_instance_valid(section_box):
 		_render_section(current_page, false)
+
+func _sync_battlefield_bounds() -> void:
+	if not is_instance_valid(battlefield) or not is_instance_valid(top_panel) or not is_instance_valid(combat_panel):
+		return
+	battlefield.set_stage_bounds(top_panel.get_global_rect().end.y, combat_panel.get_global_rect().position.y)
 
 func _update_training_rows(snapshot: Dictionary) -> void:
 	if training_rows.is_empty(): return
@@ -2320,7 +2338,7 @@ func _button(text_value: String, color: Color, height := 58) -> Button:
 	return button
 
 func _skill_button(text_value: String, color: Color, icon_texture: Texture2D) -> Button:
-	var button := _button(text_value, color, 104)
+	var button := _button(text_value, color, 90)
 	button.add_theme_font_size_override("font_size", 14)
 	button.add_theme_color_override("font_color", Color("f2ede3"))
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
@@ -2346,7 +2364,7 @@ func _skill_button(text_value: String, color: Color, icon_texture: Texture2D) ->
 	var icon := TextureRect.new()
 	icon.name = "Icon"
 	icon.texture = icon_texture
-	icon.custom_minimum_size = Vector2(34, 48)
+	icon.custom_minimum_size = Vector2(32, 38)
 	icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED

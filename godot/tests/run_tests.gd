@@ -258,11 +258,16 @@ func _test_auto_roaming() -> void:
 	battlefield.set_stage_bounds(112.0, 590.0)
 	battlefield.set_exploration_enabled(true)
 	battlefield._begin_exploration("1:1")
+	battlefield.set_stage_bounds(112.0, 700.0)
+	_expect(battlefield.stage_top == 114.0 and battlefield.stage_bottom == 698.0, "戰場應貼近精簡 HUD，不可保留固定 130px 灰色空帶")
 	var world_size: Vector2 = battlefield._exploration_world_size()
 	var visible_size: Vector2 = battlefield._visible_map_size()
 	_expect(world_size.x > visible_size.x and world_size.y > visible_size.y, "探索世界必須大於手機單一可視畫面")
 	_expect(battlefield.navigation_blocks_combat() and battlefield._enemy_map_position != Vector2.ZERO, "自動巡敵開始時必須生成目標並暫停交戰")
 	_expect(battlefield._enemy_camps.size() == 3 and battlefield._active_enemy_camp_index >= 0, "大地圖必須同時生成三群可見敵人並自動鎖定最近一群")
+	var minimap_plot := battlefield._minimap_plot_rect(Rect2(276.0, battlefield.stage_top + 10.0, 102.0, 74.0))
+	var minimap_view := battlefield._minimap_viewport_rect(minimap_plot)
+	_expect(minimap_plot.encloses(minimap_view) and minimap_view.size.x < minimap_plot.size.x and minimap_view.size.y < minimap_plot.size.y, "小地圖必須顯示目前鏡頭範圍，且範圍不可等同整張世界地圖")
 	var hero_before_drag: Vector2 = battlefield._hero_map_position
 	var camera_before_drag: Vector2 = battlefield._camera_top_left
 	var drag_press := InputEventMouseButton.new()
@@ -1580,8 +1585,8 @@ func _test_navigation() -> void:
 	_expect(visible_auto_slots == 5, "手機戰鬥 HUD 必須呈現完整五格技能優先序")
 	_expect(not scene.enemy_label.visible and not scene.enemy_bar.visible, "敵人說明與大型血條不可再佔據頂部戰鬥空間")
 	_expect(not scene.mp_hud.visible and not scene.momentum_hud.visible and not scene.state_panel.visible, "未投入的流派資源不可預先出現在戰鬥 HUD")
-	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text == "第一步：修練", "新遊戲必須把既有修練入口轉成第一個可操作目標")
-	_expect(scene.objective_label.text.begins_with("第1區・第1關"), "戰鬥 HUD 必須持續顯示目前區域與關卡")
+	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text.begins_with("修練 "), "新遊戲必須在既有修練入口顯示可用點數")
+	_expect(scene.objective_label.text.begins_with("第1區・") and scene.objective_label.text.contains("第1關"), "戰鬥 HUD 必須持續顯示目前區域名稱與關卡")
 	_expect(scene.model.tutorial_step == "complete" and not scene.tutorial_overlay.visible, "新遊戲不可用連續講解框打斷 AUTO 戰鬥")
 	var ui_font: Font = load("res://assets/fonts/NotoSansTC-Regular.otf")
 	for character: String in ["教", "學", "裝", "備", "解", "鎖", "流", "派", "強", "化", "背", "包", "較"]:
