@@ -99,6 +99,10 @@ var battlefield: Battlefield
 var hero_name_label: Label
 var enemy_label: Label
 var kills_label: Label
+var objective_label: Label
+var objective_bar: ProgressBar
+var experience_label: Label
+var experience_bar: ProgressBar
 var top_panel: PanelContainer
 var combat_panel: PanelContainer
 var hp_bar: ProgressBar
@@ -483,6 +487,28 @@ func _build_ui() -> void:
 	training_alert_button.add_theme_color_override("font_pressed_color", Color("2b1e10"))
 	training_alert_button.pressed.connect(_open_training)
 	identity.add_child(training_alert_button)
+	var run_progress := HBoxContainer.new()
+	run_progress.add_theme_constant_override("separation", 10)
+	top_box.add_child(run_progress)
+	var objective_box := VBoxContainer.new()
+	objective_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	objective_box.add_theme_constant_override("separation", 2)
+	run_progress.add_child(objective_box)
+	objective_label = _label("擊倒敵人 0/12", 13, Color("5b4031"))
+	objective_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	objective_box.add_child(objective_label)
+	objective_bar = _progress_bar(Color("d8cec0"), Color("a75240"), 7)
+	objective_box.add_child(objective_bar)
+	var experience_box := VBoxContainer.new()
+	experience_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	experience_box.add_theme_constant_override("separation", 2)
+	run_progress.add_child(experience_box)
+	experience_label = _label("成長 0/32", 13, Color("385f69"))
+	experience_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	experience_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	experience_box.add_child(experience_label)
+	experience_bar = _progress_bar(Color("c8d2d0"), Color("4f8c91"), 7)
+	experience_box.add_child(experience_bar)
 	enemy_label = _label("林地哥布林 · 護甲 0", 14, Color("373733"))
 	enemy_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	enemy_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -2087,10 +2113,27 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var player_level := int(snapshot.player_level)
 	var experience := int(snapshot.experience)
 	var experience_required := int(snapshot.experience_required)
+	var area_kills := int(snapshot.area_kills)
+	var boss_kills_required := int(snapshot.boss_kills_required)
+	var boss_kills_remaining := int(snapshot.boss_kills_remaining)
 	hero_name_label.text = "無名小兵 Lv.%d" % player_level
+	objective_bar.max_value = boss_kills_required
+	objective_bar.value = boss_kills_required if bool(snapshot.enemy_is_boss) else area_kills
+	if bool(snapshot.enemy_is_boss):
+		objective_label.text = "首領戰 · %s" % String(snapshot.enemy_name)
+		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("b63e35")))
+	elif boss_kills_remaining <= CombatModel.BOSS_WARNING_REMAINING:
+		objective_label.text = "首領逼近 · 還差 %d" % boss_kills_remaining
+		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("bd563e")))
+	else:
+		objective_label.text = "擊倒敵人 %d/%d" % [area_kills, boss_kills_required]
+		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("a75240")))
+	experience_bar.max_value = experience_required
+	experience_bar.value = experience
+	experience_label.text = "成長 %d/%d" % [experience, experience_required]
 	var training_points := int(snapshot.training_points)
 	var first_training := game_started and _total_base_training() == 0 and training_points > 0
-	training_alert_button.text = "第一步：修練" if first_training else ("Lv.%d｜修練 %d" % [player_level, training_points] if training_points > 0 else "EXP %d/%d" % [experience, experience_required])
+	training_alert_button.text = "第一步：修練" if first_training else ("修練 %d" % training_points if training_points > 0 else "流派")
 	training_alert_button.tooltip_text = "選擇一條流派投入第一點修練" if first_training else "Lv.%d｜經驗 %d/%d｜可用修練 %d" % [player_level, experience, experience_required, training_points]
 	training_alert_button.disabled = model.tutorial_step in ["intro", "observe"]
 	var emphasize_training := model.tutorial_step == "core" and training_points > 0

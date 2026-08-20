@@ -356,6 +356,13 @@ var _loot_drop_name := ""
 var _loot_drop_quality := "common"
 var _loot_drop_duplicate := false
 var _loot_drop_gold := 0
+var _experience_orb_fx := 0.0
+var _experience_gain := 0
+var _level_up_fx := 0.0
+var _level_up_level := 1
+var _boss_warning_fx := 0.0
+var _boss_warning_remaining := 0
+var _boss_imminent_fx := 0.0
 var _hero_facing := 1.0
 var _enemy_facing := 1.0
 var _navigation_paused := false
@@ -452,6 +459,10 @@ func _process(delta: float) -> void:
 	_milestone_fx = maxf(0.0, _milestone_fx - delta / (0.45 if _milestone_mode == "impact" else 0.7))
 	_landmark_acquire_fx = maxf(0.0, _landmark_acquire_fx - delta / 1.05)
 	_loot_drop_fx = maxf(0.0, _loot_drop_fx - delta / 1.45)
+	_experience_orb_fx = maxf(0.0, _experience_orb_fx - delta / 0.82)
+	_level_up_fx = maxf(0.0, _level_up_fx - delta / 1.25)
+	_boss_warning_fx = maxf(0.0, _boss_warning_fx - delta / 1.65)
+	_boss_imminent_fx = maxf(0.0, _boss_imminent_fx - delta / 1.55)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
 	_hero_flash = maxf(0.0, _hero_flash - delta * 7.0)
 	_enemy_knockback = maxf(0.0, _enemy_knockback - delta * 5.8)
@@ -953,6 +964,19 @@ func play_events(events: Array[Dictionary]) -> void:
 				trauma = 0.0
 				_boss_intro_motion = 1.0
 				_hit_stop(0.06)
+			"boss_warning":
+				_boss_warning_fx = 1.0
+				_boss_warning_remaining = int(event.get("remaining", 3))
+			"boss_imminent":
+				_boss_imminent_fx = 1.0
+				add_trauma(0.08)
+			"experience_gain":
+				_experience_orb_fx = 1.0
+				_experience_gain = int(event.get("gain", 0))
+			"level_up":
+				_level_up_fx = 1.0
+				_level_up_level = int(event.get("level", 1))
+				_play_sfx("landmark")
 			"equipment_drop":
 				_loot_drop_fx = 1.0
 				_loot_drop_name = String(event.get("name", "未知裝備"))
@@ -1358,7 +1382,10 @@ func _draw_pixel_vertical_slice() -> void:
 	_draw_landmark_acquire_fx(hero_pos)
 	_draw_style_formed_burst(hero_pos)
 	_draw_pixel_combat_fx(hero_pos, enemy_pos)
+	_draw_progression_fx(hero_pos, enemy_pos)
 	_draw_loot_drop_fx(enemy_pos)
+	_draw_exploration_minimap()
+	_draw_boss_arrival_notice()
 	if _hurt_vignette > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("a82e2e", _hurt_vignette * 0.13), false, 10.0)
 
@@ -1393,6 +1420,60 @@ func _draw_landmarks() -> void:
 			draw_string(UI_FONT, label_position, String(landmark.name), HORIZONTAL_ALIGNMENT_CENTER, 144.0, 15, Color("fff0bf", 0.92))
 			if interactable:
 				draw_string(UI_FONT, label_position + Vector2(0.0, 18.0), "點擊繞行", HORIZONTAL_ALIGNMENT_CENTER, 144.0, 14, Color("ffe08a", 0.94))
+
+func _draw_exploration_minimap() -> void:
+	if not exploration_enabled or _hero_map_position == Vector2.ZERO:
+		return
+	var map_rect := Rect2(size.x - 102.0, stage_top + 12.0, 90.0, 62.0)
+	draw_style_box(_exploration_panel_style(), map_rect)
+	draw_string(UI_FONT, map_rect.position + Vector2(8.0, 16.0), "區域", HORIZONTAL_ALIGNMENT_LEFT, 42.0, 11, Color("d9cda9", 0.86))
+	var plot := map_rect.grow(-8.0)
+	plot.position.y += 10.0
+	plot.size.y -= 10.0
+	var world_size := _exploration_world_size()
+	for landmark: Dictionary in _landmarks():
+		var landmark_position := Vector2(landmark.position)
+		var point := plot.position + Vector2(landmark_position.x / world_size.x * plot.size.x, landmark_position.y / world_size.y * plot.size.y)
+		draw_circle(point, 2.2, Color("d6bb70", 0.66))
+	for camp_position: Vector2 in _enemy_camps:
+		var camp_point := plot.position + Vector2(camp_position.x / world_size.x * plot.size.x, camp_position.y / world_size.y * plot.size.y)
+		draw_circle(camp_point, 2.8, Color("c85d4d", 0.86))
+	var hero_point := plot.position + Vector2(_hero_map_position.x / world_size.x * plot.size.x, _hero_map_position.y / world_size.y * plot.size.y)
+	draw_circle(hero_point, 3.8, Color("79cce2", 0.98))
+	draw_arc(hero_point, 5.6, 0.0, TAU, 12, Color("ecfbff", 0.9), 1.4)
+
+func _draw_progression_fx(hero_position: Vector2, enemy_position: Vector2) -> void:
+	if _experience_orb_fx > 0.0:
+		var progress := 1.0 - _experience_orb_fx
+		var control := enemy_position.lerp(hero_position, 0.5) + Vector2(0.0, -78.0)
+		var orb_position := enemy_position.lerp(control, progress).lerp(control.lerp(hero_position, progress), progress)
+		var orb_alpha := sin(clampf(progress, 0.0, 1.0) * PI)
+		draw_circle(orb_position, 9.0, Color("77d8dc", orb_alpha * 0.18))
+		draw_circle(orb_position, 4.0, Color("bafcff", orb_alpha))
+		if progress < 0.58:
+			draw_string(UI_FONT, orb_position + Vector2(-28.0, -12.0), "+%d EXP" % _experience_gain, HORIZONTAL_ALIGNMENT_CENTER, 56.0, 12, Color("d5ffff", orb_alpha))
+	if _level_up_fx > 0.0:
+		var level_progress := 1.0 - _level_up_fx
+		var alpha := sin(clampf(level_progress, 0.0, 1.0) * PI)
+		var center := hero_position + Vector2(0.0, -46.0)
+		draw_arc(center, 24.0 + level_progress * 54.0, 0.0, TAU, 28, Color("8fe6e3", alpha * 0.8), 4.0)
+		draw_string(UI_FONT, center + Vector2(-72.0, -40.0 - level_progress * 9.0), "LEVEL UP · Lv.%d" % _level_up_level, HORIZONTAL_ALIGNMENT_CENTER, 144.0, 16, Color("e7ffff", alpha))
+
+func _draw_boss_arrival_notice() -> void:
+	var strength := maxf(_boss_warning_fx, _boss_imminent_fx)
+	if strength <= 0.0:
+		return
+	var imminent := _boss_imminent_fx > _boss_warning_fx
+	var progress := 1.0 - strength
+	var alpha := sin(clampf(progress, 0.0, 1.0) * PI)
+	var width := minf(size.x - 84.0, 280.0)
+	var rect := Rect2((size.x - width) * 0.5, stage_top + 82.0, width, 44.0)
+	var panel := _exploration_panel_style()
+	panel.border_color = Color("efb45d", alpha * 0.9) if imminent else Color("d9845b", alpha * 0.76)
+	panel.bg_color = Color("241d1c", alpha * 0.88)
+	draw_style_box(panel, rect)
+	var text := "首領即將現身" if imminent else "首領氣息逼近 · 還差 %d 名" % _boss_warning_remaining
+	draw_string(UI_FONT, rect.position + Vector2(0.0, 28.0), text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 16, Color("ffe6b0", alpha))
 
 func _draw_landmark_symbol(position: Vector2, kind: String, selected: bool, interactable: bool) -> void:
 	draw_circle(position + Vector2(0.0, 4.0), 18.0, Color("17262a", 0.34))
@@ -1540,8 +1621,8 @@ func _draw_roaming_path(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		draw_circle(hero_pos.lerp(path_end, ratio), 2.5, Color("d9c47a", 0.58))
 	draw_arc(path_end, 15.0 + sin(_time * 5.0) * 2.0, 0.0, TAU, 22, Color("f2d782", 0.76), 3.0)
 	if _roaming_hint_remaining > 0.0:
-		var prompt_width := minf(size.x - 56.0, 286.0)
-		var prompt_rect := Rect2((size.x - prompt_width) * 0.5, stage_top + 18.0, prompt_width, 34.0)
+		var prompt_width := minf(size.x - 132.0, 216.0)
+		var prompt_rect := Rect2(12.0, stage_top + 18.0, prompt_width, 34.0)
 		draw_style_box(_exploration_panel_style(), prompt_rect)
 		var hint := "拖曳移動 · 放開 AUTO"
 		if not _selected_landmark_name.is_empty():

@@ -38,6 +38,8 @@ const BASE_LEVEL_EXPERIENCE := 24
 const LEVEL_EXPERIENCE_GROWTH := 8
 const STARTING_TRAINING_POINTS := 8
 const LEGACY_STARTING_TRAINING_POINTS := 5
+const BOSS_KILLS_REQUIRED := 12
+const BOSS_WARNING_REMAINING := 3
 const EQUIPMENT_DEFS := {
 	"black_iron_cleaver": {"name": "黑鐵斬劍", "slot": "weapon", "quality": "rare", "primary_style": "martial", "description": "對重甲敵人更有效的哨站軍官劍。", "style_bonuses": {"martial": 6}, "modifiers": {"armored_damage": 0.1}},
 	"black_iron_sword": {"name": "黑鐵長劍", "slot": "weapon", "quality": "common", "primary_style": "martial", "description": "制式軍劍，適合磨練穩定的一刀。", "style_bonuses": {"martial": 5}},
@@ -647,6 +649,8 @@ var exploration_approach_applied := false
 var enemy_engagement_time := 0.0
 var enemy_attack_count := 0
 var kills := 0
+var area_kills := 0
+var boss_warning_sent := false
 var gold := 0
 var player_level := 1
 var experience := 0
@@ -847,7 +851,10 @@ func step(delta: float) -> Array[Dictionary]:
 		wave_transition_remaining = maxf(0.0, wave_transition_remaining - delta)
 		if wave_transition_remaining <= 0.0:
 			_spawn_enemy()
-			_events.append({"type": "wave_started", "stage": stage, "wave": current_wave + 1, "wave_count": _stage_waves(stage).size(), "enemy": _enemy_display_name()})
+			if enemy_is_boss:
+				_events.append({"type": "boss_entered", "name": _enemy_display_name()})
+			else:
+				_events.append({"type": "wave_started", "stage": stage, "wave": current_wave + 1, "wave_count": _stage_waves(stage).size(), "enemy": _enemy_display_name()})
 		return _events.duplicate(true)
 	enemy_engagement_time += delta
 	var passive_gain := 5.0 * (2.0 if draw_stance_remaining > 0.0 else 1.0)
@@ -1266,6 +1273,7 @@ func save_data() -> Dictionary:
 		"retry_pending": retry_pending, "retry_stage": retry_stage, "current_wave": current_wave,
 		"tutorial_step": tutorial_step,
 		"hero_hp": hero_hp, "hero_mp": hero_mp, "kills": kills, "gold": gold,
+		"area_kills": area_kills, "boss_warning_sent": boss_warning_sent,
 		"player_level": player_level, "experience": experience,
 		"training_points": training_points, "training": training.duplicate(true),
 		"equipped_items": equipped_items.duplicate(true), "owned_equipment": owned_equipment.duplicate(true),
@@ -1368,6 +1376,8 @@ func load_save_data(data: Dictionary) -> bool:
 	last_failure_report = Dictionary(data.get("last_failure_report", {})).duplicate(true)
 	slice_metrics = Dictionary(data.get("slice_metrics", slice_metrics)).duplicate(true)
 	current_wave = clampi(int(data.get("current_wave", 0)), 0, _stage_waves(stage).size() - 1)
+	area_kills = clampi(int(data.get("area_kills", _estimated_area_kills())), 0, BOSS_KILLS_REQUIRED)
+	boss_warning_sent = bool(data.get("boss_warning_sent", area_kills >= BOSS_KILLS_REQUIRED - BOSS_WARNING_REMAINING))
 	_spawn_enemy()
 	hero_hp = clampf(float(data.get("hero_hp", _hero_max_hp())), 1.0, _hero_max_hp())
 	hero_mp = clampf(float(data.get("hero_mp", _hero_max_mp())), 0.0, _hero_max_mp())
@@ -1415,6 +1425,8 @@ func snapshot() -> Dictionary:
 		"route_position": _route_position(), "route_phase": _route_phase(),
 		"enemy_attack_type": _next_enemy_attack_type(), "enemy_attack_remaining": enemy_attack_remaining,
 		"kills": kills, "gold": gold, "player_level": player_level, "experience": experience,
+		"area_kills": area_kills, "boss_kills_required": BOSS_KILLS_REQUIRED,
+		"boss_kills_remaining": maxi(0, BOSS_KILLS_REQUIRED - area_kills),
 		"experience_required": experience_required_for_level(player_level),
 		"training_points": training_points, "style_points": training_points,
 		"training": training.duplicate(true), "base_style_levels": training.duplicate(true),
@@ -2821,8 +2833,24 @@ func _enemy_defeated() -> void:
 	var defeated_boss := enemy_is_boss
 	var defeated_elite := enemy_is_elite
 	kills += 1
+	if not defeated_boss:
+		area_kills = mini(BOSS_KILLS_REQUIRED, area_kills + 1)
 	_award_experience(defeated_boss, defeated_elite)
 	_award_gold_and_equipment(defeated_boss, defeated_elite)
+	if not defeated_boss:
+		var boss_remaining := BOSS_KILLS_REQUIRED - area_kills
+		if boss_remaining == BOSS_WARNING_REMAINING and not boss_warning_sent:
+			boss_warning_sent = true
+			_events.append({"type": "boss_warning", "remaining": boss_remaining})
+		if area_kills >= BOSS_KILLS_REQUIRED and not retry_pending:
+			current_wave = 0
+			stage = _boss_stage_for_current_area()
+			_record_stage_reached()
+			wave_transition_remaining = 1.35
+			_clear_enemy_state_for_transition()
+			_events.append({"type": "enemy_defeated", "stage": completed_stage, "kills": kills, "boss": false})
+			_events.append({"type": "boss_imminent", "remaining": 0})
+			return
 	var waves := _stage_waves(stage)
 	if current_wave + 1 < waves.size():
 		current_wave += 1
@@ -2835,7 +2863,10 @@ func _enemy_defeated() -> void:
 		_events.append({"type": "wave_transition_started", "stage": stage, "wave": current_wave + 1, "wave_count": waves.size(), "duration": WAVE_TRANSITION_DURATION})
 		return
 	if not retry_pending:
-		stage += 1
+		if not defeated_boss and _route_position() == 9 and area_kills < BOSS_KILLS_REQUIRED:
+			stage = completed_stage
+		else:
+			stage += 1
 		_record_stage_reached()
 	if defeated_boss and completed_stage >= 30 and not inheritance_unlocked:
 		inheritance_unlocked = true
@@ -2949,6 +2980,8 @@ func _reset_for_inheritance(inherited_item: String, memory_track: String) -> voi
 	current_wave = 0
 	wave_transition_remaining = 0.0
 	kills = 0
+	area_kills = 0
+	boss_warning_sent = false
 	gold = 0
 	player_level = 1
 	experience = 0
@@ -3085,6 +3118,8 @@ func choose_journey_route(route_id: String) -> Array[Dictionary]:
 	journey_route = route_id
 	slice_metrics.next_area_pressed = true
 	area_number += 1
+	area_kills = 0
+	boss_warning_sent = false
 	awaiting_journey_choice = false
 	boss_reward_claimed = false
 	shop_refresh_count = 0
@@ -3215,6 +3250,21 @@ func _record_stage_reached() -> void:
 
 func _route_position() -> int:
 	return ((maxi(1, stage) - 1) % 10) + 1
+
+func _boss_stage_for_current_area() -> int:
+	return floori(float(maxi(1, stage) - 1) / 10.0) * 10 + 10
+
+func _estimated_area_kills() -> int:
+	if _route_position() == 10:
+		return BOSS_KILLS_REQUIRED
+	var completed := 0
+	for position in range(1, _route_position()):
+		if journey_route == "frontier":
+			completed += (FRONTIER_STAGE_WAVES.get(position, ["grunt"]) as Array).size()
+		else:
+			completed += 1
+	completed += current_wave
+	return mini(BOSS_KILLS_REQUIRED, completed)
 
 func _route_phase() -> String:
 	var position := _route_position()

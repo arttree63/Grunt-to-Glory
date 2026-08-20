@@ -54,6 +54,7 @@ func _run_tests() -> void:
 	_test_auto_roaming()
 	_test_defeat_farms_previous_stage_until_retry()
 	_test_frontier_stage_waves()
+	_test_area_kills_summon_boss()
 	_test_failure_report_keeps_idle_loop()
 	_test_boss_fixed_reward_choice()
 	_test_slice_metrics_capture_adjustment()
@@ -85,7 +86,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 73")
+		print("Godot tests passed: 74")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -401,6 +402,27 @@ func _test_frontier_stage_waves() -> void:
 	model.current_wave = 0
 	_expect(model._stage_waves(9).size() == 3, "第9戰必須依序測試劍兵、盾衛與重槌兵")
 
+func _test_area_kills_summon_boss() -> void:
+	var model = CombatModelScript.new()
+	model.stage = 9
+	model.area_kills = CombatModelScript.BOSS_KILLS_REQUIRED - CombatModelScript.BOSS_WARNING_REMAINING - 1
+	model.current_wave = 0
+	model._spawn_enemy()
+	model._events.clear()
+	model._enemy_defeated()
+	_expect(model.area_kills == 9 and model._events.any(func(event: Dictionary) -> bool: return event.type == "boss_warning" and int(event.remaining) == 3), "距離首領剩三名敵人時必須只發出一次預警")
+	model.area_kills = CombatModelScript.BOSS_KILLS_REQUIRED - 1
+	model.current_wave = 0
+	model._spawn_enemy()
+	model._events.clear()
+	model._enemy_defeated()
+	_expect(model.stage == 10 and is_equal_approx(model.wave_transition_remaining, 1.35), "擊倒第12名敵人後必須進入首領登場節拍")
+	_expect(model._events.any(func(event: Dictionary) -> bool: return event.type == "boss_imminent"), "首領生成前必須提供明確預告")
+	var spawn_events := model.step(1.36)
+	_expect(model.enemy_is_boss and spawn_events.any(func(event: Dictionary) -> bool: return event.type == "boss_entered"), "登場節拍結束後必須生成首領並發出登場事件")
+	var snapshot: Dictionary = model.snapshot()
+	_expect(int(snapshot.area_kills) == 12 and int(snapshot.boss_kills_remaining) == 0, "HUD 快照必須提供本區擊殺進度")
+
 func _test_failure_report_keeps_idle_loop() -> void:
 	var model = CombatModelScript.new()
 	model.stage = 6
@@ -462,6 +484,8 @@ func _test_save_data_roundtrip() -> void:
 	source.experience = 27
 	source.gold = 345
 	source.kills = 89
+	source.area_kills = 7
+	source.boss_warning_sent = true
 	source.grant_equipment("magic_rune_sword")
 	source.equip_item("magic_rune_sword")
 	source.equipment_enhancements.magic_rune_sword = 3
@@ -481,6 +505,7 @@ func _test_save_data_roundtrip() -> void:
 	_expect(restored.tutorial_step == "core", "專注教學進度必須跟著存檔恢復")
 	_expect(int(restored.training.magic) == 44 and restored.training_points == 7, "修練等級與未分配點數必須恢復")
 	_expect(restored.player_level == 18 and restored.experience == 27, "角色等級與目前經驗必須跟著存檔恢復")
+	_expect(restored.area_kills == 7 and restored.boss_warning_sent, "本區首領擊殺進度與預警狀態必須跟著存檔恢復")
 	_expect(String(restored.equipped_items.weapon) == "magic_rune_sword" and int(restored.equipment_enhancements.magic_rune_sword) == 3, "裝備與強化必須恢復")
 	_expect(restored.inheritance_unlocked and restored.battle_souls == 2 and restored.legacy_track == "magic", "轉生與遺產必須恢復")
 	_expect(restored.secondary_element == "ice" and String(restored.auto_skill_slots[1]) == "magic_sword_release", "流派選擇與 AUTO 編成必須恢復")
@@ -528,6 +553,10 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(boss_health_bar.size.x > normal_health_bar.size.x and normal_health_bar.size.y == 9.0, "敵人頭頂必須使用精簡血條，Boss 僅以較寬血條區分")
 	battlefield.play_events([{"type": "equipment_drop", "name": "游風羽飾", "quality": "rare"}])
 	_expect(battlefield._loot_drop_fx == 1.0 and battlefield._loot_drop_name == "游風羽飾" and battlefield._loot_drop_quality == "rare", "隨機裝備掉落必須改用戰場內短暫提示，不可依賴中央 Toast")
+	battlefield.play_events([{"type": "experience_gain", "gain": 18}, {"type": "level_up", "level": 4}, {"type": "boss_warning", "remaining": 3}])
+	_expect(battlefield._experience_orb_fx == 1.0 and battlefield._experience_gain == 18, "擊殺經驗必須在戰場內形成吸收演出")
+	_expect(battlefield._level_up_fx == 1.0 and battlefield._level_up_level == 4, "升級必須有不遮擋戰鬥的短暫回饋")
+	_expect(battlefield._boss_warning_fx == 1.0 and battlefield._boss_warning_remaining == 3, "首領預警事件必須啟動獨立戰場演出")
 	battlefield.play_events([{"type": "style_formed", "track": "martial"}])
 	_expect(battlefield._style_formed_burst == 1.0 and battlefield._style_formed_color == Color("e07845"), "流派成形事件必須啟動對應色彩的低位移視覺回饋")
 	battlefield.play_events([{"type": "swift_cut", "milestone_track": "agility", "milestone_level": 100, "milestone_mode": "flow"}])
@@ -1560,7 +1589,7 @@ func _test_navigation() -> void:
 	scene.toast_panel.visible = false
 	scene.toast_title.text = ""
 	scene._spend_training("martial")
-	_expect(scene.training_alert_button.text.begins_with("EXP") and not scene.toast_panel.visible and scene.toast_title.text.is_empty(), "普通修練升級只更新經驗／修練數字，不可反覆跳出提示")
+	_expect(scene.training_alert_button.text == "流派" and scene.experience_label.text.begins_with("成長") and not scene.toast_panel.visible and scene.toast_title.text.is_empty(), "普通修練升級只更新常駐成長資訊，不可反覆跳出提示")
 	scene.model.training.martial = 9
 	scene.model.training_points = 1
 	scene._spend_training("martial")
