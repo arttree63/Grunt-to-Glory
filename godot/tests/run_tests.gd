@@ -373,6 +373,7 @@ func _test_auto_roaming() -> void:
 	battlefield._exploration_phase = "engaged"
 	var held_target: Vector2 = battlefield._enemy_map_position
 	battlefield.set_state(group_model.snapshot())
+	_expect(battlefield._enemy_group_members.size() == 2 and battlefield._reserve_enemy_position(Vector2(180.0, 360.0), 0).distance_to(Vector2(180.0, 360.0)) >= 72.0, "複數敵人必須同時進入戰場，並保留足以辨識輪廓的前後排間距")
 	group_model.current_wave = 1
 	group_model._spawn_enemy()
 	battlefield.set_state(group_model.snapshot())
@@ -411,6 +412,14 @@ func _test_frontier_stage_waves() -> void:
 	model.stage = 9
 	model.current_wave = 0
 	_expect(model._stage_waves(9).size() == 3, "第9戰必須依序測試劍兵、盾衛與重槌兵")
+	var group_members := model.enemy_group_members()
+	_expect(group_members.size() == 3 and String(group_members[0].archetype) == "raider" and String(group_members[1].archetype) == "shield" and bool(group_members[0].target), "複數遭遇必須同時提供目前目標與後續敵人成員")
+	model.enemy_hp = 9999.0
+	model._events.clear()
+	model._enemy_attack()
+	model._enemy_attack()
+	var group_attacks: Array = model._events.filter(func(event: Dictionary) -> bool: return event.type == "enemy_attack")
+	_expect(group_attacks.size() == 2 and int(group_attacks[0].attacker_index) == 0 and int(group_attacks[1].attacker_index) == 1, "敵群攻擊必須輪替出手，不可永遠只有鎖定目標播放攻擊")
 
 func _test_area_kills_summon_boss() -> void:
 	var model = CombatModelScript.new()

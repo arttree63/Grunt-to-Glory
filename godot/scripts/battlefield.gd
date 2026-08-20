@@ -337,6 +337,8 @@ var _move_speed_bonus := 0.0
 var _patrol_cursor := -1
 var _encounter_wave := 1
 var _encounter_wave_count := 1
+var _enemy_group_members: Array = []
+var _enemy_attack_member_index := 0
 var _manual_waypoint_active := false
 var _selected_landmark_name := ""
 var _selected_landmark_effect := ""
@@ -518,6 +520,7 @@ func set_state(snapshot: Dictionary) -> void:
 	ally_count = int(snapshot.ally_count)
 	_encounter_wave = int(snapshot.get("wave", 1))
 	_encounter_wave_count = int(snapshot.get("wave_count", 1))
+	_enemy_group_members = Array(snapshot.get("enemy_group_members", [])).duplicate(true)
 	_move_speed_bonus = float(snapshot.get("move_speed_bonus", 0.0))
 	if exploration_enabled and float(snapshot.enemy_hp) > 0.0:
 		var next_key := str(int(snapshot.stage))
@@ -936,6 +939,7 @@ func play_events(events: Array[Dictionary]) -> void:
 				_enemy_hurt_motion = 0.0
 				_enemy_attack_recover = 0.0
 				_enemy_entry_motion = 1.0
+				_enemy_attack_member_index = 0
 			"boss_entered":
 				_enemy_death_motion = 0.0
 				_enemy_hurt_motion = 0.0
@@ -978,6 +982,7 @@ func play_events(events: Array[Dictionary]) -> void:
 				add_trauma(0.1)
 			"enemy_attack":
 				_enemy_attack_recover = 1.0
+				_enemy_attack_member_index = int(event.get("attacker_index", 0))
 				if String(event.get("attack_type", "normal")) != "normal":
 					_enemy_cast_burst = 1.0
 			"enemy_guard":
@@ -1556,17 +1561,46 @@ func _draw_loot_drop_fx(enemy_position: Vector2) -> void:
 	draw_string(UI_FONT, panel_rect.position + Vector2(0.0, 34.0), detail, HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 11, Color("eee8da", alpha))
 
 func _draw_enemy_group_reserves(enemy_position: Vector2) -> void:
-	var reserve_count := mini(2, maxi(0, _encounter_wave_count - _encounter_wave))
-	if reserve_count <= 0 or _enemy_death_motion > 0.0:
+	var reserve_count := mini(3, maxi(0, _enemy_group_members.size() - 1))
+	if reserve_count <= 0:
 		return
-	var texture := _pixel_enemy_preview_texture()
 	for index in reserve_count:
-		var side := -1.0 if index % 2 == 0 else 1.0
-		var horizontal_direction := -1.0 if enemy_position.x > size.x * 0.62 else 1.0
-		var reserve_position := enemy_position + Vector2(horizontal_direction * (34.0 + float(index) * 24.0), -34.0 + side * 22.0)
-		reserve_position.x = clampf(reserve_position.x, 46.0, size.x - 46.0)
-		_draw_ground_shadow(reserve_position + Vector2(0.0, 2.0), Vector2(31.0, 7.0))
-		_draw_anchored_animation_frame(texture, reserve_position, 108.0, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2(_enemy_facing, 1.0), Color(0.72, 0.78, 0.8, 0.62))
+		var member: Dictionary = _enemy_group_members[index + 1]
+		var archetype := String(member.get("archetype", "grunt"))
+		var texture := _pixel_enemy_preview_texture_for(archetype)
+		var reserve_position := _reserve_enemy_position(enemy_position, index)
+		var member_index := index + 1
+		var attacking := _enemy_attack_recover > 0.0 and _enemy_attack_member_index == member_index
+		if attacking:
+			var progress := 1.0 - _enemy_attack_recover
+			var hero_screen := _world_to_screen(_hero_map_position)
+			reserve_position += (hero_screen - reserve_position).normalized() * sin(progress * PI) * 10.0
+			var combat_frames := _pixel_enemy_combat_frames_for(archetype)
+			if not combat_frames.is_empty():
+				texture = combat_frames[2] if progress < 0.45 else combat_frames[3]
+		elif not _pixel_enemy_combat_frames_for(archetype).is_empty():
+			var combat_frames := _pixel_enemy_combat_frames_for(archetype)
+			texture = combat_frames[int(floor(_time * 5.0)) % combat_frames.size()]
+		var canvas_height := 138.0 * _enemy_archetype_scale(archetype)
+		_draw_ground_shadow(reserve_position + Vector2(0.0, 2.0), Vector2(43.0, 8.0))
+		_draw_anchored_animation_frame(texture, reserve_position, canvas_height, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2(_enemy_facing, 1.0), Color(0.92, 0.94, 0.94, 0.98))
+		_draw_reserve_health_bar(reserve_position, canvas_height)
+
+func _reserve_enemy_position(enemy_position: Vector2, reserve_index: int) -> Vector2:
+	var offsets := [Vector2(72.0, -50.0), Vector2(58.0, 52.0), Vector2(104.0, 16.0)]
+	var offset: Vector2 = offsets[clampi(reserve_index, 0, offsets.size() - 1)]
+	offset.x *= -_enemy_facing
+	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
+	return Vector2(
+		clampf(enemy_position.x + offset.x, 52.0, size.x - 52.0),
+		clampf(enemy_position.y + offset.y, stage_top + 174.0, visible_bottom - 2.0)
+	)
+
+func _draw_reserve_health_bar(feet_position: Vector2, canvas_height: float) -> void:
+	var bar_rect := Rect2(feet_position.x - 25.0, maxf(stage_top + 5.0, feet_position.y - canvas_height * PIXEL_WOLF_FEET_RATIO - 9.0), 50.0, 6.0)
+	draw_rect(bar_rect, Color("172126", 0.86), true)
+	draw_rect(bar_rect.grow(-1.5), Color("a83d37", 0.94), true)
+	draw_rect(bar_rect, Color("ded8c9", 0.76), false, 1.0)
 
 func _draw_roaming_enemy_camps() -> void:
 	if _exploration_phase != "traveling":
@@ -1610,7 +1644,10 @@ func _active_enemy_indicator_position(screen_position: Vector2) -> Vector2:
 	)
 
 func _pixel_enemy_preview_texture() -> Texture2D:
-	var combat_frames := _pixel_enemy_combat_frames()
+	return _pixel_enemy_preview_texture_for(enemy_archetype)
+
+func _pixel_enemy_preview_texture_for(archetype: String) -> Texture2D:
+	var combat_frames := _pixel_enemy_combat_frames_for(archetype)
 	return combat_frames[0] if not combat_frames.is_empty() else PIXEL_WOLF_IDLE_FRAMES[0]
 
 func _draw_drag_control() -> void:
@@ -1712,13 +1749,21 @@ func _defeat_soul_position(origin: Vector2, progress: float) -> Vector2:
 	return inverse * inverse * origin + 2.0 * inverse * progress * control + progress * progress * target
 
 func _pixel_enemy_combat_frames() -> Array:
+	return _pixel_enemy_combat_frames_for(enemy_archetype)
+
+func _pixel_enemy_combat_frames_for(archetype: String) -> Array:
 	return {
 		"raider": PIXEL_RAIDER_COMBAT_FRAMES,
 		"brute": PIXEL_BRUTE_COMBAT_FRAMES,
 		"shield": PIXEL_SHIELD_COMBAT_FRAMES,
 		"centurion": PIXEL_BRUTE_COMBAT_FRAMES,
 		"caster": PIXEL_CASTER_COMBAT_FRAMES,
-	}.get(enemy_archetype, [])
+	}.get(archetype, [])
+
+func _enemy_archetype_scale(archetype: String) -> float:
+	return {
+		"raider": 0.88, "brute": 1.03, "shield": 0.98, "caster": 0.94, "boss": 1.15,
+	}.get(archetype, 1.0)
 
 func _enemy_accent_color() -> Color:
 	return {
@@ -1805,9 +1850,7 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 	var uses_custom_enemy := not combat_frames.is_empty()
 	var texture: Texture2D = combat_frames[0] if uses_custom_enemy else PIXEL_WOLF_IDLE_FRAMES[0]
 	var tint := Color(1.08, 0.92, 0.78) if enemy_archetype == "boss" else Color.WHITE
-	var archetype_scale: float = {
-		"raider": 0.88, "brute": 1.03, "shield": 0.98, "caster": 0.94, "boss": 1.15,
-	}.get(enemy_archetype, 1.0)
+	var archetype_scale := _enemy_archetype_scale(enemy_archetype)
 	var offset := Vector2.ZERO
 	var action_scale := Vector2.ONE
 	var entry_alpha := 1.0
@@ -1826,7 +1869,7 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 			var death_frame := 0 if death_progress < 0.18 else (1 if death_progress < 0.4 else (2 if death_progress < 0.66 else 3))
 			texture = PIXEL_WOLF_DEATH_FRAMES[death_frame]
 		tint = Color(0.68, 0.7, 0.74, clampf(_enemy_death_motion * 2.4, 0.0, 1.0))
-	elif _enemy_attack_recover > 0.0:
+	elif _enemy_attack_recover > 0.0 and _enemy_attack_member_index == 0:
 		var progress := 1.0 - _enemy_attack_recover
 		if uses_custom_enemy:
 			texture = combat_frames[2] if progress < 0.42 else combat_frames[3]

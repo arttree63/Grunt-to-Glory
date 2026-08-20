@@ -1419,6 +1419,7 @@ func snapshot() -> Dictionary:
 		"enemy_is_boss": enemy_is_boss, "boss_enraged": boss_enraged, "enemy_is_elite": enemy_is_elite,
 		"boss_howl_triggered": boss_howl_triggered, "boss_empowered_attack": boss_empowered_attack,
 		"enemy_archetype": enemy_archetype, "enemy_name": _enemy_display_name(),
+		"enemy_group_members": enemy_group_members(),
 		"enemy_role": String(_enemy_definition().role), "enemy_hint": String(_enemy_definition().hint),
 		"enemy_guard_stacks": enemy_guard_stacks,
 		"exploration_approach": exploration_approach,
@@ -2452,12 +2453,13 @@ func _magic_manifest_active() -> bool:
 func _enemy_attack(block_override := "") -> void:
 	enemy_attack_count += 1
 	var attack_type := _current_enemy_attack_type_id()
+	var attacker_index := (enemy_attack_count - 1) % maxi(1, enemy_group_members().size())
 	var empowered := boss_empowered_attack
 	boss_empowered_attack = false
 	var attack_multiplier: float = float({"normal": 1.0, "heavy": 1.8, "area": 1.35, "sure_hit": 1.55}.get(attack_type, 1.0))
 	if empowered:
 		attack_multiplier *= 1.35
-	_events.append({"type": "enemy_attack", "attack_type": attack_type, "archetype": enemy_archetype, "empowered": empowered})
+	_events.append({"type": "enemy_attack", "attack_type": attack_type, "archetype": enemy_archetype, "attacker_index": attacker_index, "empowered": empowered})
 	var route_damage := 1.08 if journey_route == "mountain" else (0.92 if journey_route == "village" else (1.15 if journey_route == "battlefield" else 1.0))
 	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(_enemy_definition().damage) * route_damage
 	if area_number == 1:
@@ -3193,8 +3195,26 @@ func _enemy_definition() -> Dictionary:
 	return ENEMY_DEFS.get(enemy_archetype, ENEMY_DEFS.grunt)
 
 func _enemy_display_name() -> String:
+	return _enemy_display_name_for(enemy_archetype)
+
+func _enemy_display_name_for(archetype: String) -> String:
 	var names: Dictionary = ROUTE_ENEMY_NAMES.get(journey_route, ROUTE_ENEMY_NAMES.frontier)
-	return String(names.get(enemy_archetype, _enemy_definition().name))
+	return String(names.get(archetype, ENEMY_DEFS.get(archetype, ENEMY_DEFS.grunt).name))
+
+func enemy_group_members() -> Array[Dictionary]:
+	var members: Array[Dictionary] = []
+	var waves := _stage_waves(stage)
+	for wave_index in range(current_wave, waves.size()):
+		var archetype := String(waves[wave_index])
+		var is_target := wave_index == current_wave
+		members.append({
+			"slot": wave_index - current_wave,
+			"archetype": archetype,
+			"name": _enemy_display_name_for(archetype),
+			"hp_ratio": clampf(enemy_hp / maxf(1.0, enemy_max_hp), 0.0, 1.0) if is_target else 1.0,
+			"target": is_target,
+		})
+	return members
 
 func _journey_definition() -> Dictionary:
 	if JOURNEY_ROUTES.has(journey_route):
