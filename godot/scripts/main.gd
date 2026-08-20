@@ -144,6 +144,7 @@ var section_margin: MarginContainer
 var section_scroll: ScrollContainer
 var section_box: VBoxContainer
 var nav_buttons: Dictionary = {}
+var equipment_attention := false
 var skill_tab_buttons: Dictionary = {}
 var toast_panel: PanelContainer
 var toast_title: Label
@@ -199,7 +200,7 @@ func _process(delta: float) -> void:
 	if navigation_paused:
 		return
 	var spatial_state := battlefield.spatial_combat_state()
-	model.set_spatial_combat_state(bool(spatial_state.enabled), float(spatial_state.distance), float(spatial_state.danger_distance))
+	model.set_spatial_combat_state(bool(spatial_state.enabled), float(spatial_state.distance), float(spatial_state.danger_distance), bool(spatial_state.danger_exposed))
 	if battlefield.navigation_blocks_combat():
 		accumulator = 0.0
 		return
@@ -277,6 +278,7 @@ func _start_new_game() -> void:
 	if user_dir != null and user_dir.file_exists(SAVE_FILE_NAME):
 		user_dir.remove(SAVE_FILE_NAME)
 	model = CombatModel.new()
+	model.equip_item("black_iron_sword")
 	model.equip_item("black_iron_armor")
 	model.tutorial_step = "complete"
 	tutorial_core_hint_shown = false
@@ -475,16 +477,14 @@ func _build_ui() -> void:
 	identity.add_child(crest)
 	var identity_progress := VBoxContainer.new()
 	identity_progress.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	identity_progress.add_theme_constant_override("separation", 2)
+	identity_progress.add_theme_constant_override("separation", 0)
 	identity.add_child(identity_progress)
-	var identity_head := HBoxContainer.new()
-	identity_progress.add_child(identity_head)
-	hero_name_label = _label("無名小兵 Lv.1", 18, Color("292824"))
+	hero_name_label = _label("無名小兵", 18, Color("292824"))
 	hero_name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	identity_head.add_child(hero_name_label)
-	experience_label = _label("成長 0/32", 14, Color("385f69"))
-	experience_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	identity_head.add_child(experience_label)
+	identity_progress.add_child(hero_name_label)
+	experience_label = _label("Lv.1 0/32 金0", 12, Color("385f69"))
+	experience_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	identity_progress.add_child(experience_label)
 	experience_bar = _progress_bar(Color("c8d2d0"), Color("4f8c91"), 5)
 	identity_progress.add_child(experience_bar)
 	training_alert_button = _button("可用修練 0", Color("f5ead0"), 38)
@@ -529,7 +529,7 @@ func _build_ui() -> void:
 	top_box.add_child(failure_status)
 	failure_button = _button("未突破｜情報", Color("5a4938"), 30)
 	failure_button.add_theme_font_size_override("font_size", 14)
-	failure_button.pressed.connect(_open_failure_report)
+	failure_button.pressed.connect(_on_failure_button_pressed)
 	failure_status.add_child(failure_button)
 	retry_button = _button("再戰", Color("913b31"), 30)
 	retry_button.visible = false
@@ -962,6 +962,8 @@ func _build_failure_overlay() -> void:
 func _switch_page(page: String) -> void:
 	if not PAGE_NAMES.has(page):
 		return
+	if page == "equipment":
+		equipment_attention = false
 	current_page = page
 	accumulator = 0.0
 	var combat_visible := page == "combat"
@@ -1797,7 +1799,7 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"wave_started": pass
 			"boss_reward_choice":
 				journey_pending = true
-				_show_toast("黑鐵哨站突破", "選擇一件戰利品，讓流派立即變強")
+				_show_toast("%s突破" % String(model.snapshot().get("journey_name", "黑鐵哨站")), "選擇一件戰利品，讓流派立即變強")
 				get_tree().create_timer(1.1).timeout.connect(_show_boss_reward.bind(event.options))
 			"boss_reward_claimed":
 				boss_reward_summary = Dictionary(event.summary).duplicate(true)
@@ -1808,14 +1810,16 @@ func _handle_events(events: Array[Dictionary]) -> void:
 				get_tree().create_timer(1.15).timeout.connect(_show_journey_choice)
 			"journey_selected": _show_toast("前往：%s" % String(event.name), String(event.intro))
 			"boss_howl": pass
-			"boss_enraged": _show_toast("首領狂怒", "攻擊速度提高，重擊與必中技更加頻繁")
-			"enemy_guard_broken": _show_toast("盾勢瓦解", "後續攻擊將造成完整傷害")
+			"boss_enraged": pass
+			"enemy_guard_broken": pass
 			"unlock": _show_toast("解鎖：%s" % String(event.name), String(event.description))
 			"milestone": pass
 			"experience_gain": pass
 			"level_up": pass
 			"training_point": pass
-			"equipment_drop": pass
+			"equipment_drop":
+				equipment_attention = true
+				_refresh_navigation()
 			"equipment_duplicate": pass
 			"momentum_full": pass
 			"momentum_slash": pass
@@ -1828,8 +1832,10 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"magic_sword_manifestation", "magic_sword_complete_release": pass
 			"holy_sword_release", "holy_sword_descent", "divine_grace", "divine_manifestation": pass
 			"legion_command", "legion_fervor", "war_god", "ten_thousand_armies_one_sword": pass
-			"retry_started": _show_toast("再次挑戰", "重新進入第 %d 戰" % int(event.stage))
-			"defeat": _show_toast("第 %d 戰突破失敗" % int(event.failed_stage), "已退回第 %d 戰整備，AUTO 持續進行" % int(event.fallback_stage))
+			"retry_started": _show_toast("再次挑戰", "重新進入第 %d 戰" % int(event.stage), 0.9)
+			"defeat":
+				if model.training_points > 0:
+					_pulse_tutorial_target(training_alert_button)
 	if events.any(func(event: Dictionary) -> bool: return String(event.type) in ["enemy_defeated", "defeat", "equipment_drop", "equipment_duplicate", "boss_reward_choice", "inheritance_unlocked"]):
 		_save_game()
 
@@ -1839,7 +1845,8 @@ func _show_boss_reward(options: Array) -> void:
 	boss_reward_overlay.visible = true
 	for child: Node in boss_reward_box.get_children():
 		child.queue_free()
-	var title := _label("黑鐵哨站突破", 29, Color("ffe09a"))
+	var snapshot := model.snapshot()
+	var title := _label("%s突破" % String(snapshot.get("journey_name", "黑鐵哨站")), 29, Color("ffe09a"))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	boss_reward_box.add_child(title)
 	var detail := _label("選擇一件戰利品。裝備後會立刻改變有效流派等級。", 15, Color("d8e0d8"))
@@ -1847,9 +1854,16 @@ func _show_boss_reward(options: Array) -> void:
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	boss_reward_box.add_child(detail)
 	for option: Dictionary in options:
-		var style_name := String(CombatModel.TRAINING_DEFS[String(option.style)].name)
-		var button := _button("%s｜%s\n%s" % [String(option.name), style_name, String(option.description)], Color("514634"), 88)
-		button.add_theme_font_size_override("font_size", 14)
+		var item_id := String(option.item_id)
+		var item: Dictionary = CombatModel.EQUIPMENT_DEFS[item_id]
+		var slot := String(item.slot)
+		var quality_name := String(CombatModel.EQUIPMENT_QUALITY_NAMES[String(item.get("quality", "common"))])
+		var slot_name := String(CombatModel.EQUIPMENT_SLOT_NAMES[slot])
+		var equipped_id := String(snapshot.equipped_items.get(slot, ""))
+		var replacement := "空欄位" if equipped_id.is_empty() else "取代 %s" % String(CombatModel.EQUIPMENT_DEFS[equipped_id].name)
+		var button_text := "%s｜%s%s\n%s｜%s\n%s" % [String(option.name), quality_name, slot_name, _equipment_style_text(item), replacement, String(option.description)]
+		var button := _button(button_text, Color("514634"), 92)
+		button.add_theme_font_size_override("font_size", 13)
 		button.pressed.connect(_claim_boss_reward.bind(String(option.item_id)))
 		boss_reward_box.add_child(button)
 
@@ -1870,6 +1884,12 @@ func _open_failure_report() -> void:
 	failure_open = true
 	failure_overlay.visible = true
 	failure_detail.text = "上次失敗：第 %d 戰・第 %d 波\n致命來源：%s\n最大承傷：%s（%d）\n敵人特性：%s\n尚有修練：%d\n\n遊戲仍在上一戰持續 AUTO 掛機。" % [int(report.failed_stage), int(report.failed_wave), String(report.killer), String(report.highest_damage_source), roundi(float(report.highest_damage_amount)), String(report.enemy_traits), int(report.unspent_style_points)]
+
+func _on_failure_button_pressed() -> void:
+	if model.training_points > 0:
+		_open_training()
+	else:
+		_open_failure_report()
 
 func _close_failure_report() -> void:
 	failure_open = false
@@ -2100,11 +2120,16 @@ func _update_hud(snapshot: Dictionary) -> void:
 	var area_number := int(snapshot.area_number)
 	var route_position := int(snapshot.route_position)
 	var journey_name := String(snapshot.get("journey_name", "沉眠古戰場"))
+	var retry_pending := bool(snapshot.get("retry_pending", false))
 	var stage_prefix := "第%d區・%s｜第%d關" % [area_number, journey_name, route_position]
-	hero_name_label.text = "無名小兵 Lv.%d" % player_level
+	hero_name_label.text = "無名小兵"
 	objective_bar.max_value = boss_kills_required
 	objective_bar.value = boss_kills_required if bool(snapshot.enemy_is_boss) else area_kills
-	if bool(snapshot.enemy_is_boss):
+	if retry_pending:
+		objective_label.text = stage_prefix
+		boss_progress_label.text = "待再戰"
+		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("8f6c52")))
+	elif bool(snapshot.enemy_is_boss):
 		objective_label.text = "第%d區・%s｜首領戰" % [area_number, journey_name]
 		boss_progress_label.text = "首領戰"
 		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("b63e35")))
@@ -2118,22 +2143,21 @@ func _update_hud(snapshot: Dictionary) -> void:
 		objective_bar.add_theme_stylebox_override("fill", _bar_style(Color("a75240")))
 	experience_bar.max_value = experience_required
 	experience_bar.value = experience
-	experience_label.text = "成長 %d/%d" % [experience, experience_required]
+	experience_label.text = "Lv.%d %d/%d 金%d" % [player_level, experience, experience_required, int(snapshot.gold)]
 	var training_points := int(snapshot.training_points)
 	var first_training := game_started and _total_base_training() == 0 and training_points > 0
-	training_alert_button.text = "修練 %d" % training_points if training_points > 0 else "流派"
+	training_alert_button.text = ("選流派 %d" % training_points if first_training else "修練 %d" % training_points) if training_points > 0 else "流派"
 	training_alert_button.tooltip_text = "選擇一條流派投入第一點修練" if first_training else "Lv.%d｜經驗 %d/%d｜可用修練 %d" % [player_level, experience, experience_required, training_points]
 	training_alert_button.disabled = model.tutorial_step in ["intro", "observe"]
 	var emphasize_training := model.tutorial_step == "core" and training_points > 0
 	training_alert_button.add_theme_stylebox_override("normal", _panel_style(Color("fff0c7") if emphasize_training else (Color("fff5df") if training_points > 0 else Color("e0d9ce")), Color("efae38") if emphasize_training else (Color("c58a28") if training_points > 0 else Color("81796f")), 4 if emphasize_training else 2))
 	if emphasize_training and not tutorial_core_hint_shown:
 		call_deferred("_highlight_core_training_button")
-	var retry_pending := bool(snapshot.get("retry_pending", false))
 	var retry_stage := int(snapshot.get("retry_stage", 0))
 	retry_button.visible = retry_pending and not battlefield.defeat_sequence_active()
 	retry_button.text = "再戰"
 	failure_status.visible = retry_pending and not battlefield.defeat_sequence_active()
-	failure_button.text = "第 %d 戰未突破｜情報" % retry_stage
+	failure_button.text = "第 %d 戰未破｜%s" % [retry_stage, "先修練" if training_points > 0 else "查看情報"]
 	enemy_bar.max_value = float(snapshot.enemy_max_hp)
 	enemy_bar.value = float(snapshot.enemy_hp)
 	hp_bar.max_value = float(snapshot.hero_max_hp)
@@ -2197,8 +2221,8 @@ func _update_hud(snapshot: Dictionary) -> void:
 		var skill_id := String(slots[index])
 		var button := auto_slot_buttons[index]
 		if skill_id.is_empty():
-			_set_skill_card(button, "%d" % (index + 1), "未解鎖", false, false)
-			button.tooltip_text = "第 %d 優先：尚未配置" % (index + 1)
+			_set_skill_card(button, "%d  空槽" % (index + 1), "配置", false, false)
+			button.tooltip_text = "第 %d 優先：點擊前往技能頁配置已解鎖技能" % (index + 1)
 			button.add_theme_stylebox_override("normal", _slot_style(Color("313833"), Color("667169"), 1))
 		else:
 			var definition: Dictionary = CombatModel.SKILL_DEFS[skill_id]
@@ -2253,7 +2277,9 @@ func _refresh_navigation() -> void:
 		var selected := page == current_page
 		button.disabled = model.tutorial_step in ["intro", "observe"] and page != "combat"
 		var label := button.get_node("Content/Label") as Label
+		var badge := button.get_node("AttentionBadge") as Label
 		label.text = String(PAGE_NAMES[page])
+		badge.visible = page == "equipment" and equipment_attention and current_page != "equipment"
 		label.add_theme_color_override("font_color", Color("8a5b16") if selected else Color("595b57"))
 		button.add_theme_stylebox_override("normal", _slot_style(Color("f8e9c6") if selected else Color("f4efe5"), Color("c68e2f") if selected else Color("d3c6b3"), 2 if selected else 1))
 
@@ -2411,6 +2437,16 @@ func _nav_button(text_value: String, icon_texture: Texture2D) -> Button:
 	var label := _label(text_value, 14, Color("344750"))
 	label.name = "Label"
 	content.add_child(label)
+	var badge := _label("●", 13, Color("c8453d"))
+	badge.name = "AttentionBadge"
+	badge.visible = false
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	badge.offset_left = -15.0
+	badge.offset_top = 2.0
+	badge.offset_right = -3.0
+	badge.offset_bottom = 18.0
+	button.add_child(badge)
 	return button
 
 func _state_pip_style(color: Color, border: Color, kind: String, border_width := 1) -> StyleBoxFlat:

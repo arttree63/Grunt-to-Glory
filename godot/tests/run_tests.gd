@@ -249,6 +249,8 @@ func _test_defeat_farms_previous_stage_until_retry() -> void:
 	model._events.clear()
 	model._enemy_defeated()
 	_expect(model.stage == 5 and model.retry_pending, "刷完上一戰後不可自動推回失敗關卡")
+	model._defeat_hero()
+	_expect(model.stage == 5 and model.retry_stage == 6 and int(model.last_failure_report.failed_stage) == 6, "整備關再次戰敗只能在原關復活，不可繼續倒退或覆蓋重試目標")
 	var retry_events: Array[Dictionary] = model.retry_failed_stage()
 	_expect(model.stage == 6 and not model.retry_pending, "按下再次挑戰才可回到失敗關卡")
 	_expect(retry_events.any(func(event: Dictionary) -> bool: return event.type == "retry_started"), "再次挑戰必須送出明確戰鬥事件")
@@ -281,6 +283,10 @@ func _test_auto_roaming() -> void:
 	battlefield._on_map_input(drag_motion)
 	battlefield._update_exploration(0.5)
 	_expect(battlefield._hero_map_position.x > hero_before_drag.x + 40.0 and battlefield._camera_top_left.x > camera_before_drag.x, "按住拖曳必須直接移動角色並推動世界鏡頭")
+	var camera_after_large_move: Vector2 = battlefield._camera_top_left
+	battlefield._steering_vector = Vector2(0.08, 0.0)
+	battlefield._update_exploration(0.05)
+	_expect(battlefield._camera_top_left.distance_to(camera_after_large_move) <= 2.0, "角色在鏡頭死區內的小幅位移不可帶動整張地圖同步漂移")
 	var drag_release := InputEventMouseButton.new()
 	drag_release.button_index = MOUSE_BUTTON_LEFT
 	drag_release.pressed = false
@@ -388,6 +394,11 @@ func _test_auto_roaming() -> void:
 	group_model._spawn_enemy()
 	battlefield.set_state(group_model.snapshot())
 	_expect(battlefield._exploration_phase == "engaged" and battlefield._enemy_map_position == held_target, "同一戰的後續敵人必須留在原遭遇點，不可重新巡路")
+	battlefield.journey_route = "frontier"
+	_expect(not battlefield._pixel_enemy_combat_frames_for("grunt").is_empty() and not battlefield._pixel_enemy_combat_frames_for("boss").is_empty(), "人類哨站敵人與首領不可誤用野狼外觀")
+	battlefield.journey_route = "mountain"
+	_expect(battlefield._pixel_enemy_combat_frames_for("raider").is_empty() and battlefield._pixel_enemy_combat_frames_for("boss").is_empty(), "灰狼山道的狼群與狼王必須使用野狼動畫")
+	_expect(battlefield._route_atmosphere_color() != Color("193041", 0.05), "切換區域後必須同步改變戰場氣氛色，不能只替換文字名稱")
 	battlefield.free()
 	var landmark_model = CombatModelScript.new()
 	var armor_before: float = landmark_model.enemy_armor
@@ -1233,6 +1244,10 @@ func _test_spatial_movement_changes_combat_result() -> void:
 	hp_before = heavy.hero_hp
 	heavy._enemy_attack("none")
 	_expect(heavy.hero_hp < hp_before, "留在重擊危險區內必須受到傷害")
+	heavy.set_spatial_combat_state(true, 40.0, 40.0, false)
+	hp_before = heavy.hero_hp
+	heavy._enemy_attack("none")
+	_expect(is_equal_approx(heavy.hero_hp, hp_before), "即使距離很近，走到重擊扇形側面也必須成功閃避")
 
 	var caster = CombatModelScript.new()
 	caster.stage = 6
@@ -1257,6 +1272,7 @@ func _test_spatial_movement_changes_combat_result() -> void:
 	var caster_snapshot: Dictionary = caster.snapshot()
 	_expect(String(caster_snapshot.enemy_behavior.movement) == "keep_range", "咒術師必須擁有獨立的保持距離行為")
 	_expect(String(caster_snapshot.enemy_attack_contract.targeting) == "locked_ground", "範圍術必須在前搖開始時鎖定地面位置")
+	_expect(String(CombatModelScript.ENEMY_ATTACK_CONTRACTS.heavy.shape) == "sector", "重擊必須是方向性扇形，不可繼續使用怪物周圍整圈判定")
 
 	var battlefield = BattlefieldScript.new()
 	battlefield.set_exploration_enabled(true)
@@ -1282,6 +1298,29 @@ func _test_spatial_movement_changes_combat_result() -> void:
 	var recovery_position: Vector2 = battlefield._enemy_map_position
 	battlefield._update_enemy_chase(0.2)
 	_expect(not battlefield._enemy_cast_active and battlefield._enemy_recovery_remaining > 0.0 and battlefield._enemy_map_position == recovery_position, "招式結算後必須先收招，不可立即恢復追擊")
+	battlefield._enemy_recovery_remaining = 0.0
+	battlefield._enemy_attack_contract = CombatModelScript.ENEMY_ATTACK_CONTRACTS.heavy.duplicate(true)
+	battlefield._enemy_behavior = {"movement": "deliberate", "preferred_distance": 108.0, "chase_speed": 76.0}
+	battlefield._enemy_map_position = Vector2(150.0, 300.0)
+	battlefield._hero_map_position = Vector2(120.0, 300.0)
+	battlefield._update_enemy_chase(0.5)
+	_expect(battlefield._enemy_map_position.x > 150.0, "近戰敵人與主角重疊時必須主動拉開站位，不可讓大型 Sprite 疊成一團")
+	battlefield._enemy_map_position = Vector2(200.0, 300.0)
+	battlefield._hero_map_position = Vector2(120.0, 300.0)
+	battlefield._begin_enemy_cast("重擊")
+	battlefield._hero_map_position = Vector2(200.0, 240.0)
+	var side_state: Dictionary = battlefield.spatial_combat_state()
+	_expect(not bool(side_state.danger_exposed), "重擊鎖定後移動到側面必須離開方向性危險區")
+	battlefield._hero_map_position = Vector2(150.0, 300.0)
+	var front_state: Dictionary = battlefield.spatial_combat_state()
+	_expect(bool(front_state.danger_exposed), "留在重擊正前方必須仍然位於危險區")
+	battlefield._clear_enemy_cast()
+	battlefield._enemy_map_position = Vector2(200.0, 300.0)
+	battlefield._hero_map_position = Vector2(80.0, 300.0)
+	battlefield.play_events([{"type": "enemy_attack", "attack_type": "normal", "attacker_index": 0}])
+	var normal_recovery_position: Vector2 = battlefield._enemy_map_position
+	battlefield._update_enemy_chase(0.2)
+	_expect(battlefield._enemy_recovery_remaining > 0.0 and battlefield._enemy_map_position == normal_recovery_position, "普通攻擊也必須有短收招，不可邊揮刀邊追人")
 	battlefield.free()
 
 func _test_journey_choice_controls_next_area() -> void:
@@ -1669,9 +1708,12 @@ func _test_navigation() -> void:
 	_expect(visible_auto_slots == 5, "手機戰鬥 HUD 必須呈現完整五格技能優先序")
 	_expect(not scene.enemy_label.visible and not scene.enemy_bar.visible, "敵人說明與大型血條不可再佔據頂部戰鬥空間")
 	_expect(not scene.mp_hud.visible and not scene.momentum_hud.visible and not scene.state_panel.visible, "未投入的流派資源不可預先出現在戰鬥 HUD")
-	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text.begins_with("修練 "), "新遊戲必須在既有修練入口顯示可用點數")
+	_expect(is_instance_valid(scene.training_alert_button) and scene.training_alert_button.text.begins_with("選流派 "), "新遊戲必須在既有修練入口明確提示第一次流派選擇")
 	_expect(scene.objective_label.text.begins_with("第1區・") and scene.objective_label.text.contains("第1關"), "戰鬥 HUD 必須持續顯示目前區域名稱與關卡")
 	_expect(scene.model.tutorial_step == "complete" and not scene.tutorial_overlay.visible, "新遊戲不可用連續講解框打斷 AUTO 戰鬥")
+	scene._start_new_game()
+	_expect(String(scene.model.equipped_items.weapon) == "black_iron_sword" and String(scene.model.equipped_items.armor) == "black_iron_armor", "新遊戲角色外觀持劍著甲時，裝備狀態也必須同步配戴制式軍備")
+	scene.model.unequip_item("weapon")
 	var ui_font: Font = load("res://assets/fonts/NotoSansTC-Regular.otf")
 	for character: String in ["教", "學", "裝", "備", "解", "鎖", "流", "派", "強", "化", "背", "包", "較"]:
 		_expect(ui_font.has_char(character.unicode_at(0)), "中文字型子集必須保留目前介面用字：%s" % character)
@@ -1687,15 +1729,31 @@ func _test_navigation() -> void:
 	var repetitive_events: Array[Dictionary] = [{"type": "momentum_full"}, {"type": "perfect_block", "prevented": 10.0}, {"type": "flow_state_entered"}]
 	scene._handle_events(repetitive_events)
 	_expect(not scene.toast_panel.visible and scene.toast_title.text.is_empty(), "高頻戰鬥觸發只能使用戰場特效，不可反覆跳出講解框")
+	var equipment_drop_events: Array[Dictionary] = [{"type": "equipment_drop", "item_id": "momentum_talisman", "name": "蓄勢護符", "quality": "uncommon"}]
+	scene._handle_events(equipment_drop_events)
+	_expect(scene.equipment_attention and (scene.nav_buttons.equipment as Button).get_node("AttentionBadge").visible, "隨機裝備掉落後必須以小型頁籤徽記提醒，不可只靠短暫戰場文字")
+	scene._switch_page("equipment")
+	_expect(not scene.equipment_attention and not (scene.nav_buttons.equipment as Button).get_node("AttentionBadge").visible, "玩家查看裝備後必須清除新物品徽記")
+	scene._switch_page("combat")
 	scene._spend_training("martial")
-	_expect(scene.training_alert_button.text == "流派" and scene.experience_label.text.begins_with("成長") and not scene.toast_panel.visible and scene.toast_title.text.is_empty(), "普通修練升級只更新常駐成長資訊，不可反覆跳出提示")
+	_expect(scene.training_alert_button.text == "流派" and "金" in scene.experience_label.text and not scene.toast_panel.visible and scene.toast_title.text.is_empty(), "普通修練升級只更新常駐成長資訊，不可反覆跳出提示")
 	scene.model.training.martial = 9
 	scene.model.training_points = 1
 	scene._spend_training("martial")
 	_expect("一刀流成形" in scene.toast_title.text and "累積勢" in scene.toast_detail.text, "有效武藝首次到 Lv.10 時必須說明一刀流核心循環")
 	_expect(scene.battlefield._style_formed_burst == 1.0, "流派成形時戰場必須同步顯示低位移光環")
 	_expect(is_instance_valid(scene.retry_button) and not scene.retry_button.visible, "未戰敗時不可顯示再次挑戰按鈕")
+	scene.model.training_points = 1
+	scene._on_failure_button_pressed()
+	_expect(scene.training_open, "戰敗且仍有修練點時，『先修練』必須直接打開流派介面")
+	scene._close_training()
 	_expect(is_instance_valid(scene.journey_overlay) and scene.journey_buttons.size() == 3, "Boss 後旅途抉擇必須提供三條手機可操作路線")
+	scene.model.journey_route = "mountain"
+	scene._show_boss_reward(scene.model.boss_reward_options())
+	var first_reward_text := (scene.boss_reward_box.get_child(2) as Button).text
+	_expect((scene.boss_reward_box.get_child(0) as Label).text == "灰狼山道突破" and ("取代" in first_reward_text or "空欄位" in first_reward_text), "Boss 戰利品必須使用目前區域名稱，並清楚顯示裝備取代關係")
+	scene.boss_reward_overlay.visible = false
+	scene.boss_reward_open = false
 	_expect(scene.section_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "功能頁透明遮罩不可攔截底部分頁")
 	_expect(is_instance_valid(scene.section_scroll), "功能頁內容必須可捲動")
 	_expect(not scene.section_scroll.follow_focus and scene.section_scroll.scroll_deadzone >= 12, "手機滑動不可被卡片焦點搶走")
@@ -1714,8 +1772,9 @@ func _test_navigation() -> void:
 	scene.model.military_momentum = 45.0
 	scene.model.retry_pending = true
 	scene.model.retry_stage = 8
+	scene.model.training_points = 3
 	scene._update_hud(scene.model.snapshot())
-	_expect(scene.failure_status.visible and scene.retry_button.visible and "第 8 戰" in scene.failure_button.text, "戰敗後必須以單一狀態條提供情報與再次挑戰")
+	_expect(scene.failure_status.visible and scene.retry_button.visible and "第 8 戰" in scene.failure_button.text and "先修練" in scene.failure_button.text, "戰敗後必須以單一狀態條引導先強化再挑戰")
 	_expect(scene.failure_button.custom_minimum_size.y <= 30.0 and scene.retry_button.custom_minimum_size.y <= 30.0 and scene.retry_button.text == "再戰", "戰敗狀態列不得以大型按鈕壓縮戰場")
 	_expect(scene.mp_hud.visible and scene.momentum_hud.visible and scene.immovable_hud.visible and scene.youren_hud.visible and scene.magic_hud.visible and scene.faith_hud.visible and scene.command_hud.visible, "六流派機制同時存在時，HUD 必須完整顯示")
 	scene._open_training()

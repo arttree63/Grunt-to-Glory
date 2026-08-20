@@ -65,16 +65,16 @@ const ALLY_DEFS := {
 }
 const ENEMY_DEFS := {
 	"grunt": {"name": "黑鐵新兵", "role": "基準近戰", "hint": "攻守平衡，用來確認目前戰力", "hp": 1.0, "armor": 1.0, "damage": 1.0, "interval": 2.25, "behavior": {"movement": "chase", "preferred_distance": 92.0, "chase_speed": 118.0}},
-	"raider": {"name": "黑鐵劍兵", "role": "高頻攻擊", "hint": "出手快速，會頻繁養出格擋與閃避觸發", "hp": 0.9, "armor": 0.78, "damage": 0.78, "interval": 1.35},
+	"raider": {"name": "黑鐵劍兵", "role": "高頻攻擊", "hint": "出手快速，會頻繁養出格擋與閃避觸發", "hp": 0.9, "armor": 0.78, "damage": 0.78, "interval": 1.35, "behavior": {"movement": "rush", "preferred_distance": 84.0, "chase_speed": 132.0}},
 	"brute": {"name": "黑鐵重槌兵", "role": "碎甲重擊", "hint": "蓄力久但傷害高，重擊會打亂流派節奏", "hp": 1.28, "armor": 1.08, "damage": 1.48, "interval": 3.35, "behavior": {"movement": "deliberate", "preferred_distance": 104.0, "chase_speed": 82.0}},
-	"shield": {"name": "黑鐵盾衛", "role": "高護甲", "hint": "普通攻擊效率較低，破甲與魔劍更有效", "hp": 1.3, "armor": 2.45, "damage": 0.9, "interval": 2.65},
-	"centurion": {"name": "黑鐵百夫長", "role": "精英統合", "hint": "重甲、蓄力重擊與低血狂暴的綜合考驗", "hp": 1.62, "armor": 1.75, "damage": 1.28, "interval": 2.45},
+	"shield": {"name": "黑鐵盾衛", "role": "高護甲", "hint": "普通攻擊效率較低，破甲與魔劍更有效", "hp": 1.3, "armor": 2.45, "damage": 0.9, "interval": 2.65, "behavior": {"movement": "advance", "preferred_distance": 96.0, "chase_speed": 92.0}},
+	"centurion": {"name": "黑鐵百夫長", "role": "精英統合", "hint": "重甲、蓄力重擊與低血狂暴的綜合考驗", "hp": 1.62, "armor": 1.75, "damage": 1.28, "interval": 2.45, "behavior": {"movement": "deliberate", "preferred_distance": 100.0, "chase_speed": 88.0}},
 	"caster": {"name": "林地咒術師", "role": "範圍施法", "hint": "以範圍與必中術打斷節奏", "hp": 0.92, "armor": 0.68, "damage": 1.18, "interval": 3.0, "behavior": {"movement": "keep_range", "preferred_distance": 112.0, "chase_speed": 76.0}},
-	"boss": {"name": "黑鐵統領", "role": "重甲首領", "hint": "每隔數次攻擊施放碎甲重擊，30% 生命進入狂怒", "hp": 2.2, "armor": 1.5, "damage": 1.25, "interval": 2.0},
+	"boss": {"name": "黑鐵統領", "role": "重甲首領", "hint": "每隔數次攻擊施放碎甲重擊，30% 生命進入狂怒", "hp": 2.2, "armor": 1.5, "damage": 1.25, "interval": 2.0, "behavior": {"movement": "deliberate", "preferred_distance": 108.0, "chase_speed": 76.0}},
 }
 const ENEMY_ATTACK_CONTRACTS := {
 	"normal": {"movement_lock": false, "targeting": "tracking", "shape": "contact", "recovery": 0.32},
-	"heavy": {"movement_lock": true, "targeting": "locked_origin", "shape": "radius", "recovery": 0.62},
+	"heavy": {"movement_lock": true, "targeting": "locked_origin", "shape": "sector", "recovery": 0.62},
 	"area": {"movement_lock": true, "targeting": "locked_ground", "shape": "radius", "recovery": 0.72},
 	"sure_hit": {"movement_lock": true, "targeting": "tracking", "shape": "target", "recovery": 0.58},
 }
@@ -753,6 +753,7 @@ var enemy_attack_remaining := 2.25
 var spatial_combat_enabled := false
 var spatial_enemy_distance := 0.0
 var spatial_danger_distance := 0.0
+var spatial_danger_exposed := true
 var _momentum_was_full := false
 var _events: Array[Dictionary] = []
 
@@ -762,10 +763,11 @@ func _init() -> void:
 	_record_stage_reached()
 	_generate_shop_items()
 
-func set_spatial_combat_state(enabled: bool, enemy_distance: float, danger_distance := -1.0) -> void:
+func set_spatial_combat_state(enabled: bool, enemy_distance: float, danger_distance := -1.0, danger_exposed := true) -> void:
 	spatial_combat_enabled = enabled
 	spatial_enemy_distance = maxf(0.0, enemy_distance)
 	spatial_danger_distance = spatial_enemy_distance if danger_distance < 0.0 else maxf(0.0, danger_distance)
+	spatial_danger_exposed = danger_exposed
 
 func _reset_milestone_choices() -> void:
 	milestone_choices.clear()
@@ -1445,7 +1447,7 @@ func snapshot() -> Dictionary:
 		"enemy_attack_type": _next_enemy_attack_type(), "enemy_attack_remaining": enemy_attack_remaining,
 		"enemy_attack_contract": ENEMY_ATTACK_CONTRACTS[_next_enemy_attack_type_id()].duplicate(true),
 		"enemy_behavior": Dictionary(_enemy_definition().get("behavior", {"movement": "chase", "preferred_distance": 94.0, "chase_speed": 112.0})).duplicate(true),
-		"spatial_combat_enabled": spatial_combat_enabled, "spatial_enemy_distance": spatial_enemy_distance, "spatial_danger_distance": spatial_danger_distance,
+		"spatial_combat_enabled": spatial_combat_enabled, "spatial_enemy_distance": spatial_enemy_distance, "spatial_danger_distance": spatial_danger_distance, "spatial_danger_exposed": spatial_danger_exposed,
 		"kills": kills, "gold": gold, "player_level": player_level, "experience": experience,
 		"area_kills": area_kills, "boss_kills_required": BOSS_KILLS_REQUIRED,
 		"boss_kills_remaining": maxi(0, BOSS_KILLS_REQUIRED - area_kills),
@@ -2475,9 +2477,9 @@ func _spatial_attack_evaded(attack_type: String) -> bool:
 	if not spatial_combat_enabled:
 		return false
 	if attack_type == "heavy":
-		return spatial_danger_distance > SPATIAL_HEAVY_REACH
+		return not spatial_danger_exposed or spatial_danger_distance > SPATIAL_HEAVY_REACH
 	if attack_type == "area":
-		return spatial_danger_distance > SPATIAL_AREA_REACH
+		return not spatial_danger_exposed or spatial_danger_distance > SPATIAL_AREA_REACH
 	return false
 
 func _enemy_attack(block_override := "") -> void:
@@ -2497,6 +2499,8 @@ func _enemy_attack(block_override := "") -> void:
 	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(_enemy_definition().damage) * route_damage
 	if area_number == 1:
 		raw_damage *= 0.62
+	if retry_pending:
+		raw_damage *= 0.72
 	if attack_type == "heavy":
 		raw_damage *= 1.0 + equipment_modifier("heavy_damage_taken")
 	if boss_enraged:
@@ -2734,22 +2738,25 @@ func _highest_incoming_damage() -> Dictionary:
 func _defeat_hero() -> void:
 	var failed_stage := stage
 	var failed_wave := current_wave + 1
+	var was_retrying := retry_pending
+	var locked_retry_stage := retry_stage
 	var highest := _highest_incoming_damage()
-	last_failure_report = {
-		"failed_stage": failed_stage, "failed_wave": failed_wave,
-		"killer": last_incoming_source if not last_incoming_source.is_empty() else _enemy_display_name(),
-		"highest_damage_source": String(highest.source), "highest_damage_amount": float(highest.amount),
-		"enemy_traits": "%s｜%s" % [String(_enemy_definition().role), String(_enemy_definition().hint)],
-		"unspent_style_points": training_points,
-	}
+	if not was_retrying:
+		last_failure_report = {
+			"failed_stage": failed_stage, "failed_wave": failed_wave,
+			"killer": last_incoming_source if not last_incoming_source.is_empty() else _enemy_display_name(),
+			"highest_damage_source": String(highest.source), "highest_damage_amount": float(highest.amount),
+			"enemy_traits": "%s｜%s" % [String(_enemy_definition().role), String(_enemy_definition().hint)],
+			"unspent_style_points": training_points,
+		}
 	var death_key := str(failed_stage)
 	var deaths: Dictionary = slice_metrics.stage_deaths
 	deaths[death_key] = int(deaths.get(death_key, 0)) + 1
 	slice_metrics.stage_deaths = deaths
-	stage = maxi(1, failed_stage - 1)
+	stage = failed_stage if was_retrying else maxi(1, failed_stage - 1)
 	current_wave = 0
 	retry_pending = true
-	retry_stage = failed_stage
+	retry_stage = locked_retry_stage if was_retrying else failed_stage
 	hero_hp = _hero_max_hp()
 	hero_mp = _hero_max_mp()
 	immovable = 0
@@ -2788,7 +2795,7 @@ func _defeat_hero() -> void:
 	ally_attack_remaining = ALLY_ATTACK_INTERVAL
 	ally_attack_cursor = 0
 	_spawn_enemy()
-	_events.append({"type": "defeat", "failed_stage": failed_stage, "failed_wave": failed_wave, "fallback_stage": stage, "report": last_failure_report.duplicate(true)})
+	_events.append({"type": "defeat", "failed_stage": retry_stage, "failed_wave": failed_wave, "fallback_stage": stage, "report": last_failure_report.duplicate(true), "during_recovery": was_retrying})
 
 func _next_enemy_attack_type() -> String:
 	var next_count := enemy_attack_count + 1
@@ -2916,7 +2923,8 @@ func _enemy_defeated() -> void:
 		if martial_branch == "chain_slash": no_beat_gain += 12.0
 		_add_momentum(no_beat_gain, "no_beat")
 		_events.append({"type": "no_beat", "amount": no_beat_gain})
-	hero_hp = minf(_hero_max_hp(), hero_hp + (18.0 if journey_route == "village" else 10.0))
+	var recovery_heal := _hero_max_hp() * 0.18 if retry_pending else (18.0 if journey_route == "village" else 10.0)
+	hero_hp = minf(_hero_max_hp(), hero_hp + recovery_heal)
 	if defeated_boss and not retry_pending:
 		awaiting_journey_choice = true
 		boss_reward_claimed = false

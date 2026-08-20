@@ -214,6 +214,7 @@ const HERO_MAP_SPEED := 146.0
 const ENEMY_CHASE_SPEED := 112.0
 const ENCOUNTER_DISTANCE := 104.0
 const COMBAT_DISTANCE := 122.0
+const HEAVY_SECTOR_HALF_ANGLE := deg_to_rad(52.0)
 const DRAG_THRESHOLD := 14.0
 
 var reduced_motion := false
@@ -232,6 +233,7 @@ var _enemy_cast_attack_type := ""
 var _enemy_cast_origin := Vector2.ZERO
 var _enemy_cast_target := Vector2.ZERO
 var _enemy_cast_facing := 1.0
+var _enemy_cast_direction := Vector2.LEFT
 var _enemy_recovery_remaining := 0.0
 var enemy_archetype := "grunt"
 var enemy_role := ""
@@ -567,16 +569,22 @@ func spatial_combat_state() -> Dictionary:
 	var valid_positions := _hero_map_position != Vector2.ZERO and _enemy_map_position != Vector2.ZERO
 	var enemy_distance := _hero_map_position.distance_to(_enemy_map_position) if valid_positions else 0.0
 	var danger_distance := enemy_distance
+	var danger_exposed := true
 	if _enemy_cast_active:
 		var targeting := String(_enemy_attack_contract.get("targeting", "tracking"))
 		if targeting == "locked_ground":
 			danger_distance = _hero_map_position.distance_to(_enemy_cast_target)
+			danger_exposed = danger_distance <= CombatModel.SPATIAL_AREA_REACH
 		elif targeting == "locked_origin":
-			danger_distance = _hero_map_position.distance_to(_enemy_cast_origin)
+			var offset := _hero_map_position - _enemy_cast_origin
+			danger_distance = offset.length()
+			var direction := offset.normalized() if danger_distance > 0.01 else _enemy_cast_direction
+			danger_exposed = danger_distance <= CombatModel.SPATIAL_HEAVY_REACH and absf(_enemy_cast_direction.angle_to(direction)) <= HEAVY_SECTOR_HALF_ANGLE
 	return {
 		"enabled": exploration_enabled and _exploration_phase == "engaged" and valid_positions,
 		"distance": enemy_distance,
 		"danger_distance": danger_distance,
+		"danger_exposed": danger_exposed,
 	}
 
 func _begin_enemy_cast(attack_type: String) -> void:
@@ -587,6 +595,9 @@ func _begin_enemy_cast(attack_type: String) -> void:
 	_enemy_cast_origin = _enemy_map_position
 	_enemy_cast_target = _hero_map_position
 	_enemy_cast_facing = _enemy_facing
+	_enemy_cast_direction = _enemy_cast_origin.direction_to(_enemy_cast_target)
+	if _enemy_cast_direction == Vector2.ZERO:
+		_enemy_cast_direction = Vector2(_enemy_cast_facing, 0.0)
 
 func _finish_enemy_cast() -> void:
 	_enemy_cast_active = false
@@ -598,6 +609,7 @@ func _clear_enemy_cast() -> void:
 	_enemy_cast_attack_type = ""
 	_enemy_cast_origin = Vector2.ZERO
 	_enemy_cast_target = Vector2.ZERO
+	_enemy_cast_direction = Vector2.LEFT
 	_enemy_recovery_remaining = 0.0
 
 func _enemy_action_state() -> String:
@@ -786,10 +798,27 @@ func _update_exploration_camera(delta: float, snap := false) -> void:
 	var view_size := _visible_map_size()
 	var world_size := _exploration_world_size()
 	var focus := _camera_focus_position(view_size)
-	var desired := focus - view_size * 0.5
+	var desired := _camera_top_left
+	if snap:
+		desired = focus - view_size * 0.5
+	else:
+		var focus_in_view := focus - _camera_top_left
+		var deadzone_left := view_size.x * 0.36
+		var deadzone_right := view_size.x * 0.64
+		var deadzone_top := view_size.y * 0.34
+		var deadzone_bottom := view_size.y * 0.66
+		if focus_in_view.x < deadzone_left:
+			desired.x = focus.x - deadzone_left
+		elif focus_in_view.x > deadzone_right:
+			desired.x = focus.x - deadzone_right
+		if focus_in_view.y < deadzone_top:
+			desired.y = focus.y - deadzone_top
+		elif focus_in_view.y > deadzone_bottom:
+			desired.y = focus.y - deadzone_bottom
 	desired.x = clampf(desired.x, 0.0, world_size.x - view_size.x)
 	desired.y = clampf(desired.y, 0.0, world_size.y - view_size.y)
-	_camera_top_left = Vector2(roundf(desired.x), roundf(desired.y))
+	var next_camera := desired if snap else _camera_top_left.lerp(desired, clampf(delta * 8.0, 0.0, 1.0))
+	_camera_top_left = Vector2(roundf(next_camera.x), roundf(next_camera.y))
 
 func _camera_focus_position(view_size: Vector2) -> Vector2:
 	return _hero_map_position
@@ -863,9 +892,12 @@ func _update_enemy_chase(delta: float) -> void:
 	var preferred_distance := float(_enemy_behavior.get("preferred_distance", COMBAT_DISTANCE * 0.78))
 	var chase_speed := float(_enemy_behavior.get("chase_speed", ENEMY_CHASE_SPEED))
 	var moved := false
-	if movement == "keep_range" and distance < preferred_distance - 12.0:
+	if distance < preferred_distance - 18.0:
 		var retreat_direction := _hero_map_position.direction_to(_enemy_map_position)
-		_enemy_map_position += retreat_direction * chase_speed * delta
+		if retreat_direction == Vector2.ZERO:
+			retreat_direction = Vector2(-_enemy_facing, 0.0)
+		var retreat_speed := chase_speed if movement == "keep_range" else chase_speed * 0.72
+		_enemy_map_position += retreat_direction * retreat_speed * delta
 		var world_size := _exploration_world_size()
 		_enemy_map_position.x = clampf(_enemy_map_position.x, 52.0, world_size.x - 52.0)
 		_enemy_map_position.y = clampf(_enemy_map_position.y, 150.0, world_size.y - 36.0)
@@ -1072,11 +1104,14 @@ func play_events(events: Array[Dictionary]) -> void:
 				_boss_howl_burst = 1.0
 				add_trauma(0.1)
 			"enemy_attack":
+				var event_attack_type := String(event.get("attack_type", "normal"))
+				var event_contract: Dictionary = CombatModel.ENEMY_ATTACK_CONTRACTS.get(event_attack_type, CombatModel.ENEMY_ATTACK_CONTRACTS.normal)
 				if _enemy_cast_active:
 					_finish_enemy_cast()
+				_enemy_recovery_remaining = maxf(_enemy_recovery_remaining, float(event_contract.get("recovery", 0.32)))
 				_enemy_attack_recover = 1.0
 				_enemy_attack_member_index = int(event.get("attacker_index", 0))
-				if String(event.get("attack_type", "normal")) != "normal":
+				if event_attack_type != "normal":
 					_enemy_cast_burst = 1.0
 			"spatial_evade":
 				_spatial_evade_fx = 1.0
@@ -1436,7 +1471,7 @@ func _draw_pixel_vertical_slice() -> void:
 		_draw_exploration_background(background_texture, Rect2(Vector2(0.0, stage_top), map_view_size))
 	else:
 		_draw_cover_texture(background_texture, Rect2(Vector2.ZERO, size), background_focus)
-	draw_rect(Rect2(Vector2.ZERO, size), Color("193041", 0.05))
+	draw_rect(Rect2(Vector2.ZERO, size), _route_atmosphere_color())
 	if exploration_enabled:
 		_draw_landmarks()
 		_draw_roaming_enemy_camps()
@@ -1475,6 +1510,13 @@ func _enemy_visible_on_map(screen_position: Vector2) -> bool:
 	var visible_bottom := minf(stage_bottom - 8.0, size.y - 112.0)
 	return screen_position.x >= 22.0 and screen_position.x <= size.x - 22.0 \
 		and screen_position.y >= stage_top + 168.0 and screen_position.y <= visible_bottom + 16.0
+
+func _route_atmosphere_color() -> Color:
+	return {
+		"mountain": Color("32566a", 0.09),
+		"village": Color("8b6c3d", 0.06),
+		"battlefield": Color("493e62", 0.12),
+	}.get(journey_route, Color("193041", 0.05))
 
 func _enemy_presentation_position(screen_position: Vector2) -> Vector2:
 	if _exploration_phase != "engaged":
@@ -1634,12 +1676,11 @@ func _draw_landmark_acquire_fx(hero_position: Vector2) -> void:
 			"direct": "先手削減生命 8%",
 			"supply": "回復生命與魔力 8%",
 		}.get(_landmark_acquire_effect, "獲得地標優勢") as String
-		var panel_width := minf(size.x - 46.0, 236.0)
-		var panel_y := maxf(stage_top + 64.0, hero_position.y - 142.0 - sin(progress * PI) * 8.0)
-		var panel_rect := Rect2((size.x - panel_width) * 0.5, panel_y, panel_width, 52.0)
+		var panel_width := minf(size.x - 72.0, 212.0)
+		var panel_y := maxf(stage_top + 64.0, hero_position.y - 118.0 - sin(progress * PI) * 6.0)
+		var panel_rect := Rect2((size.x - panel_width) * 0.5, panel_y, panel_width, 34.0)
 		draw_style_box(_exploration_panel_style(), panel_rect)
-		draw_string(UI_FONT, panel_rect.position + Vector2(0.0, 21.0), "取得 · %s" % _landmark_acquire_name, HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 16, Color("fff1c8", alpha))
-		draw_string(UI_FONT, panel_rect.position + Vector2(0.0, 42.0), detail, HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 14, Color(effect_color, alpha * 0.96))
+		draw_string(UI_FONT, panel_rect.position + Vector2(0.0, 22.0), "%s · %s" % [_landmark_acquire_name, detail], HORIZONTAL_ALIGNMENT_CENTER, panel_rect.size.x, 13, Color(effect_color.lightened(0.18), alpha * 0.96))
 
 func _draw_loot_drop_fx(enemy_position: Vector2) -> void:
 	if _loot_drop_fx <= 0.0:
@@ -1857,12 +1898,16 @@ func _pixel_enemy_combat_frames() -> Array:
 	return _pixel_enemy_combat_frames_for(enemy_archetype)
 
 func _pixel_enemy_combat_frames_for(archetype: String) -> Array:
+	if journey_route == "mountain" and archetype in ["grunt", "raider", "brute", "boss"]:
+		return []
 	return {
+		"grunt": PIXEL_RAIDER_COMBAT_FRAMES,
 		"raider": PIXEL_RAIDER_COMBAT_FRAMES,
 		"brute": PIXEL_BRUTE_COMBAT_FRAMES,
 		"shield": PIXEL_SHIELD_COMBAT_FRAMES,
 		"centurion": PIXEL_BRUTE_COMBAT_FRAMES,
 		"caster": PIXEL_CASTER_COMBAT_FRAMES,
+		"boss": PIXEL_BRUTE_COMBAT_FRAMES,
 	}.get(archetype, [])
 
 func _enemy_archetype_scale(archetype: String) -> float:
@@ -2057,9 +2102,15 @@ func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 			"重擊":
 				var heavy_center := _enemy_cast_origin_screen(enemy_pos) + Vector2(0.0, -4.0)
 				var heavy_target := _enemy_cast_target_screen(hero_pos)
-				draw_circle(heavy_center, CombatModel.SPATIAL_HEAVY_REACH, Color("d84a3b", telegraph_alpha * 0.12))
-				draw_arc(heavy_center, CombatModel.SPATIAL_HEAVY_REACH, 0.0, TAU, 48, Color("f15d48", telegraph_alpha), 5.0)
-				draw_line(heavy_center + Vector2(-18.0, -68.0), heavy_target + Vector2(18.0, -38.0), Color("ff8a68", telegraph_alpha * 0.52), 4.0)
+				var heavy_angle := (heavy_target - heavy_center).angle()
+				var sector_points := PackedVector2Array([heavy_center])
+				for index in 13:
+					var angle := heavy_angle - HEAVY_SECTOR_HALF_ANGLE + HEAVY_SECTOR_HALF_ANGLE * 2.0 * float(index) / 12.0
+					sector_points.append(heavy_center + Vector2.from_angle(angle) * CombatModel.SPATIAL_HEAVY_REACH)
+				draw_colored_polygon(sector_points, Color("d84a3b", telegraph_alpha * 0.14))
+				draw_arc(heavy_center, CombatModel.SPATIAL_HEAVY_REACH, heavy_angle - HEAVY_SECTOR_HALF_ANGLE, heavy_angle + HEAVY_SECTOR_HALF_ANGLE, 24, Color("f15d48", telegraph_alpha), 5.0)
+				draw_line(heavy_center, heavy_center + Vector2.from_angle(heavy_angle - HEAVY_SECTOR_HALF_ANGLE) * CombatModel.SPATIAL_HEAVY_REACH, Color("ff8a68", telegraph_alpha), 3.0)
+				draw_line(heavy_center, heavy_center + Vector2.from_angle(heavy_angle + HEAVY_SECTOR_HALF_ANGLE) * CombatModel.SPATIAL_HEAVY_REACH, Color("ff8a68", telegraph_alpha), 3.0)
 			"範圍":
 				var area_center := _enemy_cast_target_screen(hero_pos) + Vector2(0.0, 1.0)
 				var area_radius := lerpf(42.0, CombatModel.SPATIAL_AREA_REACH, enemy_windup_ratio)
