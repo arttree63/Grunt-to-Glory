@@ -11,6 +11,12 @@ const PIXEL_HERO_IDLE_FRAMES := [
 	preload("res://assets/visual/pixel_vertical_slice/hero/idle/idle-3.png"),
 	preload("res://assets/visual/pixel_vertical_slice/hero/idle/idle-4.png"),
 ]
+const PIXEL_HERO_WALK_FRAMES := [
+	preload("res://assets/visual/pixel_vertical_slice/hero/walk/walk-1.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/walk/walk-2.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/walk/walk-3.png"),
+	preload("res://assets/visual/pixel_vertical_slice/hero/walk/walk-4.png"),
+]
 const PIXEL_HERO_ATTACK_FRAMES := [
 	preload("res://assets/visual/pixel_vertical_slice/hero/attack/attack-1.png"),
 	preload("res://assets/visual/pixel_vertical_slice/hero/attack/attack-2.png"),
@@ -382,6 +388,12 @@ var _pointer_origin := Vector2.ZERO
 var _pointer_position := Vector2.ZERO
 var _steering_active := false
 var _steering_vector := Vector2.ZERO
+var _hero_is_moving := false
+var _hero_motion_blend := 0.0
+var _hero_walk_phase := 0.0
+var _hero_walk_frame := 0
+var _hero_step_fx := 0.0
+var _hero_start_stop_fx := 0.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -475,6 +487,8 @@ func _process(delta: float) -> void:
 	_boss_warning_fx = maxf(0.0, _boss_warning_fx - delta / 1.65)
 	_boss_imminent_fx = maxf(0.0, _boss_imminent_fx - delta / 1.55)
 	_spatial_evade_fx = maxf(0.0, _spatial_evade_fx - delta / 0.72)
+	_hero_step_fx = maxf(0.0, _hero_step_fx - delta / 0.24)
+	_hero_start_stop_fx = maxf(0.0, _hero_start_stop_fx - delta / 0.34)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
 	_hero_flash = maxf(0.0, _hero_flash - delta * 7.0)
 	_enemy_knockback = maxf(0.0, _enemy_knockback - delta * 5.8)
@@ -552,6 +566,8 @@ func set_exploration_enabled(value: bool) -> void:
 	exploration_enabled = value
 	if not value:
 		_exploration_phase = "disabled"
+		_hero_is_moving = false
+		_hero_motion_blend = 0.0
 		return
 	if _exploration_phase == "disabled":
 		_encounter_key = ""
@@ -639,6 +655,8 @@ func exploration_status() -> Dictionary:
 		"nearby_landmark": _nearby_landmark_name,
 		"enemy_group_size": maxi(1, _encounter_wave_count - _encounter_wave + 1),
 		"visible_enemy_camps": _enemy_camps.size(),
+		"hero_moving": _hero_is_moving,
+		"hero_motion_blend": _hero_motion_blend,
 	}
 
 func active_landmark_effect() -> String:
@@ -831,9 +849,12 @@ func _screen_to_world(screen_position: Vector2) -> Vector2:
 
 func _update_exploration(delta: float) -> void:
 	if not exploration_enabled or _navigation_paused:
+		_update_hero_locomotion(delta, false)
 		return
 	_roaming_hint_remaining = maxf(0.0, _roaming_hint_remaining - delta)
+	var previous_hero_position := _hero_map_position
 	var manual_route_completed := _update_hero_map_movement(delta)
+	_update_hero_locomotion(delta, previous_hero_position.distance_to(_hero_map_position) > 0.2)
 	if _exploration_phase == "traveling":
 		var contacted_camp := _nearest_enemy_camp_index(ENCOUNTER_DISTANCE)
 		if contacted_camp >= 0 and _selected_landmark_name.is_empty() and not manual_route_completed:
@@ -848,6 +869,20 @@ func _update_exploration(delta: float) -> void:
 	_update_enemy_facing()
 	_update_exploration_camera(delta)
 	queue_redraw()
+
+func _update_hero_locomotion(delta: float, moving: bool) -> void:
+	var was_moving := _hero_is_moving
+	_hero_is_moving = moving and not _hero_defeated and not defeat_sequence_active()
+	_hero_motion_blend = move_toward(_hero_motion_blend, 1.0 if _hero_is_moving else 0.0, delta * (8.0 if _hero_is_moving else 10.0))
+	if _hero_is_moving != was_moving:
+		_hero_start_stop_fx = 1.0
+	if not _hero_is_moving:
+		return
+	var previous_frame := _hero_walk_frame
+	_hero_walk_phase = fmod(_hero_walk_phase + delta * (7.6 + _move_speed_bonus * 2.2), float(PIXEL_HERO_WALK_FRAMES.size()))
+	_hero_walk_frame = floori(_hero_walk_phase) % PIXEL_HERO_WALK_FRAMES.size()
+	if _hero_walk_frame != previous_frame and _hero_walk_frame in [0, 2]:
+		_hero_step_fx = 1.0
 
 func _update_hero_map_movement(delta: float) -> bool:
 	var world_size := _exploration_world_size()
@@ -1850,15 +1885,35 @@ func _draw_pixel_hero(feet_position: Vector2) -> void:
 		var progress := 1.0 - _hero_dodge_motion
 		texture = PIXEL_HERO_DODGE_FRAMES[mini(3, floori(progress * 4.0))]
 		tint.a = 0.78
+	elif _hero_motion_blend > 0.12:
+		texture = PIXEL_HERO_WALK_FRAMES[_hero_walk_frame]
 	if _hero_recoil > 0.0 and not _hero_defeated:
 		offset.x -= sin(_hero_recoil * PI) * 2.0
 	if _hero_flash > 0.0 and not _hero_defeated:
 		tint = Color(1.35, 1.35, 1.35, tint.a)
 
-	var shadow_size := Vector2(60.0, 8.0) if _hero_defeated else Vector2(43.0, 9.0)
+	if not _hero_defeated:
+		_draw_hero_locomotion_fx(feet_position)
+	var shadow_size := Vector2(60.0, 8.0) if _hero_defeated else Vector2(43.0 + _hero_motion_blend * 2.0, 9.0)
 	_draw_ground_shadow(feet_position + Vector2(0.0, 2.0), shadow_size)
 	var facing_scale := Vector2(_hero_facing if exploration_enabled else 1.0, 1.0)
 	_draw_anchored_animation_frame(texture, feet_position + offset, 158.0 if exploration_enabled else 226.0, PIXEL_FEET_RATIO, 0.0, facing_scale, tint)
+
+func _draw_hero_locomotion_fx(feet_position: Vector2) -> void:
+	var travel_direction := -_hero_facing
+	if _hero_start_stop_fx > 0.0:
+		var transition_progress := 1.0 - _hero_start_stop_fx
+		var transition_alpha := sin(transition_progress * PI) * 0.2
+		var transition_center := feet_position + Vector2(travel_direction * lerpf(4.0, 15.0, transition_progress), 1.0)
+		draw_arc(transition_center, lerpf(5.0, 17.0, transition_progress), PI, TAU, 12, Color("d9c79b", transition_alpha), 2.0)
+	if _hero_step_fx <= 0.0 or _hero_motion_blend <= 0.2:
+		return
+	var step_progress := 1.0 - _hero_step_fx
+	var step_alpha := sin(step_progress * PI) * 0.18 * _hero_motion_blend
+	for index in 2:
+		var spread := -5.0 + float(index) * 9.0
+		var dust_position := feet_position + Vector2(travel_direction * lerpf(3.0, 13.0 + float(index) * 4.0, step_progress), spread * step_progress)
+		draw_circle(dust_position, lerpf(2.6, 1.0, step_progress), Color("e5d6ad", step_alpha))
 
 func _draw_pixel_rewind_hero(feet_position: Vector2) -> void:
 	var progress := defeat_rewind_progress()

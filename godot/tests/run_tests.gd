@@ -283,6 +283,8 @@ func _test_auto_roaming() -> void:
 	battlefield._on_map_input(drag_motion)
 	battlefield._update_exploration(0.5)
 	_expect(battlefield._hero_map_position.x > hero_before_drag.x + 40.0 and battlefield._camera_top_left.x > camera_before_drag.x, "按住拖曳必須直接移動角色並推動世界鏡頭")
+	var moving_status: Dictionary = battlefield.exploration_status()
+	_expect(bool(moving_status.hero_moving) and float(moving_status.hero_motion_blend) >= 0.95, "角色實際位移時必須切入走路循環，不可在地圖上滑行")
 	var camera_after_large_move: Vector2 = battlefield._camera_top_left
 	battlefield._steering_vector = Vector2(0.08, 0.0)
 	battlefield._update_exploration(0.05)
@@ -321,6 +323,9 @@ func _test_auto_roaming() -> void:
 	_expect(rendered_background_shift.distance_to(Vector2(41.0, 29.0)) < 0.1, "背景與地標必須使用同一世界投影，不可在鏡頭移動時彼此漂移")
 	battlefield._update_exploration(10.0)
 	_expect(not battlefield.navigation_blocks_combat(), "角色抵達敵人後才可恢復 AUTO 戰鬥")
+	battlefield._update_exploration(0.2)
+	var engaged_status: Dictionary = battlefield.exploration_status()
+	_expect(not bool(engaged_status.hero_moving) and float(engaged_status.hero_motion_blend) <= 0.05, "接敵停步後必須立即收勢回待機，不可繼續原地踏步")
 	var combat_focus := battlefield._camera_focus_position(visible_size)
 	_expect(combat_focus == battlefield._hero_map_position, "接敵後鏡頭仍必須鎖定英雄，不可在英雄與敵人之間來回拉扯")
 	var framed_enemy_screen := battlefield._world_to_screen(battlefield._enemy_map_position)
