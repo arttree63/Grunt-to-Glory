@@ -50,6 +50,7 @@ func _run_tests() -> void:
 	_test_boss_rage_phase()
 	_test_enemy_archetypes_and_route_rhythm()
 	_test_enemy_traits_and_boss_phases()
+	_test_spatial_movement_changes_combat_result()
 	_test_journey_choice_controls_next_area()
 	_test_auto_roaming()
 	_test_defeat_farms_previous_stage_until_retry()
@@ -86,7 +87,7 @@ func _run_tests() -> void:
 		printerr("Godot tests failed: %d" % failures)
 		quit(1)
 	else:
-		print("Godot tests passed: 74")
+		print("Godot tests passed: 75")
 		quit(0)
 
 func _test_auto_attack_and_momentum() -> void:
@@ -332,6 +333,15 @@ func _test_auto_roaming() -> void:
 	battlefield._enemy_death_motion = 0.0
 	battlefield._update_enemy_facing()
 	_expect(battlefield._enemy_facing == 1.0, "敵人存活且主角穿越左側後必須重新轉向")
+	battlefield._exploration_phase = "engaged"
+	battlefield._hero_map_position = Vector2(60.0, 300.0)
+	battlefield._enemy_map_position = Vector2(220.0, 300.0)
+	battlefield.enemy_heavy_windup = false
+	_expect(battlefield.navigation_blocks_combat(), "離開一般交戰距離時必須停止近戰循環")
+	battlefield.enemy_heavy_windup = true
+	_expect(not battlefield.navigation_blocks_combat(), "危險區預告期間必須讓攻擊倒數完成並判定移動閃避")
+	var spatial_state: Dictionary = battlefield.spatial_combat_state()
+	_expect(bool(spatial_state.enabled) and float(spatial_state.distance) == 160.0, "戰場必須將真實敵我距離提供給戰鬥模型")
 	var first_target: Vector2 = battlefield._enemy_map_position
 	var banner: Dictionary = battlefield._landmarks()[1]
 	battlefield._enemy_map_position = Vector2(banner.position)
@@ -1208,6 +1218,41 @@ func _test_enemy_traits_and_boss_phases() -> void:
 	_expect(boss._next_enemy_attack_type_id() == "heavy" and boss._events.any(func(event: Dictionary) -> bool: return event.type == "boss_howl"), "戰吼後下一擊必須明確預告為蓄力重擊")
 	boss._enemy_attack("none")
 	_expect(not boss.boss_empowered_attack and boss._events.any(func(event: Dictionary) -> bool: return event.type == "enemy_attack" and bool(event.empowered)), "戰吼強化只可消耗於下一次首領攻擊")
+
+func _test_spatial_movement_changes_combat_result() -> void:
+	var heavy = CombatModelScript.new()
+	heavy.stage = 6
+	heavy._spawn_enemy()
+	heavy.set_spatial_combat_state(true, CombatModelScript.SPATIAL_HEAVY_REACH + 20.0)
+	var hp_before: float = heavy.hero_hp
+	heavy._events.clear()
+	heavy._enemy_attack("none")
+	_expect(is_equal_approx(heavy.hero_hp, hp_before), "走出重擊危險區必須避免傷害")
+	_expect(heavy._events.any(func(event: Dictionary) -> bool: return event.type == "spatial_evade"), "位移閃避必須送出可見戰鬥回饋")
+	heavy.set_spatial_combat_state(true, CombatModelScript.SPATIAL_HEAVY_REACH - 10.0)
+	hp_before = heavy.hero_hp
+	heavy._enemy_attack("none")
+	_expect(heavy.hero_hp < hp_before, "留在重擊危險區內必須受到傷害")
+
+	var caster = CombatModelScript.new()
+	caster.stage = 6
+	caster.journey_route = "village"
+	caster._spawn_enemy()
+	caster.set_spatial_combat_state(true, CombatModelScript.SPATIAL_AREA_REACH + 12.0)
+	hp_before = caster.hero_hp
+	caster._enemy_attack("none")
+	_expect(is_equal_approx(caster.hero_hp, hp_before), "走出範圍術區域必須避免傷害")
+	caster.enemy_attack_count = 2
+	hp_before = caster.hero_hp
+	caster._enemy_attack("none")
+	_expect(caster.hero_hp < hp_before, "必中術不能只靠走出危險區規避")
+
+	var reach = CombatModelScript.new()
+	reach.enemy_hp = 9999.0
+	reach.enemy_attack_remaining = 999.0
+	reach.auto_attack_remaining = 0.0
+	reach.set_spatial_combat_state(true, CombatModelScript.SPATIAL_PLAYER_ATTACK_REACH + 1.0)
+	_expect(not reach.step(0.01).any(func(event: Dictionary) -> bool: return event.type == "attack"), "主角離開攻擊距離後不可隔空普攻")
 
 func _test_journey_choice_controls_next_area() -> void:
 	var model = CombatModelScript.new()

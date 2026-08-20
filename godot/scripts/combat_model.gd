@@ -6,6 +6,9 @@ const MAX_MOMENTUM := 100.0
 const AUTO_ATTACK_INTERVAL := 0.55
 const MIN_AUTO_ATTACK_INTERVAL := 0.18
 const AUTO_SLOT_COUNT := 5
+const SPATIAL_PLAYER_ATTACK_REACH := 122.0
+const SPATIAL_HEAVY_REACH := 118.0
+const SPATIAL_AREA_REACH := 136.0
 const HIGH_ARMOR_THRESHOLD := 18.0
 const MAX_IMMOVABLE := 3
 const MAX_YOUREN := 5
@@ -741,6 +744,8 @@ var auto_tactics := {}
 var skill_cooldowns := {"heavy_strike": 1.2}
 var auto_attack_remaining := AUTO_ATTACK_INTERVAL
 var enemy_attack_remaining := 2.25
+var spatial_combat_enabled := false
+var spatial_enemy_distance := 0.0
 var _momentum_was_full := false
 var _events: Array[Dictionary] = []
 
@@ -749,6 +754,10 @@ func _init() -> void:
 	_reset_milestone_choices()
 	_record_stage_reached()
 	_generate_shop_items()
+
+func set_spatial_combat_state(enabled: bool, enemy_distance: float) -> void:
+	spatial_combat_enabled = enabled
+	spatial_enemy_distance = maxf(0.0, enemy_distance)
 
 func _reset_milestone_choices() -> void:
 	milestone_choices.clear()
@@ -865,7 +874,8 @@ func step(delta: float) -> Array[Dictionary]:
 		_events.append({"type": "immovable_king", "duration": immovable_king_remaining})
 	auto_attack_remaining -= delta
 	enemy_attack_remaining -= delta
-	if not _try_auto_skill() and auto_attack_remaining <= 0.0:
+	var hero_can_reach_enemy := not spatial_combat_enabled or spatial_enemy_distance <= SPATIAL_PLAYER_ATTACK_REACH
+	if hero_can_reach_enemy and not _try_auto_skill() and auto_attack_remaining <= 0.0:
 		auto_attack_remaining = _current_attack_interval()
 		_basic_attack(false)
 		_try_auto_skill()
@@ -1425,6 +1435,7 @@ func snapshot() -> Dictionary:
 		"exploration_approach": exploration_approach,
 		"route_position": _route_position(), "route_phase": _route_phase(),
 		"enemy_attack_type": _next_enemy_attack_type(), "enemy_attack_remaining": enemy_attack_remaining,
+		"spatial_combat_enabled": spatial_combat_enabled, "spatial_enemy_distance": spatial_enemy_distance,
 		"kills": kills, "gold": gold, "player_level": player_level, "experience": experience,
 		"area_kills": area_kills, "boss_kills_required": BOSS_KILLS_REQUIRED,
 		"boss_kills_remaining": maxi(0, BOSS_KILLS_REQUIRED - area_kills),
@@ -2450,6 +2461,15 @@ func _skill_mp_cost(skill_id: String) -> float:
 func _magic_manifest_active() -> bool:
 	return int(training.magic) >= 190 and magic_marks >= MAX_MAGIC_MARKS and (burn_stacks > 0 or frost_stacks > 0 or lightning_stacks > 0)
 
+func _spatial_attack_evaded(attack_type: String) -> bool:
+	if not spatial_combat_enabled:
+		return false
+	if attack_type == "heavy":
+		return spatial_enemy_distance > SPATIAL_HEAVY_REACH
+	if attack_type == "area":
+		return spatial_enemy_distance > SPATIAL_AREA_REACH
+	return false
+
 func _enemy_attack(block_override := "") -> void:
 	enemy_attack_count += 1
 	var attack_type := _current_enemy_attack_type_id()
@@ -2460,6 +2480,9 @@ func _enemy_attack(block_override := "") -> void:
 	if empowered:
 		attack_multiplier *= 1.35
 	_events.append({"type": "enemy_attack", "attack_type": attack_type, "archetype": enemy_archetype, "attacker_index": attacker_index, "empowered": empowered})
+	if _spatial_attack_evaded(attack_type):
+		_events.append({"type": "spatial_evade", "attack_type": attack_type, "distance": spatial_enemy_distance})
+		return
 	var route_damage := 1.08 if journey_route == "mountain" else (0.92 if journey_route == "village" else (1.15 if journey_route == "battlefield" else 1.0))
 	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(_enemy_definition().damage) * route_damage
 	if area_number == 1:

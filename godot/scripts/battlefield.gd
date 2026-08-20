@@ -362,6 +362,7 @@ var _level_up_level := 1
 var _boss_warning_fx := 0.0
 var _boss_warning_remaining := 0
 var _boss_imminent_fx := 0.0
+var _spatial_evade_fx := 0.0
 var _hero_facing := 1.0
 var _enemy_facing := 1.0
 var _navigation_paused := false
@@ -462,6 +463,7 @@ func _process(delta: float) -> void:
 	_level_up_fx = maxf(0.0, _level_up_fx - delta / 1.25)
 	_boss_warning_fx = maxf(0.0, _boss_warning_fx - delta / 1.65)
 	_boss_imminent_fx = maxf(0.0, _boss_imminent_fx - delta / 1.55)
+	_spatial_evade_fx = maxf(0.0, _spatial_evade_fx - delta / 0.72)
 	_enemy_flash = maxf(0.0, _enemy_flash - delta * 8.0)
 	_hero_flash = maxf(0.0, _hero_flash - delta * 7.0)
 	_enemy_knockback = maxf(0.0, _enemy_knockback - delta * 5.8)
@@ -539,7 +541,17 @@ func set_exploration_enabled(value: bool) -> void:
 func navigation_blocks_combat() -> bool:
 	if not exploration_enabled:
 		return false
-	return _exploration_phase == "traveling" or _hero_map_position.distance_to(_enemy_map_position) > COMBAT_DISTANCE
+	if _exploration_phase == "traveling":
+		return true
+	var outside_combat_range := _hero_map_position.distance_to(_enemy_map_position) > COMBAT_DISTANCE
+	return outside_combat_range and not enemy_heavy_windup
+
+func spatial_combat_state() -> Dictionary:
+	var valid_positions := _hero_map_position != Vector2.ZERO and _enemy_map_position != Vector2.ZERO
+	return {
+		"enabled": exploration_enabled and _exploration_phase == "engaged" and valid_positions,
+		"distance": _hero_map_position.distance_to(_enemy_map_position) if valid_positions else 0.0,
+	}
 
 func set_navigation_paused(value: bool) -> void:
 	_navigation_paused = value
@@ -985,6 +997,11 @@ func play_events(events: Array[Dictionary]) -> void:
 				_enemy_attack_member_index = int(event.get("attacker_index", 0))
 				if String(event.get("attack_type", "normal")) != "normal":
 					_enemy_cast_burst = 1.0
+			"spatial_evade":
+				_spatial_evade_fx = 1.0
+				_hero_dodge_motion = maxf(_hero_dodge_motion, 0.45)
+				_dodge_flash = maxf(_dodge_flash, 0.72)
+				_play_sfx("dodge")
 			"enemy_guard":
 				_enemy_guard_flash = 1.0
 				_hit_stop(0.02)
@@ -1448,6 +1465,12 @@ func _draw_exploration_minimap() -> void:
 	draw_polyline(PackedVector2Array([hero_shape[0], hero_shape[1], hero_shape[2], hero_shape[0]]), Color("ecfbff", 0.94), 1.2)
 
 func _draw_progression_fx(hero_position: Vector2, enemy_position: Vector2) -> void:
+	if _spatial_evade_fx > 0.0:
+		var evade_progress := 1.0 - _spatial_evade_fx
+		var evade_alpha := sin(clampf(evade_progress, 0.0, 1.0) * PI)
+		var evade_center := hero_position + Vector2(0.0, -42.0)
+		draw_arc(evade_center, 18.0 + evade_progress * 34.0, -2.65, -0.45, 20, Color("8fe8e7", evade_alpha), 4.0)
+		draw_string(UI_FONT, evade_center + Vector2(-34.0, -34.0 - evade_progress * 8.0), "避開", HORIZONTAL_ALIGNMENT_CENTER, 68.0, 16, Color("caffff", evade_alpha))
 	if _experience_orb_fx > 0.0:
 		var progress := 1.0 - _experience_orb_fx
 		var control := enemy_position.lerp(hero_position, 0.5) + Vector2(0.0, -78.0)
@@ -1940,10 +1963,13 @@ func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var telegraph_alpha := 0.2 + enemy_windup_ratio * 0.62
 		match enemy_attack_type:
 			"重擊":
-				draw_arc(enemy_pos + Vector2(0.0, -4.0), 72.0, PI * 0.78, PI * 1.48, 28, Color("f15d48", telegraph_alpha), 6.0)
+				var heavy_center := enemy_pos + Vector2(0.0, -4.0)
+				draw_circle(heavy_center, CombatModel.SPATIAL_HEAVY_REACH, Color("d84a3b", telegraph_alpha * 0.12))
+				draw_arc(heavy_center, CombatModel.SPATIAL_HEAVY_REACH, 0.0, TAU, 48, Color("f15d48", telegraph_alpha), 5.0)
 				draw_line(enemy_pos + Vector2(-18.0, -72.0), hero_pos + Vector2(18.0, -38.0), Color("ff8a68", telegraph_alpha * 0.52), 4.0)
 			"範圍":
-				var area_radius := lerpf(34.0, 92.0, enemy_windup_ratio)
+				var area_radius := lerpf(42.0, CombatModel.SPATIAL_AREA_REACH, enemy_windup_ratio)
+				draw_circle(enemy_pos + Vector2(0.0, 1.0), area_radius, Color("9c4fbd", telegraph_alpha * 0.12))
 				draw_arc(enemy_pos + Vector2(0.0, 1.0), area_radius, 0.0, TAU, 40, Color("c879e8", telegraph_alpha), 5.0)
 			"必中":
 				draw_line(enemy_pos + Vector2(-24.0, -72.0), hero_pos + Vector2(10.0, -58.0), Color("f4d564", telegraph_alpha), 5.0)
