@@ -199,7 +199,7 @@ func _process(delta: float) -> void:
 	if navigation_paused:
 		return
 	var spatial_state := battlefield.spatial_combat_state()
-	model.set_spatial_combat_state(bool(spatial_state.enabled), float(spatial_state.distance))
+	model.set_spatial_combat_state(bool(spatial_state.enabled), float(spatial_state.distance), float(spatial_state.danger_distance))
 	if battlefield.navigation_blocks_combat():
 		accumulator = 0.0
 		return

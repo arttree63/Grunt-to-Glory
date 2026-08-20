@@ -1254,6 +1254,36 @@ func _test_spatial_movement_changes_combat_result() -> void:
 	reach.set_spatial_combat_state(true, CombatModelScript.SPATIAL_PLAYER_ATTACK_REACH + 1.0)
 	_expect(not reach.step(0.01).any(func(event: Dictionary) -> bool: return event.type == "attack"), "主角離開攻擊距離後不可隔空普攻")
 
+	var caster_snapshot: Dictionary = caster.snapshot()
+	_expect(String(caster_snapshot.enemy_behavior.movement) == "keep_range", "咒術師必須擁有獨立的保持距離行為")
+	_expect(String(caster_snapshot.enemy_attack_contract.targeting) == "locked_ground", "範圍術必須在前搖開始時鎖定地面位置")
+
+	var battlefield = BattlefieldScript.new()
+	battlefield.set_exploration_enabled(true)
+	battlefield._exploration_phase = "engaged"
+	battlefield.enemy_archetype = "caster"
+	battlefield._enemy_behavior = {"movement": "keep_range", "preferred_distance": 112.0, "chase_speed": 76.0}
+	battlefield._enemy_attack_contract = CombatModelScript.ENEMY_ATTACK_CONTRACTS.area.duplicate(true)
+	battlefield._enemy_map_position = Vector2(200.0, 300.0)
+	battlefield._hero_map_position = Vector2(110.0, 300.0)
+	battlefield._enemy_facing = 1.0
+	battlefield._begin_enemy_cast("範圍")
+	var locked_origin: Vector2 = battlefield._enemy_cast_origin
+	var locked_target: Vector2 = battlefield._enemy_cast_target
+	battlefield._hero_map_position = Vector2(40.0, 300.0)
+	battlefield._update_enemy_chase(0.5)
+	battlefield._update_enemy_facing()
+	_expect(battlefield._enemy_map_position == locked_origin, "怪物開始施放範圍術後必須停止追擊")
+	_expect(battlefield._enemy_cast_target == locked_target, "範圍術的危險區不可跟著玩家移動")
+	_expect(battlefield._enemy_facing == 1.0, "非追蹤招式在前搖期間不可突然轉向")
+	var locked_state: Dictionary = battlefield.spatial_combat_state()
+	_expect(is_equal_approx(float(locked_state.danger_distance), battlefield._hero_map_position.distance_to(locked_target)), "範圍傷害必須以鎖定地面而非怪物當前位置判定")
+	battlefield.play_events([{"type": "enemy_attack", "attack_type": "area", "attacker_index": 0}])
+	var recovery_position: Vector2 = battlefield._enemy_map_position
+	battlefield._update_enemy_chase(0.2)
+	_expect(not battlefield._enemy_cast_active and battlefield._enemy_recovery_remaining > 0.0 and battlefield._enemy_map_position == recovery_position, "招式結算後必須先收招，不可立即恢復追擊")
+	battlefield.free()
+
 func _test_journey_choice_controls_next_area() -> void:
 	var model = CombatModelScript.new()
 	model.stage = 10

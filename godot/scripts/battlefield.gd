@@ -225,6 +225,14 @@ var enemy_heavy_windup := false
 var enemy_windup_ratio := 0.0
 var hero_attack_windup_ratio := 0.0
 var enemy_attack_type := "普通"
+var _enemy_behavior := {"movement": "chase", "preferred_distance": 94.0, "chase_speed": 112.0}
+var _enemy_attack_contract := {"movement_lock": false, "targeting": "tracking", "shape": "contact", "recovery": 0.32}
+var _enemy_cast_active := false
+var _enemy_cast_attack_type := ""
+var _enemy_cast_origin := Vector2.ZERO
+var _enemy_cast_target := Vector2.ZERO
+var _enemy_cast_facing := 1.0
+var _enemy_recovery_remaining := 0.0
 var enemy_archetype := "grunt"
 var enemy_role := ""
 var enemy_hp_ratio := 1.0
@@ -423,6 +431,7 @@ func _process(delta: float) -> void:
 	if _hero_defeated and _defeat_rewind_motion <= 0.0:
 		_hero_defeated = false
 	_enemy_attack_recover = maxf(0.0, _enemy_attack_recover - delta / 0.38)
+	_enemy_recovery_remaining = maxf(0.0, _enemy_recovery_remaining - delta)
 	_enemy_hurt_motion = maxf(0.0, _enemy_hurt_motion - delta / 0.36)
 	_enemy_death_motion = maxf(0.0, _enemy_death_motion - delta / 0.92)
 	_heavy_slash = maxf(0.0, _heavy_slash - delta / 0.72)
@@ -481,6 +490,8 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func set_state(snapshot: Dictionary) -> void:
+	var was_windup := enemy_heavy_windup
+	var previous_attack_type := enemy_attack_type
 	if float(snapshot.hero_hp) > 0.0 and not defeat_sequence_active():
 		_hero_defeated = false
 	momentum_ratio = float(snapshot.momentum) / maxf(1.0, float(snapshot.max_momentum))
@@ -488,6 +499,8 @@ func set_state(snapshot: Dictionary) -> void:
 	enemy_is_boss = bool(snapshot.enemy_is_boss)
 	boss_enraged = bool(snapshot.get("boss_enraged", false))
 	enemy_attack_type = String(snapshot.enemy_attack_type)
+	_enemy_behavior = Dictionary(snapshot.get("enemy_behavior", _enemy_behavior)).duplicate(true)
+	_enemy_attack_contract = Dictionary(snapshot.get("enemy_attack_contract", _enemy_attack_contract)).duplicate(true)
 	var next_archetype := String(snapshot.enemy_archetype)
 	var next_stage := int(snapshot.stage)
 	if current_stage > 0 and next_stage != current_stage:
@@ -528,6 +541,10 @@ func set_state(snapshot: Dictionary) -> void:
 		var next_key := str(int(snapshot.stage))
 		if next_key != _encounter_key:
 			_begin_exploration(next_key)
+	if enemy_heavy_windup and (not was_windup or previous_attack_type != enemy_attack_type):
+		_begin_enemy_cast(enemy_attack_type)
+	elif was_windup and not enemy_heavy_windup and _enemy_cast_active:
+		_finish_enemy_cast()
 
 func set_exploration_enabled(value: bool) -> void:
 	exploration_enabled = value
@@ -548,10 +565,51 @@ func navigation_blocks_combat() -> bool:
 
 func spatial_combat_state() -> Dictionary:
 	var valid_positions := _hero_map_position != Vector2.ZERO and _enemy_map_position != Vector2.ZERO
+	var enemy_distance := _hero_map_position.distance_to(_enemy_map_position) if valid_positions else 0.0
+	var danger_distance := enemy_distance
+	if _enemy_cast_active:
+		var targeting := String(_enemy_attack_contract.get("targeting", "tracking"))
+		if targeting == "locked_ground":
+			danger_distance = _hero_map_position.distance_to(_enemy_cast_target)
+		elif targeting == "locked_origin":
+			danger_distance = _hero_map_position.distance_to(_enemy_cast_origin)
 	return {
 		"enabled": exploration_enabled and _exploration_phase == "engaged" and valid_positions,
-		"distance": _hero_map_position.distance_to(_enemy_map_position) if valid_positions else 0.0,
+		"distance": enemy_distance,
+		"danger_distance": danger_distance,
 	}
+
+func _begin_enemy_cast(attack_type: String) -> void:
+	if not exploration_enabled or _exploration_phase != "engaged":
+		return
+	_enemy_cast_active = true
+	_enemy_cast_attack_type = attack_type
+	_enemy_cast_origin = _enemy_map_position
+	_enemy_cast_target = _hero_map_position
+	_enemy_cast_facing = _enemy_facing
+
+func _finish_enemy_cast() -> void:
+	_enemy_cast_active = false
+	_enemy_cast_attack_type = ""
+	_enemy_recovery_remaining = maxf(_enemy_recovery_remaining, float(_enemy_attack_contract.get("recovery", 0.38)))
+
+func _clear_enemy_cast() -> void:
+	_enemy_cast_active = false
+	_enemy_cast_attack_type = ""
+	_enemy_cast_origin = Vector2.ZERO
+	_enemy_cast_target = Vector2.ZERO
+	_enemy_recovery_remaining = 0.0
+
+func _enemy_action_state() -> String:
+	if _enemy_death_motion > 0.0:
+		return "dead"
+	if _enemy_cast_active:
+		return "windup"
+	if _enemy_recovery_remaining > 0.0:
+		return "recover"
+	if _exploration_phase == "traveling":
+		return "seek"
+	return "approach" if _hero_map_position.distance_to(_enemy_map_position) > float(_enemy_behavior.get("preferred_distance", 94.0)) else "ready"
 
 func set_navigation_paused(value: bool) -> void:
 	_navigation_paused = value
@@ -559,6 +617,7 @@ func set_navigation_paused(value: bool) -> void:
 func exploration_status() -> Dictionary:
 	return {
 		"phase": _exploration_phase,
+		"enemy_action": _enemy_action_state(),
 		"target": _enemy_map_position,
 		"manual_waypoint": _manual_waypoint_active,
 		"landmark": _current_landmark_name(),
@@ -587,6 +646,7 @@ func active_landmark_effect() -> String:
 	return _landmark_effect_for_kind(nearest_kind)
 
 func _begin_exploration(key: String) -> void:
+	_clear_enemy_cast()
 	if not _encounter_key.is_empty() and key != _encounter_key:
 		_consume_active_enemy_camp()
 	_encounter_key = key
@@ -796,9 +856,24 @@ func _update_hero_map_movement(delta: float) -> bool:
 	return true
 
 func _update_enemy_chase(delta: float) -> void:
+	if _enemy_cast_active or _enemy_recovery_remaining > 0.0:
+		return
 	var distance := _enemy_map_position.distance_to(_hero_map_position)
-	if distance > COMBAT_DISTANCE * 0.78:
-		_enemy_map_position = _enemy_map_position.move_toward(_hero_map_position, ENEMY_CHASE_SPEED * delta)
+	var movement := String(_enemy_behavior.get("movement", "chase"))
+	var preferred_distance := float(_enemy_behavior.get("preferred_distance", COMBAT_DISTANCE * 0.78))
+	var chase_speed := float(_enemy_behavior.get("chase_speed", ENEMY_CHASE_SPEED))
+	var moved := false
+	if movement == "keep_range" and distance < preferred_distance - 12.0:
+		var retreat_direction := _hero_map_position.direction_to(_enemy_map_position)
+		_enemy_map_position += retreat_direction * chase_speed * delta
+		var world_size := _exploration_world_size()
+		_enemy_map_position.x = clampf(_enemy_map_position.x, 52.0, world_size.x - 52.0)
+		_enemy_map_position.y = clampf(_enemy_map_position.y, 150.0, world_size.y - 36.0)
+		moved = true
+	elif distance > preferred_distance:
+		_enemy_map_position = _enemy_map_position.move_toward(_hero_map_position, chase_speed * delta)
+		moved = true
+	if moved:
 		if _active_enemy_camp_index >= 0 and _active_enemy_camp_index < _enemy_camps.size():
 			_enemy_camps[_active_enemy_camp_index] = _enemy_map_position
 	if not _steering_active:
@@ -806,6 +881,9 @@ func _update_enemy_chase(delta: float) -> void:
 
 func _update_enemy_facing() -> void:
 	if not exploration_enabled or _enemy_death_motion > 0.0 or _hero_map_position == Vector2.ZERO or _enemy_map_position == Vector2.ZERO:
+		return
+	if _enemy_cast_active and String(_enemy_attack_contract.get("targeting", "tracking")) != "tracking":
+		_enemy_facing = _enemy_cast_facing
 		return
 	var horizontal_distance := _hero_map_position.x - _enemy_map_position.x
 	if absf(horizontal_distance) <= 3.0:
@@ -947,6 +1025,7 @@ func play_events(events: Array[Dictionary]) -> void:
 				if _landmark_acquire_fx <= 0.0 or _landmark_acquire_effect != effect:
 					_play_landmark_acquired(String(event.get("name", "地標優勢")), effect)
 			"wave_started":
+				_clear_enemy_cast()
 				_enemy_death_motion = 0.0
 				_enemy_hurt_motion = 0.0
 				_enemy_attack_recover = 0.0
@@ -993,6 +1072,8 @@ func play_events(events: Array[Dictionary]) -> void:
 				_boss_howl_burst = 1.0
 				add_trauma(0.1)
 			"enemy_attack":
+				if _enemy_cast_active:
+					_finish_enemy_cast()
 				_enemy_attack_recover = 1.0
 				_enemy_attack_member_index = int(event.get("attacker_index", 0))
 				if String(event.get("attack_type", "normal")) != "normal":
@@ -1212,6 +1293,7 @@ func play_events(events: Array[Dictionary]) -> void:
 				_hit_stop(0.035)
 				_play_sfx("hurt")
 			"enemy_defeated":
+				_clear_enemy_cast()
 				_enemy_death_motion = 1.0
 				_enemy_hurt_motion = 0.0
 				_enemy_attack_recover = 0.0
@@ -1954,6 +2036,16 @@ func _enemy_attack_lunge_direction() -> float:
 		return 1.0 if _hero_map_position.x > _enemy_map_position.x else -1.0
 	return -1.0
 
+func _enemy_cast_origin_screen(fallback: Vector2) -> Vector2:
+	if exploration_enabled and _enemy_cast_active and _enemy_cast_origin != Vector2.ZERO:
+		return _world_to_screen(_enemy_cast_origin)
+	return fallback
+
+func _enemy_cast_target_screen(fallback: Vector2) -> Vector2:
+	if exploration_enabled and _enemy_cast_active and _enemy_cast_target != Vector2.ZERO:
+		return _world_to_screen(_enemy_cast_target)
+	return fallback
+
 func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 	if defeat_sequence_active():
 		_draw_defeat_rewind_fx(hero_pos)
@@ -1963,14 +2055,16 @@ func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var telegraph_alpha := 0.2 + enemy_windup_ratio * 0.62
 		match enemy_attack_type:
 			"重擊":
-				var heavy_center := enemy_pos + Vector2(0.0, -4.0)
+				var heavy_center := _enemy_cast_origin_screen(enemy_pos) + Vector2(0.0, -4.0)
+				var heavy_target := _enemy_cast_target_screen(hero_pos)
 				draw_circle(heavy_center, CombatModel.SPATIAL_HEAVY_REACH, Color("d84a3b", telegraph_alpha * 0.12))
 				draw_arc(heavy_center, CombatModel.SPATIAL_HEAVY_REACH, 0.0, TAU, 48, Color("f15d48", telegraph_alpha), 5.0)
-				draw_line(enemy_pos + Vector2(-18.0, -72.0), hero_pos + Vector2(18.0, -38.0), Color("ff8a68", telegraph_alpha * 0.52), 4.0)
+				draw_line(heavy_center + Vector2(-18.0, -68.0), heavy_target + Vector2(18.0, -38.0), Color("ff8a68", telegraph_alpha * 0.52), 4.0)
 			"範圍":
+				var area_center := _enemy_cast_target_screen(hero_pos) + Vector2(0.0, 1.0)
 				var area_radius := lerpf(42.0, CombatModel.SPATIAL_AREA_REACH, enemy_windup_ratio)
-				draw_circle(enemy_pos + Vector2(0.0, 1.0), area_radius, Color("9c4fbd", telegraph_alpha * 0.12))
-				draw_arc(enemy_pos + Vector2(0.0, 1.0), area_radius, 0.0, TAU, 40, Color("c879e8", telegraph_alpha), 5.0)
+				draw_circle(area_center, area_radius, Color("9c4fbd", telegraph_alpha * 0.12))
+				draw_arc(area_center, area_radius, 0.0, TAU, 40, Color("c879e8", telegraph_alpha), 5.0)
 			"必中":
 				draw_line(enemy_pos + Vector2(-24.0, -72.0), hero_pos + Vector2(10.0, -58.0), Color("f4d564", telegraph_alpha), 5.0)
 				for index in 4:
