@@ -310,9 +310,9 @@ func _test_auto_roaming() -> void:
 	battlefield._update_exploration(10.0)
 	_expect(not battlefield.navigation_blocks_combat(), "角色抵達敵人後才可恢復 AUTO 戰鬥")
 	var combat_focus := battlefield._camera_focus_position(visible_size)
-	_expect(combat_focus.distance_to(battlefield._hero_map_position.lerp(battlefield._enemy_map_position, 0.46)) < 0.1, "接敵鏡頭必須同時框住英雄與敵人")
+	_expect(combat_focus == battlefield._hero_map_position, "接敵後鏡頭仍必須鎖定英雄，不可在英雄與敵人之間來回拉扯")
 	var framed_enemy_screen := battlefield._world_to_screen(battlefield._enemy_map_position)
-	_expect(framed_enemy_screen.x >= 96.0 and framed_enemy_screen.x <= battlefield.size.x - 96.0, "接敵鏡頭必須保留敵人完整橫向輪廓")
+	_expect(framed_enemy_screen.x >= 82.0 and framed_enemy_screen.x <= battlefield.size.x - 82.0, "接敵鏡頭必須保留敵人完整橫向輪廓")
 	var edge_enemy := battlefield._enemy_presentation_position(Vector2(-120.0, battlefield.stage_top - 80.0))
 	_expect(edge_enemy.x == 86.0 and edge_enemy.y == battlefield.stage_top + 164.0, "接戰敵人越過安全區時必須停在畫面邊緣，不可突然消失")
 	battlefield._enemy_death_motion = 0.0
