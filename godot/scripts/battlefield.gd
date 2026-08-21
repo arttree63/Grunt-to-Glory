@@ -228,6 +228,7 @@ var momentum_ratio := 0.0
 var enemy_armor_ratio := 0.0
 var enemy_is_boss := false
 var boss_enraged := false
+var enemy_attack_windup := false
 var enemy_heavy_windup := false
 var enemy_windup_ratio := 0.0
 var hero_attack_windup_ratio := 0.0
@@ -324,6 +325,11 @@ var _hero_recoil := 0.0
 var _impact_burst := 0.0
 var _impact_strength := 0.0
 var _impact_color := Color("fff0b0")
+var _incoming_strike_fx := 0.0
+var _incoming_attacker_index := 0
+var _incoming_attack_type := "normal"
+var _incoming_support_attack := false
+var _hero_recoil_direction := -1.0
 var _hurt_vignette := 0.0
 var _defeat_burst := 0.0
 var _defeat_was_boss := false
@@ -385,6 +391,7 @@ var _hero_facing := 1.0
 var _enemy_facing := 1.0
 var _navigation_paused := false
 var _camera_top_left := Vector2.ZERO
+var _combat_presentation_offset := Vector2.ZERO
 var _pointer_down := false
 var _pointer_origin := Vector2.ZERO
 var _pointer_position := Vector2.ZERO
@@ -509,6 +516,7 @@ func _process(delta: float) -> void:
 	_enemy_knockback = maxf(0.0, _enemy_knockback - delta * 5.8)
 	_hero_recoil = maxf(0.0, _hero_recoil - delta * 6.5)
 	_impact_burst = maxf(0.0, _impact_burst - delta * 7.0)
+	_incoming_strike_fx = maxf(0.0, _incoming_strike_fx - delta / 0.3)
 	_hurt_vignette = maxf(0.0, _hurt_vignette - delta * 4.8)
 	_defeat_burst = maxf(0.0, _defeat_burst - delta * (1.25 if _defeat_was_boss else 2.5))
 	_boss_intro_motion = maxf(0.0, _boss_intro_motion - delta / 1.15)
@@ -550,6 +558,7 @@ func set_state(snapshot: Dictionary) -> void:
 	var attack_remaining := float(snapshot.enemy_attack_remaining)
 	var windup_window := 0.75 if enemy_attack_type != "普通" else 0.35
 	enemy_windup_ratio = clampf((windup_window - attack_remaining) / windup_window, 0.0, 1.0)
+	enemy_attack_windup = attack_remaining <= windup_window
 	enemy_heavy_windup = enemy_attack_type != "普通" and attack_remaining <= 0.8
 	var auto_attack_remaining := float(snapshot.get("auto_attack_remaining", 1.0))
 	hero_attack_windup_ratio = clampf((0.28 - auto_attack_remaining) / 0.28, 0.0, 1.0)
@@ -1105,6 +1114,10 @@ func play_events(events: Array[Dictionary]) -> void:
 		if event.has("milestone_track"):
 			_play_milestone_choice_fx(event)
 		match String(event.type):
+			"retry_started":
+				_hero_flash = maxf(_hero_flash, 0.42)
+				_flow_burst_strength = 0.35
+				_flow_burst = maxf(_flow_burst, 0.48)
 			"exploration_approach":
 				var effect := String(event.get("approach", ""))
 				if _landmark_acquire_fx <= 0.0 or _landmark_acquire_effect != effect:
@@ -1176,6 +1189,10 @@ func play_events(events: Array[Dictionary]) -> void:
 				_enemy_attack_member_index = attacker_index
 				_enemy_member_attack_recover[attacker_index] = 1.0
 				_enemy_member_windups.erase(attacker_index)
+				_incoming_strike_fx = 1.0
+				_incoming_attacker_index = attacker_index
+				_incoming_attack_type = event_attack_type
+				_incoming_support_attack = bool(event.get("support", false))
 				if event_attack_type != "normal":
 					_enemy_cast_burst = 1.0
 			"spatial_evade":
@@ -1387,6 +1404,9 @@ func play_events(events: Array[Dictionary]) -> void:
 				_enemy_attack_recover = 1.0
 				_hero_flash = 1.0
 				_hero_recoil = 1.0
+				var hero_screen := _world_to_screen(_hero_map_position) if exploration_enabled else Vector2(size.x * 0.33, size.y * 0.62)
+				var attacker_screen := incoming_attacker_screen_position(_pixel_enemy_position)
+				_hero_recoil_direction = -1.0 if attacker_screen.x >= hero_screen.x else 1.0
 				_hero_hurt_motion = 1.0
 				_hurt_vignette = 1.0
 				add_trauma(0.16)
@@ -1550,6 +1570,10 @@ func _draw_pixel_vertical_slice() -> void:
 	var hero_pos := _world_to_screen(_hero_map_position) if exploration_enabled and _hero_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.29, 66.0, size.x - 160.0), battle_line + 20.0)
 	var enemy_world_screen := _world_to_screen(_enemy_map_position) if exploration_enabled and _enemy_map_position != Vector2.ZERO else Vector2(clampf(size.x * 0.72, 170.0, size.x - 66.0), battle_line)
 	var enemy_pos := _enemy_presentation_position(enemy_world_screen) if exploration_enabled else enemy_world_screen
+	_combat_presentation_offset = enemy_pos - enemy_world_screen if exploration_enabled and combat_presentation_active() else Vector2.ZERO
+	hero_pos += _combat_presentation_offset
+	hero_pos.x = clampf(hero_pos.x, 46.0, size.x - 46.0)
+	hero_pos.y = clampf(hero_pos.y, stage_top + 152.0, visible_bottom)
 	var enemy_in_view := not exploration_enabled or _exploration_phase == "engaged" or _enemy_visible_on_map(enemy_world_screen)
 	_pixel_enemy_position = enemy_pos
 	if exploration_enabled:
@@ -1629,6 +1653,8 @@ func _minimap_viewport_rect(plot: Rect2) -> Rect2:
 func _draw_exploration_minimap() -> void:
 	if not exploration_enabled or _hero_map_position == Vector2.ZERO:
 		return
+	if combat_presentation_active() or (_enemy_map_position != Vector2.ZERO and _hero_map_position.distance_to(_enemy_map_position) <= COMBAT_DISTANCE * 1.35):
+		return
 	var map_rect := Rect2(size.x - 114.0, stage_top + 10.0, 102.0, 74.0)
 	draw_style_box(_exploration_panel_style(), map_rect)
 	draw_string(UI_FONT, map_rect.position + Vector2(8.0, 16.0), _map_region_name, HORIZONTAL_ALIGNMENT_LEFT, map_rect.size.x - 16.0, 11, Color("e8ddbe", 0.9))
@@ -1656,6 +1682,9 @@ func _draw_exploration_minimap() -> void:
 	var hero_shape := PackedVector2Array([hero_point + hero_direction * 5.0, hero_point - hero_direction * 3.0 + hero_side, hero_point - hero_direction * 3.0 - hero_side])
 	draw_colored_polygon(hero_shape, Color("79cce2", 0.98))
 	draw_polyline(PackedVector2Array([hero_shape[0], hero_shape[1], hero_shape[2], hero_shape[0]]), Color("ecfbff", 0.94), 1.2)
+
+func combat_presentation_active() -> bool:
+	return _exploration_phase == "engaged" or enemy_hp_ratio < 0.999 or enemy_attack_windup or _enemy_attack_recover > 0.0 or _hero_slash_motion > 0.0 or _hero_hurt_motion > 0.0
 
 func _draw_progression_fx(hero_position: Vector2, enemy_position: Vector2) -> void:
 	if _spatial_evade_fx > 0.0:
@@ -1792,9 +1821,16 @@ func _draw_enemy_group_reserves(enemy_position: Vector2) -> void:
 			var windup_progress := 1.0 - float(windup.remaining) / maxf(0.01, float(windup.duration))
 			var intent_color := Color("f08a63", 0.3 + windup_progress * 0.5)
 			draw_arc(reserve_position + Vector2(0.0, 2.0), 27.0 + windup_progress * 5.0, -PI * 0.8, PI * 0.8, 18, intent_color, 3.0)
+			var intent_center := reserve_position + Vector2(0.0, -82.0)
+			var intent_shape := PackedVector2Array([
+				intent_center + Vector2(0.0, -7.0), intent_center + Vector2(7.0, 0.0),
+				intent_center + Vector2(0.0, 7.0), intent_center + Vector2(-7.0, 0.0),
+			])
+			draw_colored_polygon(intent_shape, Color("f08a63", 0.35 + windup_progress * 0.55))
+			draw_arc(intent_center, 11.0, -PI * 0.5, -PI * 0.5 + TAU * windup_progress, 16, Color("fff0d0", 0.82), 2.0)
 		if attacking:
 			var progress := 1.0 - member_recover
-			var hero_target_screen := _world_to_screen(_hero_map_position)
+			var hero_target_screen := _world_to_screen(_hero_map_position) + _combat_presentation_offset
 			reserve_position += (hero_target_screen - reserve_position).normalized() * sin(progress * PI) * 14.0
 			var combat_frames := _pixel_enemy_combat_frames_for(archetype)
 			if not combat_frames.is_empty():
@@ -1806,8 +1842,8 @@ func _draw_enemy_group_reserves(enemy_position: Vector2) -> void:
 		elif not _pixel_enemy_combat_frames_for(archetype).is_empty():
 			var combat_frames := _pixel_enemy_combat_frames_for(archetype)
 			texture = combat_frames[int(floor(_time * 5.0)) % combat_frames.size()]
-		var canvas_height := 138.0 * _enemy_archetype_scale(archetype)
-		var hero_screen_position := _world_to_screen(_hero_map_position)
+		var canvas_height := 112.0 * _enemy_archetype_scale(archetype)
+		var hero_screen_position := _world_to_screen(_hero_map_position) + _combat_presentation_offset
 		var member_facing := 1.0 if hero_screen_position.x > reserve_position.x else -1.0
 		_draw_ground_shadow(reserve_position + Vector2(0.0, 2.0), Vector2(43.0, 8.0))
 		_draw_anchored_animation_frame(texture, reserve_position, canvas_height, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2(member_facing, 1.0), Color(0.92, 0.94, 0.94, 0.98))
@@ -1829,6 +1865,11 @@ func _reserve_enemy_position(enemy_position: Vector2, reserve_index: int) -> Vec
 		clampf(enemy_position.x + offset.x, 52.0, size.x - 52.0),
 		clampf(enemy_position.y + offset.y, stage_top + 174.0, visible_bottom - 2.0)
 	)
+
+func incoming_attacker_screen_position(enemy_position: Vector2) -> Vector2:
+	if _incoming_attacker_index <= 0:
+		return enemy_position
+	return _reserve_enemy_position(enemy_position, _incoming_attacker_index - 1)
 
 func _draw_reserve_health_bar(feet_position: Vector2, canvas_height: float) -> void:
 	var bar_rect := Rect2(feet_position.x - 25.0, maxf(stage_top + 5.0, feet_position.y - canvas_height * PIXEL_WOLF_FEET_RATIO - 9.0), 50.0, 6.0)
@@ -1941,7 +1982,7 @@ func _draw_pixel_hero(feet_position: Vector2) -> void:
 	elif _hero_motion_blend > 0.12:
 		texture = PIXEL_HERO_WALK_FRAMES[_hero_walk_frame]
 	if _hero_recoil > 0.0 and not _hero_defeated:
-		offset.x -= sin(_hero_recoil * PI) * 2.0
+		offset.x += sin(_hero_recoil * PI) * 3.0 * _hero_recoil_direction
 	if _hero_flash > 0.0 and not _hero_defeated:
 		tint = Color(1.35, 1.35, 1.35, tint.a)
 
@@ -1950,7 +1991,7 @@ func _draw_pixel_hero(feet_position: Vector2) -> void:
 	var shadow_size := Vector2(60.0, 8.0) if _hero_defeated else Vector2(43.0 + _hero_motion_blend * 2.0, 9.0)
 	_draw_ground_shadow(feet_position + Vector2(0.0, 2.0), shadow_size)
 	var facing_scale := Vector2(_hero_facing if exploration_enabled else 1.0, 1.0)
-	_draw_anchored_animation_frame(texture, feet_position + offset, 158.0 if exploration_enabled else 226.0, PIXEL_FEET_RATIO, 0.0, facing_scale, tint)
+	_draw_anchored_animation_frame(texture, feet_position + offset, 136.0 if exploration_enabled else 226.0, PIXEL_FEET_RATIO, 0.0, facing_scale, tint)
 
 func _draw_hero_locomotion_fx(feet_position: Vector2) -> void:
 	var travel_direction := -_hero_facing
@@ -2136,7 +2177,7 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 			texture = PIXEL_WOLF_ATTACK_FRAMES[attack_frame]
 		var lunge_distance: float = 7.0 if enemy_archetype == "raider" else (2.0 if enemy_archetype == "caster" else 4.0)
 		offset.x += _enemy_attack_lunge_direction() * sin(progress * PI) * lunge_distance
-	elif enemy_heavy_windup:
+	elif enemy_attack_windup:
 		texture = combat_frames[2] if uses_custom_enemy else PIXEL_WOLF_ATTACK_FRAMES[0]
 	if _enemy_knockback > 0.0:
 		offset.x += sin(_enemy_knockback * PI) * 5.0
@@ -2171,7 +2212,7 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 	_draw_enemy_ground_marker(feet_position, entry_alpha)
 	_draw_ground_shadow(feet_position + Vector2(0.0, 3.0), Vector2((61.0 if enemy_is_boss else 55.0) * archetype_scale, (11.0 if enemy_is_boss else 10.0) * archetype_scale))
 	tint.a *= entry_alpha
-	var enemy_height := (176.0 if enemy_is_boss else 164.0) if exploration_enabled else (252.0 if enemy_is_boss else 238.0)
+	var enemy_height := (150.0 if enemy_is_boss else 132.0) if exploration_enabled else (252.0 if enemy_is_boss else 238.0)
 	if exploration_enabled:
 		action_scale.x *= _enemy_facing
 	_draw_anchored_animation_frame(texture, feet_position + offset, enemy_height * archetype_scale, PIXEL_WOLF_FEET_RATIO, 0.0, action_scale, tint)
@@ -2191,12 +2232,12 @@ func _enemy_attack_lunge_direction() -> float:
 
 func _enemy_cast_origin_screen(fallback: Vector2) -> Vector2:
 	if exploration_enabled and _enemy_cast_active and _enemy_cast_origin != Vector2.ZERO:
-		return _world_to_screen(_enemy_cast_origin)
+		return _world_to_screen(_enemy_cast_origin) + _combat_presentation_offset
 	return fallback
 
 func _enemy_cast_target_screen(fallback: Vector2) -> Vector2:
 	if exploration_enabled and _enemy_cast_active and _enemy_cast_target != Vector2.ZERO:
-		return _world_to_screen(_enemy_cast_target)
+		return _world_to_screen(_enemy_cast_target) + _combat_presentation_offset
 	return fallback
 
 func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
@@ -2204,6 +2245,11 @@ func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		_draw_defeat_rewind_fx(hero_pos)
 		return
 	var impact_point := enemy_pos + Vector2(-28.0, -58.0)
+	if enemy_attack_windup and not enemy_heavy_windup:
+		var normal_alpha := 0.2 + enemy_windup_ratio * 0.42
+		var normal_center := enemy_pos + Vector2(0.0, 2.0)
+		draw_arc(normal_center, 39.0, PI * 0.12, PI * 0.88, 16, Color("e8d8b8", normal_alpha), 2.5)
+		draw_line(normal_center + Vector2(-13.0, 11.0), normal_center + Vector2(13.0, 11.0), Color("f3dfb8", normal_alpha * 0.72), 2.0)
 	if enemy_heavy_windup:
 		var telegraph_alpha := 0.2 + enemy_windup_ratio * 0.62
 		match enemy_attack_type:
@@ -2229,13 +2275,7 @@ func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 				for index in 4:
 					var marker := hero_pos + Vector2(10.0, -58.0) + Vector2.from_angle(float(index) * TAU / 4.0) * 20.0
 					draw_circle(marker, 3.5, Color("fff0a2", telegraph_alpha))
-		var warning_text: String = {"重擊": "重擊", "範圍": "範圍", "必中": "必中"}.get(enemy_attack_type, "危險")
-		var warning_color := Color("ff8268") if enemy_attack_type == "重擊" else (Color("db96f0") if enemy_attack_type == "範圍" else Color("ffe47e"))
-		var warning_center := enemy_pos + Vector2(0.0, -166.0)
-		var warning_rect := Rect2(warning_center - Vector2(34.0, 15.0), Vector2(68.0, 27.0))
-		draw_rect(warning_rect, Color("172126", telegraph_alpha * 0.88), true)
-		draw_rect(warning_rect, Color(warning_color, telegraph_alpha), false, 2.0)
-		draw_string(get_theme_default_font(), warning_center + Vector2(-30.0, 7.0), warning_text, HORIZONTAL_ALIGNMENT_CENTER, 60.0, 17, Color("fff8e8", telegraph_alpha))
+	_draw_incoming_strike(hero_pos, enemy_pos)
 	if _boss_intro_motion > 0.0:
 		var intro_progress := 1.0 - _boss_intro_motion
 		var intro_alpha := sin(clampf(intro_progress, 0.0, 1.0) * PI)
@@ -2279,8 +2319,8 @@ func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		var center := hero_pos.lerp(enemy_pos, 0.64) + Vector2(0.0, -58.0)
 		var heavy := _heavy_slash > 0.0 or _ultimate_slash > 0.0
 		var outer_color := Color("ffd36b", alpha) if heavy else Color("88cfff", alpha)
-		draw_arc(center, 72.0 if heavy else 58.0, -2.25, 0.42, 22, Color("f8fcff", alpha), 12.0 if heavy else 8.0)
-		draw_arc(center, 64.0 if heavy else 51.0, -2.25, 0.42, 22, outer_color, 6.0 if heavy else 4.0)
+		draw_arc(center, 66.0 if heavy else 49.0, -2.18, 0.3, 20, Color("f8fcff", alpha * 0.88), 8.0 if heavy else 5.0)
+		draw_arc(center, 57.0 if heavy else 42.0, -2.18, 0.3, 20, outer_color, 4.0 if heavy else 2.5)
 
 	if _block_flash > 0.0 or _perfect_block > 0.0:
 		var strength := maxf(_block_flash, _perfect_block)
@@ -2305,12 +2345,34 @@ func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		for index in 8:
 			var angle := float(index) * TAU / 8.0
 			draw_line(impact_point + Vector2.from_angle(angle) * 4.0, impact_point + Vector2.from_angle(angle) * radius, Color(_impact_color, alpha), 4.0 if index % 2 == 0 else 2.0)
-		draw_circle(impact_point, 8.0 * alpha, Color("ffffff", alpha))
+		draw_circle(impact_point, 5.0 * alpha, Color("ffffff", alpha * 0.9))
 
 	if _defeat_burst > 0.0:
 		var progress := 1.0 - _defeat_burst
 		var alpha := sin(clampf(progress * 1.4, 0.0, 1.0) * PI)
 		draw_arc(enemy_pos + Vector2(0.0, -54.0), 28.0 + progress * (82.0 if _defeat_was_boss else 42.0), 0.0, TAU, 28, Color("ffe5a0", alpha), 6.0)
+
+func _draw_incoming_strike(hero_pos: Vector2, enemy_pos: Vector2) -> void:
+	if _incoming_strike_fx <= 0.0:
+		return
+	var progress := 1.0 - _incoming_strike_fx
+	var pulse := sin(clampf(progress, 0.0, 1.0) * PI)
+	var attacker := incoming_attacker_screen_position(enemy_pos) + Vector2(0.0, -50.0)
+	var target := hero_pos + Vector2(0.0, -48.0)
+	var direction := attacker.direction_to(target)
+	if direction == Vector2.ZERO:
+		return
+	var normal := Vector2(-direction.y, direction.x)
+	var contact := target - direction * 12.0
+	var start := attacker + direction * 18.0
+	var attack_color := Color("ff8468") if _incoming_attack_type == "heavy" else (Color("d58af0") if _incoming_attack_type == "area" else (Color("f0ba67") if _incoming_support_attack else Color("e7edf0")))
+	var trail_alpha := pulse * (0.68 if _incoming_support_attack else 0.82)
+	var bend := normal * (8.0 if _incoming_support_attack else -5.0)
+	var path := PackedVector2Array([start, start.lerp(contact, 0.56) + bend, contact])
+	draw_polyline(path, Color(attack_color, trail_alpha), 3.0 if _incoming_attack_type == "normal" else 5.0)
+	draw_line(contact - normal * 7.0, contact + normal * 7.0, Color("fff4dc", pulse * 0.9), 3.0)
+	if _incoming_support_attack:
+		draw_circle(start - direction * 5.0, 4.0, Color(attack_color, trail_alpha))
 
 func _draw_defeat_rewind_fx(hero_pos: Vector2) -> void:
 	var progress := defeat_rewind_progress()

@@ -1832,7 +1832,7 @@ func _handle_events(events: Array[Dictionary]) -> void:
 			"magic_sword_manifestation", "magic_sword_complete_release": pass
 			"holy_sword_release", "holy_sword_descent", "divine_grace", "divine_manifestation": pass
 			"legion_command", "legion_fervor", "war_god", "ten_thousand_armies_one_sword": pass
-			"retry_started": _show_toast("再次挑戰", "重新進入第 %d 戰" % int(event.stage), 0.9)
+			"retry_started": pass
 			"defeat":
 				if model.training_points > 0:
 					_pulse_tutorial_target(training_alert_button)

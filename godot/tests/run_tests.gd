@@ -615,6 +615,10 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(battlefield.impact_tier_for_source("mountain_break") == "heavy", "斷嶽必須使用重型命中回饋")
 	battlefield.play_events([{"type": "block"}, {"type": "dodge"}])
 	_expect(battlefield._hero_block_motion == 1.0 and battlefield._hero_dodge_motion == 1.0, "格擋與閃躲事件必須啟動對應逐格動作")
+	battlefield.play_events([{"type": "retry_started", "stage": 8}])
+	_expect(battlefield._hero_flash > 0.0 and battlefield._flow_burst > 0.0, "再次挑戰必須以角色回場演出取代遮擋戰鬥的大型文字框")
+	battlefield.enemy_hp_ratio = 0.8
+	_expect(battlefield.combat_presentation_active(), "敵人已受傷時必須進入戰鬥專注呈現，收起探索小地圖並維持敵我相對站位")
 	var normal_health_bar: Rect2 = battlefield.enemy_health_bar_rect(Vector2(240.0, 420.0), 164.0, 1.0)
 	battlefield.enemy_is_boss = true
 	var boss_health_bar: Rect2 = battlefield.enemy_health_bar_rect(Vector2(240.0, 420.0), 176.0, 1.15)
@@ -1367,6 +1371,12 @@ func _test_spatial_movement_changes_combat_result() -> void:
 	])
 	_expect(battlefield._enemy_member_attack_recover.has(0) and battlefield._enemy_member_attack_recover.has(1), "主敵與協攻敵人的攻擊動畫必須能同時存在，不可互相覆蓋")
 	_expect(not battlefield._enemy_member_windups.has(1), "協攻命中後必須收掉該成員的前搖提示")
+	_expect(battlefield._incoming_strike_fx == 1.0 and battlefield._incoming_attacker_index == 1 and battlefield._incoming_support_attack, "協攻事件必須留下獨立攻擊軌跡，不可與主敵命中混在一起")
+	battlefield.size = Vector2(390.0, 844.0)
+	battlefield.stage_top = 150.0
+	battlefield.stage_bottom = 598.0
+	var lead_screen := Vector2(270.0, 360.0)
+	_expect(battlefield.incoming_attacker_screen_position(lead_screen) != lead_screen, "後排協攻的命中起點必須使用該成員位置，不可從主敵身上發射")
 	battlefield.free()
 
 func _test_journey_choice_controls_next_area() -> void:
