@@ -19,6 +19,10 @@ const MAX_HOLY_SEALS := 5
 const MAX_MILITARY_MOMENTUM := 100.0
 const ALLY_ATTACK_INTERVAL := 2.6
 const WAVE_TRANSITION_DURATION := 0.8
+const GROUP_SUPPORT_PRESSURE_MIN := 0.26
+const GROUP_SUPPORT_PRESSURE_MAX := 0.34
+const GROUP_SUPPORT_FIRST_DELAY := 0.16
+const GROUP_SUPPORT_STAGGER := 0.14
 const DODGE_CAP := 0.55
 const TRAINING_ORDER := ["martial", "physique", "agility", "magic", "faith", "command"]
 const TRAINING_DEFS := {
@@ -750,6 +754,8 @@ var auto_tactics := {}
 var skill_cooldowns := {"heavy_strike": 1.2}
 var auto_attack_remaining := AUTO_ATTACK_INTERVAL
 var enemy_attack_remaining := 2.25
+var pending_group_attacks: Array[Dictionary] = []
+var group_opening_attack_queued := false
 var spatial_combat_enabled := false
 var spatial_enemy_distance := 0.0
 var spatial_danger_distance := 0.0
@@ -874,6 +880,12 @@ func step(delta: float) -> Array[Dictionary]:
 				_events.append({"type": "boss_entered", "name": _enemy_display_name()})
 			else:
 				_events.append({"type": "wave_started", "stage": stage, "wave": current_wave + 1, "wave_count": _stage_waves(stage).size(), "enemy": _enemy_display_name()})
+		return _events.duplicate(true)
+	if not group_opening_attack_queued and enemy_group_members().size() > 1:
+		_queue_group_support_attacks(true)
+		group_opening_attack_queued = true
+	_tick_pending_group_attacks(delta)
+	if hero_hp <= 0.0 or enemy_hp <= 0.0 or wave_transition_remaining > 0.0:
 		return _events.duplicate(true)
 	enemy_engagement_time += delta
 	var passive_gain := 5.0 * (2.0 if draw_stance_remaining > 0.0 else 1.0)
@@ -1445,6 +1457,7 @@ func snapshot() -> Dictionary:
 		"exploration_approach": exploration_approach,
 		"route_position": _route_position(), "route_phase": _route_phase(),
 		"enemy_attack_type": _next_enemy_attack_type(), "enemy_attack_remaining": enemy_attack_remaining,
+		"pending_group_attacks": pending_group_attacks.duplicate(true),
 		"enemy_attack_contract": ENEMY_ATTACK_CONTRACTS[_next_enemy_attack_type_id()].duplicate(true),
 		"enemy_behavior": Dictionary(_enemy_definition().get("behavior", {"movement": "chase", "preferred_distance": 94.0, "chase_speed": 112.0})).duplicate(true),
 		"spatial_combat_enabled": spatial_combat_enabled, "spatial_enemy_distance": spatial_enemy_distance, "spatial_danger_distance": spatial_danger_distance, "spatial_danger_exposed": spatial_danger_exposed,
@@ -2482,21 +2495,26 @@ func _spatial_attack_evaded(attack_type: String) -> bool:
 		return not spatial_danger_exposed or spatial_danger_distance > SPATIAL_AREA_REACH
 	return false
 
-func _enemy_attack(block_override := "") -> void:
-	enemy_attack_count += 1
-	var attack_type := _current_enemy_attack_type_id()
-	var attacker_index := (enemy_attack_count - 1) % maxi(1, enemy_group_members().size())
-	var empowered := boss_empowered_attack
-	boss_empowered_attack = false
+func _enemy_attack(block_override := "", attacker_index := 0, damage_scale := 1.0, attacker_archetype := "", queue_support := true, attack_type_override := "") -> void:
+	if queue_support:
+		enemy_attack_count += 1
+	var attack_type := attack_type_override if not attack_type_override.is_empty() else _current_enemy_attack_type_id()
+	var resolved_archetype := enemy_archetype if attacker_archetype.is_empty() else attacker_archetype
+	var empowered := boss_empowered_attack and queue_support
+	if queue_support:
+		boss_empowered_attack = false
 	var attack_multiplier: float = float({"normal": 1.0, "heavy": 1.8, "area": 1.35, "sure_hit": 1.55}.get(attack_type, 1.0))
 	if empowered:
 		attack_multiplier *= 1.35
-	_events.append({"type": "enemy_attack", "attack_type": attack_type, "archetype": enemy_archetype, "attacker_index": attacker_index, "empowered": empowered})
+	_events.append({"type": "enemy_attack", "attack_type": attack_type, "archetype": resolved_archetype, "attacker_index": attacker_index, "empowered": empowered, "support": not queue_support, "damage_scale": damage_scale})
+	if queue_support:
+		_queue_group_support_attacks(false)
 	if _spatial_attack_evaded(attack_type):
 		_events.append({"type": "spatial_evade", "attack_type": attack_type, "distance": spatial_enemy_distance})
 		return
 	var route_damage := 1.08 if journey_route == "mountain" else (0.92 if journey_route == "village" else (1.15 if journey_route == "battlefield" else 1.0))
-	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(_enemy_definition().damage) * route_damage
+	var attacker_definition: Dictionary = ENEMY_DEFS.get(resolved_archetype, _enemy_definition())
+	var raw_damage := (7.0 + pow(float(stage), 0.82) * 2.1) * attack_multiplier * float(attacker_definition.damage) * route_damage * damage_scale
 	if area_number == 1:
 		raw_damage *= 0.62
 	if retry_pending:
@@ -2505,7 +2523,7 @@ func _enemy_attack(block_override := "") -> void:
 		raw_damage *= 1.0 + equipment_modifier("heavy_damage_taken")
 	if boss_enraged:
 		raw_damage *= 1.15
-	if enemy_archetype == "centurion":
+	if resolved_archetype == "centurion":
 		raw_damage *= 1.18
 	if enemy_weakened_remaining > 0.0:
 		raw_damage *= 0.82 if int(training.physique) >= 75 else 0.9
@@ -2544,7 +2562,7 @@ func _enemy_attack(block_override := "") -> void:
 		block_quality = "perfect"
 	return_blade_ready = false
 	if block_quality.is_empty():
-		_take_unblocked_hit(incoming)
+		_take_unblocked_hit(incoming, attack_type)
 		return
 	var level := int(training.physique)
 	var layer_reduction := float(immovable) * (0.1 if level >= 15 else 0.08)
@@ -2575,6 +2593,37 @@ func _enemy_attack(block_override := "") -> void:
 	if hero_hp <= 0.0:
 		_defeat_hero()
 
+func _queue_group_support_attacks(opening: bool) -> void:
+	var members := enemy_group_members()
+	var reserve_count := members.size() - 1
+	if reserve_count <= 0 or enemy_is_boss or not pending_group_attacks.is_empty():
+		return
+	var total_pressure := lerpf(GROUP_SUPPORT_PRESSURE_MIN, GROUP_SUPPORT_PRESSURE_MAX, clampf(float(reserve_count - 1), 0.0, 1.0))
+	var damage_scale := total_pressure / float(reserve_count)
+	for reserve_index in reserve_count:
+		var member_index := reserve_index + 1
+		var member: Dictionary = members[member_index]
+		var delay := (0.72 if opening else GROUP_SUPPORT_FIRST_DELAY) + float(reserve_index) * (0.18 if opening else GROUP_SUPPORT_STAGGER)
+		pending_group_attacks.append({"remaining": delay, "attacker_index": member_index, "archetype": String(member.archetype), "damage_scale": damage_scale})
+		_events.append({"type": "enemy_assist_windup", "attacker_index": member_index, "archetype": String(member.archetype), "delay": delay})
+
+func _tick_pending_group_attacks(delta: float) -> void:
+	if pending_group_attacks.is_empty():
+		return
+	var remaining_attacks: Array[Dictionary] = []
+	for pending: Dictionary in pending_group_attacks:
+		pending.remaining = float(pending.remaining) - delta
+		if float(pending.remaining) > 0.0:
+			remaining_attacks.append(pending)
+			continue
+		if hero_hp <= 0.0 or enemy_hp <= 0.0 or wave_transition_remaining > 0.0:
+			continue
+		_enemy_attack("", int(pending.attacker_index), float(pending.damage_scale), String(pending.archetype), false, "normal")
+		if hero_hp <= 0.0 or enemy_hp <= 0.0 or wave_transition_remaining > 0.0:
+			remaining_attacks.clear()
+			break
+	pending_group_attacks = remaining_attacks
+
 func _roll_block_quality() -> String:
 	var level := int(training.physique)
 	if level <= 0:
@@ -2591,20 +2640,20 @@ func _block_chance() -> float:
 	if guard_stance_remaining > 0.0 and _milestone_is("physique", 10, "iron_gate"): stance_bonus += 0.15
 	return minf(0.8, 0.12 + float(training.physique) * 0.002 + float(immovable) * 0.05 + stance_bonus)
 
-func _take_unblocked_hit(damage: float) -> void:
+func _take_unblocked_hit(damage: float, attack_type: String) -> void:
 	damage = _absorb_holy_shield(damage)
 	if damage >= hero_hp and _trigger_divine_grace():
 		damage = _absorb_holy_shield(damage)
-	_record_incoming_damage(damage, _current_enemy_attack_type_id())
+	_record_incoming_damage(damage, attack_type)
 	hero_hp = maxf(0.0, hero_hp - damage)
 	_events.append({"type": "hero_hit", "amount": damage})
 	if damage >= _hero_max_hp() * 0.12:
-		_add_holy_seals(2 if _current_enemy_attack_type_id() == "heavy" and int(training.faith) >= 110 else 1, "damage_taken")
+		_add_holy_seals(2 if attack_type == "heavy" and int(training.faith) >= 110 else 1, "damage_taken")
 	return_blade_ready = false
 	counter_chain = 0
 	consecutive_blocks = 0
 	recent_prevented_damage = 0.0
-	_lose_youren(_current_enemy_attack_type_id())
+	_lose_youren(attack_type)
 	if immovable > 0:
 		if int(training.physique) >= 160 and immovable >= MAX_IMMOVABLE and immovable_break_guard:
 			immovable_break_guard = false
@@ -2929,10 +2978,9 @@ func _enemy_defeated() -> void:
 		awaiting_journey_choice = true
 		boss_reward_claimed = false
 	else:
-		_spawn_enemy()
+		wave_transition_remaining = WAVE_TRANSITION_DURATION
+		_clear_enemy_state_for_transition()
 	_events.append({"type": "enemy_defeated", "stage": stage, "kills": kills, "boss": defeated_boss})
-	if not defeated_boss and enemy_is_boss:
-		_events.append({"type": "boss_entered", "name": _enemy_display_name()})
 	if defeated_boss and not retry_pending:
 		_events.append({"type": "boss_reward_choice", "area": area_number, "completed_route": journey_route, "options": boss_reward_options()})
 
@@ -3177,6 +3225,8 @@ func choose_journey_route(route_id: String) -> Array[Dictionary]:
 
 func _spawn_enemy() -> void:
 	wave_transition_remaining = 0.0
+	pending_group_attacks.clear()
+	group_opening_attack_queued = false
 	enemy_archetype = _enemy_archetype_for_stage(stage)
 	enemy_is_boss = enemy_archetype == "boss"
 	boss_enraged = false
@@ -3217,6 +3267,8 @@ func _spawn_enemy() -> void:
 	ally_attack_remaining = minf(ally_attack_remaining, 0.8) if _ally_count() > 0 else ALLY_ATTACK_INTERVAL
 
 func _clear_enemy_state_for_transition() -> void:
+	pending_group_attacks.clear()
+	group_opening_attack_queued = false
 	enemy_hp = 0.0
 	enemy_guard_stacks = 0
 	enemy_engagement_time = 0.0

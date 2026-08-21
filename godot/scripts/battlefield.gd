@@ -355,6 +355,8 @@ var _encounter_wave := 1
 var _encounter_wave_count := 1
 var _enemy_group_members: Array = []
 var _enemy_attack_member_index := 0
+var _enemy_member_attack_recover: Dictionary = {}
+var _enemy_member_windups: Dictionary = {}
 var _manual_waypoint_active := false
 var _selected_landmark_name := ""
 var _selected_landmark_effect := ""
@@ -445,6 +447,19 @@ func _process(delta: float) -> void:
 	if _hero_defeated and _defeat_rewind_motion <= 0.0:
 		_hero_defeated = false
 	_enemy_attack_recover = maxf(0.0, _enemy_attack_recover - delta / 0.38)
+	for member_index: Variant in _enemy_member_attack_recover.keys():
+		var recover := maxf(0.0, float(_enemy_member_attack_recover[member_index]) - delta / 0.38)
+		if recover <= 0.0:
+			_enemy_member_attack_recover.erase(member_index)
+		else:
+			_enemy_member_attack_recover[member_index] = recover
+	for member_index: Variant in _enemy_member_windups.keys():
+		var windup: Dictionary = _enemy_member_windups[member_index]
+		windup.remaining = maxf(0.0, float(windup.remaining) - delta)
+		if float(windup.remaining) <= 0.0:
+			_enemy_member_windups.erase(member_index)
+		else:
+			_enemy_member_windups[member_index] = windup
 	_enemy_recovery_remaining = maxf(0.0, _enemy_recovery_remaining - delta)
 	_enemy_hurt_motion = maxf(0.0, _enemy_hurt_motion - delta / 0.36)
 	_enemy_death_motion = maxf(0.0, _enemy_death_motion - delta / 0.92)
@@ -508,6 +523,7 @@ func _process(delta: float) -> void:
 func set_state(snapshot: Dictionary) -> void:
 	var was_windup := enemy_heavy_windup
 	var previous_attack_type := enemy_attack_type
+	var holds_defeated_enemy := _enemy_death_motion > 0.0
 	if float(snapshot.hero_hp) > 0.0 and not defeat_sequence_active():
 		_hero_defeated = false
 	momentum_ratio = float(snapshot.momentum) / maxf(1.0, float(snapshot.max_momentum))
@@ -523,7 +539,8 @@ func set_state(snapshot: Dictionary) -> void:
 		_enemy_entry_motion = 1.0
 	elif current_stage == 0:
 		_enemy_entry_motion = 0.72
-	enemy_archetype = next_archetype
+	if not holds_defeated_enemy:
+		enemy_archetype = next_archetype
 	enemy_role = String(snapshot.get("enemy_role", ""))
 	enemy_hp_ratio = clampf(float(snapshot.enemy_hp) / maxf(1.0, float(snapshot.enemy_max_hp)), 0.0, 1.0)
 	current_stage = next_stage
@@ -549,9 +566,10 @@ func set_state(snapshot: Dictionary) -> void:
 	magic_manifest_active = bool(snapshot.magic_manifest_active)
 	complete_release_active = float(snapshot.complete_release_remaining) > 0.0
 	ally_count = int(snapshot.ally_count)
-	_encounter_wave = int(snapshot.get("wave", 1))
-	_encounter_wave_count = int(snapshot.get("wave_count", 1))
-	_enemy_group_members = Array(snapshot.get("enemy_group_members", [])).duplicate(true)
+	if not holds_defeated_enemy:
+		_encounter_wave = int(snapshot.get("wave", 1))
+		_encounter_wave_count = int(snapshot.get("wave_count", 1))
+		_enemy_group_members = Array(snapshot.get("enemy_group_members", [])).duplicate(true)
 	_move_speed_bonus = float(snapshot.get("move_speed_bonus", 0.0))
 	if exploration_enabled and float(snapshot.enemy_hp) > 0.0:
 		var next_key := str(int(snapshot.stage))
@@ -1093,12 +1111,16 @@ func play_events(events: Array[Dictionary]) -> void:
 					_play_landmark_acquired(String(event.get("name", "地標優勢")), effect)
 			"wave_started":
 				_clear_enemy_cast()
+				_enemy_member_attack_recover.clear()
+				_enemy_member_windups.clear()
 				_enemy_death_motion = 0.0
 				_enemy_hurt_motion = 0.0
 				_enemy_attack_recover = 0.0
 				_enemy_entry_motion = 1.0
 				_enemy_attack_member_index = 0
 			"boss_entered":
+				_enemy_member_attack_recover.clear()
+				_enemy_member_windups.clear()
 				_enemy_death_motion = 0.0
 				_enemy_hurt_motion = 0.0
 				_enemy_attack_recover = 0.0
@@ -1138,14 +1160,22 @@ func play_events(events: Array[Dictionary]) -> void:
 			"boss_howl":
 				_boss_howl_burst = 1.0
 				add_trauma(0.1)
+			"enemy_assist_windup":
+				var assist_index := int(event.get("attacker_index", 1))
+				var assist_delay := maxf(0.08, float(event.get("delay", 0.16)))
+				_enemy_member_windups[assist_index] = {"remaining": assist_delay, "duration": assist_delay}
 			"enemy_attack":
 				var event_attack_type := String(event.get("attack_type", "normal"))
 				var event_contract: Dictionary = CombatModel.ENEMY_ATTACK_CONTRACTS.get(event_attack_type, CombatModel.ENEMY_ATTACK_CONTRACTS.normal)
-				if _enemy_cast_active:
+				var attacker_index := int(event.get("attacker_index", 0))
+				if attacker_index == 0 and _enemy_cast_active:
 					_finish_enemy_cast()
-				_enemy_recovery_remaining = maxf(_enemy_recovery_remaining, float(event_contract.get("recovery", 0.32)))
+				if attacker_index == 0:
+					_enemy_recovery_remaining = maxf(_enemy_recovery_remaining, float(event_contract.get("recovery", 0.32)))
 				_enemy_attack_recover = 1.0
-				_enemy_attack_member_index = int(event.get("attacker_index", 0))
+				_enemy_attack_member_index = attacker_index
+				_enemy_member_attack_recover[attacker_index] = 1.0
+				_enemy_member_windups.erase(attacker_index)
 				if event_attack_type != "normal":
 					_enemy_cast_burst = 1.0
 			"spatial_evade":
@@ -1364,6 +1394,8 @@ func play_events(events: Array[Dictionary]) -> void:
 				_play_sfx("hurt")
 			"enemy_defeated":
 				_clear_enemy_cast()
+				_enemy_member_attack_recover.clear()
+				_enemy_member_windups.clear()
 				_enemy_death_motion = 1.0
 				_enemy_hurt_motion = 0.0
 				_enemy_attack_recover = 0.0
@@ -1374,6 +1406,8 @@ func play_events(events: Array[Dictionary]) -> void:
 				_hit_stop(0.13 if _defeat_was_boss else 0.055)
 				_play_sfx("boss_defeat" if _defeat_was_boss else "defeat")
 			"defeat":
+				_enemy_member_attack_recover.clear()
+				_enemy_member_windups.clear()
 				_hero_death_motion = 1.0
 				_hero_defeated = true
 				_defeat_rewind_motion = 1.0
@@ -1751,21 +1785,40 @@ func _draw_enemy_group_reserves(enemy_position: Vector2) -> void:
 		var texture := _pixel_enemy_preview_texture_for(archetype)
 		var reserve_position := _reserve_enemy_position(enemy_position, index)
 		var member_index := index + 1
-		var attacking := _enemy_attack_recover > 0.0 and _enemy_attack_member_index == member_index
+		var member_recover := _enemy_member_attack_progress(member_index)
+		var attacking := member_recover > 0.0
+		var windup: Dictionary = _enemy_member_windups.get(member_index, {})
+		if not windup.is_empty():
+			var windup_progress := 1.0 - float(windup.remaining) / maxf(0.01, float(windup.duration))
+			var intent_color := Color("f08a63", 0.3 + windup_progress * 0.5)
+			draw_arc(reserve_position + Vector2(0.0, 2.0), 27.0 + windup_progress * 5.0, -PI * 0.8, PI * 0.8, 18, intent_color, 3.0)
 		if attacking:
-			var progress := 1.0 - _enemy_attack_recover
-			var hero_screen := _world_to_screen(_hero_map_position)
-			reserve_position += (hero_screen - reserve_position).normalized() * sin(progress * PI) * 10.0
+			var progress := 1.0 - member_recover
+			var hero_target_screen := _world_to_screen(_hero_map_position)
+			reserve_position += (hero_target_screen - reserve_position).normalized() * sin(progress * PI) * 14.0
 			var combat_frames := _pixel_enemy_combat_frames_for(archetype)
 			if not combat_frames.is_empty():
 				texture = combat_frames[2] if progress < 0.45 else combat_frames[3]
+		elif not windup.is_empty():
+			var combat_frames := _pixel_enemy_combat_frames_for(archetype)
+			if not combat_frames.is_empty():
+				texture = combat_frames[1]
 		elif not _pixel_enemy_combat_frames_for(archetype).is_empty():
 			var combat_frames := _pixel_enemy_combat_frames_for(archetype)
 			texture = combat_frames[int(floor(_time * 5.0)) % combat_frames.size()]
 		var canvas_height := 138.0 * _enemy_archetype_scale(archetype)
+		var hero_screen_position := _world_to_screen(_hero_map_position)
+		var member_facing := 1.0 if hero_screen_position.x > reserve_position.x else -1.0
 		_draw_ground_shadow(reserve_position + Vector2(0.0, 2.0), Vector2(43.0, 8.0))
-		_draw_anchored_animation_frame(texture, reserve_position, canvas_height, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2(_enemy_facing, 1.0), Color(0.92, 0.94, 0.94, 0.98))
+		_draw_anchored_animation_frame(texture, reserve_position, canvas_height, PIXEL_WOLF_FEET_RATIO, 0.0, Vector2(member_facing, 1.0), Color(0.92, 0.94, 0.94, 0.98))
 		_draw_reserve_health_bar(reserve_position, canvas_height)
+
+func _enemy_member_attack_progress(member_index: int) -> float:
+	if _enemy_member_attack_recover.has(member_index):
+		return float(_enemy_member_attack_recover[member_index])
+	if _enemy_attack_member_index == member_index:
+		return _enemy_attack_recover
+	return 0.0
 
 func _reserve_enemy_position(enemy_position: Vector2, reserve_index: int) -> Vector2:
 	var offsets := [Vector2(72.0, -50.0), Vector2(58.0, 52.0), Vector2(104.0, 16.0)]
@@ -2074,8 +2127,8 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 			var death_frame := 0 if death_progress < 0.18 else (1 if death_progress < 0.4 else (2 if death_progress < 0.66 else 3))
 			texture = PIXEL_WOLF_DEATH_FRAMES[death_frame]
 		tint = Color(0.68, 0.7, 0.74, clampf(_enemy_death_motion * 2.4, 0.0, 1.0))
-	elif _enemy_attack_recover > 0.0 and _enemy_attack_member_index == 0:
-		var progress := 1.0 - _enemy_attack_recover
+	elif _enemy_member_attack_progress(0) > 0.0:
+		var progress := 1.0 - _enemy_member_attack_progress(0)
 		if uses_custom_enemy:
 			texture = combat_frames[2] if progress < 0.42 else combat_frames[3]
 		else:

@@ -434,18 +434,41 @@ func _test_frontier_stage_waves() -> void:
 	model._events.clear()
 	model._enemy_defeated()
 	_expect(model.stage == 3 and model.current_wave == 0, "清除全部 Wave 後才可推進下一戰")
+	_expect(model.enemy_hp <= 0.0 and is_equal_approx(model.wave_transition_remaining, CombatModelScript.WAVE_TRANSITION_DURATION), "一般敵人死亡後必須先完整播放倒下，再生成下一戰敵人")
 	_expect(model.training_points == points_before and model.experience == 24, "同戰第二隻敵人必須繼續累積經驗，不再固定送修練點")
 	model.stage = 9
 	model.current_wave = 0
+	model._spawn_enemy()
 	_expect(model._stage_waves(9).size() == 3, "第9戰必須依序測試劍兵、盾衛與重槌兵")
 	var group_members := model.enemy_group_members()
 	_expect(group_members.size() == 3 and String(group_members[0].archetype) == "raider" and String(group_members[1].archetype) == "shield" and bool(group_members[0].target), "複數遭遇必須同時提供目前目標與後續敵人成員")
 	model.enemy_hp = 9999.0
+	model.hero_hp = 9999.0
+	model.enemy_attack_remaining = 999.0
+	model.auto_attack_remaining = 999.0
 	model._events.clear()
-	model._enemy_attack()
-	model._enemy_attack()
-	var group_attacks: Array = model._events.filter(func(event: Dictionary) -> bool: return event.type == "enemy_attack")
-	_expect(group_attacks.size() == 2 and int(group_attacks[0].attacker_index) == 0 and int(group_attacks[1].attacker_index) == 1, "敵群攻擊必須輪替出手，不可永遠只有鎖定目標播放攻擊")
+	model._enemy_attack("none")
+	var opening_attacks: Array = model._events.filter(func(event: Dictionary) -> bool: return event.type == "enemy_attack")
+	var assist_windups: Array = model._events.filter(func(event: Dictionary) -> bool: return event.type == "enemy_assist_windup")
+	_expect(opening_attacks.size() == 1 and int(opening_attacks[0].attacker_index) == 0 and assist_windups.size() == 2, "主攻出手時必須讓兩名後排敵人同步進入協攻前搖")
+	var first_assist_events := model.step(0.17)
+	var first_assist: Array = first_assist_events.filter(func(event: Dictionary) -> bool: return event.type == "enemy_attack")
+	_expect(first_assist.size() == 1 and int(first_assist[0].attacker_index) == 1 and bool(first_assist[0].support), "第一名協攻敵人必須在主攻收招前實際出手")
+	var second_assist_events := model.step(0.15)
+	var second_assist: Array = second_assist_events.filter(func(event: Dictionary) -> bool: return event.type == "enemy_attack")
+	_expect(second_assist.size() == 1 and int(second_assist[0].attacker_index) == 2 and bool(second_assist[0].support), "第二名協攻敵人必須錯峰跟進，不可站在旁邊等待整輪")
+	_expect(float(first_assist[0].damage_scale) + float(second_assist[0].damage_scale) <= CombatModelScript.GROUP_SUPPORT_PRESSURE_MAX + 0.001, "協攻總傷害必須受上限保護，不能因敵人數量直接倍增")
+	var opening_group = CombatModelScript.new()
+	opening_group.stage = 2
+	opening_group.current_wave = 0
+	opening_group._spawn_enemy()
+	opening_group.hero_hp = 9999.0
+	opening_group.enemy_hp = 9999.0
+	opening_group.enemy_attack_remaining = 999.0
+	opening_group.auto_attack_remaining = 999.0
+	var opening_group_events := opening_group.step(0.73)
+	_expect(opening_group_events.any(func(event: Dictionary) -> bool: return event.type == "enemy_assist_windup"), "複數敵人接戰後必須立刻進入協攻準備，不可等主敵出手才開始參戰")
+	_expect(opening_group_events.any(func(event: Dictionary) -> bool: return event.type == "enemy_attack" and int(event.attacker_index) == 1), "後排敵人必須在約 0.7 秒內先行出手，避免主敵被秒時全程旁觀")
 
 func _test_area_kills_summon_boss() -> void:
 	var model = CombatModelScript.new()
@@ -628,6 +651,16 @@ func _test_battlefield_impact_tiers() -> void:
 	battlefield._enemy_knockback = 1.0
 	battlefield.play_events([{"type": "enemy_defeated", "boss": false}])
 	_expect(battlefield.trauma == 0.0 and battlefield._enemy_knockback == 0.0, "怪物死亡時必須立即停止震動與擊退")
+	var replacement_model = CombatModelScript.new()
+	replacement_model.stage = 10
+	replacement_model._spawn_enemy()
+	battlefield.enemy_archetype = "raider"
+	battlefield._enemy_group_members = [{"archetype": "raider", "target": true, "hp_ratio": 0.0}]
+	battlefield.set_state(replacement_model.snapshot())
+	_expect(battlefield.enemy_archetype == "raider" and String(battlefield._enemy_group_members[0].archetype) == "raider", "狼倒下期間不可被下一隻敵人的外觀或群組資料覆蓋")
+	battlefield.play_events([{"type": "wave_started"}])
+	battlefield.set_state(replacement_model.snapshot())
+	_expect(battlefield.enemy_archetype == "boss", "倒下動畫結束後才可切換成新敵人的存活外觀")
 	battlefield.free()
 
 func _test_training_growth_and_locked_tracks() -> void:
@@ -1326,6 +1359,14 @@ func _test_spatial_movement_changes_combat_result() -> void:
 	var normal_recovery_position: Vector2 = battlefield._enemy_map_position
 	battlefield._update_enemy_chase(0.2)
 	_expect(battlefield._enemy_recovery_remaining > 0.0 and battlefield._enemy_map_position == normal_recovery_position, "普通攻擊也必須有短收招，不可邊揮刀邊追人")
+	battlefield.play_events([{"type": "enemy_assist_windup", "attacker_index": 1, "archetype": "shield", "delay": 0.16}])
+	_expect(battlefield._enemy_member_windups.has(1), "後排敵人協攻前必須有自己的短前搖，不可無提示直接扣血")
+	battlefield.play_events([
+		{"type": "enemy_attack", "attack_type": "normal", "attacker_index": 0},
+		{"type": "enemy_attack", "attack_type": "normal", "attacker_index": 1, "support": true},
+	])
+	_expect(battlefield._enemy_member_attack_recover.has(0) and battlefield._enemy_member_attack_recover.has(1), "主敵與協攻敵人的攻擊動畫必須能同時存在，不可互相覆蓋")
+	_expect(not battlefield._enemy_member_windups.has(1), "協攻命中後必須收掉該成員的前搖提示")
 	battlefield.free()
 
 func _test_journey_choice_controls_next_area() -> void:
