@@ -222,6 +222,29 @@ const ENCOUNTER_DISTANCE := 104.0
 const COMBAT_DISTANCE := 122.0
 const HEAVY_SECTOR_HALF_ANGLE := deg_to_rad(52.0)
 const DRAG_THRESHOLD := 14.0
+const IMPACT_PRESETS := {
+	"light": {
+		"action_duration": 0.22,
+		"presentation_delay": 0.055,
+		"hit_stop": 0.014,
+		"strength": 0.4,
+		"burst_duration": 0.12,
+	},
+	"medium": {
+		"action_duration": 0.28,
+		"presentation_delay": 0.085,
+		"hit_stop": 0.04,
+		"strength": 0.7,
+		"burst_duration": 0.15,
+	},
+	"heavy": {
+		"action_duration": 0.36,
+		"presentation_delay": 0.13,
+		"hit_stop": 0.075,
+		"strength": 1.0,
+		"burst_duration": 0.19,
+	},
+}
 
 var reduced_motion := false
 var momentum_ratio := 0.0
@@ -268,6 +291,8 @@ var stage_bottom := 610.0
 var _time := 0.0
 var _hero_action := 0.0
 var _hero_slash_motion := 0.0
+var _hero_attack_tier := "light"
+var _hero_slash_duration := 0.22
 var _hero_block_motion := 0.0
 var _hero_dodge_motion := 0.0
 var _hero_hurt_motion := 0.0
@@ -325,6 +350,10 @@ var _hero_recoil := 0.0
 var _impact_burst := 0.0
 var _impact_strength := 0.0
 var _impact_color := Color("fff0b0")
+var _impact_duration := 0.12
+var _impact_direction := Vector2.RIGHT
+var _enemy_recoil_direction := 1.0
+var _pending_damage_feedback: Array[Dictionary] = []
 var _incoming_strike_fx := 0.0
 var _incoming_attacker_index := 0
 var _incoming_attack_type := "normal"
@@ -418,6 +447,9 @@ func _ready() -> void:
 		add_child(label)
 		_damage_pool.append(label)
 	_sfx_streams = {
+		"whoosh_light": _make_sfx("whoosh_light"),
+		"whoosh_medium": _make_sfx("whoosh_medium"),
+		"whoosh_heavy": _make_sfx("whoosh_heavy"),
 		"light": _make_sfx("light"),
 		"medium": _make_sfx("medium"),
 		"heavy": _make_sfx("heavy"),
@@ -443,9 +475,13 @@ func _process(delta: float) -> void:
 		_visual_freeze_remaining = maxf(0.0, _visual_freeze_remaining - delta)
 		queue_redraw()
 		return
+	_update_pending_damage_feedback(delta)
+	if _visual_freeze_remaining > 0.0:
+		queue_redraw()
+		return
 	trauma = maxf(0.0, trauma - delta * 1.45)
 	_hero_action = maxf(0.0, _hero_action - delta * 3.4)
-	_hero_slash_motion = maxf(0.0, _hero_slash_motion - delta / 0.26)
+	_hero_slash_motion = maxf(0.0, _hero_slash_motion - delta / maxf(0.01, _hero_slash_duration))
 	_hero_block_motion = maxf(0.0, _hero_block_motion - delta / 0.5)
 	_hero_dodge_motion = maxf(0.0, _hero_dodge_motion - delta / 0.48)
 	_hero_hurt_motion = maxf(0.0, _hero_hurt_motion - delta / 0.38)
@@ -515,7 +551,7 @@ func _process(delta: float) -> void:
 	_hero_flash = maxf(0.0, _hero_flash - delta * 7.0)
 	_enemy_knockback = maxf(0.0, _enemy_knockback - delta * 5.8)
 	_hero_recoil = maxf(0.0, _hero_recoil - delta * 6.5)
-	_impact_burst = maxf(0.0, _impact_burst - delta * 7.0)
+	_impact_burst = maxf(0.0, _impact_burst - delta / maxf(0.01, _impact_duration))
 	_incoming_strike_fx = maxf(0.0, _incoming_strike_fx - delta / 0.3)
 	_hurt_vignette = maxf(0.0, _hurt_vignette - delta * 4.8)
 	_defeat_burst = maxf(0.0, _defeat_burst - delta * (1.25 if _defeat_was_boss else 2.5))
@@ -1110,6 +1146,10 @@ func set_stage_bounds(top: float, bottom: float) -> void:
 	stage_bottom = maxf(stage_top + 250.0, bottom - 2.0)
 
 func play_events(events: Array[Dictionary]) -> void:
+	var intent_tier := attack_intent_tier_for_events(events)
+	if not intent_tier.is_empty():
+		_begin_attack_intent(intent_tier)
+	var lethal_batch := events.any(func(candidate: Dictionary) -> bool: return String(candidate.type) == "enemy_defeated")
 	for event: Dictionary in events:
 		if event.has("milestone_track"):
 			_play_milestone_choice_fx(event)
@@ -1124,6 +1164,7 @@ func play_events(events: Array[Dictionary]) -> void:
 					_play_landmark_acquired(String(event.get("name", "地標優勢")), effect)
 			"wave_started":
 				_clear_enemy_cast()
+				_pending_damage_feedback.clear()
 				_enemy_member_attack_recover.clear()
 				_enemy_member_windups.clear()
 				_enemy_death_motion = 0.0
@@ -1394,12 +1435,7 @@ func play_events(events: Array[Dictionary]) -> void:
 				}.get(String(event.get("track", "martial")), Color("f0c365"))
 				_hero_flash = 0.7
 			"damage":
-				_enemy_flash = 1.0
-				_enemy_hurt_motion = 1.0
-				var source := String(event.source)
-				var tier := impact_tier_for_source(source)
-				_spawn_damage(float(event.amount), source)
-				_apply_impact(tier, source)
+				_queue_damage_feedback(event, lethal_batch)
 			"hero_hit":
 				_enemy_attack_recover = 1.0
 				_hero_flash = 1.0
@@ -1414,6 +1450,7 @@ func play_events(events: Array[Dictionary]) -> void:
 				_play_sfx("hurt")
 			"enemy_defeated":
 				_clear_enemy_cast()
+				_pending_damage_feedback.clear()
 				_enemy_member_attack_recover.clear()
 				_enemy_member_windups.clear()
 				_enemy_death_motion = 1.0
@@ -1426,6 +1463,7 @@ func play_events(events: Array[Dictionary]) -> void:
 				_hit_stop(0.13 if _defeat_was_boss else 0.055)
 				_play_sfx("boss_defeat" if _defeat_was_boss else "defeat")
 			"defeat":
+				_pending_damage_feedback.clear()
 				_enemy_member_attack_recover.clear()
 				_enemy_member_windups.clear()
 				_hero_death_motion = 1.0
@@ -1459,6 +1497,74 @@ func defeat_sequence_active() -> bool:
 func defeat_rewind_progress() -> float:
 	return clampf(1.0 - _defeat_rewind_motion, 0.0, 1.0)
 
+func impact_preset(tier: String) -> Dictionary:
+	return Dictionary(IMPACT_PRESETS.get(tier, IMPACT_PRESETS.light))
+
+func impact_presentation_delay(tier: String, source: String) -> float:
+	if source in ["burn_tick", "lightning_tick", "holy_enchant", "magic_enchant"] or source.begins_with("ally_"):
+		return 0.0
+	return float(impact_preset(tier).presentation_delay)
+
+func attack_intent_tier_for_events(events: Array[Dictionary]) -> String:
+	var strongest := ""
+	var strongest_rank := 0
+	for event: Dictionary in events:
+		var event_type := String(event.type)
+		var tier := ""
+		if event_type in ["attack", "swift_cut"]:
+			tier = "light"
+		elif event_type == "heavy_strike":
+			tier = "heavy" if float(event.get("momentum_ratio", 0.0)) >= 0.82 else "medium"
+		elif event_type in ["momentum_slash", "counter", "first_strike", "swift_step", "shadow_assault", "shadow_return", "flying_swallow", "magic_slash", "holy_light_slash", "judgment_slash", "coordinated_pursuit", "reverse_pursuit"]:
+			tier = "medium"
+		elif event_type in ["mountain_break", "two_cut", "armor_flash", "execute_slash", "collapse_counter", "heaven_return", "flame_burst_slash", "elemental_boundary_slash", "holy_sword_descent", "ten_thousand_armies_one_sword", "army_break_order"]:
+			tier = "heavy"
+		var rank: int = int({"light": 1, "medium": 2, "heavy": 3}.get(tier, 0))
+		if rank > strongest_rank:
+			strongest = tier
+			strongest_rank = rank
+	return strongest
+
+func _begin_attack_intent(tier: String) -> void:
+	var preset := impact_preset(tier)
+	_hero_attack_tier = tier
+	_hero_slash_duration = float(preset.action_duration)
+	_play_sfx("whoosh_%s" % tier)
+
+func _queue_damage_feedback(event: Dictionary, immediate: bool = false) -> void:
+	var source := String(event.source)
+	var tier := impact_tier_for_source(source)
+	var delay := impact_presentation_delay(tier, source)
+	if immediate or delay <= 0.0 or not is_inside_tree():
+		_present_damage_feedback(event)
+		return
+	if _pending_damage_feedback.size() >= 8:
+		_pending_damage_feedback.pop_front()
+	_pending_damage_feedback.append({
+		"remaining": delay + minf(0.045, float(_pending_damage_feedback.size()) * 0.015),
+		"event": event.duplicate(true),
+	})
+
+func _update_pending_damage_feedback(delta: float) -> void:
+	for index in range(_pending_damage_feedback.size() - 1, -1, -1):
+		var queued: Dictionary = _pending_damage_feedback[index]
+		queued.remaining = float(queued.remaining) - delta
+		if float(queued.remaining) <= 0.0:
+			var event: Dictionary = queued.event
+			_pending_damage_feedback.remove_at(index)
+			_present_damage_feedback(event)
+		else:
+			_pending_damage_feedback[index] = queued
+
+func _present_damage_feedback(event: Dictionary) -> void:
+	var source := String(event.source)
+	var tier := impact_tier_for_source(source)
+	_enemy_flash = 1.0
+	_enemy_hurt_motion = 1.0
+	if not _damage_pool.is_empty():
+		_spawn_damage(float(event.amount), source)
+	_apply_impact(tier, source)
+
 func impact_tier_for_source(source: String) -> String:
 	if source in ["burn_tick", "lightning_tick", "holy_enchant", "magic_enchant"] or source.begins_with("ally_"):
 		return "light"
@@ -1469,19 +1575,21 @@ func impact_tier_for_source(source: String) -> String:
 	return "light"
 
 func _apply_impact(tier: String, source: String) -> void:
+	var preset := impact_preset(tier)
 	_impact_burst = 1.0
-	_impact_strength = 0.45 if tier == "light" else (0.72 if tier == "medium" else 1.0)
+	_impact_strength = float(preset.strength)
+	_impact_duration = float(preset.burst_duration)
 	_impact_color = Color("aeefff") if source in ["armor_flash", "counter", "collapse_counter", "heaven_return"] else (Color("d7c4ff") if source in ["swift_step", "shadow_assault", "shadow_return", "flying_swallow", "shadowless_extreme"] else (Color("ff9a52") if source in ["magic_enchant", "magic_slash", "burn_tick", "flame_burst_slash", "elemental_boundary_slash"] else Color("fff0b0")))
-	_enemy_knockback = maxf(_enemy_knockback, _impact_strength)
-	if tier == "heavy":
-		add_trauma(0.48)
-		_hit_stop(0.085)
-	elif tier == "medium":
-		add_trauma(0.24)
-		_hit_stop(0.045)
+	if exploration_enabled and _hero_map_position != Vector2.ZERO and _enemy_map_position != Vector2.ZERO:
+		_impact_direction = _hero_map_position.direction_to(_enemy_map_position)
 	else:
-		add_trauma(0.07)
-		_hit_stop(0.018)
+		_impact_direction = Vector2.RIGHT
+	if _impact_direction == Vector2.ZERO:
+		_impact_direction = Vector2.RIGHT
+	_enemy_recoil_direction = 1.0 if _impact_direction.x >= 0.0 else -1.0
+	_enemy_knockback = maxf(_enemy_knockback, _impact_strength)
+	add_trauma(0.07 if tier == "light" else (0.24 if tier == "medium" else 0.48))
+	_hit_stop(float(preset.hit_stop))
 	_play_sfx(tier)
 
 func _hit_stop(duration: float) -> void:
@@ -1971,7 +2079,16 @@ func _draw_pixel_hero(feet_position: Vector2) -> void:
 			tint = Color(0.82, 0.84, 0.88, 1.0)
 	elif _hero_slash_motion > 0.0:
 		var progress := 1.0 - _hero_slash_motion
-		texture = PIXEL_HERO_ATTACK_FRAMES[mini(3, floori(progress * 4.0))]
+		var frame_weights: Array = [0.18, 0.16, 0.24, 0.42]
+		if _hero_attack_tier == "medium":
+			frame_weights = [0.26, 0.12, 0.24, 0.38]
+		elif _hero_attack_tier == "heavy":
+			frame_weights = [0.34, 0.1, 0.25, 0.31]
+		texture = PIXEL_HERO_ATTACK_FRAMES[_weighted_frame_index(progress, 0, frame_weights)]
+		if not reduced_motion:
+			var lunge_progress := clampf((progress - 0.12) / 0.78, 0.0, 1.0)
+			var lunge_distance := 3.0 if _hero_attack_tier == "light" else (5.0 if _hero_attack_tier == "medium" else 7.0)
+			offset.x += _hero_facing * sin(lunge_progress * PI) * lunge_distance
 	elif _hero_block_motion > 0.0 or guard_stance_active:
 		var progress := 0.55 if guard_stance_active else 1.0 - _hero_block_motion
 		texture = PIXEL_HERO_BLOCK_FRAMES[mini(3, floori(progress * 4.0))]
@@ -2180,7 +2297,9 @@ func _draw_pixel_enemy(feet_position: Vector2) -> void:
 	elif enemy_attack_windup:
 		texture = combat_frames[2] if uses_custom_enemy else PIXEL_WOLF_ATTACK_FRAMES[0]
 	if _enemy_knockback > 0.0:
-		offset.x += sin(_enemy_knockback * PI) * 5.0
+		var recoil_curve := sin(_enemy_knockback * PI)
+		offset.x += recoil_curve * (3.5 + _impact_strength * 4.5) * _enemy_recoil_direction
+		offset.y -= recoil_curve * _impact_strength * 2.0
 	if _enemy_flash > 0.0:
 		tint = Color(1.4, 1.4, 1.4, 1.0)
 	if enemy_archetype == "raider" and _enemy_death_motion <= 0.0:
@@ -2240,11 +2359,17 @@ func _enemy_cast_target_screen(fallback: Vector2) -> Vector2:
 		return _world_to_screen(_enemy_cast_target) + _combat_presentation_offset
 	return fallback
 
+func pixel_impact_point(hero_pos: Vector2, enemy_pos: Vector2) -> Vector2:
+	var attack_direction := hero_pos.direction_to(enemy_pos)
+	if attack_direction == Vector2.ZERO:
+		attack_direction = Vector2.RIGHT
+	return enemy_pos - attack_direction * 28.0 + Vector2(0.0, -54.0)
+
 func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 	if defeat_sequence_active():
 		_draw_defeat_rewind_fx(hero_pos)
 		return
-	var impact_point := enemy_pos + Vector2(-28.0, -58.0)
+	var impact_point := pixel_impact_point(hero_pos, enemy_pos)
 	if enemy_attack_windup and not enemy_heavy_windup:
 		var normal_alpha := 0.2 + enemy_windup_ratio * 0.42
 		var normal_center := enemy_pos + Vector2(0.0, 2.0)
@@ -2315,12 +2440,16 @@ func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 
 	if _hero_slash_motion > 0.0:
 		var progress := 1.0 - _hero_slash_motion
-		var alpha := sin(clampf(progress, 0.0, 1.0) * PI)
-		var center := hero_pos.lerp(enemy_pos, 0.64) + Vector2(0.0, -58.0)
-		var heavy := _heavy_slash > 0.0 or _ultimate_slash > 0.0
-		var outer_color := Color("ffd36b", alpha) if heavy else Color("88cfff", alpha)
-		draw_arc(center, 66.0 if heavy else 49.0, -2.18, 0.3, 20, Color("f8fcff", alpha * 0.88), 8.0 if heavy else 5.0)
-		draw_arc(center, 57.0 if heavy else 42.0, -2.18, 0.3, 20, outer_color, 4.0 if heavy else 2.5)
+		var release_start := 0.18 if _hero_attack_tier == "light" else (0.26 if _hero_attack_tier == "medium" else 0.34)
+		if progress >= release_start:
+			var strike_progress := clampf((progress - release_start) / (1.0 - release_start), 0.0, 1.0)
+			var alpha := sin(strike_progress * PI)
+			var weapon_origin := hero_pos + Vector2(0.0, -48.0)
+			var center := weapon_origin.lerp(impact_point, 0.68)
+			var heavy := _hero_attack_tier == "heavy" or _heavy_slash > 0.0 or _ultimate_slash > 0.0
+			var outer_color := Color("ffd36b", alpha) if heavy else Color("88cfff", alpha)
+			draw_arc(center, 66.0 if heavy else 49.0, -2.18, 0.3, 20, Color("f8fcff", alpha * 0.88), 8.0 if heavy else 5.0)
+			draw_arc(center, 57.0 if heavy else 42.0, -2.18, 0.3, 20, outer_color, 4.0 if heavy else 2.5)
 
 	if _block_flash > 0.0 or _perfect_block > 0.0:
 		var strength := maxf(_block_flash, _perfect_block)
@@ -2340,12 +2469,26 @@ func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 
 	if _impact_burst > 0.0:
 		var progress := 1.0 - _impact_burst
-		var alpha := 1.0 - progress
-		var radius := 11.0 + progress * 24.0 * _impact_strength
-		for index in 8:
-			var angle := float(index) * TAU / 8.0
-			draw_line(impact_point + Vector2.from_angle(angle) * 4.0, impact_point + Vector2.from_angle(angle) * radius, Color(_impact_color, alpha), 4.0 if index % 2 == 0 else 2.0)
-		draw_circle(impact_point, 5.0 * alpha, Color("ffffff", alpha * 0.9))
+		var alpha := pow(1.0 - progress, 1.35)
+		var direction := _impact_direction.normalized()
+		if direction == Vector2.ZERO:
+			direction = Vector2.RIGHT
+		var normal := Vector2(-direction.y, direction.x)
+		var reach := 14.0 + progress * (30.0 + _impact_strength * 24.0)
+		for index in 7:
+			var spread := (float(index) - 3.0) / 3.0
+			var ray_direction := (direction + normal * spread * (0.34 + progress * 0.18)).normalized()
+			var ray_start := impact_point - direction * 4.0 + normal * spread * 3.0
+			var ray_length := reach * (1.0 - absf(spread) * 0.28)
+			draw_line(ray_start, ray_start + ray_direction * ray_length, Color(_impact_color, alpha * (0.9 - absf(spread) * 0.24)), 4.5 if index == 3 else 2.0)
+		var echo_radius := 7.0 + progress * (14.0 + _impact_strength * 18.0)
+		draw_arc(impact_point, echo_radius, direction.angle() - 1.15, direction.angle() + 1.15, 18, Color(_impact_color, alpha * 0.68), 2.0 + _impact_strength * 2.0)
+		if _impact_strength >= 0.68:
+			for index in 4:
+				var debris_progress := progress * (18.0 + float(index) * 4.0)
+				var debris_offset := direction * debris_progress + normal * (-9.0 + float(index) * 6.0)
+				draw_line(impact_point + debris_offset, impact_point + debris_offset + direction * (4.0 + _impact_strength * 4.0), Color("d8c69c", alpha * 0.58), 2.0)
+		draw_circle(impact_point, 3.5 + _impact_strength * 2.0, Color("ffffff", alpha * 0.86))
 
 	if _defeat_burst > 0.0:
 		var progress := 1.0 - _defeat_burst
@@ -2901,6 +3044,9 @@ func _play_sfx(kind: String) -> void:
 	_sfx_cursor = (_sfx_cursor + 1) % _sfx_players.size()
 	player.stream = _sfx_streams[kind]
 	player.volume_db = {
+		"whoosh_light": -27.0,
+		"whoosh_medium": -24.0,
+		"whoosh_heavy": -21.0,
 		"light": -20.0,
 		"medium": -16.0,
 		"heavy": -11.0,
@@ -2917,6 +3063,9 @@ func _play_sfx(kind: String) -> void:
 
 func _make_sfx(kind: String) -> AudioStreamWAV:
 	var duration: float = {
+		"whoosh_light": 0.055,
+		"whoosh_medium": 0.075,
+		"whoosh_heavy": 0.105,
 		"light": 0.045,
 		"medium": 0.065,
 		"heavy": 0.1,
@@ -2941,6 +3090,15 @@ func _make_sfx(kind: String) -> AudioStreamWAV:
 		var frequency := 360.0
 		var noise_amount := 0.1
 		match kind:
+			"whoosh_light":
+				frequency = 220.0 + progress * 430.0
+				noise_amount = 0.22
+			"whoosh_medium":
+				frequency = 175.0 + progress * 390.0
+				noise_amount = 0.26
+			"whoosh_heavy":
+				frequency = 118.0 + progress * 310.0
+				noise_amount = 0.3
 			"light":
 				frequency = 390.0 - progress * 150.0
 			"medium":
