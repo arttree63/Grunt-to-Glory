@@ -2,6 +2,7 @@ extends SceneTree
 
 const CombatModelScript = preload("res://scripts/combat_model.gd")
 const BattlefieldScript = preload("res://scripts/battlefield.gd")
+const ImpactVfxScene = preload("res://scenes/vfx/impact_vfx.tscn")
 var failures := 0
 
 func _init() -> void:
@@ -620,9 +621,28 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(float(light_preset.action_duration) < float(medium_preset.action_duration) and float(medium_preset.action_duration) < float(heavy_preset.action_duration), "輕、中、重攻擊必須有逐級增加的動作承諾時間")
 	_expect(float(heavy_preset.hit_stop) <= 0.075 and float(heavy_preset.presentation_delay) <= 0.13, "重型命中必須有重量但不可拖慢高速 AUTO 戰鬥")
 	_expect(battlefield.impact_presentation_delay("light", "attack") > 0.0 and battlefield.impact_presentation_delay("light", "ally_attack") == 0.0, "主角斬擊必須對齊接觸幀，友軍與持續傷害則不可累積延遲")
+	var impact_timing: Dictionary = ImpactVfx.layer_timing_contract()
+	_expect(float(impact_timing.contact.x) < float(impact_timing.ring.x) and float(impact_timing.ring.x) < float(impact_timing.debris.x) and float(impact_timing.debris.x) < float(impact_timing.dust.x), "接觸閃光、衝擊環、延遲碎片與殘留煙塵必須依序進場")
+	var impact_vfx := ImpactVfxScene.instantiate() as ImpactVfx
+	root.add_child(impact_vfx)
+	var impact_animation: Animation = impact_vfx.animation_player.get_animation("impact")
+	_expect(impact_animation != null and impact_animation.get_track_count() == 8 and is_equal_approx(impact_animation.length, ImpactVfx.BASE_DURATION), "命中四層效果必須由 AnimationPlayer 的獨立屬性軌道編排")
+	impact_vfx.configure("heavy", Color("fff0b0"), Vector2.LEFT, false)
+	impact_vfx.play_impact()
+	_expect(impact_vfx.animation_player.is_playing() and impact_vfx.animation_player.speed_scale < 1.0, "重型命中必須保留較長的 VFX 消散節奏")
+	impact_vfx.finish_now()
 	var contact_on_right := battlefield.pixel_impact_point(Vector2(100.0, 400.0), Vector2(300.0, 400.0))
 	var contact_on_left := battlefield.pixel_impact_point(Vector2(300.0, 400.0), Vector2(100.0, 400.0))
 	_expect(contact_on_right.x < 300.0 and contact_on_left.x > 100.0, "刀光接觸點必須永遠落在面向主角的敵人表面，不能固定偏向單一側")
+	battlefield._pixel_hero_position = Vector2(100.0, 400.0)
+	battlefield._pixel_enemy_position = Vector2(300.0, 400.0)
+	for index in BattlefieldScript.MAX_ACTIVE_IMPACT_VFX + 2:
+		battlefield._apply_impact("light", "attack")
+	_expect(battlefield.active_impact_vfx_count() == BattlefieldScript.MAX_ACTIVE_IMPACT_VFX, "高速 AUTO 連擊必須限制同時存在的命中 VFX 數量")
+	for active_effect: ImpactVfx in battlefield._active_impact_vfx.duplicate():
+		active_effect.finish_now()
+	battlefield._impact_burst = 0.0
+	battlefield._visual_freeze_remaining = 0.0
 	battlefield.play_events([{"type": "attack"}, {"type": "damage", "amount": 12.0, "source": "attack"}])
 	_expect(battlefield._hero_attack_tier == "light" and battlefield._pending_damage_feedback.size() == 1 and battlefield._impact_burst == 0.0, "普通攻擊必須先播放意圖與揮刀，再於接觸幀呈現命中")
 	battlefield._pending_damage_feedback.clear()

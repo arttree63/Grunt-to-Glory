@@ -196,6 +196,8 @@ const IMPACT_FX_FRAMES := [
 	preload("res://assets/visual/fx/hit-impact-v2/impact-5.png"),
 	preload("res://assets/visual/fx/hit-impact-v2/impact-6.png"),
 ]
+const IMPACT_VFX_SCENE: PackedScene = preload("res://scenes/vfx/impact_vfx.tscn")
+const MAX_ACTIVE_IMPACT_VFX := 6
 const HERO_SLASH_WINDUP_WEIGHTS := [0.11, 0.13, 0.15, 0.16, 0.14, 0.12, 0.1, 0.09]
 const HERO_SLASH_RECOVERY_WEIGHTS := [0.2, 0.24, 0.27, 0.29]
 const HERO_BLOCK_WEIGHTS := [0.08, 0.1, 0.12, 0.18, 0.18, 0.12, 0.1, 0.12]
@@ -374,6 +376,9 @@ var _damage_cursor := 0
 var _sfx_streams: Dictionary = {}
 var _sfx_players: Array[AudioStreamPlayer] = []
 var _sfx_cursor := 0
+var _impact_vfx_layer: Node2D
+var _active_impact_vfx: Array[ImpactVfx] = []
+var _pixel_hero_position := Vector2.ZERO
 var _pixel_enemy_position := Vector2.ZERO
 var exploration_enabled := false
 var _exploration_phase := "disabled"
@@ -437,6 +442,9 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	gui_input.connect(_on_map_input)
+	_impact_vfx_layer = Node2D.new()
+	_impact_vfx_layer.name = "ImpactVfxLayer"
+	add_child(_impact_vfx_layer)
 	for index in 8:
 		var label := Label.new()
 		label.visible = false
@@ -1586,11 +1594,46 @@ func _apply_impact(tier: String, source: String) -> void:
 		_impact_direction = Vector2.RIGHT
 	if _impact_direction == Vector2.ZERO:
 		_impact_direction = Vector2.RIGHT
+	_spawn_impact_vfx(tier)
 	_enemy_recoil_direction = 1.0 if _impact_direction.x >= 0.0 else -1.0
 	_enemy_knockback = maxf(_enemy_knockback, _impact_strength)
 	add_trauma(0.07 if tier == "light" else (0.24 if tier == "medium" else 0.48))
 	_hit_stop(float(preset.hit_stop))
 	_play_sfx(tier)
+
+func active_impact_vfx_count() -> int:
+	_prune_impact_vfx()
+	return _active_impact_vfx.size()
+
+func _spawn_impact_vfx(tier: String) -> void:
+	if not is_instance_valid(_impact_vfx_layer):
+		return
+	_prune_impact_vfx()
+	if _active_impact_vfx.size() >= MAX_ACTIVE_IMPACT_VFX:
+		var oldest: ImpactVfx = _active_impact_vfx.pop_front()
+		if is_instance_valid(oldest):
+			oldest.finish_now()
+	var effect := IMPACT_VFX_SCENE.instantiate() as ImpactVfx
+	_impact_vfx_layer.add_child(effect)
+	var hero_position := _pixel_hero_position
+	if hero_position == Vector2.ZERO:
+		hero_position = Vector2(size.x * 0.33, lerpf(stage_top, stage_bottom, 0.78))
+	var enemy_position := _pixel_enemy_position
+	if enemy_position == Vector2.ZERO:
+		enemy_position = Vector2(size.x * 0.69, lerpf(stage_top, stage_bottom, 0.62))
+	effect.position = pixel_impact_point(hero_position, enemy_position)
+	effect.configure(tier, _impact_color, _impact_direction, reduced_motion)
+	effect.finished.connect(_on_impact_vfx_finished)
+	_active_impact_vfx.append(effect)
+	effect.play_impact()
+
+func _prune_impact_vfx() -> void:
+	for index in range(_active_impact_vfx.size() - 1, -1, -1):
+		if not is_instance_valid(_active_impact_vfx[index]):
+			_active_impact_vfx.remove_at(index)
+
+func _on_impact_vfx_finished(effect: Node) -> void:
+	_active_impact_vfx.erase(effect)
 
 func _hit_stop(duration: float) -> void:
 	if reduced_motion:
@@ -1683,6 +1726,7 @@ func _draw_pixel_vertical_slice() -> void:
 	hero_pos.x = clampf(hero_pos.x, 46.0, size.x - 46.0)
 	hero_pos.y = clampf(hero_pos.y, stage_top + 152.0, visible_bottom)
 	var enemy_in_view := not exploration_enabled or _exploration_phase == "engaged" or _enemy_visible_on_map(enemy_world_screen)
+	_pixel_hero_position = hero_pos
 	_pixel_enemy_position = enemy_pos
 	if exploration_enabled:
 		_draw_drag_control()
@@ -2467,29 +2511,6 @@ func _draw_pixel_combat_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 		draw_line(hero_pos + Vector2(12.0, -40.0), impact_point + Vector2(18.0, -26.0), Color("ffffff", alpha), 8.0)
 		draw_line(hero_pos + Vector2(8.0, -32.0), impact_point + Vector2(22.0, -18.0), color, 4.0)
 
-	if _impact_burst > 0.0:
-		var progress := 1.0 - _impact_burst
-		var alpha := pow(1.0 - progress, 1.35)
-		var direction := _impact_direction.normalized()
-		if direction == Vector2.ZERO:
-			direction = Vector2.RIGHT
-		var normal := Vector2(-direction.y, direction.x)
-		var reach := 14.0 + progress * (30.0 + _impact_strength * 24.0)
-		for index in 7:
-			var spread := (float(index) - 3.0) / 3.0
-			var ray_direction := (direction + normal * spread * (0.34 + progress * 0.18)).normalized()
-			var ray_start := impact_point - direction * 4.0 + normal * spread * 3.0
-			var ray_length := reach * (1.0 - absf(spread) * 0.28)
-			draw_line(ray_start, ray_start + ray_direction * ray_length, Color(_impact_color, alpha * (0.9 - absf(spread) * 0.24)), 4.5 if index == 3 else 2.0)
-		var echo_radius := 7.0 + progress * (14.0 + _impact_strength * 18.0)
-		draw_arc(impact_point, echo_radius, direction.angle() - 1.15, direction.angle() + 1.15, 18, Color(_impact_color, alpha * 0.68), 2.0 + _impact_strength * 2.0)
-		if _impact_strength >= 0.68:
-			for index in 4:
-				var debris_progress := progress * (18.0 + float(index) * 4.0)
-				var debris_offset := direction * debris_progress + normal * (-9.0 + float(index) * 6.0)
-				draw_line(impact_point + debris_offset, impact_point + debris_offset + direction * (4.0 + _impact_strength * 4.0), Color("d8c69c", alpha * 0.58), 2.0)
-		draw_circle(impact_point, 3.5 + _impact_strength * 2.0, Color("ffffff", alpha * 0.86))
-
 	if _defeat_burst > 0.0:
 		var progress := 1.0 - _defeat_burst
 		var alpha := sin(clampf(progress * 1.4, 0.0, 1.0) * PI)
@@ -2982,12 +3003,6 @@ func _draw_skill_fx(hero_pos: Vector2, enemy_pos: Vector2) -> void:
 			for index in 3:
 				var offset := Vector2(-18.0 * float(index), 9.0 * float(index - 1))
 				draw_arc(center + offset, 48.0 + float(index) * 13.0 + phase * 28.0, -2.3, 0.45, 26, Color(_milestone_color.lightened(float(index) * 0.12), alpha * (0.9 - float(index) * 0.18)), 3.0 + strength)
-	if _impact_burst > 0.0:
-		var phase := 1.0 - _impact_burst
-		var center := enemy_pos + Vector2(0, -38)
-		var impact_index := mini(5, floori(phase * 6.0))
-		var impact_size := 85.0 + _impact_strength * 55.0
-		_draw_fx_frame(IMPACT_FX_FRAMES[impact_index], center, impact_size, 0.0, Vector2.ONE, Color(_impact_color, 1.0))
 	if _defeat_burst > 0.0:
 		var phase := 1.0 - _defeat_burst
 		var alpha := sin(clampf(phase * 1.45, 0.0, 1.0) * PI)
