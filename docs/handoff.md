@@ -2180,3 +2180,12 @@ GDD 適合定義整體規則,但目前問題多半是「實玩後某個環節不
 - 移除戰場 `_draw()` 內兩套舊命中火花，避免同一接觸點重複疊亮；傷害字仍位於 VFX 上方。
 - 高速 AUTO 同時最多保留 6 個命中 VFX，AnimationPlayer 結束後自行回收，避免長時間戰鬥累積節點。
 - 新場景已明確 preload 並確認進入 Web PCK；Godot 75 項測試、專案檢查、TypeScript typecheck、390×844 WebGL 實玩與控制台檢查通過。
+
+## 2026-08-22｜最新版 Stylized VFX 規範稽核
+
+- 已改用 07:31 更新的最新版 `create-godot-stylized-vfx`；專案內技能副本與全域版本的 SKILL、mesh／particle 參考、texture 參考雜湊一致。
+- 四層命中效果的 VFX Card 定為：只表達 confirmed hit；0ms 白核、18ms 衝擊環、40ms 定向碎片、90ms 煙塵，總長 0.52 秒；世界座標、攻擊方向軸、Web／手機 Compatibility、最多 6 個實例、零貼圖與零動態光源。
+- 命中 VFX 現在接收事件編號、確認接觸點、法線、傷害來源、目標與 outcome；接觸點和方向不再由特效自行猜測。
+- 格擋、閃避與未造成傷害的事件不會生成命中 VFX；高速連擊仍受 6 個實例上限與 AnimationPlayer 統一尾段回收控制。
+- 最新粒子規範已評估，但本效果維持 Godot 原生程序繪製：四層各自有明確工作，無貼圖匯入、透明粒子大量 overdraw 或首次 shader warm-up 成本。
+- Godot 75 項測試、Godot 專案檢查、TypeScript typecheck、Web 匯出與 390×844 WebGL 驗證通過；瀏覽器無錯誤或警告。

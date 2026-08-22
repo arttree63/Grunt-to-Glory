@@ -378,6 +378,7 @@ var _sfx_players: Array[AudioStreamPlayer] = []
 var _sfx_cursor := 0
 var _impact_vfx_layer: Node2D
 var _active_impact_vfx: Array[ImpactVfx] = []
+var _impact_event_sequence := 0
 var _pixel_hero_position := Vector2.ZERO
 var _pixel_enemy_position := Vector2.ZERO
 var exploration_enabled := false
@@ -1594,7 +1595,7 @@ func _apply_impact(tier: String, source: String) -> void:
 		_impact_direction = Vector2.RIGHT
 	if _impact_direction == Vector2.ZERO:
 		_impact_direction = Vector2.RIGHT
-	_spawn_impact_vfx(tier)
+	_spawn_impact_vfx(tier, source)
 	_enemy_recoil_direction = 1.0 if _impact_direction.x >= 0.0 else -1.0
 	_enemy_knockback = maxf(_enemy_knockback, _impact_strength)
 	add_trauma(0.07 if tier == "light" else (0.24 if tier == "medium" else 0.48))
@@ -1605,7 +1606,7 @@ func active_impact_vfx_count() -> int:
 	_prune_impact_vfx()
 	return _active_impact_vfx.size()
 
-func _spawn_impact_vfx(tier: String) -> void:
+func _spawn_impact_vfx(tier: String, source: String) -> void:
 	if not is_instance_valid(_impact_vfx_layer):
 		return
 	_prune_impact_vfx()
@@ -1621,8 +1622,19 @@ func _spawn_impact_vfx(tier: String) -> void:
 	var enemy_position := _pixel_enemy_position
 	if enemy_position == Vector2.ZERO:
 		enemy_position = Vector2(size.x * 0.69, lerpf(stage_top, stage_bottom, 0.62))
-	effect.position = pixel_impact_point(hero_position, enemy_position)
-	effect.configure(tier, _impact_color, _impact_direction, reduced_motion)
+	_impact_event_sequence += 1
+	var contact_normal := enemy_position.direction_to(hero_position)
+	if contact_normal == Vector2.ZERO:
+		contact_normal = Vector2.LEFT
+	var payload := {
+		"event_id": _impact_event_sequence,
+		"position": pixel_impact_point(hero_position, enemy_position),
+		"normal": contact_normal,
+		"source": source,
+		"target": "enemy",
+		"outcome": "hit",
+	}
+	effect.configure(payload, tier, _impact_color, reduced_motion)
 	effect.finished.connect(_on_impact_vfx_finished)
 	_active_impact_vfx.append(effect)
 	effect.play_impact()

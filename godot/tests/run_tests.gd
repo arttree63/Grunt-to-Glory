@@ -627,9 +627,11 @@ func _test_battlefield_impact_tiers() -> void:
 	root.add_child(impact_vfx)
 	var impact_animation: Animation = impact_vfx.animation_player.get_animation("impact")
 	_expect(impact_animation != null and impact_animation.get_track_count() == 8 and is_equal_approx(impact_animation.length, ImpactVfx.BASE_DURATION), "命中四層效果必須由 AnimationPlayer 的獨立屬性軌道編排")
-	impact_vfx.configure("heavy", Color("fff0b0"), Vector2.LEFT, false)
+	var confirmed_payload := {"event_id": 7, "position": Vector2(220.0, 360.0), "normal": Vector2.LEFT, "source": "heavy_strike_extreme", "target": "enemy", "outcome": "hit"}
+	_expect(ImpactVfx.payload_is_valid(confirmed_payload), "命中 VFX 必須接收含事件編號、接觸點、法線、來源、目標與結果的確認資料")
+	impact_vfx.configure(confirmed_payload, "heavy", Color("fff0b0"), false)
 	impact_vfx.play_impact()
-	_expect(impact_vfx.animation_player.is_playing() and impact_vfx.animation_player.speed_scale < 1.0, "重型命中必須保留較長的 VFX 消散節奏")
+	_expect(impact_vfx.animation_player.is_playing() and impact_vfx.animation_player.speed_scale < 1.0 and impact_vfx.position == confirmed_payload.position, "重型命中必須使用確認接觸點並保留較長的 VFX 消散節奏")
 	impact_vfx.finish_now()
 	var contact_on_right := battlefield.pixel_impact_point(Vector2(100.0, 400.0), Vector2(300.0, 400.0))
 	var contact_on_left := battlefield.pixel_impact_point(Vector2(300.0, 400.0), Vector2(100.0, 400.0))
@@ -641,6 +643,8 @@ func _test_battlefield_impact_tiers() -> void:
 	_expect(battlefield.active_impact_vfx_count() == BattlefieldScript.MAX_ACTIVE_IMPACT_VFX, "高速 AUTO 連擊必須限制同時存在的命中 VFX 數量")
 	for active_effect: ImpactVfx in battlefield._active_impact_vfx.duplicate():
 		active_effect.finish_now()
+	battlefield.play_events([{"type": "block"}, {"type": "dodge"}])
+	_expect(battlefield.active_impact_vfx_count() == 0, "格擋、閃避與未造成傷害的事件不可誤生命中 VFX")
 	battlefield._impact_burst = 0.0
 	battlefield._visual_freeze_remaining = 0.0
 	battlefield.play_events([{"type": "attack"}, {"type": "damage", "amount": 12.0, "source": "attack"}])

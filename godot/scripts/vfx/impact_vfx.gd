@@ -45,6 +45,7 @@ var effect_color := Color("fff0b0")
 var attack_direction := Vector2.RIGHT
 var effect_strength := 0.72
 var motion_scale := 1.0
+var event_payload: Dictionary = {}
 
 @onready var animation_player: AnimationPlayer = $AnimationPlayer
 
@@ -65,10 +66,19 @@ static func layer_timing_contract() -> Dictionary:
 static func playback_speed_for_tier(value: String) -> float:
 	return float(TIER_SPEED.get(value, TIER_SPEED.light))
 
-func configure(value_tier: String, value_color: Color, value_direction: Vector2, reduced_motion: bool) -> void:
+static func payload_is_valid(payload: Dictionary) -> bool:
+	for key in ["event_id", "position", "normal", "source", "target", "outcome"]:
+		if not payload.has(key):
+			return false
+	return typeof(payload.position) == TYPE_VECTOR2 and typeof(payload.normal) == TYPE_VECTOR2 and String(payload.outcome) == "hit"
+
+func configure(payload: Dictionary, value_tier: String, value_color: Color, reduced_motion: bool) -> void:
+	event_payload = payload.duplicate(true)
+	position = event_payload.position
 	tier = value_tier if TIER_STRENGTH.has(value_tier) else "light"
 	effect_color = value_color
-	attack_direction = value_direction.normalized()
+	var contact_normal: Vector2 = event_payload.normal
+	attack_direction = -contact_normal.normalized()
 	if attack_direction == Vector2.ZERO:
 		attack_direction = Vector2.RIGHT
 	effect_strength = float(TIER_STRENGTH[tier])
@@ -76,6 +86,9 @@ func configure(value_tier: String, value_color: Color, value_direction: Vector2,
 	animation_player.speed_scale = playback_speed_for_tier(tier)
 
 func play_impact() -> void:
+	if not payload_is_valid(event_payload):
+		finish_now()
+		return
 	visible = true
 	animation_player.stop()
 	animation_player.play("impact")
